@@ -1,0 +1,44 @@
+---
+# Checks:
+# We enable major categories (bugprone, modernization, performance, etc.)
+# and explicitly disable specific checks that are overly noisy or controversial.
+Checks: >
+  -*,
+  bugprone-*,
+  cppcoreguidelines-*,
+  clang-analyzer-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  misc-*,
+  -modernize-use-trailing-return-type,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -performance-avoid-endl,
+  -llvmlibc-*,
+  -fuchsia-*,
+  -android-*,
+  -zircon-*,
+  -abseil-*
+
+# Header filter: Check all headers in your project, ignore system headers
+HeaderFilterRegex: '.*'
+
+# Check Options: Customize how strict certain checks are
+CheckOptions:
+  # Allow up to 4 easily swappable parameters (e.g., x, y, width, height)
+  - key: bugprone-easily-swappable-parameters.MinimumLength
+    value: 5
+  # Enforce that overrides actually say 'override'
+  - key: modernize-use-override.AllowMacro
+    value: 0
+  # Enforce NULL -> nullptr
+  - key: modernize-use-nullptr.NullMacros
+    value: "NULL"
+  # Allow shorter variable names (e.g., 'i', 'x', 'y') in loops
+  - key: readability-identifier-length.IgnoredVariableNames
+    value: "^[a-z]$"
+  # Allow all public members classes
+  - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
+    value: 1

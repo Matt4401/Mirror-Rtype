@@ -1,0 +1,8 @@
+Language: Cpp
+Standard: Latest
+BasedOnStyle: Google
+ColumnLimit: 120
+AccessModifierOffset: -2
+IndentWidth: 4
+InsertNewlineAtEOF: true
+Cpp11BracedListStyle: true
