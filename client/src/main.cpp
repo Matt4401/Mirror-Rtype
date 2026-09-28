@@ -1,8 +1,8 @@
 /*
 ** EPITECH PROJECT, 2026
-** zappy
+** r-type
 ** File description:
-** main
+** Client entry point
 */
 
 // NOLINTNEXTLINE
