@@ -7,6 +7,8 @@ on:
   pull_request:
 
 env:
+  BUILD_TYPE: Release
+  CCACHE_DIR: ${{ github.workspace }}/.ccache
   TARGET_REPO_URL: "git@github.com:EpitechPGE3-2026/G-ING-500-NAN-5-1-rtype-3.git"
 
 concurrency:
@@ -14,14 +16,74 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # futur jobs tests ...
-  #   name: ...
-  #   if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
-  #   runs-on: ubuntu-latest
-    
+  cpp-linter:
+    name: Check C++ formatting and linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends cmake clang-format clang-tidy
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run C++ linter
+        uses: cpp-linter/cpp-linter-action@v2
+        id: linter
+        with:
+          version: "20"
+          style: "file"
+          database: "build"
+          ignore: ".github|build"
+          file-annotations: "true"
+          step-summary: "true"
+
+      - name: Fail when checks fail
+        if: steps.linter.outputs.checks-failed > 0
+        run: exit 1
+
+  build-and-test:
+    name: Build and run CTest
+    needs: cpp-linter
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends build-essential cmake ccache
+
+      - name: Restore compiler cache
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build binaries
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      - name: Check binaries
+        run: |
+          test -x build/r-type_client
+          test -x build/r-type_server
+
+      - name: Run CTest
+        run: ctest --test-dir build --output-on-failure
 
   push_to_mirror:
     name: Push to target repository
+    needs: build-and-test
     if: ${{ github.repository == 'Matt4401/Mirror-Rtype' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     steps:
