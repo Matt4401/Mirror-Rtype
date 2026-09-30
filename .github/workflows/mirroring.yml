@@ -7,8 +7,7 @@ on:
   pull_request:
 
 env:
-  BUILD_TYPE: Release
-  CCACHE_DIR: ${{ github.workspace }}/.ccache
+  BUILD_MODE: release
   TARGET_REPO_URL: "git@github.com:EpitechPGE3-2026/G-ING-500-NAN-5-1-rtype-3.git"
 
 concurrency:
@@ -27,10 +26,26 @@ jobs:
       - name: Install tooling
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends cmake clang-format clang-tidy
+          sudo apt-get install -y --no-install-recommends clang-format clang-tidy \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libgl1-mesa-dev
 
-      - name: Configure CMake
-        run: cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Restore xmake packages cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.xmake/packages
+          key: xmake-pkgs-${{ runner.os }}-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-pkgs-${{ runner.os }}-
+
+      - name: Generate compile_commands.json
+        run: |
+          xmake f -m ${{ env.BUILD_MODE }} -y
+          xmake project -k compile_commands build
 
       - name: Run C++ linter
         uses: cpp-linter/cpp-linter-action@v2
@@ -48,7 +63,7 @@ jobs:
         run: exit 1
 
   build-and-test:
-    name: Build and run CTest
+    name: Build and run tests
     needs: cpp-linter
     if: ${{ github.repository == 'Matt4401/Mirror-Rtype' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
@@ -56,32 +71,38 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Install build tools
+      - name: Install system dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends build-essential cmake ccache
+          sudo apt-get install -y --no-install-recommends build-essential \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libgl1-mesa-dev
 
-      - name: Restore compiler cache
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Restore xmake packages cache
         uses: actions/cache@v5
         with:
-          path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ runner.os }}-${{ github.sha }}
+          path: ~/.xmake/packages
+          key: xmake-pkgs-${{ runner.os }}-${{ hashFiles('xmake.lua') }}
           restore-keys: |
-            ccache-${{ runner.os }}-
+            xmake-pkgs-${{ runner.os }}-
 
-      - name: Configure CMake
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Configure xmake
+        run: xmake f -m ${{ env.BUILD_MODE }} -y
 
       - name: Build binaries
-        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+        run: xmake -v
 
       - name: Check binaries
         run: |
-          test -x build/r-type_client
-          test -x build/r-type_server
+          test -x r-type_client
+          test -x r-type_server
 
-      - name: Run CTest
-        run: ctest --test-dir build --output-on-failure
+      - name: Run tests
+        run: xmake test
 
   push_to_mirror:
     name: Push to target repository
