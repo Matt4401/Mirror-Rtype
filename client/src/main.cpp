@@ -8,6 +8,6 @@
 #include <iostream>
 // NOLINTNEXTLINE
 int main(int ac, char** av) {
-    std::cout << "client" << std::endl;
+    std::cout << "client\n";
     return 0;
 }

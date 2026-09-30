@@ -9,6 +9,6 @@
 
 // NOLINTNEXTLINE
 int main(int ac, char** av) {
-    std::cout << "server" << std::endl;
+    std::cout << "server\n";
     return 0;
 }
