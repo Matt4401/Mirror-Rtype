@@ -1,0 +1,89 @@
+name: 🐛 Bug report
+description: Report a problem with the R-Type client, server, build, or documentation.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping us improve R-Type. Please provide enough detail for the team to reproduce the problem.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      description: Which part of the project is affected most?
+      options:
+        - Client
+        - Server
+        - Networking / protocol
+        - Game engine / gameplay
+        - Build / tests
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and when it occurs.
+      placeholder: Tell us what you saw...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce the issue?
+      placeholder: |
+        1. Configure the project with CMake
+        2. Build `r-type_client` or `r-type_server`
+        3. Run the relevant executable or test
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / output
+      description: Paste any relevant error output or stack trace. This will be formatted as code automatically.
+      render: text
+
+  - type: input
+    id: build
+    attributes:
+      label: Build configuration
+      description: Include the CMake preset or commands used, if relevant.
+      placeholder: e.g. `cmake -S . -B build && cmake --build build`
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: e.g. Ubuntu 24.04, Arch Linux, Windows 11
+    validations:
+      required: true
+
+  - type: input
+    id: compiler
+    attributes:
+      label: Compiler
+      placeholder: e.g. GCC 13.3, Clang 18, MSVC  v143
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Anything else that could help us understand the issue.
