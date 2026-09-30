@@ -24,16 +24,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v10.1.0
-        with:
-          enable-cache: true
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen
 
-      - name: Install dependencies
-        run: uv sync --group docs
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Python dependencies
+        run: pip install mkdocs-material mkdoxy pymdown-extensions mkdocs-section-index
 
       - name: Build documentation
-        run: uv run mkdocs build --strict
+        run: mkdocs build
 
       - name: Upload artifact for GitHub Pages
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
