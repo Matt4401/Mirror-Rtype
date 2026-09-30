@@ -1,0 +1,81 @@
+name: ✨ Feature request
+description: Suggest an improvement to the R-Type game, engine, or development workflow.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Propose a feature that makes R-Type more playable, robust, maintainable, or accessible.
+        Please connect the request to a concrete player, developer, or evaluator need.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: Which part of R-Type would this change affect most?
+      multiple: true
+      options:
+        - client
+        - server
+        - networking / protocol
+        - game engine / architecture
+        - gameplay
+        - rendering / audio / input
+        - build / testing
+        - documentation
+        - accessibility
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the feature, its use case, and the expected behavior.
+      placeholder: Explain what should be possible and who benefits from it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation
+      description: Describe a possible technical approach and the main components or interfaces involved.
+      placeholder: |
+        - Components or modules to change:
+        - Network or API changes:
+        - Tests or gameplay validation to add:
+
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: List observable conditions that must be true for this feature to be complete.
+      placeholder: |
+        - [ ] Observable behavior 1
+        - [ ] Observable behavior 2
+        - [ ] Tests or evaluation scenario added
+
+  - type: textarea
+    id: attention-points
+    attributes:
+      label: Attention points
+      description: Note compatibility, networking, security, performance, accessibility, or maintenance concerns.
+      placeholder: |
+        - Compatibility or migration concerns:
+        - Failure and fallback behavior:
+        - Security, resource, or gameplay balance limits:
+
+  - type: textarea
+    id: user-story
+    attributes:
+      label: User stories (optional)
+      description: Add at least two stories using the format below.
+      placeholder: |
+        As a [type of user], I want to [action], so that [outcome].
+
+        As a [type of user], I want to [action], so that [outcome].
+    validations:
+      required: false
