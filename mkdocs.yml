@@ -1,0 +1,83 @@
+site_name: R-Type Engine
+site_description: Documentation for the R-Type Game Engine and Client/Server binaries
+site_author: R-Type Team
+repo_name: Mirror-Rtype
+repo_url: https://github.com/Matt4401/Mirror-Rtype
+
+theme:
+  name: material
+  language: en
+  palette:
+    # Light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.instant
+    - content.code.copy
+    - content.code.annotate
+    - search.suggest
+    - search.highlight
+
+plugins:
+  - search
+  - section-index
+  - mkdoxy:
+      projects:
+        rtype:
+          src-dirs: "src include"
+          full-doc: True
+          doxy-cfg:
+            FILE_PATTERNS: "*.cpp *.hpp *.h"
+            RECURSIVE: True
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - tables
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - Engine: architecture/engine.md
+      - Server: architecture/server.md
+      - Client: architecture/client.md
+  - Protocol:
+      - RFC: protocol/rfc.md
+      - Packets: protocol/packets.md
+  - Comparative Study:
+      - Algorithms: comparative-study/algorithms.md
+      - Storage: comparative-study/storage.md
+      - Security: comparative-study/security.md
+  - Development:
+      - Coding Style: development/coding-style.md
+      - Workflow: development/workflow.md
+  - Getting Started:
+      - Index: getting-started/index.md
+      - Building: getting-started/building.md
+      - Running: getting-started/running.md
+  - Accessibility: accessibility/index.md
+  - API Reference: api_reference.md
