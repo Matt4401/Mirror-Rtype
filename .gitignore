@@ -69,3 +69,11 @@ Testing/
 
 # Vscode
 .idea/
+
+# binary
+/r-type_client
+/r-type_server
+
+# XMake
+.xmake/
+
