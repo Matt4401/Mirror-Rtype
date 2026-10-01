@@ -1,15 +1,22 @@
-## Rtype
+# Rtype
 
-# launch porject
+## Launch porject
 ```bash
 xmake run
 ```
 
-# launch binaries
+## Launch binaries
 
 ```bash
 ./r-type_server ...
 ./r-type_client ...
 ```
 
-# for the dev and their ide (compile_commands.json)
+## For the dev and their ide (compile_commands.json)
+
+## Contributors
+
+- Alexis Clemot
+- Matthieu Coraleau
+- Tom Gatin
+- Tristan Fragnaud

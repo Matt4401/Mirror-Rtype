@@ -17,7 +17,7 @@ concurrency:
 jobs:
   cpp-linter:
     name: Check C++ formatting and linting
-    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -66,7 +66,7 @@ jobs:
   build-and-test:
     name: Build and run tests
     needs: cpp-linter
-    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
