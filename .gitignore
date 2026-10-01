@@ -75,3 +75,10 @@ G-CPP-500_KickOff_R-Type_DA-2026_FR.pdf
 B-CPP-500_rtype.pdf
 
 .env
+# binary
+/r-type_client
+/r-type_server
+
+# XMake
+.xmake/
+
