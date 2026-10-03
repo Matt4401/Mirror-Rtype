@@ -96,6 +96,7 @@ namespace ecs {
 
         std::vector<Component>& get_dense() { return _components; }
         std::vector<Component> const& get_dense() const { return _components; }
+        [[nodiscard]] std::vector<Entity> const& get_dense_entities() const { return _dense; }
 
     private:
         std::vector<std::optional<std::size_t>> _sparse;

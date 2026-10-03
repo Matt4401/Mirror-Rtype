@@ -13,6 +13,8 @@
 #include <stdexcept>
 #include "Entity.hpp"
 #include "SparseArray.hpp"
+#include <tuple>
+#include <utility>
 
 namespace ecs {
     class Registry {
@@ -42,6 +44,18 @@ namespace ecs {
         template <class Component>
         Component& add_component(Entity to, Component const& c) {
             return get_components<Component>().insert_at(to, c);
+        }
+
+        template <class... Components, class Func>
+        void run_system(Func&& func) {
+            using FirstComponent = typename std::tuple_element<0, std::tuple<Components...>>::type;
+            auto& first_array = get_components<FirstComponent>();
+
+            for (Entity e : first_array.get_dense_entities()) {
+                if ((get_components<Components>().contains(e) && ...)) {
+                    std::forward<Func>(func)(e, get_components<Components>().get(e)...);
+                }
+            }
         }
 
     private:
