@@ -1,0 +1,53 @@
+/*
+** EPITECH PROJECT, 2026
+** Rtype
+** File description:
+** Registry
+*/
+
+#pragma once
+#include <unordered_map>
+#include <typeindex>
+#include <memory>
+#include <queue>
+#include <stdexcept>
+#include "Entity.hpp"
+#include "SparseArray.hpp"
+
+namespace ecs {
+    class Registry {
+    public:
+        Entity spawn_entity();
+        void kill_entity(Entity e);
+
+        template <class Component>
+        void register_component() {
+            _components_arrays[typeid(Component)] = std::make_unique<SparseArray<Component>>();
+        }
+
+        template <class Component>
+        SparseArray<Component>& get_components() {
+            auto it = _components_arrays.find(typeid(Component));
+            if (it == _components_arrays.end()) {
+                throw std::runtime_error("Component not registered");
+            }
+            return *static_cast<SparseArray<Component>*>(it->second.get());
+        }
+
+        template <class Component>
+        Component& add_component(Entity to, Component&& c) {
+            return get_components<Component>().insert_at(to, std::forward<Component>(c));
+        }
+
+        template <class Component>
+        Component& add_component(Entity to, Component const& c) {
+            return get_components<Component>().insert_at(to, c);
+        }
+
+    private:
+        std::unordered_map<std::type_index, std::unique_ptr<ISparseArray>> _components_arrays;
+        Entity _next_entity = 0;
+        std::queue<Entity> _dead_entities;
+    };
+}
+
