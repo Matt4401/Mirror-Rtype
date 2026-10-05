@@ -1,0 +1,7 @@
+target("r-type_server")
+    set_kind("binary")
+    set_targetdir("$(projectdir)")
+    add_files("**.cpp")
+    -- add_deps("network", "engine")
+    add_packages("asio")
+    add_tests("starts")
