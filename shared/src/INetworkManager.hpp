@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace net {
+namespace rtype::net {
 
 using ClientId = std::uint32_t;
 using Bytes = std::vector<std::uint8_t>;
@@ -33,4 +33,4 @@ class INetworkManager {
     [[nodiscard]] virtual bool isRunning() const = 0;
 };
 
-}  // namespace net
+}  // namespace rtype::net
