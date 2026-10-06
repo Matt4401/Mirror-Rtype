@@ -65,13 +65,16 @@ nav:
       - Engine: architecture/engine.md
       - Server: architecture/server.md
       - Client: architecture/client.md
+      - Network: architecture/network.md
   - Protocol:
       - RFC: protocol/rfc.md
       - Packets: protocol/packets.md
+      - Transport & Connection: protocol/transport.md
   - Comparative Study:
       - Algorithms: comparative-study/algorithms.md
       - Storage: comparative-study/storage.md
       - Security: comparative-study/security.md
+      - Network: comparative-study/network.md
   - Development:
       - Coding Style: development/coding-style.md
       - Workflow: development/workflow.md
