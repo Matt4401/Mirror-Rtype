@@ -20,3 +20,17 @@ Allowed types are:
 ```
 feat(burger.cpp): add new food item to menu
 ```
+
+## Pre-commit Hooks
+
+To enable pre-commit checks locally (`clang-format` and `clang-tidy`, with tests excluded from the linter):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Alternatively, if you use the Python `pre-commit` tool:
+
+```bash
+pre-commit install
+```

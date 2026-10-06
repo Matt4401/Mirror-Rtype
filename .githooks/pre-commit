@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+set -e
+
+ROOT_DIR=$(git rev-parse --show-toplevel)
+cd "$ROOT_DIR"
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(cpp|hpp|cxx|hxx|cc|hh)$' || true)
+
+if [ -z "$STAGED_FILES" ]; then
+    exit 0
+fi
+
+echo "Running pre-commit checks..."
+
+FORMAT_FAILED=0
+for file in $STAGED_FILES; do
+    if [ -f "$file" ]; then
+        if ! clang-format --dry-run --Werror "$file" >/dev/null 2>&1; then
+            echo "[clang-format] Formatting issues detected in: $file"
+            FORMAT_FAILED=1
+        fi
+    fi
+done
+
+if [ $FORMAT_FAILED -ne 0 ]; then
+    echo "Run 'clang-format -i <file>' to format your files before committing."
+    exit 1
+fi
+
+BUILD_DIR="."
+if [ -f "build/compile_commands.json" ]; then
+    BUILD_DIR="build"
+elif [ ! -f "compile_commands.json" ]; then
+    if command -v xmake >/dev/null 2>&1; then
+        xmake project -k compile_commands . >/dev/null 2>&1 || true
+    fi
+fi
+
+TIDY_FAILED=0
+if [ -f "${BUILD_DIR}/compile_commands.json" ]; then
+    TIDY_FILES=$(echo "$STAGED_FILES" | grep -v '^tests/' | grep -E '\.(cpp|cxx|cc)$' || true)
+
+    for file in $TIDY_FILES; do
+        if [ -f "$file" ]; then
+            echo "Linting with clang-tidy: $file..."
+            if ! clang-tidy -p "$BUILD_DIR" --warnings-as-errors='*' "$file"; then
+                echo "[clang-tidy] Lint errors found in: $file"
+                TIDY_FAILED=1
+            fi
+        fi
+    done
+fi
+
+if [ $TIDY_FAILED -ne 0 ]; then
+    echo "clang-tidy checks failed. Please fix the warnings above before committing."
+    exit 1
+fi
+
+echo "All pre-commit checks passed!"
+exit 0
+
