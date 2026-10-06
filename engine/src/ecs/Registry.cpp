@@ -6,6 +6,7 @@
 */
 
 #include "ecs/Registry.hpp"
+
 #include "ecs/Entity.hpp"
 
 namespace ecs {
