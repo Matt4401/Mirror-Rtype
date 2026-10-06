@@ -1,10 +1,3 @@
-/*
-** EPITECH PROJECT, 2026
-** Rtype
-** File description:
-** SparseArray
-*/
-
 #pragma once
 #include <cstddef>
 #include <optional>
@@ -82,7 +75,7 @@ class SparseArray : public ISparseArray {
         _sparse[e] = std::nullopt;
     }
 
-    [[nodiscard]] [[nodiscard]] bool contains(Entity e) const { return e < _sparse.size() && _sparse[e].has_value(); }
+    [[nodiscard]] bool contains(Entity e) const { return e < _sparse.size() && _sparse[e].has_value(); }
 
     Component& get(Entity e) {
         if (e >= _sparse.size()) {

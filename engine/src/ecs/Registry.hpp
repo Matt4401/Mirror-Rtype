@@ -1,10 +1,3 @@
-/*
-** EPITECH PROJECT, 2026
-** Rtype
-** File description:
-** Registry
-*/
-
 #pragma once
 #include <memory>
 #include <queue>

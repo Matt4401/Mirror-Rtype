@@ -1,10 +1,3 @@
-/*
-** EPITECH PROJECT, 2026
-** Rtype
-** File description:
-** Registry
-*/
-
 #include "ecs/Registry.hpp"
 
 #include "ecs/Entity.hpp"
