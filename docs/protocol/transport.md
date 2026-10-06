@@ -25,19 +25,19 @@ layout of each packet is specified in the [Protocol RFC](rfc.md) and [Packets](p
 
 ### Message classification
 
-| Message                    | Phase       | Channel                       | Transport | Reason                                            |
-|----------------------------|-------------|-------------------------------|-----------|---------------------------------------------------|
-| Handshake, version check   | Before game | Reliable                      | TCP       | Must arrive                                       |
-| Session token, `ClientId`  | Before game | Reliable                      | TCP       | Required to bind the UDP address                  |
-| Lobby (rooms, ready state) | Before game | Reliable                      | TCP       | Must arrive in order                              |
-| Game start                 | Before game | Reliable                      | TCP       | Must arrive                                       |
-| UDP `CONNECT`              | Game start  | Unreliable, retried           | UDP       | Registers the client's UDP address                |
-| Player inputs              | In game     | Unreliable                    | UDP       | Sent every tick; the next one replaces a lost one |
-| World state                | In game     | Unreliable                    | UDP       | Sent every tick; stale states are dropped         |
-| Critical in-game events    | In game     | Unreliable + ack *(optional)* | UDP       | Must stay ordered with the world state            |
-| Chat                       | Any         | Reliable                      | TCP       | Must arrive in order, low volume                  |
-| Game over, scores          | After game  | Reliable                      | TCP       | Must arrive                                       |
-| Leave                      | Any         | Reliable                      | TCP       | Clean disconnection                               |
+| Message                    | Phase       | Channel             | Transport | Reason                                            |
+|----------------------------|-------------|---------------------|-----------|---------------------------------------------------|
+| Handshake, version check   | Before game | Reliable            | TCP       | Must arrive                                       |
+| Session token, `ClientId`  | Before game | Reliable            | TCP       | Required to bind the UDP address                  |
+| Lobby (rooms, ready state) | Before game | Reliable            | TCP       | Must arrive in order                              |
+| Game start                 | Before game | Reliable            | TCP       | Must arrive                                       |
+| UDP `CONNECT`              | Game start  | Unreliable, retried | UDP       | Registers the client's UDP address                |
+| Player inputs              | In game     | Unreliable          | UDP       | Sent every tick; the next one replaces a lost one |
+| World state                | In game     | Unreliable          | UDP       | Sent every tick; stale states are dropped         |
+| Critical in-game events    | In game     | Unreliable + ack    | UDP       | Must stay ordered with the world state            |
+| Chat                       | Any         | Reliable            | TCP       | Must arrive in order, low volume                  |
+| Game over, scores          | After game  | Reliable            | TCP       | Must arrive                                       |
+| Leave                      | Any         | Reliable            | TCP       | Clean disconnection                               |
 
 ### Constraints on mixing both
 

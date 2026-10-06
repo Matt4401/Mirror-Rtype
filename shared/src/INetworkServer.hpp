@@ -2,8 +2,6 @@
 #include "INetworkManager.hpp"
 namespace net {
 
-enum class Channel { Reliable, Unreliable };
-
 class INetworkServer : public INetworkManager {
   public:
     virtual bool start(uint16_t tcpPort, uint16_t udpPort) = 0;

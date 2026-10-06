@@ -10,12 +10,13 @@ using ClientId = uint32_t;
 using Bytes = std::vector<uint8_t>;
 
 enum class EventType { Connected, Disconnected, Data };
-using PeerId = uint32_t;
+enum class Channel { Reliable, Unreliable };
 
 struct NetworkEvent {
     EventType type;
     ClientId client;
     Bytes data;
+    Channel channel;
 };
 
 class INetworkManager {
