@@ -6,15 +6,21 @@
 #include <vector>
 
 #include "EventQueue.hpp"
-#include "INetworkClient.hpp"
-#include "INetworkManager.hpp"
+#include "Network/INetworkClient.hpp"
+#include "Network/INetworkManager.hpp"
 
 namespace rtype::net::client {
+
+static constexpr std::uint32_t MAX_TCP_MESSAGE = 64 * 1024;
 
 class NetworkClient : public INetworkClient {
   public:
     explicit NetworkClient();
     ~NetworkClient() override;
+    void readTcpHeader();
+    void readTcpBody(std::uint32_t size);
+    void onTcpError(std::error_code ec);
+    void receiveUdp();
     NetworkClient(const NetworkClient&) = delete;
     NetworkClient& operator=(const NetworkClient&) = delete;
     NetworkClient(NetworkClient&&) = delete;
@@ -40,6 +46,9 @@ class NetworkClient : public INetworkClient {
     asio::ip::udp::endpoint _serverUdp;
     asio::ip::udp::endpoint _udpFrom;
     std::array<std::uint8_t, 1500> _udpBuffer{};
+
+    std::array<std::uint8_t, 4> _tcpHeader;
+    std::vector<std::uint8_t> _tcpBody;
 
     queue::EventQueue _events;
 };
