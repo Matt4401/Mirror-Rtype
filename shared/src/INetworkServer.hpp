@@ -1,8 +1,10 @@
 #pragma once
+
 #include <cstdint>
 
 #include "INetworkManager.hpp"
-namespace rtype::net {
+
+namespace rtype::net::server {
 
 class INetworkServer : public INetworkManager {
   public:
@@ -11,4 +13,5 @@ class INetworkServer : public INetworkManager {
     virtual void broadcast(const Bytes& data, Channel channel) = 0;
     virtual void kick(ClientId client) = 0;
 };
-}  // namespace rtype::net
+
+}  // namespace rtype::net::server

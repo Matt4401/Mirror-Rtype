@@ -14,7 +14,7 @@
 #include "INetworkServer.hpp"
 #include "session/TcpSession.hpp"
 
-namespace rtype::net {
+namespace rtype::net::server {
 
 struct ClientInfo {
     ClientId id;
@@ -63,4 +63,4 @@ class NetworkServer : public INetworkServer {
     std::atomic<bool> _running = false;
 };
 
-}  // namespace rtype::net
+}  // namespace rtype::net::server

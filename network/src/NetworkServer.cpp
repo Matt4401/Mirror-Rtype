@@ -3,7 +3,7 @@
 
 #include <iostream>
 
-namespace rtype::net {
+namespace rtype::net::server {
 
 NetworkServer::NetworkServer()
     : _work(asio::make_work_guard(_io)), _acceptor(_io), _udpSocket(_io), _udpBuffer{}, _timeoutTimer(_io) {}
@@ -89,4 +89,4 @@ void NetworkServer::stop() {
 
 NetworkServer::~NetworkServer() { NetworkServer::stop(); }
 
-}  // namespace rtype::net
+}  // namespace rtype::net::server
