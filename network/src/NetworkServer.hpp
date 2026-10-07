@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "EventQueue.hpp"
-#include "INetworkManager.hpp"
-#include "INetworkServer.hpp"
+#include "Network/INetworkManager.hpp"
+#include "Network/INetworkServer.hpp"
 #include "session/TcpSession.hpp"
 
 namespace rtype::net::server {
