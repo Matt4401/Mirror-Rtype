@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install tooling
         run: |
@@ -48,7 +48,7 @@ jobs:
           xmake project -k compile_commands build
 
       - name: Run C++ linter
-        uses: cpp-linter/cpp-linter-action@v2
+        uses: cpp-linter/cpp-linter-action@v2.23
         id: linter
         with:
           version: "20"
@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install system dependencies
         run: |
@@ -84,7 +84,7 @@ jobs:
           xmake-version: latest
 
       - name: Restore xmake packages cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1
         with:
           path: ~/.xmake/packages
           key: xmake-pkgs-${{ runner.os }}-${{ hashFiles('xmake.lua') }}
@@ -105,6 +105,14 @@ jobs:
       - name: Run tests
         run: xmake test
 
+      - name: Upload server binary
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: r-type_server
+          path: r-type_server
+          retention-days: 1
+
   push_to_mirror:
     name: Push to target repository
     needs: build-and-test
@@ -112,12 +120,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Mirror repository
-        uses: pixta-dev/repository-mirroring-action@v1
+        uses: pixta-dev/repository-mirroring-action@v1.1
         with:
           target_repo_url: ${{ env.TARGET_REPO_URL }}
           ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }} # link to matt repo
+
+  deploy_to_vps:
+    name: Deploy server to VPS
+    needs: build-and-test
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download server binary
+        uses: actions/download-artifact@v8
+        with:
+          name: r-type_server
+
+      - name: Copy binary to VPS via SCP
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "r-type_server"
+          target: "/home/rtype/server_deploy"
+          overwrite: true
+
+      - name: Restart server service on VPS
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            chmod +x /home/rtype/server_deploy/r-type_server
+            systemctl --user restart rtype-server.service
+            systemctl --user status rtype-server.service
