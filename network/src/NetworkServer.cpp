@@ -2,6 +2,7 @@
 #include "NetworkServer.hpp"
 
 #include <iostream>
+#include <ranges>
 
 namespace rtype::net::server {
 
@@ -88,5 +89,17 @@ void NetworkServer::stop() {
 }
 
 NetworkServer::~NetworkServer() { NetworkServer::stop(); }
+
+void NetworkServer::kick(const ClientId client) {
+    if (_clients.contains(client)) {
+        _clients.erase(client);
+    }
+}
+
+void NetworkServer::broadcast(const Bytes& data, const Channel channel) {
+    for (const auto& clientId : _clients | std::views::keys) {
+        send(clientId, data, channel);
+    }
+}
 
 }  // namespace rtype::net::server

@@ -33,9 +33,9 @@ class NetworkServer : public INetworkServer {
     void receiveUdp();
     void scheduleTimeoutCheck();
 
-    std::vector<NetworkEvent> poll() override;
+    std::vector<NetworkEvent> poll() override { return _events.popAll(); }
     void stop() override;
-    [[nodiscard]] bool isRunning() const override;
+    [[nodiscard]] bool isRunning() const override { return _running.load(); }
 
     bool start(std::uint16_t port) override;
     void send(ClientId client, const Bytes& data, Channel channel) override;
