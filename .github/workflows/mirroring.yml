@@ -84,7 +84,7 @@ jobs:
           xmake-version: latest
 
       - name: Restore xmake packages cache
-        uses: actions/cache@v6.1
+        uses: actions/cache@v5
         with:
           path: ~/.xmake/packages
           key: xmake-pkgs-${{ runner.os }}-${{ hashFiles('xmake.lua') }}
@@ -125,7 +125,7 @@ jobs:
           fetch-depth: 0
 
       - name: Mirror repository
-        uses: pixta-dev/repository-mirroring-action@v1.1
+        uses: pixta-dev/repository-mirroring-action@v1
         with:
           target_repo_url: ${{ env.TARGET_REPO_URL }}
           ssh_private_key: ${{ secrets.GIT_SSH_PRIVATE_KEY }} # link to matt repo
