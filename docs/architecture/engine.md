@@ -68,3 +68,72 @@ The engine is partitioned into decoupled subsystems:
 1. **Standalone Library:** Built independently as a static or dynamic library with its own build targets.
 2. **Game Agnostic:** Does not contain any R-Type specific references (no hardcoded player, enemy, or bullet logic).
 3. **Pluggable Systems:** Games register their own domain-specific components and systems into the engine's `Registry`.
+
+## 5. Developer Tutorial: How to use the ECS
+
+This section provides a quick how-to for new developers joining the project.
+
+### 5.1 Defining a Component
+
+Components are purely Data (POD). No methods, no inheritance.
+
+```cpp
+struct Transform {
+    float x;
+    float y;
+};
+
+struct Velocity {
+    float dx;
+    float dy;
+};
+```
+
+### 5.2 Spawning an Entity & Adding Components
+
+Use the `Registry` to spawn entities and attach your components using designated initializers.
+
+```cpp
+ecs::Registry registry;
+registry.register_component<Transform>();
+registry.register_component<Velocity>();
+
+ecs::Entity player = registry.spawn_entity();
+registry.add_component<Transform>(player, {.x = 100.0F, .y = 100.0F});
+registry.add_component<Velocity>(player, {.dx = 5.0F, .dy = 0.0F});
+```
+
+### 5.3 Writing a System
+
+Systems are just logic blocks (often lambda functions) passed to `run_system`. The registry automatically fetches the entities that possess *all* the requested components.
+
+```cpp
+// MovementSystem: Applies velocity to transform
+void update_movement(ecs::Registry& registry, float dt) {
+    registry.run_system<Transform, Velocity>([dt]([[maybe_unused]] ecs::Entity e, Transform& pos, Velocity& vel) {
+        pos.x += vel.dx * dt;
+        pos.y += vel.dy * dt;
+    });
+}
+```
+
+### 5.4 Using the Event Bus
+
+To decouple systems, use the `EventBus`. Define an event struct, subscribe to it, and publish it anywhere.
+
+```cpp
+struct PlayerDamagedEvent {
+    ecs::Entity player_id;
+    int damage;
+};
+
+ecs::EventBus bus;
+
+// Subscribing (e.g., in an AudioSystem)
+auto token = bus.subscribe<PlayerDamagedEvent>([](const PlayerDamagedEvent& event) {
+    // Play "Oof" sound
+});
+
+// Publishing (e.g., in a CollisionSystem)
+bus.publish(PlayerDamagedEvent{.player_id = player, .damage = 10});
+```
