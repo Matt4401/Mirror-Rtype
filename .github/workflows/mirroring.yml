@@ -48,7 +48,7 @@ jobs:
           xmake project -k compile_commands build
 
       - name: Run C++ linter
-        uses: cpp-linter/cpp-linter-action@v2.23
+        uses: cpp-linter/cpp-linter-action@v2
         id: linter
         with:
           version: "20"
