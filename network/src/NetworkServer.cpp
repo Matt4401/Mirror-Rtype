@@ -15,10 +15,31 @@ void NetworkServer::accept() {
             return;
         }
         if (!ec) {
-            // TODO: créer la TcpSession, l'ajouter à _clients, pousser un event Connected
+            const ClientId id = _nextId++;
+            auto tcp = std::make_shared<session::TcpSession>(std::move(socket), id, _events,
+                                                             [this](const ClientId closed) { onTcpClosed(closed); });
+            _clients[id] = ClientInfo{.id = id,
+                                      .token = std::uniform_int_distribution<std::uint32_t>{}(_random),
+                                      .tcp = tcp,
+                                      .udp = std::nullopt,
+                                      .lastSeen = std::chrono::steady_clock::now()};
+            _events.push({.type = EventType::Connected, .client = id, .data = {}, .channel = Channel::Reliable});
+            tcp->start();
         }
         accept();
     });
+}
+
+void NetworkServer::onTcpClosed(const ClientId client) {
+    const auto it = _clients.find(client);
+    if (it == _clients.end()) {
+        return;
+    }
+    if (it->second.udp) {
+        _udpToClient.erase(*it->second.udp);
+    }
+    _clients.erase(it);
+    _events.push({.type = EventType::Disconnected, .client = client, .data = {}, .channel = Channel::Reliable});
 }
 
 void NetworkServer::receiveUdp() {
@@ -78,7 +99,12 @@ void NetworkServer::stop() {
         _acceptor.close(ignored);
         _udpSocket.close(ignored);
         _timeoutTimer.cancel();
+
+        auto clients = std::move(_clients);
         _clients.clear();
+        for (const auto& info : clients | std::views::values) {
+            info.tcp->close();
+        }
         _udpToClient.clear();
     });
 
@@ -91,15 +117,40 @@ void NetworkServer::stop() {
 NetworkServer::~NetworkServer() { NetworkServer::stop(); }
 
 void NetworkServer::kick(const ClientId client) {
-    if (_clients.contains(client)) {
-        _clients.erase(client);
-    }
+    asio::post(_io, [this, client] {
+        if (const auto it = _clients.find(client); it != _clients.end()) {
+            it->second.tcp->close();
+        }
+    });
+}
+
+void NetworkServer::send(const ClientId client, const Bytes& data, const Channel channel) {
+    asio::post(_io, [this, client, data, channel] { sendNow(client, data, channel); });
 }
 
 void NetworkServer::broadcast(const Bytes& data, const Channel channel) {
-    for (const auto& clientId : _clients | std::views::keys) {
-        send(clientId, data, channel);
+    asio::post(_io, [this, data, channel] {
+        for (const auto& clientId : _clients | std::views::keys) {
+            sendNow(clientId, data, channel);
+        }
+    });
+}
+
+void NetworkServer::sendNow(const ClientId client, const Bytes& data, const Channel channel) {
+    const auto it = _clients.find(client);
+    if (it == _clients.end()) {
+        return;
     }
+
+    if (channel == Channel::Reliable) {
+        it->second.tcp->send(data);
+        return;
+    }
+    if (!it->second.udp) {
+        return;
+    }
+    const auto datagram = std::make_shared<Bytes>(data);
+    _udpSocket.async_send_to(asio::buffer(*datagram), *it->second.udp, [](std::error_code, std::size_t) {});
 }
 
 }  // namespace rtype::net::server

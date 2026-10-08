@@ -1,11 +1,14 @@
 #pragma once
 #include <array>
 #include <asio.hpp>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <optional>
+#include <random>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -43,6 +46,9 @@ class NetworkServer : public INetworkServer {
     void kick(ClientId client) override;
 
   private:
+    void sendNow(ClientId client, const Bytes& data, Channel channel);
+    void onTcpClosed(ClientId client);
+
     asio::io_context _io;
     asio::executor_work_guard<asio::io_context::executor_type> _work;
     std::thread _thread;
@@ -58,6 +64,7 @@ class NetworkServer : public INetworkServer {
     std::unordered_map<ClientId, ClientInfo> _clients;
     std::map<asio::ip::udp::endpoint, ClientId> _udpToClient;
     ClientId _nextId = 0;
+    std::random_device _random;
 
     queue::EventQueue _events;
     std::atomic<bool> _running = false;

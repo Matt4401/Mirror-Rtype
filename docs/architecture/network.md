@@ -77,7 +77,7 @@ network/
     ├── NetworkServer.hpp/.cpp
     ├── NetworkClient.hpp/.cpp
     ├── TcpServer.hpp/.cpp
-    ├── TcpSession.hpp/.cpp
+    ├── session/TcpSession.hpp/.cpp     # shared by NetworkServer and NetworkClient
     ├── UdpServer.hpp/.cpp
     ├── EventQueue.hpp/.cpp
     └── Factory.cpp
@@ -149,6 +149,8 @@ public:
 class INetworkClient : public INetworkManager {
 public:
     virtual bool connect(const std::string& host, uint16_t port) = 0;
+    virtual bool openUdp(uint16_t port) = 0;
+    virtual void closeUdp() = 0;
     virtual void send(const Bytes& data, Channel channel) = 0;
 };
 ```
@@ -157,8 +159,8 @@ public:
           INetworkManager          poll · stop · isRunning
            /            \
   INetworkServer      INetworkClient
-  start · send(id)    connect · send
-  broadcast · kick
+  start · send(id)    connect · openUdp
+  broadcast · kick    closeUdp · send
            |                 |
     NetworkServer      NetworkClient       (private)
 ```
@@ -190,13 +192,13 @@ NetworkServer                         implements INetworkServer
     └── map<udp::endpoint, ClientId>
 ```
 
-| Class           | Responsibility                                                                                                                          |
-|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------|
-| `NetworkServer` | Owns the `io_context`, the network thread and the event queue. Routes `send()` to TCP or UDP according to the channel.                  |
-| `TcpServer`     | Accepts connections, assigns `ClientId` and session token, stores sessions.                                                             |
-| `TcpSession`    | One TCP connection: length-prefixed reads, writes, close. Inherits `enable_shared_from_this` so pending async operations keep it alive. |
-| `UdpServer`     | Receives all datagrams, validates tokens, maps endpoints to `ClientId`, tracks `lastSeen` for timeouts.                                 |
-| `EventQueue`    | Mutex-protected queue. The network thread pushes; `poll()` pops everything at once.                                                     |
+| Class           | Responsibility                                                                                                                                                        |
+|-----------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `NetworkServer` | Owns the `io_context`, the network thread and the event queue. Routes `send()` to TCP or UDP according to the channel.                                                |
+| `TcpServer`     | Accepts connections, assigns `ClientId` and session token, stores sessions.                                                                                           |
+| `TcpSession`    | One TCP connection: length-prefixed reads, writes, close. Inherits `enable_shared_from_this` so pending async operations keep it alive. Also used by `NetworkClient`. |
+| `UdpServer`     | Receives all datagrams, validates tokens, maps endpoints to `ClientId`, tracks `lastSeen` for timeouts.                                                               |
+| `EventQueue`    | Mutex-protected queue. The network thread pushes; `poll()` pops everything at once.                                                                                   |
 
 ### Routing
 
@@ -214,8 +216,23 @@ only change this class.
 
 ### Client
 
-`NetworkClient` owns one `tcp::socket`, one `udp::socket`, its own `io_context`, network thread and event queue. No
-session class is needed: there is a single connection of each kind.
+```
+NetworkClient                         implements INetworkClient
+├── asio::io_context + std::thread    single network thread (TCP and UDP)
+├── EventQueue
+├── shared_ptr<TcpSession>            connection to the server, same class as on the server
+└── udp::socket                       opened by openUdp(), closed by closeUdp()
+```
+
+The client reuses `TcpSession` instead of reimplementing TCP: framing, size check, write queue and close logic exist
+only once, so client and server cannot drift apart. The client's session always has `ClientId` 0, and its close
+handler pushes a `Disconnected` event.
+
+| Function        | Effect                                                                                                    |
+|-----------------|-----------------------------------------------------------------------------------------------------------|
+| `connect()`     | Opens TCP only, creates the `TcpSession`, starts the network thread.                                      |
+| `openUdp(port)` | Called at `GAME_START` with the UDP port from `WELCOME`. Targets the address of the TCP server on `port`. |
+| `closeUdp()`    | Called at `GAME_OVER`. The client goes back to TCP only (lobby).                                          |
 
 ---
 

@@ -1,17 +1,20 @@
 #pragma once
 
+#include <array>
 #include <asio.hpp>
+#include <atomic>
 #include <cstdint>
+#include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "EventQueue.hpp"
 #include "Network/INetworkClient.hpp"
 #include "Network/INetworkManager.hpp"
+#include "session/TcpSession.hpp"
 
 namespace rtype::net::client {
-
-static constexpr std::uint32_t MAX_TCP_MESSAGE = 64 * 1024;
 
 class NetworkClient : public INetworkClient {
   public:
@@ -31,9 +34,6 @@ class NetworkClient : public INetworkClient {
     void closeUdp() override;
     void send(const Bytes& data, Channel channel) override;
 
-    void readTcpHeader();
-    void readTcpBody(std::uint32_t size);
-    void onTcpError(std::error_code ec);
     void receiveUdp();
 
   private:
@@ -42,14 +42,13 @@ class NetworkClient : public INetworkClient {
     std::thread _thread;
     std::atomic<bool> _running{false};
 
-    asio::ip::tcp::socket _tcpSocket;
+    std::shared_ptr<session::TcpSession> _tcp;
+    asio::ip::address _serverAddress;
+
     asio::ip::udp::socket _udpSocket;
     asio::ip::udp::endpoint _serverUdp;
     asio::ip::udp::endpoint _udpFrom;
     std::array<std::uint8_t, 1500> _udpBuffer{};
-
-    std::array<std::uint8_t, 4> _tcpHeader;
-    std::vector<std::uint8_t> _tcpBody;
 
     queue::EventQueue _events;
 };
