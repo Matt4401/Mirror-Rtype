@@ -17,23 +17,24 @@ class NetworkClient : public INetworkClient {
   public:
     explicit NetworkClient();
     ~NetworkClient() override;
-    void readTcpHeader();
-    void readTcpBody(std::uint32_t size);
-    void onTcpError(std::error_code ec);
-    void receiveUdp();
     NetworkClient(const NetworkClient&) = delete;
     NetworkClient& operator=(const NetworkClient&) = delete;
     NetworkClient(NetworkClient&&) = delete;
     NetworkClient& operator=(NetworkClient&&) = delete;
 
-    std::vector<NetworkEvent> poll() override;
+    std::vector<NetworkEvent> poll() override { return _events.popAll(); }
     void stop() override;
-    [[nodiscard]] bool isRunning() const override;
+    [[nodiscard]] bool isRunning() const override { return _running.load(); }
 
     bool connect(const std::string& host, std::uint16_t port) override;
     bool openUdp(uint16_t port) override;
     void closeUdp() override;
     void send(const Bytes& data, Channel channel) override;
+
+    void readTcpHeader();
+    void readTcpBody(std::uint32_t size);
+    void onTcpError(std::error_code ec);
+    void receiveUdp();
 
   private:
     asio::io_context _io;
