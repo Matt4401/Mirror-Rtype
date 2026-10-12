@@ -38,7 +38,7 @@ plugins:
   - mkdoxy:
       projects:
         rtype:
-          src-dirs: "src include"
+          src-dirs: "engine/src client/src server/src"
           full-doc: True
           doxy-cfg:
             FILE_PATTERNS: "*.cpp *.hpp *.h"
@@ -73,9 +73,11 @@ nav:
       - RFC: protocol/rfc.md
       - Packets: protocol/packets.md
   - Comparative Study:
+      - Libraries: comparative-study/libraries.md
       - Algorithms: comparative-study/algorithms.md
       - Storage: comparative-study/storage.md
       - Security: comparative-study/security.md
+      - Scripting & Events: comparative-study/scripting-events.md
   - Development:
       - Coding Style: development/coding-style.md
       - Workflow: development/workflow.md
@@ -83,5 +85,11 @@ nav:
       - Index: getting-started/index.md
       - Building: getting-started/building.md
       - Running: getting-started/running.md
+      - Scripting Guide: getting-started/scripting-guide.md
   - Accessibility: accessibility/index.md
-  - API Reference: api_reference.md
+  - API Reference:
+      - Overview: api_reference.md
+      - Classes: rtype/classes.md
+      - Namespaces: rtype/namespaces.md
+      - Hierarchy: rtype/hierarchy.md
+      - Files: rtype/files.md
