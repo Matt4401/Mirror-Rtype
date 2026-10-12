@@ -14,8 +14,10 @@ Entity Registry::spawn_entity() {
 }
 
 void Registry::kill_entity(Entity e) {
-    for (auto& [type, array] : _components_arrays) {
-        array->erase(e);
+    for (auto const& array : _components_arrays) {
+        if (array) {
+            array->erase(e);
+        }
     }
     _dead_entities.push(e);
 }

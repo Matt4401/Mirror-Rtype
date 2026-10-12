@@ -1,8 +1,7 @@
 #pragma once
 #include <memory>
 #include <queue>
-#include <typeindex>
-#include <unordered_map>
+#include <vector>
 
 #include "Entity.hpp"
 #include "SparseArray.hpp"
@@ -14,7 +13,8 @@ namespace ecs {
  *
  * Responsibilities:
  * - Entity lifecycle: creates new entity IDs and recycles destroyed entities.
- * - Component storage: maintains a map of type-erased `ISparseArray` containers for each registered component.
+ * - Component storage: maintains a flat vector of type-erased `ISparseArray` containers indexed by dense
+ * ComponentTypeId.
  * - System execution: executes variadic queries across entities possessing all requested components.
  */
 class Registry {
@@ -40,10 +40,10 @@ class Registry {
     void kill_entity(Entity e);
 
     /**
-     * @brief Registers a new component type within the ECS world.
+     * @brief Registers or pre-allocates storage for a component type.
      *
-     * Allocates a dedicated `SparseArray<Component>` for storing instances of this type.
-     * Must be called before adding or querying components of this type.
+     * Note: In this modernized registry, components are also automatically registered
+     * on first access, making this call optional.
      *
      * @tparam Component The component aggregate/struct type to register.
      */
@@ -51,14 +51,35 @@ class Registry {
     void register_component();
 
     /**
-     * @brief Retrieves the sparse array container for a registered component type.
+     * @brief Retrieves the mutable sparse array container for a component type.
+     *
+     * Automatically initializes storage if not previously accessed.
      *
      * @tparam Component The component type to look up.
      * @return Reference to the `SparseArray<Component>` container.
-     * @throws std::runtime_error If the component type has not been registered.
      */
     template <class Component>
     SparseArray<Component>& get_components();
+
+    /**
+     * @brief Retrieves the const sparse array container for a component type.
+     *
+     * @tparam Component The component type to look up.
+     * @return Const reference to the `SparseArray<Component>` container.
+     * @throws std::runtime_error If the component type has not yet been registered or accessed.
+     */
+    template <class Component>
+    [[nodiscard]] SparseArray<Component> const& get_components() const;
+
+    /**
+     * @brief Checks if an entity currently has a component attached.
+     *
+     * @tparam Component Component type to check.
+     * @param e Entity to query.
+     * @return True if the entity owns this component.
+     */
+    template <class Component>
+    [[nodiscard]] bool has_component(Entity e) const;
 
     /**
      * @brief Attaches a component to an entity using move semantics.
@@ -83,10 +104,32 @@ class Registry {
     Component& add_component(Entity to, Component const& c);
 
     /**
+     * @brief Constructs and attaches a component in-place on an entity.
+     *
+     * @tparam Component Component type.
+     * @tparam Args Constructor argument types.
+     * @param to Entity to attach the component to.
+     * @param args Arguments forwarded to Component constructor.
+     * @return Reference to the newly constructed component.
+     */
+    template <class Component, typename... Args>
+    Component& emplace_component(Entity to, Args&&... args);
+
+    /**
+     * @brief Removes a component from an entity without killing the entity.
+     *
+     * @tparam Component Component type to remove.
+     * @param from Entity to remove the component from.
+     */
+    template <class Component>
+    void remove_component(Entity from);
+
+    /**
      * @brief Executes a system callback over all entities possessing a specific set of components.
      *
      * Utilizes the dense entity array of the first component as the iteration driver,
      * verifying presence in remaining component sparse arrays in O(1) time.
+     * All component array references are hoisted outside the loop for zero overhead.
      *
      * Example:
      * @code
@@ -104,7 +147,7 @@ class Registry {
     void run_system(Func func);
 
   private:
-    std::unordered_map<std::type_index, std::unique_ptr<ISparseArray>> _components_arrays;
+    std::vector<std::unique_ptr<ISparseArray>> _components_arrays;
     Entity _next_entity = 0;
     std::queue<Entity> _dead_entities;
 };
