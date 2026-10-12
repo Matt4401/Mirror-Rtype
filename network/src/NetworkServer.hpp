@@ -31,9 +31,9 @@ struct ClientInfo {
     std::uint32_t token;
     std::shared_ptr<session::TcpSession> tcp;
     bool udpOpen = false;
-    std::optional<asio::ip::udp::endpoint> udp{};
-    std::chrono::steady_clock::time_point lastSeen{};
-    std::chrono::steady_clock::time_point lastSent{};
+    std::optional<asio::ip::udp::endpoint> udp;
+    std::chrono::steady_clock::time_point lastSeen;
+    std::chrono::steady_clock::time_point lastSent;
 };
 
 class NetworkServer : public INetworkServer {

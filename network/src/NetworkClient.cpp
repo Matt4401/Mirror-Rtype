@@ -20,6 +20,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <tuple>
 #include <utility>
 
 #include "Network/INetworkManager.hpp"
@@ -138,7 +139,7 @@ void NetworkClient::closeUdp() {
 
 void NetworkClient::closeUdpNow() {
     std::error_code ignored;
-    _udpSocket.close(ignored);
+    std::ignore = _udpSocket.close(ignored);
     _udpTimer.cancel();
 }
 

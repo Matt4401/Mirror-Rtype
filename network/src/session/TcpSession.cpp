@@ -12,6 +12,7 @@
 #include <iostream>
 #include <span>
 #include <system_error>
+#include <tuple>
 #include <utility>
 
 #include "Network/INetworkManager.hpp"
@@ -131,8 +132,8 @@ void TcpSession::closeNow() {
         return;
     }
     std::error_code ignored;
-    _socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignored);
-    _socket.close(ignored);
+    std::ignore = _socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignored);
+    std::ignore = _socket.close(ignored);
     if (_onClose) {
         _onClose(_id);
     }

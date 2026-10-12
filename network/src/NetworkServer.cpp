@@ -12,11 +12,13 @@
 #include <cstdint>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <random>
 #include <ranges>
 #include <span>
 #include <system_error>
 #include <thread>
+#include <tuple>
 #include <utility>
 
 #include "Network/INetworkManager.hpp"
@@ -44,8 +46,8 @@ bool NetworkServer::start(const std::uint16_t port) {
     } catch (const asio::system_error& e) {
         std::cerr << "[network] cannot start server on port " << port << ": " << e.what() << '\n';
         std::error_code ignored;
-        _acceptor.close(ignored);
-        _udpSocket.close(ignored);
+        std::ignore = _acceptor.close(ignored);
+        std::ignore = _udpSocket.close(ignored);
         _state = State::Idle;
         return false;
     }
@@ -65,8 +67,8 @@ void NetworkServer::stop() {
 
     asio::post(_io, [this] {
         std::error_code ignored;
-        _acceptor.close(ignored);
-        _udpSocket.close(ignored);
+        std::ignore = _acceptor.close(ignored);
+        std::ignore = _udpSocket.close(ignored);
         _udpTimer.cancel();
 
         // Moved out first so that onTcpClosed() finds nothing: no Disconnected events when the server itself stops.
@@ -92,17 +94,23 @@ void NetworkServer::accept() {
         if (!ec && _clients.size() >= MAX_CLIENTS) {
             std::cerr << "[network] server full (" << MAX_CLIENTS << " clients): connection refused\n";
             std::error_code ignored;
-            socket.close(ignored);
+            std::ignore = socket.close(ignored);
         } else if (!ec) {
             const ClientId id = _nextId++;
             const std::uint32_t token = std::uniform_int_distribution<std::uint32_t>{}(_random);
-            auto tcp = std::make_shared<session::TcpSession>(
+            const auto tcp = std::make_shared<session::TcpSession>(
                 std::move(socket), id,
                 [this](const ClientId from, const MessageKind kind, Bytes payload) {
                     onTcpMessage(from, kind, std::move(payload));
                 },
                 [this](const ClientId closed) { onTcpClosed(closed); });
-            _clients[id] = ClientInfo{.id = id, .token = token, .tcp = tcp};
+            _clients[id] = ClientInfo{.id = id,
+                                      .token = token,
+                                      .tcp = tcp,
+                                      .udpOpen = false,
+                                      .udp = std::nullopt,
+                                      .lastSeen = {},
+                                      .lastSent = {}};
             _events.push({.type = EventType::Connected, .client = id, .data = {}, .channel = Channel::Reliable});
 
             // Internal message: the client library needs its ClientId and token to send UDP datagrams.
@@ -209,7 +217,8 @@ void NetworkServer::sendDatagram(ClientInfo& client, Bytes datagram) {
     const auto buffer = std::make_shared<Bytes>(std::move(datagram));
     client.lastSent = std::chrono::steady_clock::now();
     // The capture keeps the buffer alive until the send completes: do not remove it.
-    _udpSocket.async_send_to(asio::buffer(*buffer), *client.udp, [buffer](std::error_code, std::size_t) {});
+    if (client.udp.has_value())
+        _udpSocket.async_send_to(asio::buffer(*buffer), client.udp.value(), [](std::error_code, std::size_t) {});
 }
 
 void NetworkServer::scheduleUdpTick() {

@@ -64,8 +64,8 @@ class NetworkClient : public INetworkClient {
     asio::ip::udp::endpoint _udpFrom;
     std::array<std::uint8_t, 1500> _udpBuffer{};
     asio::steady_timer _udpTimer;
-    std::chrono::steady_clock::time_point _lastUdpSent{};
-    std::chrono::steady_clock::time_point _lastUdpReceived{};
+    std::chrono::steady_clock::time_point _lastUdpSent;
+    std::chrono::steady_clock::time_point _lastUdpReceived;
     bool _udpBound = false;
 
     queue::EventQueue _events;
