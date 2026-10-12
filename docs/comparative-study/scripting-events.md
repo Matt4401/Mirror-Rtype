@@ -59,10 +59,59 @@ Communication between the two buses is strictly prohibited. Instead, the two wor
 
 We have chosen the **Dual Bus** architecture. To maximize the performance of our ECS, we refuse to dilute our C++ `EventBus` with generic, type-erased variants just to accommodate scripts.
 
-If a C++ physics system needs to notify a script of a collision, it will not push an event to a shared bus. Instead, it will explicitly invoke a bound script callback: `ScriptVM::Call("OnCollision", entityA, entityB)`.
+If a C++ physics system needs to notify a script of a collision, it will not push an event to a shared bus. Instead, it will explicitly invoke a bound script callback: `ScriptVM::Call("onCollision", entityA, entityB)`.
 Conversely, if a script needs to apply physical damage, it will call a bound C++ function `Engine::ApplyDamage(entity, amount)` rather than emitting a generic C++ event.
 
-### Industry Examples of this Philosophy:
+### 4.1. Hybrid Execution Model: Event-Driven with Selective Polling
+
+A purely event-driven model completely avoids per-frame Foreign Function Interface (FFI) overhead. However, real-world game logic often demands continuous, per-frame calculations (e.g., homing missile trajectory steering, oscillating platform paths).
+
+To resolve this without sacrificing performance:
+
+1. **Event-Driven by Default:** Scripts listen to specific engine events via convention-based "magic methods" (`onCollision`, `onDamage`, `onSpawn`). No per-frame FFI cost is incurred for entities that only react to occurrences.
+2. **Selective `update(dt)` Polling:** If a script explicitly defines an `update(dt)` method, the C++ `ScriptSystem` registers that specific entity into an active polling list. Only these entities incur per-frame FFI dispatch overhead, keeping thousands of purely reactive entities at zero cost.
+
+### 4.2. C++23 Type-Safe Binding via Pointer-to-Member
+
+Exposing ECS components to the scripting VM often degenerates into brittle C-preprocessor macros or heavy runtime reflection libraries. We leverage modern C++23 pointer-to-member templates (`ComponentBinder<T>`):
+
+```cpp
+ScriptEngine::bindComponent<Position>("Position")
+    .property("x", &Position::x)
+    .property("y", &Position::y);
+```
+
+* **Type Safety:** The compiler verifies member types at compile time and auto-deduces the required Wren slot conversions (e.g., float, double, integer, boolean).
+* **Maintainability:** Adding or modifying a component property takes a single line in C++, completely avoiding macro expansions and tedious manual FFI getter/setter boilerplate.
+* **Single Source of Truth:** Wren objects act as direct proxies to C++ memory in the ECS Sparse Sets rather than synchronizing duplicate state.
+
+### 4.3. Structural ECS Integrity via the Command Buffer Pattern
+
+A major vulnerability in naive scripting integrations occurs when a script mutates ECS topology directly during execution (e.g., calling `entity.destroy()` or spawning new entities while systems are iterating over Sparse Sets). In a Swap-and-Pop Sparse Set, immediate deletion alters dense array indices mid-iteration, causing iterator invalidation, skipped entities, or memory corruption.
+
+To guarantee deterministic safety:
+
+* Scripts never delete or instantiate entities directly.
+* Script operations write to a C++ **`CommandBuffer`** (`deferDestroy`, `deferSpawn`).
+* The engine flushes all structural mutations at strict frame-boundary phases, completely isolating the script execution phase from ECS topology changes.
+
+### 4.4. Asynchronous Gameplay Sequences via Wren Fibers (Coroutines)
+
+Complex gameplay behaviors (such as multi-phase boss patterns, cutscenes, and timed dialogue) traditionally require complex state machines and manual timer management when written in pure event-driven or update loops.
+
+Wren provides native, stackful coroutines called **Fibers**. We bind the C++ engine clock to Wren Fibers:
+
+* A script can invoke `Engine.wait(seconds)`.
+* The VM yields control back to C++ without blocking the main engine thread.
+* The C++ `ScriptSystem` manages sleeping Fibers and resumes them seamlessly when their allotted delta time has elapsed.
+
+### 4.5. Spatial Awareness and ECS World Queries
+
+To prevent scripts from operating in a vacuum, the C++ engine exposes high-performance spatial queries to the VM (`World.getNearestWithTag`, `World.getEntitiesInRadius`). The heavy computational lifting (iterating over Spatial Partitioning trees or Sparse Sets) remains 100% in native compiled C++, returning only the resulting Entity identifiers to Wren.
+
+---
+
+## 5. Industry Comparisons & Validation
 
 1. **Unity DOTS (Data-Oriented Technology Stack):** Unity's high-performance C# ECS completely isolates its execution from the standard dynamic `MonoBehaviour` scripting environment. DOTS uses strict structs and Burst-compiled queues. Dynamic scripts cannot arbitrarily inject generic events into the DOTS pipeline; they must use explicit NativeArray buffers or tightly controlled API calls.
 2. **Id Tech / Naughty Dog Custom Engines:** These highly optimized AAA engines often use strict compile-time C++ for core simulation and separate, lightweight script VMs (like custom Lisp or Scheme) that handle their own internal state and message passing, communicating with C++ only through heavily restricted, explicit bindings.
