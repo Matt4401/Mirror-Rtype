@@ -1,0 +1,80 @@
+#pragma once
+#include <string_view>
+
+namespace scripting {
+
+/**
+ * @brief Core Wren script source code for the `core/Engine` module.
+ *
+ * Exposes engine-level static services such as coroutines (`Engine.wait(seconds)`)
+ * and deferred prefab instantiation (`Engine.spawnPrefab(...)`).
+ */
+inline constexpr std::string_view CORE_ENGINE_SOURCE = R"wren(
+class Engine {
+    foreign static registerWait(fiber, seconds)
+    static wait(seconds) {
+        registerWait(Fiber.current, seconds)
+        Fiber.yield()
+    }
+    foreign static spawnPrefab(name, x, y)
+}
+)wren";
+
+/**
+ * @brief Core Wren script source code for the `core/Entity` module.
+ *
+ * Represents an entity wrapper providing ergonomic access to components
+ * and deferred entity destruction (`Entity.destroy()`).
+ */
+inline constexpr std::string_view CORE_ENTITY_SOURCE = R"wren(
+class Entity {
+    construct new(id) {
+        _id = id
+        _components = {}
+    }
+    id { _id }
+    getComponent(name) { _components[name] }
+    setComponent(name, comp) { _components[name] = comp }
+    destroy() { Entity.destroyEntity(_id) }
+    foreign static destroyEntity(id)
+}
+)wren";
+
+/**
+ * @brief Core Wren script source code for the `core/World` module.
+ *
+ * Provides static spatial query methods for scripters (`getEntitiesWithTag`, `getNearestWithTag`,
+ * `getEntitiesInRadius`).
+ */
+inline constexpr std::string_view CORE_WORLD_SOURCE = R"wren(
+class World {
+    foreign static getEntitiesWithTag(tag)
+    foreign static getNearestWithTag(x, y, tag)
+    foreign static getEntitiesInRadius(x, y, radius)
+}
+)wren";
+
+/**
+ * @brief Internal dispatcher script source code for safe optional lifecycle callback invocation.
+ */
+inline constexpr std::string_view INTERNAL_DISPATCHER_SOURCE = R"wren(
+class Dispatcher {
+    static tryCallSpawn(instance) {
+        var f = Fiber.new { instance.onSpawn() }
+        var err = f.try()
+        if (err != null && !err.contains("does not implement 'onSpawn()'")) {
+            System.print("Error in onSpawn(): " + err)
+        }
+    }
+}
+)wren";
+
+/**
+ * @brief Retrieves the embedded source code for a built-in module name.
+ *
+ * @param moduleName Module import name (e.g. "core/Engine", "core/Entity", "core/World", "_internal").
+ * @return String view referencing the embedded module code, or empty string view if not found.
+ */
+[[nodiscard]] std::string_view get_core_module_source(std::string_view moduleName) noexcept;
+
+}  // namespace scripting
