@@ -1,12 +1,13 @@
 #pragma once
 
 #include <array>
-#include <asio.hpp>
+#include <asio/ip/tcp.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
+#include <system_error>
 
 #include "Network/INetworkManager.hpp"
 #include "Wire.hpp"

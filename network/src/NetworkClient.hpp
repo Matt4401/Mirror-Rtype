@@ -1,7 +1,11 @@
 #pragma once
 
 #include <array>
-#include <asio.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/io_context.hpp>
+#include <asio/ip/address.hpp>
+#include <asio/ip/udp.hpp>
+#include <asio/steady_timer.hpp>
 #include <atomic>
 #include <chrono>
 #include <cstdint>

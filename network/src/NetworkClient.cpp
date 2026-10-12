@@ -1,14 +1,30 @@
 #include "NetworkClient.hpp"
 
 #include <algorithm>
-#include <asio.hpp>
+#include <asio/buffer.hpp>
+#include <asio/connect.hpp>  // IWYU pragma: keep (asio::connect is declared here, defined in asio/impl/)
+#include <asio/error.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/ip/tcp.hpp>
+#include <asio/ip/udp.hpp>
+#include <asio/post.hpp>
+#include <asio/system_error.hpp>
+#include <asio/use_future.hpp>
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <future>
 #include <iostream>
 #include <memory>
 #include <span>
 #include <string>
+#include <system_error>
+#include <thread>
+#include <utility>
 
 #include "Network/INetworkManager.hpp"
+#include "Wire.hpp"
+#include "session/TcpSession.hpp"
 
 namespace rtype::net::client {
 
@@ -28,6 +44,7 @@ bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
     asio::ip::tcp::socket socket(_io);
     try {
         asio::ip::tcp::resolver resolver(_io);
+        // NOLINTNEXTLINE(misc-include-cleaner): false positive, the public header asio/connect.hpp is included
         asio::connect(socket, resolver.resolve(host, std::to_string(port)));
         _serverAddress = socket.remote_endpoint().address();
     } catch (asio::system_error& e) {
