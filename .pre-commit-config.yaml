@@ -15,4 +15,4 @@ repos:
         args: [--style=file]
       - id: clang-tidy
         args: [-p=.]
-        exclude: ^tests/
+        exclude: (^tests/|.*\.tpp$)

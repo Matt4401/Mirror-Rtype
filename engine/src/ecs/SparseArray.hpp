@@ -1,8 +1,6 @@
 #pragma once
 #include <cstddef>
 #include <optional>
-#include <stdexcept>
-#include <utility>
 #include <vector>
 
 #include "Entity.hpp"
@@ -62,19 +60,7 @@ class SparseArray : public ISparseArray {
      * @param c The component value to copy.
      * @return Reference to the stored component.
      */
-    Component& insert_at(Entity e, Component const& c) {
-        if (e >= _sparse.size()) {
-            _sparse.resize(e + 1, std::nullopt);
-        }
-        if (auto const& opt = _sparse[e]; opt.has_value()) {
-            _components[opt.value()] = c;
-            return _components[opt.value()];
-        }
-        _sparse[e] = _components.size();
-        _dense.push_back(e);
-        _components.push_back(c);
-        return _components.back();
-    }
+    Component& insert_at(Entity e, Component const& c);
 
     /**
      * @brief Inserts or replaces a component for an entity using move semantics.
@@ -83,48 +69,14 @@ class SparseArray : public ISparseArray {
      * @param c The component value to move.
      * @return Reference to the stored component.
      */
-    Component& insert_at(Entity e, Component&& c) {
-        if (e >= _sparse.size()) {
-            _sparse.resize(e + 1, std::nullopt);
-        }
-        if (auto const& opt = _sparse[e]; opt.has_value()) {
-            _components[opt.value()] = std::move(c);
-            return _components[opt.value()];
-        }
-        _sparse[e] = _components.size();
-        _dense.push_back(e);
-        _components.push_back(std::move(c));
-        return _components.back();
-    }
+    Component& insert_at(Entity e, Component&& c);
 
     /**
      * @brief Erases the component associated with the given entity in O(1) time via swap-and-pop.
      *
      * @param e Entity to erase the component from.
      */
-    void erase(Entity e) override {
-        if (e >= _sparse.size()) {
-            return;
-        }
-        auto const& opt = _sparse[e];
-        if (!opt.has_value()) {
-            return;
-        }
-
-        std::size_t const dense_idx = opt.value();
-        std::size_t const last_dense_idx = _components.size() - 1;
-        Entity const last_entity = _dense[last_dense_idx];
-
-        if (dense_idx != last_dense_idx) {
-            _components[dense_idx] = std::move(_components[last_dense_idx]);
-            _dense[dense_idx] = last_entity;
-            _sparse[last_entity] = dense_idx;
-        }
-
-        _components.pop_back();
-        _dense.pop_back();
-        _sparse[e] = std::nullopt;
-    }
+    void erase(Entity e) override;
 
     /**
      * @brief Checks if a component is attached to the given entity in O(1) time.
@@ -132,7 +84,7 @@ class SparseArray : public ISparseArray {
      * @param e Entity to check.
      * @return True if the entity owns this component.
      */
-    [[nodiscard]] bool contains(Entity e) const { return e < _sparse.size() && _sparse[e].has_value(); }
+    [[nodiscard]] bool contains(Entity e) const noexcept;
 
     /**
      * @brief Retrieves a mutable reference to the component for an entity.
@@ -141,15 +93,7 @@ class SparseArray : public ISparseArray {
      * @return Mutable reference to the component.
      * @throws std::out_of_range If the component does not exist for the entity.
      */
-    Component& get(Entity e) {
-        if (e >= _sparse.size()) {
-            throw std::out_of_range("Component not found for entity");
-        }
-        if (auto const& opt = _sparse[e]; opt.has_value()) {
-            return _components[opt.value()];
-        }
-        throw std::out_of_range("Component not found for entity");
-    }
+    Component& get(Entity e);
 
     /**
      * @brief Retrieves a const reference to the component for an entity.
@@ -158,33 +102,25 @@ class SparseArray : public ISparseArray {
      * @return Const reference to the component.
      * @throws std::out_of_range If the component does not exist for the entity.
      */
-    [[nodiscard]] Component const& get(Entity e) const {
-        if (e >= _sparse.size()) {
-            throw std::out_of_range("Component not found for entity");
-        }
-        if (auto const& opt = _sparse[e]; opt.has_value()) {
-            return _components[opt.value()];
-        }
-        throw std::out_of_range("Component not found for entity");
-    }
+    [[nodiscard]] Component const& get(Entity e) const;
 
     /**
      * @brief Returns a mutable reference to the contiguous dense array of components.
      * @return Reference to the std::vector of components.
      */
-    std::vector<Component>& get_dense() { return _components; }
+    std::vector<Component>& get_dense() noexcept;
 
     /**
      * @brief Returns a const reference to the contiguous dense array of components.
      * @return Const reference to the std::vector of components.
      */
-    [[nodiscard]] std::vector<Component> const& get_dense() const { return _components; }
+    [[nodiscard]] std::vector<Component> const& get_dense() const noexcept;
 
     /**
      * @brief Returns a const reference to the dense array of entity IDs matching components.
      * @return Const reference to the std::vector of entities.
      */
-    [[nodiscard]] std::vector<Entity> const& get_dense_entities() const { return _dense; }
+    [[nodiscard]] std::vector<Entity> const& get_dense_entities() const noexcept;
 
   private:
     std::vector<std::optional<std::size_t>> _sparse;
@@ -193,3 +129,5 @@ class SparseArray : public ISparseArray {
 };
 
 }  // namespace ecs
+
+#include "SparseArray.tpp"

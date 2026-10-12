@@ -85,3 +85,4 @@ B-CPP-500_rtype.pdf
 # Documentation build & Python venv
 site/
 .venv/
+.clangd

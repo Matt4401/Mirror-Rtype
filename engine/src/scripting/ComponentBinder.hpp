@@ -1,6 +1,5 @@
 #pragma once
 #include <string>
-#include <utility>
 #include <vector>
 
 extern "C" {
@@ -8,7 +7,6 @@ extern "C" {
 }
 
 #include "scripting/WrenVM.hpp"
-#include "scripting/detail/PropertyAccessor.hpp"
 
 namespace scripting {
 
@@ -101,8 +99,7 @@ class ComponentBinder : public ComponentBinderBase {
      * @param moduleName Module name where the class lives in Wren.
      * @param className Name of the class exposed to Wren.
      */
-    ComponentBinder(WrenVM& vm, std::string moduleName, std::string className)
-        : ComponentBinderBase(vm, std::move(moduleName), std::move(className)) {}
+    ComponentBinder(WrenVM& vm, std::string moduleName, std::string className);
 
     /**
      * @brief Binds a struct member field as a Wren property with getter and setter.
@@ -112,11 +109,9 @@ class ComponentBinder : public ComponentBinderBase {
      * @return Reference to this binder for fluent chaining.
      */
     template <auto MemberPtr>
-    ComponentBinder& property(const std::string& propName) {
-        register_property_methods(propName, &detail::PropertyAccessor<ComponentType, MemberPtr>::getter,
-                                  &detail::PropertyAccessor<ComponentType, MemberPtr>::setter);
-        return *this;
-    }
+    ComponentBinder& property(const std::string& propName);
 };
 
 }  // namespace scripting
+
+#include "ComponentBinder.tpp"  // IWYU pragma: export

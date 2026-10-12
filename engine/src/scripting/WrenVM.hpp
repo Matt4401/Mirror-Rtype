@@ -3,7 +3,6 @@
 #include <functional>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <unordered_map>
 
 #include "scripting/detail/WrenTypes.hpp"
@@ -196,24 +195,7 @@ class WrenVM {
      * @param value The value to place into the slot.
      */
     template <typename T>
-    void set_slot(int slot, const T& value) {
-        using DecayedT = std::decay_t<T>;
-        if constexpr (std::is_same_v<DecayedT, std::nullptr_t>) {
-            (void)value;
-            wrenSetSlotNull(raw(), slot);
-        } else if constexpr (std::is_same_v<DecayedT, bool>) {
-            wrenSetSlotBool(raw(), slot, value);
-        } else if constexpr (std::is_arithmetic_v<DecayedT>) {
-            wrenSetSlotDouble(raw(), slot, static_cast<double>(value));
-        } else if constexpr (std::is_convertible_v<DecayedT, std::string_view>) {
-            std::string_view const sv = value;
-            wrenSetSlotBytes(raw(), slot, sv.data(), sv.size());
-        } else if constexpr (std::is_same_v<DecayedT, WrenHandle*>) {
-            wrenSetSlotHandle(raw(), slot, value);
-        } else if constexpr (std::is_same_v<DecayedT, detail::UniqueWrenHandle>) {
-            wrenSetSlotHandle(raw(), slot, value.get());
-        }
-    }
+    void set_slot(int slot, const T& value);
 
     /**
      * @brief Extracts a value of type T from a Wren VM slot.
@@ -231,26 +213,7 @@ class WrenVM {
      * @return Extracted value.
      */
     template <typename T>
-    [[nodiscard]] T get_slot(int slot) {
-        using DecayedT = std::decay_t<T>;
-        if constexpr (std::is_same_v<DecayedT, bool>) {
-            return wrenGetSlotBool(raw(), slot);
-        } else if constexpr (std::is_arithmetic_v<DecayedT>) {
-            return static_cast<T>(wrenGetSlotDouble(raw(), slot));
-        } else if constexpr (std::is_same_v<DecayedT, std::string_view>) {
-            int length = 0;
-            const char* str = wrenGetSlotBytes(raw(), slot, &length);
-            return std::string_view(str, static_cast<std::size_t>(length));
-        } else if constexpr (std::is_same_v<DecayedT, std::string>) {
-            int length = 0;
-            const char* str = wrenGetSlotBytes(raw(), slot, &length);
-            return std::string(str, static_cast<std::size_t>(length));
-        } else if constexpr (std::is_same_v<DecayedT, WrenHandle*>) {
-            return wrenGetSlotHandle(raw(), slot);
-        } else if constexpr (std::is_same_v<DecayedT, detail::UniqueWrenHandle>) {
-            return detail::UniqueWrenHandle(wrenGetSlotHandle(raw(), slot), detail::WrenHandleDeleter{.vm = raw()});
-        }
-    }
+    [[nodiscard]] T get_slot(int slot);
 
   private:
     static WrenForeignMethodFn on_bind_foreign_method(::WrenVM* vm, const char* module, const char* className,
@@ -276,3 +239,5 @@ class WrenVM {
 };
 
 }  // namespace scripting
+
+#include "WrenVM.tpp"
