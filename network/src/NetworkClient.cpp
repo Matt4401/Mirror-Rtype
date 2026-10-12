@@ -1,9 +1,14 @@
 #include "NetworkClient.hpp"
 
 #include <algorithm>
+#include <asio.hpp>
 #include <future>
 #include <iostream>
+#include <memory>
 #include <span>
+#include <string>
+
+#include "Network/INetworkManager.hpp"
 
 namespace rtype::net::client {
 
@@ -149,7 +154,7 @@ void NetworkClient::sendDatagram(const Bytes& payload) {
 
     _lastUdpSent = std::chrono::steady_clock::now();
     // The capture keeps the buffer alive until the send completes: do not remove it.
-    _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [datagram](std::error_code, std::size_t) {});
+    _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [](std::error_code, std::size_t) {});
 }
 
 void NetworkClient::scheduleUdpTick() {
