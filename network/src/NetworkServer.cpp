@@ -29,8 +29,7 @@ namespace rtype::net::server {
 
 using wire::MessageKind;
 
-NetworkServer::NetworkServer()
-    : _work(asio::make_work_guard(_io)), _acceptor(_io), _udpSocket(_io), _udpBuffer{}, _udpTimer(_io) {}
+NetworkServer::NetworkServer() : _work(asio::make_work_guard(_io)), _acceptor(_io), _udpSocket(_io), _udpTimer(_io) {}
 
 NetworkServer::~NetworkServer() { NetworkServer::stop(); }
 
@@ -214,11 +213,14 @@ void NetworkServer::handleDatagram(const std::size_t size) {
 }
 
 void NetworkServer::sendDatagram(ClientInfo& client, Bytes datagram) {
+    if (!client.udp.has_value()) {
+        return;
+    }
     const auto buffer = std::make_shared<Bytes>(std::move(datagram));
     client.lastSent = std::chrono::steady_clock::now();
-    // The capture keeps the buffer alive until the send completes: do not remove it.
-    if (client.udp.has_value())
-        _udpSocket.async_send_to(asio::buffer(*buffer), client.udp.value(), [](std::error_code, std::size_t) {});
+    // [buffer] is NOT an unused capture: asio::buffer() does not copy, so this shared_ptr is what keeps the bytes
+    // alive until the send completes. Without it, the bytes are freed when this function returns: use-after-free.
+    _udpSocket.async_send_to(asio::buffer(*buffer), client.udp.value(), [buffer](std::error_code, std::size_t) {});
 }
 
 void NetworkServer::scheduleUdpTick() {

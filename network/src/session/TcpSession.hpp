@@ -15,7 +15,7 @@
 namespace rtype::net::session {
 
 // Bytes waiting to be written to one peer. Above this, the peer is not reading anymore: it is disconnected.
-inline constexpr std::size_t MAX_TCP_QUEUE_BYTES = 1024 * 1024;
+inline constexpr std::size_t MAX_TCP_QUEUE_BYTES = std::size_t{1024} * 1024;
 
 // Must be created with std::make_shared, and only used from the network thread.
 

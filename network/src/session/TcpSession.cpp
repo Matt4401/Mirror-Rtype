@@ -25,6 +25,10 @@ TcpSession::TcpSession(asio::ip::tcp::socket socket, const ClientId id, MessageH
 
 void TcpSession::start() { readHeader(); }
 
+// misc-no-recursion reports readHeader -> readBody -> deliver -> readHeader (and write -> write) as recursion. It is
+// not: each function only *starts* an async operation and returns. Asio never runs a completion handler inside the
+// initiating call; the handler runs later from io_context::run(), on a fresh stack. The stack never grows.
+// NOLINTBEGIN(misc-no-recursion)
 void TcpSession::readHeader() {
     asio::async_read(_socket, asio::buffer(_header),
                      [self = shared_from_this()](const std::error_code ec, std::size_t) {
@@ -111,6 +115,8 @@ void TcpSession::write() {
                           }
                       });
 }
+
+// NOLINTEND(misc-no-recursion)
 
 void TcpSession::onError(const std::error_code ec) {
     if (ec == asio::error::operation_aborted) {

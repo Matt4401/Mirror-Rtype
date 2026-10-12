@@ -171,8 +171,9 @@ void NetworkClient::sendDatagram(const Bytes& payload) {
     std::ranges::copy(payload, datagram->begin() + wire::UDP_HEADER_SIZE);
 
     _lastUdpSent = std::chrono::steady_clock::now();
-    // The capture keeps the buffer alive until the send completes: do not remove it.
-    _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [](std::error_code, std::size_t) {});
+    // [datagram] is NOT an unused capture: asio::buffer() does not copy, so this shared_ptr is what keeps the bytes
+    // alive until the send completes. Without it, the bytes are freed when this function returns: use-after-free.
+    _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [datagram](std::error_code, std::size_t) {});
 }
 
 void NetworkClient::scheduleUdpTick() {

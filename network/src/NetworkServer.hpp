@@ -27,8 +27,8 @@ namespace rtype::net::server {
 inline constexpr std::size_t MAX_CLIENTS = 64;
 
 struct ClientInfo {
-    ClientId id;
-    std::uint32_t token;
+    ClientId id = 0;
+    std::uint32_t token = 0;
     std::shared_ptr<session::TcpSession> tcp;
     bool udpOpen = false;
     std::optional<asio::ip::udp::endpoint> udp;
@@ -40,6 +40,10 @@ class NetworkServer : public INetworkServer {
   public:
     explicit NetworkServer();
     ~NetworkServer() override;
+    NetworkServer(const NetworkServer&) = delete;
+    NetworkServer& operator=(const NetworkServer&) = delete;
+    NetworkServer(NetworkServer&&) = delete;
+    NetworkServer& operator=(NetworkServer&&) = delete;
 
     std::vector<NetworkEvent> poll() override { return _events.popAll(); }
     void stop() override;
@@ -71,7 +75,7 @@ class NetworkServer : public INetworkServer {
 
     asio::ip::udp::socket _udpSocket;
     asio::ip::udp::endpoint _udpFrom;
-    std::array<uint8_t, 1500> _udpBuffer;
+    std::array<std::uint8_t, 1500> _udpBuffer{};
 
     asio::steady_timer _udpTimer;
 
