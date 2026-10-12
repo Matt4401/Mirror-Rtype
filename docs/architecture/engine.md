@@ -91,26 +91,33 @@ struct Velocity {
 
 ### 5.2 Spawning an Entity & Adding Components
 
-Use the `Registry` to spawn entities and attach your components using designated initializers.
+Use the `Registry` to spawn entities and attach components using designated initializers.
+Storage is **automatically registered on first access** via sequential Type IDs, eliminating manual registration boilerplate:
 
 ```cpp
 ecs::Registry registry;
-registry.register_component<Transform>();
-registry.register_component<Velocity>();
 
 ecs::Entity player = registry.spawn_entity();
-registry.add_component<Transform>(player, {.x = 100.0F, .y = 100.0F});
-registry.add_component<Velocity>(player, {.dx = 5.0F, .dy = 0.0F});
+
+// Direct in-place emplacement:
+registry.emplace_component<Transform>(player, Transform{.x = 100.0F, .y = 100.0F});
+registry.emplace_component<Velocity>(player, Velocity{.dx = 5.0F, .dy = 0.0F});
+
+// Fast O(1) query and removal:
+if (registry.has_component<Transform>(player)) {
+    // Player is positioned
+}
+registry.remove_component<Velocity>(player); // Remove component without killing entity
 ```
 
 ### 5.3 Writing a System
 
-Systems are just logic blocks (often lambda functions) passed to `run_system`. The registry automatically fetches the entities that possess *all* the requested components.
+Systems are logic blocks (often lambda functions) passed to `run_system`. All component sparse array references are **hoisted outside the loop once** into a tuple, enabling register-level execution with zero hash map lookups per entity:
 
 ```cpp
 // MovementSystem: Applies velocity to transform
 void update_movement(ecs::Registry& registry, float dt) {
-    registry.run_system<Transform, Velocity>([dt]([[maybe_unused]] ecs::Entity e, Transform& pos, Velocity& vel) {
+    registry.run_system<Transform, Velocity>([dt]([[maybe_unused]] ecs::Entity e, Transform& pos, Velocity const& vel) {
         pos.x += vel.dx * dt;
         pos.y += vel.dy * dt;
     });
