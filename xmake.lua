@@ -1,10 +1,10 @@
 set_project("R-type")
 set_version("0.1.0")
-set_languages("c++20")
+set_languages("c++23")
 add_rules("mode.debug", "mode.release")
+add_rules("plugin.compile_commands.autoupdate", {outputdir = "."})
 
-add_requires("asio", "raylib")
-
+add_requires("asio", "raylib", "gtest")
 
 if is_plat("windows") then
     add_defines("_WIN32_WINNT=0x0A00", "WIN32_LEAN_AND_MEAN", "NOMINMAX")
@@ -17,7 +17,7 @@ includes("xmake/common.lua")
 includes("network/*/xmake.lua")
 includes("server/*/xmake.lua")
 includes("client/*/xmake.lua")
---[[ target("engine")
+target("engine")
     set_kind("static")
-    add_files("engine/**.cpp")
-    add_includedirs("engine", {public = true})]]--
+    add_files("engine/src/**.cpp", {optional = true})
+    add_includedirs("engine/src", {public = true})
