@@ -2,8 +2,9 @@ set_project("R-type")
 set_version("0.1.0")
 set_languages("c++23")
 add_rules("mode.debug", "mode.release")
+add_rules("plugin.compile_commands.autoupdate", {outputdir = "."})
 
-add_requires("asio", "raylib")
+add_requires("asio", "raylib", "gtest")
 
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "."})
 
@@ -19,7 +20,9 @@ includes("shared/*/xmake.lua")
 includes("network/*/xmake.lua")
 includes("server/*/xmake.lua")
 includes("client/*/xmake.lua")
---[[ target("engine")
+
+target("engine")
     set_kind("static")
-    add_files("engine/**.cpp")
-    add_includedirs("engine", {public = true})]]--
+    add_files("engine/src/**.cpp", {optional = true})
+    add_includedirs("engine/src", {public = true})
+

@@ -55,7 +55,7 @@ jobs:
           style: "file"
           tidy-checks: ""
           database: "build"
-          ignore: ".github|build"
+          ignore: ".github|build|tests"
           file-annotations: "true"
           step-summary: "true"
 
