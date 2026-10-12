@@ -141,7 +141,6 @@ void ScriptSystem::load_core_modules() {
             return std::string(coreSource);
         }
 
-        // Fallback: load from disk if present
         std::string const filename = std::string(moduleName) + ".wren";
         std::ifstream file(filename);
         if (file.is_open()) {
