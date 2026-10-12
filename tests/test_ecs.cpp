@@ -96,6 +96,50 @@ TEST(ECS, RunSystemView) {
     EXPECT_EQ(positions.get(e2).y, 10.0F);
 }
 
+TEST(ECS, AutoRegistration) {
+    ecs::Registry registry;
+    // Notice: no register_component call!
+    ecs::Entity const e = registry.spawn_entity();
+    registry.add_component<Position>(e, Position{.x = 42.0F, .y = 84.0F});
+
+    EXPECT_TRUE(registry.has_component<Position>(e));
+    EXPECT_EQ(registry.get_components<Position>().get(e).x, 42.0F);
+}
+
+TEST(ECS, EmplaceAndRemoveComponent) {
+    ecs::Registry registry;
+    ecs::Entity const e = registry.spawn_entity();
+
+    registry.emplace_component<Position>(e, Position{.x = 5.0F, .y = 15.0F});
+    EXPECT_TRUE(registry.has_component<Position>(e));
+    EXPECT_EQ(registry.get_components<Position>().get(e).y, 15.0F);
+
+    registry.remove_component<Position>(e);
+    EXPECT_FALSE(registry.has_component<Position>(e));
+}
+
+TEST(ECS, HighThroughputIteration) {
+    ecs::Registry registry;
+    constexpr std::size_t entity_count = 10000;
+
+    for (std::size_t i = 0; i < entity_count; ++i) {
+        ecs::Entity const e = registry.spawn_entity();
+        registry.emplace_component<Position>(e, Position{.x = 0.0F, .y = 0.0F});
+        registry.emplace_component<Velocity>(e, Velocity{.dx = 1.0F, .dy = 2.0F});
+    }
+
+    registry.run_system<Position, Velocity>([](ecs::Entity /*unused*/, Position& pos, Velocity const& vel) {
+        pos.x += vel.dx;
+        pos.y += vel.dy;
+    });
+
+    auto const& positions = registry.get_components<Position>();
+    EXPECT_EQ(positions.get(0).x, 1.0F);
+    EXPECT_EQ(positions.get(0).y, 2.0F);
+    EXPECT_EQ(positions.get(entity_count - 1).x, 1.0F);
+    EXPECT_EQ(positions.get(entity_count - 1).y, 2.0F);
+}
+
 #include "events/EventBus.hpp"
 
 struct PlayerDamagedEvent {
