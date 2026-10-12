@@ -10,6 +10,7 @@ using Bytes = std::vector<std::uint8_t>;
 
 enum class EventType : std::uint8_t { Connected, Disconnected, Data };
 enum class Channel : std::uint8_t { Reliable, Unreliable };
+enum class State : std::uint8_t { Idle, Running, Stopped };
 
 struct NetworkEvent {
     EventType type;

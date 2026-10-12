@@ -1,31 +1,22 @@
 #include "NetworkClient.hpp"
 
+#include <algorithm>
 #include <future>
 #include <iostream>
+#include <span>
 
 namespace rtype::net::client {
-NetworkClient::NetworkClient() : _work(asio::make_work_guard(_io)), _udpSocket(_io) {}
+
+using wire::MessageKind;
+
+NetworkClient::NetworkClient() : _work(asio::make_work_guard(_io)), _udpSocket(_io), _udpTimer(_io) {}
 
 NetworkClient::~NetworkClient() { NetworkClient::stop(); }
 
-void NetworkClient::receiveUdp() {
-    _udpSocket.async_receive_from(asio::buffer(_udpBuffer), _udpFrom,
-                                  [this](const std::error_code ec, const std::size_t size) {
-                                      if (ec == asio::error::operation_aborted) {
-                                          return;
-                                      }
-                                      if (!ec && _udpFrom == _serverUdp && size > 0) {
-                                          _events.push({.type = EventType::Data,
-                                                        .client = 0,
-                                                        .data = Bytes(_udpBuffer.begin(), _udpBuffer.begin() + size),
-                                                        .channel = Channel::Unreliable});
-                                      }
-                                      receiveUdp();
-                                  });
-}
-
 bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
-    if (_running.load()) {
+    // compare_exchange: only Idle -> Running is allowed. Running (already connected) and Stopped (single-use) refuse.
+    auto expected = State::Idle;
+    if (!_state.compare_exchange_strong(expected, State::Running)) {
         return false;
     }
 
@@ -36,34 +27,73 @@ bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
         _serverAddress = socket.remote_endpoint().address();
     } catch (asio::system_error& e) {
         std::cerr << "[network] cannot connect to " << host << ':' << port << ": " << e.what() << '\n';
+        _state = State::Idle;
         return false;
     }
 
-    // The client has a single connection: its ClientId is always 0.
-    _tcp = std::make_shared<session::TcpSession>(std::move(socket), 0, _events, [this](const ClientId client) {
-        _events.push({.type = EventType::Disconnected, .client = client, .data = {}, .channel = Channel::Reliable});
-    });
+    // The client has a single connection: its events always carry ClientId 0.
+    _tcp = std::make_shared<session::TcpSession>(
+        std::move(socket), 0,
+        [this](ClientId, const MessageKind kind, Bytes payload) { onTcpMessage(kind, std::move(payload)); },
+        [this](const ClientId client) {
+            closeUdpNow();
+            _events.push({.type = EventType::Disconnected, .client = client, .data = {}, .channel = Channel::Reliable});
+        });
     _tcp->start();
 
-    _running = true;
     _thread = std::thread([this] { _io.run(); });
     return true;
 }
 
+void NetworkClient::onTcpMessage(const MessageKind kind, Bytes payload) {
+    switch (kind) {
+        case MessageKind::Data:
+            _events.push(
+                {.type = EventType::Data, .client = 0, .data = std::move(payload), .channel = Channel::Reliable});
+            break;
+        case MessageKind::Welcome:
+            if (payload.size() != wire::UDP_HEADER_SIZE) {
+                _tcp->close();
+                return;
+            }
+            _clientId = wire::readU32(std::span(payload).first<4>());
+            _token = wire::readU32(std::span(payload).subspan<4, 4>());
+            _welcomed = true;
+            // Connected = the library is ready (openUdp() can be called), same meaning as on the server.
+            _events.push({.type = EventType::Connected, .client = 0, .data = {}, .channel = Channel::Reliable});
+            break;
+        default:
+            // UdpOpen / UdpClose only go client -> server, and any other value is not a known kind.
+            _tcp->close();
+            break;
+    }
+}
+
 bool NetworkClient::openUdp(const std::uint16_t port) {
-    if (!_running.load()) {
+    if (_state.load() != State::Running) {
         return false;
     }
 
+    // Runs on the network thread: only that thread touches the sockets.
     auto open = [this, port] {
+        if (!_welcomed) {
+            std::cerr << "[network] cannot open UDP: no Welcome received from the server yet\n";
+            return false;
+        }
         try {
             _serverUdp = {_serverAddress, port};
+            // Replaces (and closes) the previous socket if UDP was already open.
             _udpSocket = asio::ip::udp::socket(_io, {_serverUdp.protocol(), 0});
         } catch (const asio::system_error& e) {
             std::cerr << "[network] cannot open UDP to port " << port << ": " << e.what() << '\n';
             return false;
         }
+        _tcp->send(MessageKind::UdpOpen);
+        _lastUdpReceived = std::chrono::steady_clock::now();  // the 5 s timeout starts here
+        _udpBound = false;
+        sendDatagram({});  // lets the server learn our endpoint right away
         receiveUdp();
+        scheduleUdpTick();
         return true;
     };
     std::future<bool> opened = asio::post(_io, asio::use_future(open));
@@ -71,42 +101,106 @@ bool NetworkClient::openUdp(const std::uint16_t port) {
 }
 
 void NetworkClient::closeUdp() {
-    if (!_running.load()) {
+    if (_state.load() != State::Running) {
         return;
     }
 
     asio::post(_io, [this] {
-        std::error_code ignored;
-        _udpSocket.close(ignored);
+        if (!_udpSocket.is_open()) {
+            return;
+        }
+        _tcp->send(MessageKind::UdpClose);
+        closeUdpNow();
     });
 }
 
+void NetworkClient::closeUdpNow() {
+    std::error_code ignored;
+    _udpSocket.close(ignored);
+    _udpTimer.cancel();
+}
+
+void NetworkClient::receiveUdp() {
+    _udpSocket.async_receive_from(asio::buffer(_udpBuffer), _udpFrom,
+                                  [this](const std::error_code ec, const std::size_t size) {
+                                      if (ec == asio::error::operation_aborted) {
+                                          return;
+                                      }
+                                      if (!ec && _udpFrom == _serverUdp && size <= wire::MAX_DATAGRAM) {
+                                          _lastUdpReceived = std::chrono::steady_clock::now();
+                                          _udpBound = true;
+                                          if (size > 0) {  // an empty datagram is a keepalive
+                                              const auto payload = std::span(_udpBuffer).first(size);
+                                              _events.push({.type = EventType::Data,
+                                                            .client = 0,
+                                                            .data = Bytes(payload.begin(), payload.end()),
+                                                            .channel = Channel::Unreliable});
+                                          }
+                                      }
+                                      receiveUdp();
+                                  });
+}
+
+void NetworkClient::sendDatagram(const Bytes& payload) {
+    const auto datagram = std::make_shared<Bytes>(wire::UDP_HEADER_SIZE + payload.size());
+    wire::writeU32(std::span(*datagram).first<4>(), _clientId);
+    wire::writeU32(std::span(*datagram).subspan<4, 4>(), _token);
+    std::ranges::copy(payload, datagram->begin() + wire::UDP_HEADER_SIZE);
+
+    _lastUdpSent = std::chrono::steady_clock::now();
+    // The capture keeps the buffer alive until the send completes: do not remove it.
+    _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [datagram](std::error_code, std::size_t) {});
+}
+
+void NetworkClient::scheduleUdpTick() {
+    _udpTimer.expires_after(wire::UDP_TICK);
+    _udpTimer.async_wait([this](const std::error_code ec) {
+        if (ec) {
+            return;
+        }
+        onUdpTick();
+    });
+}
+
+void NetworkClient::onUdpTick() {
+    const auto now = std::chrono::steady_clock::now();
+
+    if (now - _lastUdpReceived > wire::UDP_TIMEOUT) {
+        // Server unreachable: drop the whole connection. The close handler closes UDP and pushes Disconnected.
+        _tcp->close();
+        return;
+    }
+    // Until the server answers, our bind datagram may have been dropped (it can arrive before UdpOpen, which travels
+    // over TCP): resend it every tick. Afterwards, a keepalive after 1 s of silence.
+    if (!_udpBound || now - _lastUdpSent >= wire::KEEPALIVE_INTERVAL) {
+        sendDatagram({});
+    }
+    scheduleUdpTick();
+}
+
 void NetworkClient::send(const Bytes& data, const Channel channel) {
-    if (!_running.load()) {
+    if (_state.load() != State::Running || !wire::isSendable(data, channel)) {
         return;
     }
 
     asio::post(_io, [this, data, channel] {
         if (channel == Channel::Reliable) {
-            _tcp->send(data);
+            _tcp->send(MessageKind::Data, data);
             return;
         }
-        if (!_udpSocket.is_open()) {
-            return;
+        if (_udpSocket.is_open()) {
+            sendDatagram(data);
         }
-        auto datagram = std::make_shared<Bytes>(data);
-        _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [datagram](std::error_code, std::size_t) {});
     });
 }
 
 void NetworkClient::stop() {
-    if (!_running.exchange(false)) {
+    if (_state.exchange(State::Stopped) != State::Running) {
         return;
     }
 
     asio::post(_io, [this] {
-        std::error_code ignored;
-        _udpSocket.close(ignored);
+        closeUdpNow();
         _tcp->close();
     });
 

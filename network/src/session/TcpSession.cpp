@@ -1,32 +1,36 @@
 #include "TcpSession.hpp"
 
 #include <algorithm>
+#include <iostream>
+#include <span>
 #include <utility>
 
 namespace rtype::net::session {
 
-TcpSession::TcpSession(asio::ip::tcp::socket socket, const ClientId id, queue::EventQueue& events, CloseHandler onClose)
-    : _socket(std::move(socket)), _id(id), _events(events), _onClose(std::move(onClose)) {}
+TcpSession::TcpSession(asio::ip::tcp::socket socket, const ClientId id, MessageHandler onMessage, CloseHandler onClose)
+    : _socket(std::move(socket)), _id(id), _onMessage(std::move(onMessage)), _onClose(std::move(onClose)) {}
 
 void TcpSession::start() { readHeader(); }
 
 void TcpSession::readHeader() {
-    asio::async_read(
-        _socket, asio::buffer(_header), [self = shared_from_this()](const std::error_code ec, std::size_t) {
-            if (ec) {
-                self->onError(ec);
-                return;
-            }
+    asio::async_read(_socket, asio::buffer(_header),
+                     [self = shared_from_this()](const std::error_code ec, std::size_t) {
+                         if (ec) {
+                             self->onError(ec);
+                             return;
+                         }
 
-            const std::uint32_t size = self->_header[0] | (self->_header[1] << 8) | (self->_header[2] << 16) |
-                                       (static_cast<std::uint32_t>(self->_header[3]) << 24);
-
-            if (size == 0 || size > MAX_TCP_MESSAGE) {
-                self->onError(asio::error::message_size);
-                return;
-            }
-            self->readBody(size);
-        });
+                         const std::uint32_t size = wire::readU32(std::span(self->_header).first<4>());
+                         if (size > wire::MAX_TCP_PAYLOAD) {
+                             self->onError(asio::error::message_size);
+                             return;
+                         }
+                         if (size == 0) {
+                             self->deliver({});
+                             return;
+                         }
+                         self->readBody(size);
+                     });
 }
 
 void TcpSession::readBody(const std::uint32_t size) {
@@ -36,29 +40,44 @@ void TcpSession::readBody(const std::uint32_t size) {
             self->onError(ec);
             return;
         }
-        self->_events.push({.type = EventType::Data,
-                            .client = self->_id,
-                            .data = std::move(self->_body),
-                            .channel = Channel::Reliable});
-        self->_body.clear();
-        self->readHeader();
+        self->deliver(std::move(self->_body));
     });
 }
 
-void TcpSession::send(const Bytes& data) {
-    if (!_socket.is_open() || data.empty() || data.size() > MAX_TCP_MESSAGE) {
+void TcpSession::deliver(Bytes payload) {
+    if (_closing) {
+        return;
+    }
+    _onMessage(_id, static_cast<wire::MessageKind>(_header[4]), std::move(payload));
+    // The owner may have closed the session (invalid kind, kick...): stop reading in that case.
+    if (!_closing) {
+        readHeader();
+    }
+}
+
+void TcpSession::send(const wire::MessageKind kind, const Bytes& payload) {
+    if (_closing) {
+        return;
+    }
+    if (payload.size() > wire::MAX_TCP_PAYLOAD) {
+        std::cerr << "[network] reliable payload of " << payload.size() << " bytes refused (max "
+                  << wire::MAX_TCP_PAYLOAD << ")\n";
         return;
     }
 
-    const auto size = static_cast<std::uint32_t>(data.size());
-    Bytes frame(_header.size() + data.size());
-    frame[0] = size & 0xFF;
-    frame[1] = (size >> 8) & 0xFF;
-    frame[2] = (size >> 16) & 0xFF;
-    frame[3] = (size >> 24) & 0xFF;
-    std::ranges::copy(data, frame.begin() + _header.size());
+    Bytes frame(wire::TCP_HEADER_SIZE + payload.size());
+    wire::writeU32(std::span(frame).first<4>(), static_cast<std::uint32_t>(payload.size()));
+    frame[4] = static_cast<std::uint8_t>(kind);
+    std::ranges::copy(payload, frame.begin() + wire::TCP_HEADER_SIZE);
+
+    if (_queuedBytes + frame.size() > MAX_TCP_QUEUE_BYTES) {
+        std::cerr << "[network] client " << _id << " does not read its TCP socket anymore: disconnected\n";
+        close();
+        return;
+    }
 
     const bool writing = !_writeQueue.empty();
+    _queuedBytes += frame.size();
     _writeQueue.push_back(std::move(frame));
     if (!writing) {
         write();
@@ -72,6 +91,7 @@ void TcpSession::write() {
                               self->onError(ec);
                               return;
                           }
+                          self->_queuedBytes -= self->_writeQueue.front().size();
                           self->_writeQueue.pop_front();
                           if (!self->_writeQueue.empty()) {
                               self->write();
@@ -87,15 +107,20 @@ void TcpSession::onError(const std::error_code ec) {
 }
 
 void TcpSession::close() {
+    if (_closing) {
+        return;
+    }
+    _closing = true;
+    asio::post(_socket.get_executor(), [self = shared_from_this()] { self->closeNow(); });
+}
+
+void TcpSession::closeNow() {
     if (!_socket.is_open()) {
         return;
     }
-    const auto self = shared_from_this();
-
     std::error_code ignored;
     _socket.shutdown(asio::ip::tcp::socket::shutdown_both, ignored);
     _socket.close(ignored);
-    _writeQueue.clear();
     if (_onClose) {
         _onClose(_id);
     }
