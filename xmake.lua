@@ -4,7 +4,7 @@ set_languages("c++23")
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "."})
 
-add_requires("asio", "raylib", "gtest")
+add_requires("asio", "raylib", "gtest", "wren")
 
 if is_plat("windows") then
     add_defines("_WIN32_WINNT=0x0A00", "WIN32_LEAN_AND_MEAN", "NOMINMAX")
@@ -14,6 +14,7 @@ target("engine")
     set_kind("static")
     add_files("engine/src/**.cpp", {optional = true})
     add_includedirs("engine/src", {public = true})
+    add_packages("wren")
 
 target("r-type_server")
     set_kind("binary")
@@ -36,3 +37,9 @@ target("test_ecs")
     add_deps("engine")
     add_packages("gtest")
     add_files("tests/test_ecs.cpp")
+
+target("test_scripting")
+    set_kind("binary")
+    add_deps("engine")
+    add_packages("gtest", "wren")
+    add_files("tests/test_scripting.cpp")
