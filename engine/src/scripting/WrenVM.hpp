@@ -124,6 +124,13 @@ class WrenVM {
     WrenInterpretResult call(const detail::UniqueWrenHandle& method);
 
     /**
+     * @brief Checks if a module has been loaded/imported into the VM.
+     * @param module Module name.
+     * @return True if the module is loaded.
+     */
+    [[nodiscard]] bool has_module(std::string_view module);
+
+    /**
      * @brief Checks if a top-level variable exists in a given module.
      * @param module Module name.
      * @param variableName Variable / class identifier.

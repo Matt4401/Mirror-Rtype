@@ -125,13 +125,27 @@ WrenInterpretResult WrenVM::call(WrenHandle* method) { return wrenCall(_vm, meth
 
 WrenInterpretResult WrenVM::call(const detail::UniqueWrenHandle& method) { return call(method.get()); }
 
+bool WrenVM::has_module(std::string_view module) {
+    if (_vm == nullptr) {
+        return false;
+    }
+    std::string const modStr(module);
+    return wrenHasModule(_vm, modStr.c_str());
+}
+
 bool WrenVM::has_variable(std::string_view module, std::string_view variableName) {
+    if (_vm == nullptr || !has_module(module)) {
+        return false;
+    }
     std::string const modStr(module);
     std::string const varStr(variableName);
     return wrenHasVariable(_vm, modStr.c_str(), varStr.c_str());
 }
 
 void WrenVM::get_variable(std::string_view module, std::string_view variableName, int slot) {
+    if (_vm == nullptr || !has_module(module)) {
+        return;
+    }
     std::string const modStr(module);
     std::string const varStr(variableName);
     wrenGetVariable(_vm, modStr.c_str(), varStr.c_str(), slot);
