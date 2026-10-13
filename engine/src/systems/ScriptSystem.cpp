@@ -1,6 +1,7 @@
 #include "systems/ScriptSystem.hpp"
 
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -160,15 +161,51 @@ void ScriptSystem::instantiate_script(ecs::Entity e, ecs::ScriptComponent& scrip
         return;
     }
 
-    ::WrenVM* raw = _vm.raw();
-    wrenEnsureSlots(raw, 2);
+    if (!_vm.has_module(script.moduleName)) {
+        std::string filename = std::string(script.moduleName);
+        if (!filename.ends_with(".wren")) {
+            filename += ".wren";
+        }
+        std::ifstream file(filename);
+        if (file.is_open()) {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            auto res = _vm.interpret(script.moduleName, buffer.str());
+            if (!res) {
+                std::cerr << "[ScriptSystem] Failed to load module " << script.moduleName << ": " << res.error()
+                          << "\n";
+                return;
+            }
+        } else {
+            std::cerr << "[ScriptSystem] Module file not found: " << filename << "\n";
+            return;
+        }
+    }
 
+    ::WrenVM* raw = _vm.raw();
     if (!_vm.has_variable(script.moduleName, script.className)) {
+        std::cerr << "[ScriptSystem] Class " << script.className << " not found in " << script.moduleName << "\n";
         return;
     }
 
+    wrenEnsureSlots(raw, 2);
+    WrenHandle* entityArgHandle = nullptr;
+    if (_vm.has_variable("core/Entity", "Entity")) {
+        _vm.get_variable("core/Entity", "Entity", 0);
+        wrenSetSlotDouble(raw, 1, static_cast<double>(e));
+        if (wrenCall(raw, _newHandle.get()) == WREN_RESULT_SUCCESS) {
+            entityArgHandle = wrenGetSlotHandle(raw, 0);
+        }
+    }
+
+    wrenEnsureSlots(raw, 2);
     _vm.get_variable(script.moduleName, script.className, 0);
-    wrenSetSlotDouble(raw, 1, static_cast<double>(e));
+    if (entityArgHandle != nullptr) {
+        wrenSetSlotHandle(raw, 1, entityArgHandle);
+        wrenReleaseHandle(raw, entityArgHandle);
+    } else {
+        wrenSetSlotDouble(raw, 1, static_cast<double>(e));
+    }
 
     if (wrenCall(raw, _newHandle.get()) != WREN_RESULT_SUCCESS) {
         return;

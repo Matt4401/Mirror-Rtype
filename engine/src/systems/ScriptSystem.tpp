@@ -23,9 +23,24 @@ void ScriptSystem::register_event_forwarding(ecs::EventBus& bus, std::string con
             }
 
             ::WrenVM* raw = _vm.raw();
+            WrenHandle* argHandle = nullptr;
+            if (_vm.has_variable("core/Entity", "Entity")) {
+                wrenEnsureSlots(raw, 2);
+                _vm.get_variable("core/Entity", "Entity", 0);
+                wrenSetSlotDouble(raw, 1, static_cast<double>(argEntity));
+                if (wrenCall(raw, _newHandle.get()) == WREN_RESULT_SUCCESS) {
+                    argHandle = wrenGetSlotHandle(raw, 0);
+                }
+            }
+
             wrenEnsureSlots(raw, 2);
             wrenSetSlotHandle(raw, 0, static_cast<WrenHandle*>(script.instanceHandle));
-            wrenSetSlotDouble(raw, 1, static_cast<double>(argEntity));
+            if (argHandle != nullptr) {
+                wrenSetSlotHandle(raw, 1, argHandle);
+                wrenReleaseHandle(raw, argHandle);
+            } else {
+                wrenSetSlotDouble(raw, 1, static_cast<double>(argEntity));
+            }
             wrenCall(raw, rawHandle);
         });
 }

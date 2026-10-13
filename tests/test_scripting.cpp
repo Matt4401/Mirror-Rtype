@@ -27,21 +27,23 @@ TEST(Scripting, ComponentBinderDirectAccess) {
     systems::ScriptSystem scriptSystem;
     scriptSystem.init(registry, bus);
 
-    scripting::ComponentBinder<Position> binder(scriptSystem.get_vm(), "core", "Position");
+    scripting::ComponentBinder<Position> binder(scriptSystem.get_vm(), "core/Position", "Position");
     binder.property<&Position::x>("x");
     binder.property<&Position::y>("y");
 
     std::string wrenPositionClass = binder.generate_wren_class();
-    EXPECT_TRUE(scriptSystem.get_vm().interpret("core", wrenPositionClass));
+    EXPECT_TRUE(scriptSystem.get_vm().interpret("core/Position", wrenPositionClass));
 
     ecs::Entity const e1 = registry.spawn_entity();
     registry.add_component<Position>(e1, Position{.x = 10.0F, .y = 20.0F});
 
     const char* scriptCode =
-        "import \"core\" for Position\n"
+        "import \"core/Entity\" for Entity\n"
+        "import \"core/Position\" for Position\n"
         "class TestScript {\n"
-        "    construct new(entityId) {\n"
-        "        _pos = Position.new(entityId)\n"
+        "    construct new(entity) {\n"
+        "        _entity = entity\n"
+        "        _pos = Position.new(entity.id)\n"
         "    }\n"
         "    modifyPosition() {\n"
         "        _pos.x = 42.0\n"
@@ -86,8 +88,8 @@ TEST(Scripting, DeferredCommandBufferDestruction) {
     const char* scriptCode =
         "import \"core/Entity\" for Entity\n"
         "class SuicidalScript {\n"
-        "    construct new(entityId) {\n"
-        "        _entity = Entity.new(entityId)\n"
+        "    construct new(entity) {\n"
+        "        _entity = entity\n"
         "    }\n"
         "    die() {\n"
         "        _entity.destroy()\n"
@@ -133,12 +135,14 @@ TEST(Scripting, EventForwardingMagicMethod) {
         bus, "onCollision", [](const CollisionEvent& ev) { return std::make_pair(ev.entityA, ev.entityB); });
 
     const char* scriptCode =
+        "import \"core/Entity\" for Entity\n"
         "class BumperScript {\n"
-        "    construct new(entityId) {\n"
-        "        _hitOther = -1\n"
+        "    construct new(entity) {\n"
+        "        _entity = entity\n"
+        "        _hitOther = null\n"
         "    }\n"
-        "    onCollision(otherId) {\n"
-        "        _hitOther = otherId\n"
+        "    onCollision(other) {\n"
+        "        _hitOther = other.id\n"
         "    }\n"
         "    hitOther { _hitOther }\n"
         "}\n";
