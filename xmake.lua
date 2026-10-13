@@ -14,7 +14,7 @@ target("engine")
     set_kind("static")
     add_files("engine/src/**.cpp", {optional = true})
     add_includedirs("engine/src", {public = true})
-    add_packages("wren")
+    add_packages("wren", {public = true})
 
 target("r-type_server")
     set_kind("binary")
