@@ -19,11 +19,11 @@ WrenVM::WrenVM() {
     wrenInitConfiguration(&config);
 
     config.userData = this;
-    config.bindForeignMethodFn = &WrenVM::on_bind_foreign_method;
-    config.bindForeignClassFn = &WrenVM::on_bind_foreign_class;
-    config.loadModuleFn = &WrenVM::on_load_module;
-    config.writeFn = &WrenVM::on_write;
-    config.errorFn = &WrenVM::on_error;
+    config.bindForeignMethodFn = &WrenVM::onBindForeignMethod;
+    config.bindForeignClassFn = &WrenVM::onBindForeignClass;
+    config.loadModuleFn = &WrenVM::onLoadModule;
+    config.writeFn = &WrenVM::onWrite;
+    config.errorFn = &WrenVM::onError;
 
     _vm = wrenNewVM(&config);
 }
@@ -79,22 +79,22 @@ WrenVM& WrenVM::operator=(WrenVM&& other) noexcept {
     return *this;
 }
 
-void WrenVM::set_module_loader(ModuleLoader loader) { _moduleLoader = std::move(loader); }
+void WrenVM::setModuleLoader(ModuleLoader loader) { _moduleLoader = std::move(loader); }
 
-void WrenVM::set_write_handler(WriteHandler handler) { _writeHandler = std::move(handler); }
+void WrenVM::setWriteHandler(WriteHandler handler) { _writeHandler = std::move(handler); }
 
-void WrenVM::set_error_handler(ErrorHandler handler) { _errorHandler = std::move(handler); }
+void WrenVM::setErrorHandler(ErrorHandler handler) { _errorHandler = std::move(handler); }
 
-void WrenVM::register_foreign_method(std::string_view module, std::string_view className, bool isStatic,
-                                     std::string_view signature, WrenForeignMethodFn fn) {
+void WrenVM::registerForeignMethod(std::string_view module, std::string_view className, bool isStatic,
+                                   std::string_view signature, WrenForeignMethodFn fn) {
     _foreignMethods[detail::ForeignMethodKey{.module = std::string(module),
                                              .className = std::string(className),
                                              .isStatic = isStatic,
                                              .signature = std::string(signature)}] = fn;
 }
 
-void WrenVM::register_foreign_class(std::string_view module, std::string_view className,
-                                    WrenForeignClassMethods methods) {
+void WrenVM::registerForeignClass(std::string_view module, std::string_view className,
+                                  WrenForeignClassMethods methods) {
     _foreignClasses[std::string(module) + "/" + std::string(className)] = methods;
 }
 
@@ -109,13 +109,13 @@ std::expected<void, std::string> WrenVM::interpret(std::string_view module, std:
     return {};
 }
 
-detail::UniqueWrenHandle WrenVM::make_call_handle(std::string_view signature) {
+detail::UniqueWrenHandle WrenVM::makeCallHandle(std::string_view signature) {
     std::string const sigStr(signature);
     WrenHandle* handle = wrenMakeCallHandle(_vm, sigStr.c_str());
     return detail::UniqueWrenHandle(handle, detail::WrenHandleDeleter{.vm = _vm});
 }
 
-void WrenVM::release_handle(WrenHandle* handle) {
+void WrenVM::releaseHandle(WrenHandle* handle) {
     if (handle != nullptr && _vm != nullptr) {
         wrenReleaseHandle(_vm, handle);
     }
@@ -125,7 +125,7 @@ WrenInterpretResult WrenVM::call(WrenHandle* method) { return wrenCall(_vm, meth
 
 WrenInterpretResult WrenVM::call(const detail::UniqueWrenHandle& method) { return call(method.get()); }
 
-bool WrenVM::has_module(std::string_view module) {
+bool WrenVM::hasModule(std::string_view module) {
     if (_vm == nullptr) {
         return false;
     }
@@ -133,8 +133,8 @@ bool WrenVM::has_module(std::string_view module) {
     return wrenHasModule(_vm, modStr.c_str());
 }
 
-bool WrenVM::has_variable(std::string_view module, std::string_view variableName) {
-    if (_vm == nullptr || !has_module(module)) {
+bool WrenVM::hasVariable(std::string_view module, std::string_view variableName) {
+    if (_vm == nullptr || !hasModule(module)) {
         return false;
     }
     std::string const modStr(module);
@@ -142,8 +142,8 @@ bool WrenVM::has_variable(std::string_view module, std::string_view variableName
     return wrenHasVariable(_vm, modStr.c_str(), varStr.c_str());
 }
 
-void WrenVM::get_variable(std::string_view module, std::string_view variableName, int slot) {
-    if (_vm == nullptr || !has_module(module)) {
+void WrenVM::getVariable(std::string_view module, std::string_view variableName, int slot) {
+    if (_vm == nullptr || !hasModule(module)) {
         return;
     }
     std::string const modStr(module);
@@ -151,26 +151,26 @@ void WrenVM::get_variable(std::string_view module, std::string_view variableName
     wrenGetVariable(_vm, modStr.c_str(), varStr.c_str(), slot);
 }
 
-void WrenVM::collect_garbage() {
+void WrenVM::collectGarbage() {
     if (_vm != nullptr) {
         wrenCollectGarbage(_vm);
     }
 }
 
-void WrenVM::set_registry(void* registry) noexcept { _registry = registry; }
+void WrenVM::setRegistry(void* registry) noexcept { _registry = registry; }
 
-void* WrenVM::get_registry() const noexcept { return _registry; }
+void* WrenVM::getRegistry() const noexcept { return _registry; }
 
-void WrenVM::set_user_context(void* ctx) noexcept { _userContext = ctx; }
+void WrenVM::setUserContext(void* ctx) noexcept { _userContext = ctx; }
 
-void* WrenVM::get_user_context() const noexcept { return _userContext; }
+void* WrenVM::getUserContext() const noexcept { return _userContext; }
 
 ::WrenVM* WrenVM::raw() noexcept { return _vm; }
 
-void WrenVM::ensure_slots(int numSlots) { wrenEnsureSlots(_vm, numSlots); }
+void WrenVM::ensureSlots(int numSlots) { wrenEnsureSlots(_vm, numSlots); }
 
-WrenForeignMethodFn WrenVM::on_bind_foreign_method(::WrenVM* vm, const char* module, const char* className,
-                                                   bool isStatic, const char* signature) {
+WrenForeignMethodFn WrenVM::onBindForeignMethod(::WrenVM* vm, const char* module, const char* className, bool isStatic,
+                                                const char* signature) {
     auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
     if (self == nullptr) {
         return nullptr;
@@ -188,7 +188,7 @@ WrenForeignMethodFn WrenVM::on_bind_foreign_method(::WrenVM* vm, const char* mod
     return nullptr;
 }
 
-WrenForeignClassMethods WrenVM::on_bind_foreign_class(::WrenVM* vm, const char* module, const char* className) {
+WrenForeignClassMethods WrenVM::onBindForeignClass(::WrenVM* vm, const char* module, const char* className) {
     auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
     if (self == nullptr) {
         return WrenForeignClassMethods{.allocate = nullptr, .finalize = nullptr};
@@ -203,7 +203,7 @@ WrenForeignClassMethods WrenVM::on_bind_foreign_class(::WrenVM* vm, const char* 
     return WrenForeignClassMethods{.allocate = nullptr, .finalize = nullptr};
 }
 
-WrenLoadModuleResult WrenVM::on_load_module(::WrenVM* vm, const char* name) {
+WrenLoadModuleResult WrenVM::onLoadModule(::WrenVM* vm, const char* name) {
     auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
     if (self == nullptr || !self->_moduleLoader) {
         return WrenLoadModuleResult{.source = nullptr, .onComplete = nullptr, .userData = nullptr};
@@ -222,7 +222,7 @@ WrenLoadModuleResult WrenVM::on_load_module(::WrenVM* vm, const char* name) {
     return WrenLoadModuleResult{.source = it->second.c_str(), .onComplete = nullptr, .userData = nullptr};
 }
 
-void WrenVM::on_write(::WrenVM* vm, const char* text) {
+void WrenVM::onWrite(::WrenVM* vm, const char* text) {
     auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
     if (self != nullptr && self->_writeHandler) {
         self->_writeHandler(text);
@@ -231,7 +231,7 @@ void WrenVM::on_write(::WrenVM* vm, const char* text) {
     }
 }
 
-void WrenVM::on_error(::WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message) {
+void WrenVM::onError(::WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message) {
     auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
     if (self == nullptr) {
         return;

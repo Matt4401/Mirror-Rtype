@@ -97,27 +97,27 @@ Storage is **automatically registered on first access** via sequential Type IDs,
 ```cpp
 ecs::Registry registry;
 
-ecs::Entity player = registry.spawn_entity();
+ecs::Entity player = registry.spawnEntity();
 
 // Direct in-place emplacement:
-registry.emplace_component<Transform>(player, Transform{.x = 100.0F, .y = 100.0F});
-registry.emplace_component<Velocity>(player, Velocity{.dx = 5.0F, .dy = 0.0F});
+registry.emplaceComponent<Transform>(player, Transform{.x = 100.0F, .y = 100.0F});
+registry.emplaceComponent<Velocity>(player, Velocity{.dx = 5.0F, .dy = 0.0F});
 
 // Fast O(1) query and removal:
-if (registry.has_component<Transform>(player)) {
+if (registry.hasComponent<Transform>(player)) {
     // Player is positioned
 }
-registry.remove_component<Velocity>(player); // Remove component without killing entity
+registry.removeComponent<Velocity>(player); // Remove component without killing entity
 ```
 
 ### 5.3 Writing a System
 
-Systems are logic blocks (often lambda functions) passed to `run_system`. All component sparse array references are **hoisted outside the loop once** into a tuple, enabling register-level execution with zero hash map lookups per entity:
+Systems are logic blocks (often lambda functions) passed to `runSystem`. All component sparse array references are **hoisted outside the loop once** into a tuple, enabling register-level execution with zero hash map lookups per entity:
 
 ```cpp
 // MovementSystem: Applies velocity to transform
-void update_movement(ecs::Registry& registry, float dt) {
-    registry.run_system<Transform, Velocity>([dt]([[maybe_unused]] ecs::Entity e, Transform& pos, Velocity const& vel) {
+void updateMovement(ecs::Registry& registry, float dt) {
+    registry.runSystem<Transform, Velocity>([dt]([[maybe_unused]] ecs::Entity e, Transform& pos, Velocity const& vel) {
         pos.x += vel.dx * dt;
         pos.y += vel.dy * dt;
     });

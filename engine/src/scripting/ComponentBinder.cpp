@@ -15,7 +15,7 @@ namespace scripting {
 
 ComponentBinderBase::ComponentBinderBase(WrenVM& vm, std::string moduleName, std::string className)
     : _vm(&vm), _module(std::move(moduleName)), _className(std::move(className)) {
-    _vm->register_foreign_class(
+    _vm->registerForeignClass(
         _module, _className,
         WrenForeignClassMethods{.allocate =
                                     [](::WrenVM* rawVm) {
@@ -26,14 +26,14 @@ ComponentBinderBase::ComponentBinderBase(WrenVM& vm, std::string moduleName, std
                                 .finalize = nullptr});
 }
 
-void ComponentBinderBase::register_property_methods(const std::string& propName, WrenForeignMethodFn getter,
-                                                    WrenForeignMethodFn setter) {
-    _vm->register_foreign_method(_module, _className, false, propName, getter);
-    _vm->register_foreign_method(_module, _className, false, propName + "=(_)", setter);
+void ComponentBinderBase::registerPropertyMethods(const std::string& propName, WrenForeignMethodFn getter,
+                                                  WrenForeignMethodFn setter) {
+    _vm->registerForeignMethod(_module, _className, false, propName, getter);
+    _vm->registerForeignMethod(_module, _className, false, propName + "=(_)", setter);
     _properties.push_back(propName);
 }
 
-std::string ComponentBinderBase::generate_wren_class() const {
+std::string ComponentBinderBase::generateWrenClass() const {
     std::ostringstream ss;
     ss << "foreign class " << _className << " {\n";
     ss << "    construct new(entityId) {}\n";
@@ -45,8 +45,8 @@ std::string ComponentBinderBase::generate_wren_class() const {
     return ss.str();
 }
 
-const std::string& ComponentBinderBase::get_module() const noexcept { return _module; }
+const std::string& ComponentBinderBase::getModule() const noexcept { return _module; }
 
-const std::string& ComponentBinderBase::get_class_name() const noexcept { return _className; }
+const std::string& ComponentBinderBase::getClassName() const noexcept { return _className; }
 
 }  // namespace scripting

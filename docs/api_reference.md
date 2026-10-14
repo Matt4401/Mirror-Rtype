@@ -23,7 +23,7 @@ The scripting module embeds the Wren lightweight VM into the C++23 engine, provi
 
 | Class / Struct | Role & Description |
 | :--- | :--- |
-| [`scripting::WrenVM`](rtype/classscripting_1_1WrenVM.md) | High-level C++23 RAII facade managing the Wren VM instance, template slots (`set_slot<T>`, `get_slot<T>`), and `std::expected` interpretation. |
+| [`scripting::WrenVM`](rtype/classscripting_1_1WrenVM.md) | High-level C++23 RAII facade managing the Wren VM instance, template slots (`setSlot<T>`, `getSlot<T>`), and `std::expected` interpretation. |
 | [`scripting::ComponentBinder<T>`](rtype/classscripting_1_1ComponentBinder.md) | Type-safe fluent builder binding C++ ECS component properties to Wren foreign classes using compile-time pointer-to-members (NTTP). |
 | [`scripting::ComponentBinderBase`](rtype/classscripting_1_1ComponentBinderBase.md) | Non-template base managing foreign class allocation, property storage, and Wren script generation. |
 | [`systems::ScriptSystem`](rtype/classsystems_1_1ScriptSystem.md) | ECS system managing script lifecycles (`onSpawn`), timed coroutines (`Engine.wait`), opt-in frame updates (`update`), and event forwarding. |
@@ -41,7 +41,7 @@ High-performance data-oriented ECS architecture utilizing sparse sets and deferr
 | Class / Struct | Role & Description |
 | :--- | :--- |
 | [`ecs::Registry`](rtype/classecs_1_1Registry.md) | Central ECS coordinator managing entity lifecycles, component sparse arrays, and views. |
-| [`ecs::CommandBuffer`](rtype/classecs_1_1CommandBuffer.md) | Deferred command buffer for safe structural mutations (`defer_spawn`, `defer_destroy`, `flush`) during iteration. |
+| [`ecs::CommandBuffer`](rtype/classecs_1_1CommandBuffer.md) | Deferred command buffer for safe structural mutations (`deferSpawn`, `deferDestroy`, `flush`) during iteration. |
 | [`ecs::SparseArray<T>`](rtype/classecs_1_1SparseArray.md) | Contiguous packed storage indexed via sparse entity IDs for cache-friendly iteration. |
 | [`ecs::EventBus`](rtype/classecs_1_1EventBus.md) | Decoupled publish/subscribe event dispatcher connecting systems and scripts. |
 

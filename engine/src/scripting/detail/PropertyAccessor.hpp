@@ -47,11 +47,11 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
      */
     static void getter(::WrenVM* rawVm) {
         auto* vmWrapper = static_cast<WrenVM*>(wrenGetUserData(rawVm));
-        if (vmWrapper == nullptr || vmWrapper->get_registry() == nullptr) {
+        if (vmWrapper == nullptr || vmWrapper->getRegistry() == nullptr) {
             wrenSetSlotNull(rawVm, 0);
             return;
         }
-        auto& registry = *static_cast<ecs::Registry*>(vmWrapper->get_registry());
+        auto& registry = *static_cast<ecs::Registry*>(vmWrapper->getRegistry());
 
         auto* entityPtr = static_cast<ecs::Entity*>(wrenGetSlotForeign(rawVm, 0));
         if (entityPtr == nullptr) {
@@ -59,11 +59,11 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
             return;
         }
         ecs::Entity const e = *entityPtr;
-        if (!registry.template get_components<ComponentType>().contains(e)) {
+        if (!registry.template getComponents<ComponentType>().contains(e)) {
             wrenSetSlotNull(rawVm, 0);
             return;
         }
-        auto const& comp = registry.template get_components<ComponentType>().get(e);
+        auto const& comp = registry.template getComponents<ComponentType>().get(e);
 
         if constexpr (std::is_arithmetic_v<FieldType> && !std::is_same_v<FieldType, bool>) {
             wrenSetSlotDouble(rawVm, 0, static_cast<double>(comp.*MemberPtr));
@@ -84,20 +84,20 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
      */
     static void setter(::WrenVM* rawVm) {
         auto* vmWrapper = static_cast<WrenVM*>(wrenGetUserData(rawVm));
-        if (vmWrapper == nullptr || vmWrapper->get_registry() == nullptr) {
+        if (vmWrapper == nullptr || vmWrapper->getRegistry() == nullptr) {
             return;
         }
-        auto& registry = *static_cast<ecs::Registry*>(vmWrapper->get_registry());
+        auto& registry = *static_cast<ecs::Registry*>(vmWrapper->getRegistry());
 
         auto* entityPtr = static_cast<ecs::Entity*>(wrenGetSlotForeign(rawVm, 0));
         if (entityPtr == nullptr) {
             return;
         }
         ecs::Entity const e = *entityPtr;
-        if (!registry.template get_components<ComponentType>().contains(e)) {
+        if (!registry.template getComponents<ComponentType>().contains(e)) {
             return;
         }
-        auto& comp = registry.template get_components<ComponentType>().get(e);
+        auto& comp = registry.template getComponents<ComponentType>().get(e);
 
         if constexpr (std::is_arithmetic_v<FieldType> && !std::is_same_v<FieldType, bool>) {
             comp.*MemberPtr = static_cast<FieldType>(wrenGetSlotDouble(rawVm, 1));

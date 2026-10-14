@@ -41,7 +41,7 @@ How do systems interact with the data stored in the ECS?
 
 - **Virtual Inheritance** forces systems to override an `update()` method and cast generic `IComponent*` back to concrete types, which is slow and unsafe.
 - **Bitmask Matching** requires iterating over all entities and checking if their bitmask matches the system's required components, which breaks branch prediction.
-- **Variadic Templates** (`registry.run_system<A, B>(...)`) use C++17 fold expressions. The compiler perfectly resolves the types at compile-time, resulting in aggressively inlined, zero-cost iteration loops.
+- **Variadic Templates** (`registry.runSystem<A, B>(...)`) use C++17 fold expressions. The compiler perfectly resolves the types at compile-time, resulting in aggressively inlined, zero-cost iteration loops.
 
 **Decision: Variadic Templates.** It leverages modern C++23 features for unbeatable performance and developer experience.
 

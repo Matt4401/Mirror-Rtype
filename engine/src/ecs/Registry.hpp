@@ -31,13 +31,13 @@ class Registry {
      * @brief Spawns a new entity, recycling a previously destroyed entity ID if available.
      * @return Newly created or recycled Entity ID.
      */
-    Entity spawn_entity();
+    Entity spawnEntity();
 
     /**
      * @brief Kills an entity, removing all its components across all sparse arrays and recycling its ID.
      * @param e Entity to destroy.
      */
-    void kill_entity(Entity e);
+    void killEntity(Entity e);
 
     /**
      * @brief Registers or pre-allocates storage for a component type.
@@ -48,7 +48,7 @@ class Registry {
      * @tparam Component The component aggregate/struct type to register.
      */
     template <class Component>
-    void register_component();
+    void registerComponent();
 
     /**
      * @brief Retrieves the mutable sparse array container for a component type.
@@ -59,7 +59,7 @@ class Registry {
      * @return Reference to the `SparseArray<Component>` container.
      */
     template <class Component>
-    SparseArray<Component>& get_components();
+    SparseArray<Component>& getComponents();
 
     /**
      * @brief Retrieves the const sparse array container for a component type.
@@ -69,7 +69,7 @@ class Registry {
      * @throws std::runtime_error If the component type has not yet been registered or accessed.
      */
     template <class Component>
-    [[nodiscard]] SparseArray<Component> const& get_components() const;
+    [[nodiscard]] SparseArray<Component> const& getComponents() const;
 
     /**
      * @brief Checks if an entity currently has a component attached.
@@ -79,7 +79,7 @@ class Registry {
      * @return True if the entity owns this component.
      */
     template <class Component>
-    [[nodiscard]] bool has_component(Entity e) const;
+    [[nodiscard]] bool hasComponent(Entity e) const;
 
     /**
      * @brief Attaches a component to an entity using move semantics.
@@ -90,7 +90,7 @@ class Registry {
      * @return Reference to the newly stored component.
      */
     template <class Component>
-    Component& add_component(Entity to, Component&& c);
+    Component& addComponent(Entity to, Component&& c);
 
     /**
      * @brief Attaches a component to an entity using copy semantics.
@@ -101,7 +101,7 @@ class Registry {
      * @return Reference to the newly stored component.
      */
     template <class Component>
-    Component& add_component(Entity to, Component const& c);
+    Component& addComponent(Entity to, Component const& c);
 
     /**
      * @brief Constructs and attaches a component in-place on an entity.
@@ -113,7 +113,7 @@ class Registry {
      * @return Reference to the newly constructed component.
      */
     template <class Component, typename... Args>
-    Component& emplace_component(Entity to, Args&&... args);
+    Component& emplaceComponent(Entity to, Args&&... args);
 
     /**
      * @brief Removes a component from an entity without killing the entity.
@@ -122,7 +122,7 @@ class Registry {
      * @param from Entity to remove the component from.
      */
     template <class Component>
-    void remove_component(Entity from);
+    void removeComponent(Entity from);
 
     /**
      * @brief Executes a system callback over all entities possessing a specific set of components.
@@ -133,7 +133,7 @@ class Registry {
      *
      * Example:
      * @code
-     * registry.run_system<Position, Velocity>([](Entity e, Position& pos, Velocity& vel) {
+     * registry.runSystem<Position, Velocity>([](Entity e, Position& pos, Velocity& vel) {
      *     pos.x += vel.vx;
      *     pos.y += vel.vy;
      * });
@@ -144,7 +144,7 @@ class Registry {
      * @param func Callable executed for each matching entity.
      */
     template <class... Components, class Func>
-    void run_system(Func func);
+    void runSystem(Func func);
 
   private:
     std::vector<std::unique_ptr<ISparseArray>> _components_arrays;

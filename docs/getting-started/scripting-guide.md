@@ -22,7 +22,7 @@ The engine adopts a **hybrid, event-driven architecture**:
 In C++ or level configuration files, an entity receives a script by attaching a `ScriptComponent`:
 
 ```cpp
-registry.add_component<ScriptComponent>(entity, ScriptComponent{
+registry.addComponent<ScriptComponent>(entity, ScriptComponent{
     .moduleName = "scripts/gameplay/HomingMissile",
     .className = "HomingMissile"
 });

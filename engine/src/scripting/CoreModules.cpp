@@ -4,7 +4,7 @@
 
 namespace scripting {
 
-std::string_view get_core_module_source(std::string_view moduleName) noexcept {
+std::string_view getCoreModuleSource(std::string_view moduleName) noexcept {
     if (moduleName == "core/Engine") {
         return CORE_ENGINE_SOURCE;
     }

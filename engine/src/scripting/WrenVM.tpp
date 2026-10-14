@@ -6,7 +6,7 @@
 namespace scripting {
 
 template <typename T>
-void WrenVM::set_slot(int slot, const T& value) {
+void WrenVM::setSlot(int slot, const T& value) {
     using DecayedT = std::decay_t<T>;
     if constexpr (std::is_same_v<DecayedT, std::nullptr_t>) {
         (void)value;
@@ -26,7 +26,7 @@ void WrenVM::set_slot(int slot, const T& value) {
 }
 
 template <typename T>
-T WrenVM::get_slot(int slot) {
+T WrenVM::getSlot(int slot) {
     using DecayedT = std::decay_t<T>;
     if constexpr (std::is_same_v<DecayedT, bool>) {
         return wrenGetSlotBool(raw(), slot);

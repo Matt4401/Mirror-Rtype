@@ -23,27 +23,27 @@ namespace {
 
 void engineRegisterWait(::WrenVM* rawVm) {
     auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->get_user_context() == nullptr) {
+    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->get_user_context());
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
     WrenHandle* fiber = wrenGetSlotHandle(rawVm, 1);
     double const seconds = wrenGetSlotDouble(rawVm, 2);
-    scriptSystem->add_sleeping_fiber(fiber, static_cast<float>(seconds));
+    scriptSystem->addSleepingFiber(fiber, static_cast<float>(seconds));
 }
 
 void engineSpawnPrefab(::WrenVM* rawVm) {
     auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->get_user_context() == nullptr) {
+    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->get_user_context());
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
     const char* prefabName = wrenGetSlotString(rawVm, 1);
     double const x = wrenGetSlotDouble(rawVm, 2);
     double const y = wrenGetSlotDouble(rawVm, 3);
 
     std::string const name = (prefabName != nullptr ? prefabName : "");
-    scriptSystem->get_command_buffer().defer_spawn(
+    scriptSystem->getCommandBuffer().deferSpawn(
         [name, x, y]([[maybe_unused]] ecs::Entity e, [[maybe_unused]] ecs::Registry& reg) {
             // Placeholder prefab spawner
         });
@@ -51,12 +51,12 @@ void engineSpawnPrefab(::WrenVM* rawVm) {
 
 void entityDestroy(::WrenVM* rawVm) {
     auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->get_user_context() == nullptr) {
+    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->get_user_context());
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
     auto const e = static_cast<ecs::Entity>(wrenGetSlotDouble(rawVm, 1));
-    scriptSystem->get_command_buffer().defer_destroy(e);
+    scriptSystem->getCommandBuffer().deferDestroy(e);
 }
 
 void worldGetEntitiesWithTag(::WrenVM* rawVm) {
@@ -89,7 +89,7 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _onSpawnHandle(std::move(other._onSpawnHandle)),
       _fiberCallHandle(std::move(other._fiberCallHandle)),
       _cachedMethodHandles(std::move(other._cachedMethodHandles)) {
-    _vm.set_user_context(this);
+    _vm.setUserContext(this);
 }
 
 ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
@@ -105,7 +105,7 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _onSpawnHandle = std::move(other._onSpawnHandle);
         _fiberCallHandle = std::move(other._fiberCallHandle);
         _cachedMethodHandles = std::move(other._cachedMethodHandles);
-        _vm.set_user_context(this);
+        _vm.setUserContext(this);
     }
     return *this;
 }
@@ -114,30 +114,30 @@ void ScriptSystem::init(ecs::Registry& registry, ecs::EventBus& bus) {
     _registry = &registry;
     _bus = &bus;
 
-    _vm.set_registry(_registry);
-    _vm.set_user_context(this);
+    _vm.setRegistry(_registry);
+    _vm.setUserContext(this);
 
-    register_core_bindings();
-    load_core_modules();
+    registerCoreBindings();
+    loadCoreModules();
 
-    _newHandle = _vm.make_call_handle("new(_)");
-    _updateHandle = _vm.make_call_handle("update(_)");
-    _onSpawnHandle = _vm.make_call_handle("onSpawn()");
-    _fiberCallHandle = _vm.make_call_handle("call()");
+    _newHandle = _vm.makeCallHandle("new(_)");
+    _updateHandle = _vm.makeCallHandle("update(_)");
+    _onSpawnHandle = _vm.makeCallHandle("onSpawn()");
+    _fiberCallHandle = _vm.makeCallHandle("call()");
 }
 
-void ScriptSystem::register_core_bindings() {
-    _vm.register_foreign_method("core/Engine", "Engine", true, "registerWait(_,_)", &engineRegisterWait);
-    _vm.register_foreign_method("core/Engine", "Engine", true, "spawnPrefab(_,_,_)", &engineSpawnPrefab);
-    _vm.register_foreign_method("core/Entity", "Entity", true, "destroyEntity(_)", &entityDestroy);
-    _vm.register_foreign_method("core/World", "World", true, "getEntitiesWithTag(_)", &worldGetEntitiesWithTag);
-    _vm.register_foreign_method("core/World", "World", true, "getNearestWithTag(_,_,_)", &worldGetNearestWithTag);
-    _vm.register_foreign_method("core/World", "World", true, "getEntitiesInRadius(_,_,_)", &worldGetEntitiesInRadius);
+void ScriptSystem::registerCoreBindings() {
+    _vm.registerForeignMethod("core/Engine", "Engine", true, "registerWait(_,_)", &engineRegisterWait);
+    _vm.registerForeignMethod("core/Engine", "Engine", true, "spawnPrefab(_,_,_)", &engineSpawnPrefab);
+    _vm.registerForeignMethod("core/Entity", "Entity", true, "destroyEntity(_)", &entityDestroy);
+    _vm.registerForeignMethod("core/World", "World", true, "getEntitiesWithTag(_)", &worldGetEntitiesWithTag);
+    _vm.registerForeignMethod("core/World", "World", true, "getNearestWithTag(_,_,_)", &worldGetNearestWithTag);
+    _vm.registerForeignMethod("core/World", "World", true, "getEntitiesInRadius(_,_,_)", &worldGetEntitiesInRadius);
 }
 
-void ScriptSystem::load_core_modules() {
-    _vm.set_module_loader([](std::string_view moduleName) -> std::string {
-        std::string_view const coreSource = scripting::get_core_module_source(moduleName);
+void ScriptSystem::loadCoreModules() {
+    _vm.setModuleLoader([](std::string_view moduleName) -> std::string {
+        std::string_view const coreSource = scripting::getCoreModuleSource(moduleName);
         if (!coreSource.empty()) {
             return std::string(coreSource);
         }
@@ -156,12 +156,12 @@ void ScriptSystem::load_core_modules() {
     (void)res;
 }
 
-void ScriptSystem::instantiate_script(ecs::Entity e, ecs::ScriptComponent& script) {
+void ScriptSystem::instantiateScript(ecs::Entity e, ecs::ScriptComponent& script) {
     if (script.initialized) {
         return;
     }
 
-    if (!_vm.has_module(script.moduleName)) {
+    if (!_vm.hasModule(script.moduleName)) {
         std::string filename = std::string(script.moduleName);
         if (!filename.ends_with(".wren")) {
             filename += ".wren";
@@ -183,15 +183,15 @@ void ScriptSystem::instantiate_script(ecs::Entity e, ecs::ScriptComponent& scrip
     }
 
     ::WrenVM* raw = _vm.raw();
-    if (!_vm.has_variable(script.moduleName, script.className)) {
+    if (!_vm.hasVariable(script.moduleName, script.className)) {
         std::cerr << "[ScriptSystem] Class " << script.className << " not found in " << script.moduleName << "\n";
         return;
     }
 
     wrenEnsureSlots(raw, 2);
     WrenHandle* entityArgHandle = nullptr;
-    if (_vm.has_variable("core/Entity", "Entity")) {
-        _vm.get_variable("core/Entity", "Entity", 0);
+    if (_vm.hasVariable("core/Entity", "Entity")) {
+        _vm.getVariable("core/Entity", "Entity", 0);
         wrenSetSlotDouble(raw, 1, static_cast<double>(e));
         if (wrenCall(raw, _newHandle.get()) == WREN_RESULT_SUCCESS) {
             entityArgHandle = wrenGetSlotHandle(raw, 0);
@@ -199,7 +199,7 @@ void ScriptSystem::instantiate_script(ecs::Entity e, ecs::ScriptComponent& scrip
     }
 
     wrenEnsureSlots(raw, 2);
-    _vm.get_variable(script.moduleName, script.className, 0);
+    _vm.getVariable(script.moduleName, script.className, 0);
     if (entityArgHandle != nullptr) {
         wrenSetSlotHandle(raw, 1, entityArgHandle);
         wrenReleaseHandle(raw, entityArgHandle);
@@ -214,11 +214,11 @@ void ScriptSystem::instantiate_script(ecs::Entity e, ecs::ScriptComponent& scrip
     script.instanceHandle = wrenGetSlotHandle(raw, 0);
     script.initialized = true;
 
-    if (_vm.has_variable("_internal", "Dispatcher")) {
+    if (_vm.hasVariable("_internal", "Dispatcher")) {
         wrenEnsureSlots(raw, 2);
-        _vm.get_variable("_internal", "Dispatcher", 0);
+        _vm.getVariable("_internal", "Dispatcher", 0);
         wrenSetSlotHandle(raw, 1, static_cast<WrenHandle*>(script.instanceHandle));
-        auto trySpawnHandle = _vm.make_call_handle("tryCallSpawn(_)");
+        auto trySpawnHandle = _vm.makeCallHandle("tryCallSpawn(_)");
         wrenCall(raw, trySpawnHandle.get());
     }
 
@@ -232,11 +232,11 @@ void ScriptSystem::update(float dt) {
         return;
     }
 
-    if (!_registry->get_components<ecs::ScriptComponent>().get_dense().empty()) {
-        for (ecs::Entity const e : _registry->get_components<ecs::ScriptComponent>().get_dense_entities()) {
-            auto& script = _registry->get_components<ecs::ScriptComponent>().get(e);
+    if (!_registry->getComponents<ecs::ScriptComponent>().getDense().empty()) {
+        for (ecs::Entity const e : _registry->getComponents<ecs::ScriptComponent>().getDenseEntities()) {
+            auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
             if (!script.initialized) {
-                instantiate_script(e, script);
+                instantiateScript(e, script);
             }
         }
     }
@@ -255,10 +255,10 @@ void ScriptSystem::update(float dt) {
     }
 
     for (ecs::Entity const e : _updatingEntities) {
-        if (!_registry->get_components<ecs::ScriptComponent>().contains(e)) {
+        if (!_registry->getComponents<ecs::ScriptComponent>().contains(e)) {
             continue;
         }
-        auto& script = _registry->get_components<ecs::ScriptComponent>().get(e);
+        auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
         if (script.instanceHandle == nullptr) {
             continue;
         }
@@ -271,16 +271,16 @@ void ScriptSystem::update(float dt) {
     }
 
     std::erase_if(_updatingEntities,
-                  [this](ecs::Entity e) { return !_registry->get_components<ecs::ScriptComponent>().contains(e); });
+                  [this](ecs::Entity e) { return !_registry->getComponents<ecs::ScriptComponent>().contains(e); });
 
     _commandBuffer.flush(*_registry);
 }
 
-scripting::WrenVM& ScriptSystem::get_vm() noexcept { return _vm; }
+scripting::WrenVM& ScriptSystem::getVm() noexcept { return _vm; }
 
-ecs::CommandBuffer& ScriptSystem::get_command_buffer() noexcept { return _commandBuffer; }
+ecs::CommandBuffer& ScriptSystem::getCommandBuffer() noexcept { return _commandBuffer; }
 
-void ScriptSystem::add_sleeping_fiber(WrenHandle* fiber, float seconds) {
+void ScriptSystem::addSleepingFiber(WrenHandle* fiber, float seconds) {
     _sleepingFibers.push_back(SleepingFiber{
         .fiber = scripting::detail::UniqueWrenHandle(fiber, scripting::detail::WrenHandleDeleter{.vm = _vm.raw()}),
         .timeRemaining = seconds});

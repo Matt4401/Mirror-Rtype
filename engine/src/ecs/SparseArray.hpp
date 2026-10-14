@@ -60,7 +60,7 @@ class SparseArray : public ISparseArray {
      * @param c The component value to copy.
      * @return Reference to the stored component.
      */
-    Component& insert_at(Entity e, Component const& c);
+    Component& insertAt(Entity e, Component const& c);
 
     /**
      * @brief Inserts or replaces a component for an entity using move semantics.
@@ -69,7 +69,7 @@ class SparseArray : public ISparseArray {
      * @param c The component value to move.
      * @return Reference to the stored component.
      */
-    Component& insert_at(Entity e, Component&& c);
+    Component& insertAt(Entity e, Component&& c);
 
     /**
      * @brief Erases the component associated with the given entity in O(1) time via swap-and-pop.
@@ -108,19 +108,19 @@ class SparseArray : public ISparseArray {
      * @brief Returns a mutable reference to the contiguous dense array of components.
      * @return Reference to the std::vector of components.
      */
-    std::vector<Component>& get_dense() noexcept;
+    std::vector<Component>& getDense() noexcept;
 
     /**
      * @brief Returns a const reference to the contiguous dense array of components.
      * @return Const reference to the std::vector of components.
      */
-    [[nodiscard]] std::vector<Component> const& get_dense() const noexcept;
+    [[nodiscard]] std::vector<Component> const& getDense() const noexcept;
 
     /**
      * @brief Returns a const reference to the dense array of entity IDs matching components.
      * @return Const reference to the std::vector of entities.
      */
-    [[nodiscard]] std::vector<Entity> const& get_dense_entities() const noexcept;
+    [[nodiscard]] std::vector<Entity> const& getDenseEntities() const noexcept;
 
   private:
     std::vector<std::optional<std::size_t>> _sparse;

@@ -38,7 +38,7 @@ The components only store a lightweight reference (e.g., `std::string texture_id
 
 ### Hardcoding vs. Data-Driven Definitions
 
-Currently, entities are instantiated in code (`registry.add_component(...)`). As the project scales, having designers tweak C++ code to balance an enemy's health is counter-productive.
+Currently, entities are instantiated in code (`registry.addComponent(...)`). As the project scales, having designers tweak C++ code to balance an enemy's health is counter-productive.
 
 #### The Data-Driven Strategy
 
@@ -62,4 +62,4 @@ Rather than identifying components at runtime with `std::unordered_map<std::type
 
 - The engine assigns dense **sequential integer IDs (`0, 1, 2, ...`)** to each component type via static local counters (`ComponentTypeId`).
 - Component arrays are held in a **flat `std::vector<std::unique_ptr<ISparseArray>>`**.
-- Lookup overhead is reduced to a single direct array index in $O(1)$, allowing systems in `run_system` to resolve multiple component arrays once into registers before iteration.
+- Lookup overhead is reduced to a single direct array index in $O(1)$, allowing systems in `runSystem` to resolve multiple component arrays once into registers before iteration.

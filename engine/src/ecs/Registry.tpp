@@ -9,13 +9,13 @@
 namespace ecs {
 
 template <class Component>
-void Registry::register_component() {
-    (void)get_components<Component>();
+void Registry::registerComponent() {
+    (void)getComponents<Component>();
 }
 
 template <class Component>
-SparseArray<Component>& Registry::get_components() {
-    const ComponentTypeId id = get_component_type_id<Component>();
+SparseArray<Component>& Registry::getComponents() {
+    const ComponentTypeId id = getComponentTypeId<Component>();
     if (id >= _components_arrays.size()) {
         _components_arrays.resize(id + 1);
     }
@@ -26,8 +26,8 @@ SparseArray<Component>& Registry::get_components() {
 }
 
 template <class Component>
-SparseArray<Component> const& Registry::get_components() const {
-    const ComponentTypeId id = get_component_type_id<Component>();
+SparseArray<Component> const& Registry::getComponents() const {
+    const ComponentTypeId id = getComponentTypeId<Component>();
     if (id >= _components_arrays.size() || !_components_arrays[id]) {
         throw std::runtime_error("Component not registered");
     }
@@ -35,8 +35,8 @@ SparseArray<Component> const& Registry::get_components() const {
 }
 
 template <class Component>
-bool Registry::has_component(Entity e) const {
-    const ComponentTypeId id = get_component_type_id<Component>();
+bool Registry::hasComponent(Entity e) const {
+    const ComponentTypeId id = getComponentTypeId<Component>();
     if (id >= _components_arrays.size() || !_components_arrays[id]) {
         return false;
     }
@@ -44,37 +44,37 @@ bool Registry::has_component(Entity e) const {
 }
 
 template <class Component>
-Component& Registry::add_component(Entity to, Component&& c) {
-    return get_components<Component>().insert_at(to, std::forward<Component>(c));
+Component& Registry::addComponent(Entity to, Component&& c) {
+    return getComponents<Component>().insertAt(to, std::forward<Component>(c));
 }
 
 template <class Component>
-Component& Registry::add_component(Entity to, Component const& c) {
-    return get_components<Component>().insert_at(to, c);
+Component& Registry::addComponent(Entity to, Component const& c) {
+    return getComponents<Component>().insertAt(to, c);
 }
 
 template <class Component, typename... Args>
-Component& Registry::emplace_component(Entity to, Args&&... args) {
-    return get_components<Component>().insert_at(to, Component{std::forward<Args>(args)...});
+Component& Registry::emplaceComponent(Entity to, Args&&... args) {
+    return getComponents<Component>().insertAt(to, Component{std::forward<Args>(args)...});
 }
 
 template <class Component>
-void Registry::remove_component(Entity from) {
-    const ComponentTypeId id = get_component_type_id<Component>();
+void Registry::removeComponent(Entity from) {
+    const ComponentTypeId id = getComponentTypeId<Component>();
     if (id < _components_arrays.size() && _components_arrays[id]) {
         _components_arrays[id]->erase(from);
     }
 }
 
 template <class... Components, class Func>
-void Registry::run_system(Func func) {
+void Registry::runSystem(Func func) {
     if constexpr (sizeof...(Components) == 0) {
         return;
     } else {
-        std::tuple<SparseArray<Components>&...> arrays{get_components<Components>()...};
+        std::tuple<SparseArray<Components>&...> arrays{getComponents<Components>()...};
         auto& first_array = std::get<0>(arrays);
 
-        for (Entity const e : first_array.get_dense_entities()) {
+        for (Entity const e : first_array.getDenseEntities()) {
             if ((std::get<SparseArray<Components>&>(arrays).contains(e) && ...)) {
                 func(e, std::get<SparseArray<Components>&>(arrays).get(e)...);
             }

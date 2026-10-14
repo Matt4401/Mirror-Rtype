@@ -9,56 +9,56 @@ struct Position {
 
 TEST(ECS, LifecycleAndIteration) {
     ecs::Registry registry;
-    registry.register_component<Position>();
+    registry.registerComponent<Position>();
 
-    ecs::Entity const e1 = registry.spawn_entity();
-    registry.add_component<Position>(e1, {.x = 10.0F, .y = 20.0F});
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<Position>(e1, Position{.x = 10.0F, .y = 20.0F});
 
-    auto& positions = registry.get_components<Position>();
+    auto& positions = registry.getComponents<Position>();
     EXPECT_TRUE(positions.contains(e1));
     EXPECT_EQ(positions.get(e1).x, 10.0F);
 
-    registry.kill_entity(e1);
+    registry.killEntity(e1);
     EXPECT_FALSE(positions.contains(e1));
 }
 
 TEST(ECS, EntityRecycling) {
     ecs::Registry registry;
 
-    ecs::Entity const e1 = registry.spawn_entity();
-    ecs::Entity const e2 = registry.spawn_entity();
+    ecs::Entity const e1 = registry.spawnEntity();
+    ecs::Entity const e2 = registry.spawnEntity();
 
     EXPECT_EQ(e1, 0);
     EXPECT_EQ(e2, 1);
 
-    registry.kill_entity(e1);
+    registry.killEntity(e1);
 
-    ecs::Entity const e3 = registry.spawn_entity();
+    ecs::Entity const e3 = registry.spawnEntity();
     EXPECT_EQ(e3, 0);  // Should recycle e1's ID
 }
 
 TEST(ECS, SparseArraySwapAndPop) {
     ecs::Registry registry;
-    registry.register_component<Position>();
+    registry.registerComponent<Position>();
 
-    ecs::Entity const e1 = registry.spawn_entity();
-    ecs::Entity const e2 = registry.spawn_entity();
-    ecs::Entity const e3 = registry.spawn_entity();
+    ecs::Entity const e1 = registry.spawnEntity();
+    ecs::Entity const e2 = registry.spawnEntity();
+    ecs::Entity const e3 = registry.spawnEntity();
 
-    registry.add_component<Position>(e1, {.x = 1.0F, .y = 1.0F});
-    registry.add_component<Position>(e2, {.x = 2.0F, .y = 2.0F});
-    registry.add_component<Position>(e3, {.x = 3.0F, .y = 3.0F});
+    registry.addComponent<Position>(e1, Position{.x = 1.0F, .y = 1.0F});
+    registry.addComponent<Position>(e2, Position{.x = 2.0F, .y = 2.0F});
+    registry.addComponent<Position>(e3, Position{.x = 3.0F, .y = 3.0F});
 
-    auto& positions = registry.get_components<Position>();
-    EXPECT_EQ(positions.get_dense().size(), 3);
+    auto& positions = registry.getComponents<Position>();
+    EXPECT_EQ(positions.getDense().size(), 3);
 
     // Erasing e2 should swap e3 into e2's place in the dense array
-    registry.kill_entity(e2);
+    registry.killEntity(e2);
 
     EXPECT_FALSE(positions.contains(e2));
     EXPECT_TRUE(positions.contains(e1));
     EXPECT_TRUE(positions.contains(e3));
-    EXPECT_EQ(positions.get_dense().size(), 2);
+    EXPECT_EQ(positions.getDense().size(), 2);
 
     // Ensure e3's data is intact after being swapped
     EXPECT_EQ(positions.get(e3).x, 3.0F);
@@ -70,24 +70,24 @@ struct Velocity {
 
 TEST(ECS, RunSystemView) {
     ecs::Registry registry;
-    registry.register_component<Position>();
-    registry.register_component<Velocity>();
+    registry.registerComponent<Position>();
+    registry.registerComponent<Velocity>();
 
-    ecs::Entity const e1 = registry.spawn_entity();
-    ecs::Entity const e2 = registry.spawn_entity();
+    ecs::Entity const e1 = registry.spawnEntity();
+    ecs::Entity const e2 = registry.spawnEntity();
 
-    registry.add_component<Position>(e1, {.x = 0.0F, .y = 0.0F});
-    registry.add_component<Velocity>(e1, {.dx = 1.0F, .dy = 2.0F});
+    registry.addComponent<Position>(e1, Position{.x = 0.0F, .y = 0.0F});
+    registry.addComponent<Velocity>(e1, Velocity{.dx = 1.0F, .dy = 2.0F});
 
-    registry.add_component<Position>(e2, {.x = 10.0F, .y = 10.0F});
+    registry.addComponent<Position>(e2, Position{.x = 10.0F, .y = 10.0F});
     // e2 has no Velocity
 
-    registry.run_system<Position, Velocity>([]([[maybe_unused]] ecs::Entity e, Position& pos, Velocity& vel) {
+    registry.runSystem<Position, Velocity>([]([[maybe_unused]] ecs::Entity e, Position& pos, Velocity& vel) {
         pos.x += vel.dx;
         pos.y += vel.dy;
     });
 
-    auto& positions = registry.get_components<Position>();
+    auto& positions = registry.getComponents<Position>();
     EXPECT_EQ(positions.get(e1).x, 1.0F);
     EXPECT_EQ(positions.get(e1).y, 2.0F);
 
@@ -98,24 +98,24 @@ TEST(ECS, RunSystemView) {
 
 TEST(ECS, AutoRegistration) {
     ecs::Registry registry;
-    // Notice: no register_component call!
-    ecs::Entity const e = registry.spawn_entity();
-    registry.add_component<Position>(e, Position{.x = 42.0F, .y = 84.0F});
+    // Notice: no registerComponent call!
+    ecs::Entity const e = registry.spawnEntity();
+    registry.addComponent<Position>(e, Position{.x = 42.0F, .y = 84.0F});
 
-    EXPECT_TRUE(registry.has_component<Position>(e));
-    EXPECT_EQ(registry.get_components<Position>().get(e).x, 42.0F);
+    EXPECT_TRUE(registry.hasComponent<Position>(e));
+    EXPECT_EQ(registry.getComponents<Position>().get(e).x, 42.0F);
 }
 
 TEST(ECS, EmplaceAndRemoveComponent) {
     ecs::Registry registry;
-    ecs::Entity const e = registry.spawn_entity();
+    ecs::Entity const e = registry.spawnEntity();
 
-    registry.emplace_component<Position>(e, Position{.x = 5.0F, .y = 15.0F});
-    EXPECT_TRUE(registry.has_component<Position>(e));
-    EXPECT_EQ(registry.get_components<Position>().get(e).y, 15.0F);
+    registry.emplaceComponent<Position>(e, Position{.x = 5.0F, .y = 15.0F});
+    EXPECT_TRUE(registry.hasComponent<Position>(e));
+    EXPECT_EQ(registry.getComponents<Position>().get(e).y, 15.0F);
 
-    registry.remove_component<Position>(e);
-    EXPECT_FALSE(registry.has_component<Position>(e));
+    registry.removeComponent<Position>(e);
+    EXPECT_FALSE(registry.hasComponent<Position>(e));
 }
 
 TEST(ECS, HighThroughputIteration) {
@@ -123,17 +123,17 @@ TEST(ECS, HighThroughputIteration) {
     constexpr std::size_t entity_count = 10000;
 
     for (std::size_t i = 0; i < entity_count; ++i) {
-        ecs::Entity const e = registry.spawn_entity();
-        registry.emplace_component<Position>(e, Position{.x = 0.0F, .y = 0.0F});
-        registry.emplace_component<Velocity>(e, Velocity{.dx = 1.0F, .dy = 2.0F});
+        ecs::Entity const e = registry.spawnEntity();
+        registry.emplaceComponent<Position>(e, Position{.x = 0.0F, .y = 0.0F});
+        registry.emplaceComponent<Velocity>(e, Velocity{.dx = 1.0F, .dy = 2.0F});
     }
 
-    registry.run_system<Position, Velocity>([](ecs::Entity /*unused*/, Position& pos, Velocity const& vel) {
+    registry.runSystem<Position, Velocity>([](ecs::Entity /*unused*/, Position& pos, Velocity const& vel) {
         pos.x += vel.dx;
         pos.y += vel.dy;
     });
 
-    auto const& positions = registry.get_components<Position>();
+    auto const& positions = registry.getComponents<Position>();
     EXPECT_EQ(positions.get(0).x, 1.0F);
     EXPECT_EQ(positions.get(0).y, 2.0F);
     EXPECT_EQ(positions.get(entity_count - 1).x, 1.0F);

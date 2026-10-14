@@ -4,7 +4,7 @@
 
 namespace ecs {
 
-Entity Registry::spawn_entity() {
+Entity Registry::spawnEntity() {
     if (!_dead_entities.empty()) {
         Entity const e = _dead_entities.front();
         _dead_entities.pop();
@@ -13,7 +13,7 @@ Entity Registry::spawn_entity() {
     return _next_entity++;
 }
 
-void Registry::kill_entity(Entity e) {
+void Registry::killEntity(Entity e) {
     for (auto const& array : _components_arrays) {
         if (array) {
             array->erase(e);

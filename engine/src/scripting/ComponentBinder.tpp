@@ -11,8 +11,8 @@ ComponentBinder<ComponentType>::ComponentBinder(WrenVM& vm, std::string moduleNa
 template <typename ComponentType>
 template <auto MemberPtr>
 ComponentBinder<ComponentType>& ComponentBinder<ComponentType>::property(const std::string& propName) {
-    register_property_methods(propName, &detail::PropertyAccessor<ComponentType, MemberPtr>::getter,
-                              &detail::PropertyAccessor<ComponentType, MemberPtr>::setter);
+    registerPropertyMethods(propName, &detail::PropertyAccessor<ComponentType, MemberPtr>::getter,
+                            &detail::PropertyAccessor<ComponentType, MemberPtr>::setter);
     return *this;
 }
 

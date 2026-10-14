@@ -75,6 +75,6 @@ class Dispatcher {
  * @param moduleName Module import name (e.g. "core/Engine", "core/Entity", "core/World", "_internal").
  * @return String view referencing the embedded module code, or empty string view if not found.
  */
-[[nodiscard]] std::string_view get_core_module_source(std::string_view moduleName) noexcept;
+[[nodiscard]] std::string_view getCoreModuleSource(std::string_view moduleName) noexcept;
 
 }  // namespace scripting

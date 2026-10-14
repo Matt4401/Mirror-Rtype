@@ -28,14 +28,14 @@ class CommandBuffer {
      *
      * @param e Entity to kill.
      */
-    void defer_destroy(Entity e);
+    void deferDestroy(Entity e);
 
     /**
      * @brief Defers the spawning of a new entity with an optional initialization lambda.
      *
      * @param initializer Move-only callback invoked with the newly allocated entity and registry.
      */
-    void defer_spawn(std::move_only_function<void(Entity, Registry&)> initializer = nullptr);
+    void deferSpawn(std::move_only_function<void(Entity, Registry&)> initializer = nullptr);
 
     /**
      * @brief Flushes all queued commands into the provided ECS Registry.

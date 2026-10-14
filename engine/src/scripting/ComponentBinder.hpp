@@ -42,19 +42,19 @@ class ComponentBinderBase {
      *
      * @return Generated Wren source code string.
      */
-    [[nodiscard]] std::string generate_wren_class() const;
+    [[nodiscard]] std::string generateWrenClass() const;
 
     /**
      * @brief Retrieves the Wren module name containing this component class.
      * @return Reference to the module name string.
      */
-    [[nodiscard]] const std::string& get_module() const noexcept;
+    [[nodiscard]] const std::string& getModule() const noexcept;
 
     /**
      * @brief Retrieves the Wren class name for this component.
      * @return Reference to the class name string.
      */
-    [[nodiscard]] const std::string& get_class_name() const noexcept;
+    [[nodiscard]] const std::string& getClassName() const noexcept;
 
   protected:
     /**
@@ -64,7 +64,7 @@ class ComponentBinderBase {
      * @param getter Function pointer to the getter FFI callback.
      * @param setter Function pointer to the setter FFI callback.
      */
-    void register_property_methods(const std::string& propName, WrenForeignMethodFn getter, WrenForeignMethodFn setter);
+    void registerPropertyMethods(const std::string& propName, WrenForeignMethodFn getter, WrenForeignMethodFn setter);
 
   private:
     WrenVM* _vm = nullptr;
@@ -84,7 +84,7 @@ class ComponentBinderBase {
  * ComponentBinder<Position> binder(vm, "core", "Position");
  * binder.property<&Position::x>("x")
  *       .property<&Position::y>("y");
- * vm.interpret("core", binder.generate_wren_class());
+ * vm.interpret("core", binder.generateWrenClass());
  * @endcode
  *
  * @tparam ComponentType The C++ ECS component aggregate type.

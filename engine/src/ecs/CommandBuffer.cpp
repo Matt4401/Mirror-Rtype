@@ -2,9 +2,9 @@
 
 namespace ecs {
 
-void CommandBuffer::defer_destroy(Entity e) { _destroy_queue.push_back(e); }
+void CommandBuffer::deferDestroy(Entity e) { _destroy_queue.push_back(e); }
 
-void CommandBuffer::defer_spawn(std::move_only_function<void(Entity, Registry&)> initializer) {
+void CommandBuffer::deferSpawn(std::move_only_function<void(Entity, Registry&)> initializer) {
     _spawn_queue.push_back(std::move(initializer));
 }
 
@@ -17,7 +17,7 @@ void CommandBuffer::clear() noexcept {
 
 void CommandBuffer::flush(Registry& registry) {
     for (auto& init : _spawn_queue) {
-        Entity const e = registry.spawn_entity();
+        Entity const e = registry.spawnEntity();
         if (init) {
             init(e, registry);
         }
@@ -25,7 +25,7 @@ void CommandBuffer::flush(Registry& registry) {
     _spawn_queue.clear();
 
     for (Entity const e : _destroy_queue) {
-        registry.kill_entity(e);
+        registry.killEntity(e);
     }
     _destroy_queue.clear();
 }

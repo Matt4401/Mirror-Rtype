@@ -6,7 +6,7 @@
 namespace ecs {
 
 template <typename Component>
-Component& SparseArray<Component>::insert_at(Entity e, Component const& c) {
+Component& SparseArray<Component>::insertAt(Entity e, Component const& c) {
     if (e >= _sparse.size()) {
         _sparse.resize(e + 1, std::nullopt);
     }
@@ -21,7 +21,7 @@ Component& SparseArray<Component>::insert_at(Entity e, Component const& c) {
 }
 
 template <typename Component>
-Component& SparseArray<Component>::insert_at(Entity e, Component&& c) {
+Component& SparseArray<Component>::insertAt(Entity e, Component&& c) {
     if (e >= _sparse.size()) {
         _sparse.resize(e + 1, std::nullopt);
     }
@@ -88,17 +88,17 @@ Component const& SparseArray<Component>::get(Entity e) const {
 }
 
 template <typename Component>
-std::vector<Component>& SparseArray<Component>::get_dense() noexcept {
+std::vector<Component>& SparseArray<Component>::getDense() noexcept {
     return _components;
 }
 
 template <typename Component>
-std::vector<Component> const& SparseArray<Component>::get_dense() const noexcept {
+std::vector<Component> const& SparseArray<Component>::getDense() const noexcept {
     return _components;
 }
 
 template <typename Component>
-std::vector<Entity> const& SparseArray<Component>::get_dense_entities() const noexcept {
+std::vector<Entity> const& SparseArray<Component>::getDenseEntities() const noexcept {
     return _dense;
 }
 

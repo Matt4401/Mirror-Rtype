@@ -14,7 +14,7 @@ namespace detail {
  * @brief Generates sequential integer IDs starting from 0.
  * @return Monotonically increasing ComponentTypeId.
  */
-[[nodiscard]] inline ComponentTypeId get_next_component_type_id() noexcept {
+[[nodiscard]] inline ComponentTypeId getNextComponentTypeId() noexcept {
     static ComponentTypeId counter = 0;
     return counter++;
 }
@@ -31,8 +31,8 @@ namespace detail {
  * @return Unique numeric identifier (0, 1, 2, ...).
  */
 template <typename Component>
-[[nodiscard]] inline ComponentTypeId get_component_type_id() noexcept {
-    static const ComponentTypeId id = detail::get_next_component_type_id();
+[[nodiscard]] inline ComponentTypeId getComponentTypeId() noexcept {
+    static const ComponentTypeId id = detail::getNextComponentTypeId();
     return id;
 }
 

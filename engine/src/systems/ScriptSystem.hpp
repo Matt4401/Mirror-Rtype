@@ -66,7 +66,7 @@ class ScriptSystem {
      * @param e Entity owning the script component.
      * @param script Reference to the entity's ScriptComponent.
      */
-    void instantiate_script(ecs::Entity e, ecs::ScriptComponent& script);
+    void instantiateScript(ecs::Entity e, ecs::ScriptComponent& script);
 
     /**
      * @brief Binds a C++ ECS EventBus event type to an entity script method.
@@ -81,17 +81,17 @@ class ScriptSystem {
      * @param extractor Extractor callable extracting target and argument entities from the event.
      */
     template <typename EventType, typename ArgExtractor>
-    void register_event_forwarding(ecs::EventBus& bus, std::string const& methodName, ArgExtractor&& extractor);
+    void registerEventForwarding(ecs::EventBus& bus, std::string const& methodName, ArgExtractor&& extractor);
 
     /**
      * @brief Returns a reference to the embedded WrenVM wrapper.
      */
-    [[nodiscard]] scripting::WrenVM& get_vm() noexcept;
+    [[nodiscard]] scripting::WrenVM& getVm() noexcept;
 
     /**
      * @brief Returns a reference to the deferred command buffer.
      */
-    [[nodiscard]] ecs::CommandBuffer& get_command_buffer() noexcept;
+    [[nodiscard]] ecs::CommandBuffer& getCommandBuffer() noexcept;
 
     /**
      * @brief Registers a suspended Wren Fiber to resume after `seconds` have elapsed.
@@ -99,11 +99,11 @@ class ScriptSystem {
      * @param fiber Raw pointer to the suspended Wren Fiber handle.
      * @param seconds Sleep duration in seconds.
      */
-    void add_sleeping_fiber(WrenHandle* fiber, float seconds);
+    void addSleepingFiber(WrenHandle* fiber, float seconds);
 
   private:
-    void register_core_bindings();
-    void load_core_modules();
+    void registerCoreBindings();
+    void loadCoreModules();
 
     ecs::Registry* _registry = nullptr;
     ecs::EventBus* _bus = nullptr;
