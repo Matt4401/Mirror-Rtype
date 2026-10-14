@@ -1,0 +1,7 @@
+target("r-type_client")
+    set_kind("binary")
+    set_targetdir("$(projectdir)")
+    add_files("**.cpp")
+    -- add_deps("network", "engine")
+    add_packages("asio", "raylib")
+    add_tests("starts")

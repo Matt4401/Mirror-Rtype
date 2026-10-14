@@ -82,3 +82,6 @@ B-CPP-500_rtype.pdf
 # XMake
 .xmake/
 
+# Claude
+.claude
+
