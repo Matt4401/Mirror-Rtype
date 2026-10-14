@@ -4,7 +4,9 @@ A highly decoupled, data-oriented C++23 game engine, built from scratch to power
 
 ## Purpose
 
-This project is part of the Advanced C++ curriculum in the 3rd year of EPITECH. The goal is to build a robust, generic game engine utilizing an Entity-Component-System (ECS) architecture, and to implement a networked 2D shooter (R-Type) on top of it using an Authoritative Server model.
+This project is part of the Advanced C++ curriculum in the 3rd year of EPITECH. The goal is to build a robust, generic
+game engine utilizing an Entity-Component-System (ECS) architecture, and to implement a networked 2D shooter (R-Type) on
+top of it using an authoritative server model.
 
 ## Dependencies
 
