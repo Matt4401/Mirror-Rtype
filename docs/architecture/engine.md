@@ -62,6 +62,7 @@ The engine is partitioned into decoupled subsystems:
 - **Physics & Collisions:** Manages spatial partitioning (e.g., Quadtree or Grid) and AABB collision queries.
 - **Event Bus:** Decoupled publisher/subscriber messaging mechanism enabling asynchronous events (e.g., audio triggers on collision without direct coupling).
 - **Network Abstraction (Asio):** Transport layer supporting both TCP (lobby, auth) and UDP (real-time gameplay state synchronization).
+- **Scripting Subsystem (`ScriptSystem` & `WrenVM`):** Embeds Wren for rapid gameplay prototyping. Supports C++23 compile-time member property reflection (`ComponentBinder`), selective `update(dt)` polling, coroutine fibers (`Engine.wait`), deferred structural mutations (`CommandBuffer`), and non-intrusive live hot-reloading with staging validation and lifecycle hooks (`onSpawn`, `onReload`, `onDestroy`).
 
 ## 4. Decoupling & Modularity
 
