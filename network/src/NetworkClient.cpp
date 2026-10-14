@@ -59,6 +59,10 @@ bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
         std::move(socket), 0,
         [this](ClientId, const MessageKind kind, Bytes payload) { onTcpMessage(kind, std::move(payload)); },
         [this](const ClientId client) {
+            // The connection is gone (kick, timeout, protocol violation): the client is single-use, so it is stopped.
+            // Set before pushing Disconnected, so that isRunning() is already false when the game reads the event.
+            // The network thread keeps running until stop() releases _work and joins it.
+            _state = State::Stopped;
             closeUdpNow();
             _events.push({.type = EventType::Disconnected, .client = client, .data = {}, .channel = Channel::Reliable});
         });
@@ -219,15 +223,16 @@ void NetworkClient::send(const Bytes& data, const Channel channel) {
 }
 
 void NetworkClient::stop() {
-    if (_state.exchange(State::Stopped) != State::Running) {
+    const State previous = _state.exchange(State::Stopped);
+    if (previous == State::Idle) {
         return;
     }
-
-    asio::post(_io, [this] {
-        closeUdpNow();
-        _tcp->close();
-    });
-
+    if (previous == State::Running) {
+        asio::post(_io, [this] {
+            closeUdpNow();
+            _tcp->close();
+        });
+    }
     _work.reset();
     if (_thread.joinable()) {
         _thread.join();

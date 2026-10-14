@@ -153,11 +153,11 @@ struct NetworkEvent {
 
 Event contract, the same on both sides:
 
-| Event          | Meaning                                                                                                                |
-|----------------|------------------------------------------------------------------------------------------------------------------------|
-| `Connected`    | The library is ready for this connection. Server: TCP accepted. Client: `Welcome` received, `openUdp()` can be called. |
-| `Data`         | A game message. `channel` tells whether it came over TCP or UDP.                                                       |
-| `Disconnected` | The connection is gone (closed, timed out, kicked, or the peer stopped reading). Sent once per connection.             |
+| Event          | Meaning                                                                                                                                       |
+|----------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `Connected`    | The library is ready for this connection. Server: TCP accepted. Client: `Welcome` received, `openUdp()` can be called.                        |
+| `Data`         | A game message. `channel` tells whether it came over TCP or UDP.                                                                              |
+| `Disconnected` | The connection is gone (closed, timed out, kicked, or the peer stopped reading). Sent once per connection. Client: the client is now stopped. |
 
 A `Disconnected` can arrive **without** a `Connected` before it, when a connection fails before the library is ready:
 server full, or connection lost before `Welcome`. Game code must handle a `Disconnected` for a connection it never saw.
@@ -165,6 +165,12 @@ server full, or connection lost before `Welcome`. Game code must handle a `Disco
 The server and the client are **single-use objects**. After `stop()`, their `io_context` cannot run again:
 `start()` / `connect()` return `false`. To reconnect (back to the menu, then join again), create a new object. A failed
 `start()` / `connect()` (port taken, server unreachable) can be retried on the same object.
+
+On the client, losing the connection also stops it. When its TCP session closes (server gone, kicked, UDP timeout,
+protocol violation), the client switches to `Stopped` **before** pushing `Disconnected`, so when the game reads that
+event, `isRunning()` already returns `false`, `openUdp()` and `connect()` return `false`, and `send()` does nothing.
+The network thread still runs until `stop()` (or the destructor) joins it; calling `stop()` then, or several times, is
+safe.
 
 ### Interfaces
 
