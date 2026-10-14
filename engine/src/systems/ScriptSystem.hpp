@@ -11,6 +11,10 @@
 #include "scripting/WrenVM.hpp"
 #include "scripting/detail/WrenTypes.hpp"
 
+extern "C" {
+#include <wren.h>
+}
+
 namespace systems {
 
 /**
