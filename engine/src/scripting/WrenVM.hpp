@@ -5,6 +5,10 @@
 #include <string_view>
 #include <unordered_map>
 
+extern "C" {
+#include <wren.h>
+}
+
 #include "scripting/detail/WrenTypes.hpp"
 
 namespace scripting {
@@ -247,4 +251,4 @@ class WrenVM {
 
 }  // namespace scripting
 
-#include "WrenVM.tpp"
+#include "WrenVM.tpp"  // IWYU pragma: export

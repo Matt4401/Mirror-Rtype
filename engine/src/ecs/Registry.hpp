@@ -154,4 +154,4 @@ class Registry {
 
 }  // namespace ecs
 
-#include "Registry.tpp"
+#include "Registry.tpp"  // IWYU pragma: export

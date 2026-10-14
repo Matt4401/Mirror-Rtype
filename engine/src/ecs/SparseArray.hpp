@@ -130,4 +130,4 @@ class SparseArray : public ISparseArray {
 
 }  // namespace ecs
 
-#include "SparseArray.tpp"
+#include "SparseArray.tpp"  // IWYU pragma: export

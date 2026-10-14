@@ -1,5 +1,11 @@
 #include "ecs/CommandBuffer.hpp"
 
+#include <functional>
+#include <utility>
+
+#include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
+
 namespace ecs {
 
 void CommandBuffer::deferDestroy(Entity e) { _destroyQueue.push_back(e); }

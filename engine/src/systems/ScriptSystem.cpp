@@ -16,6 +16,7 @@ extern "C" {
 #include "events/EventBus.hpp"
 #include "scripting/CoreModules.hpp"
 #include "scripting/WrenVM.hpp"
+#include "scripting/detail/WrenTypes.hpp"
 
 namespace systems {
 

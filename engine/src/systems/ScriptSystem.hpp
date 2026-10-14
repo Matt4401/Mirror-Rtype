@@ -123,4 +123,4 @@ class ScriptSystem {
 
 }  // namespace systems
 
-#include "ScriptSystem.tpp"
+#include "ScriptSystem.tpp"  // IWYU pragma: export

@@ -70,4 +70,4 @@ class EventBus {
 
 }  // namespace ecs
 
-#include "EventBus.tpp"
+#include "EventBus.tpp"  // IWYU pragma: export
