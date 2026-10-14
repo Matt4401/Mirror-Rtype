@@ -1,12 +1,17 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <thread>
+
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "scripting/ComponentBinder.hpp"
 #include "scripting/WrenVM.hpp"
-#include "systems/ScriptSystem.hpp"
+#include "systems/script/ScriptSystem.hpp"
 
 struct Position {
     float x = 0.0F;
@@ -279,6 +284,276 @@ TEST(Scripting, HybridOptionalUpdateLoop) {
 
     scriptSystem.update(0.016F);  // 3rd frame
     EXPECT_EQ(getTicks(), 3.0);
+}
+
+TEST(Scripting, HotReloadValidCode) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<Position>();
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+    scriptSystem.enableHotReload(true);
+
+    auto registerPosition = [](scripting::WrenVM& vm) {
+        scripting::ComponentBinder<Position> binder(vm, "core/Position", "Position");
+        binder.property<&Position::x>("x");
+        binder.property<&Position::y>("y");
+        std::string wrenPositionClass = binder.generateWrenClass();
+        EXPECT_TRUE(vm.interpret("core/Position", wrenPositionClass));
+    };
+    registerPosition(scriptSystem.getVm());
+    scriptSystem.addBinderReplay(registerPosition);
+
+    std::string const scriptPath = "TestReloadEntity.wren";
+    {
+        std::ofstream out(scriptPath);
+        out << "import \"core/Entity\" for Entity\n"
+            << "import \"core/Position\" for Position\n"
+            << "class TestReloadEntity {\n"
+            << "    construct new(entity) {\n"
+            << "        _entity = entity\n"
+            << "        _pos = Position.new(entity.id)\n"
+            << "    }\n"
+            << "    applyMove() {\n"
+            << "        _pos.x = _pos.x + 1.0\n"
+            << "    }\n"
+            << "}\n";
+    }
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<Position>(e1, Position{.x = 10.0F, .y = 20.0F});
+    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "TestReloadEntity",
+                                                                         .className = "TestReloadEntity",
+                                                                         .instanceHandle = nullptr,
+                                                                         .hasUpdate = false,
+                                                                         .initialized = false});
+
+    scriptSystem.update(0.016F);
+    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
+    EXPECT_TRUE(script.initialized);
+
+    auto callApplyMove = [&]() {
+        auto applyHandle = scriptSystem.getVm().makeCallHandle("applyMove()");
+        wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
+        wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
+        EXPECT_EQ(scriptSystem.getVm().call(applyHandle), WREN_RESULT_SUCCESS);
+    };
+
+    callApplyMove();
+    EXPECT_EQ(registry.getComponents<Position>().get(e1).x, 11.0F);
+
+    // Modify script on disk to add 10.0 instead of 1.0
+    {
+        std::ofstream out(scriptPath);
+        out << "import \"core/Entity\" for Entity\n"
+            << "import \"core/Position\" for Position\n"
+            << "class TestReloadEntity {\n"
+            << "    construct new(entity) {\n"
+            << "        _entity = entity\n"
+            << "        _pos = Position.new(entity.id)\n"
+            << "    }\n"
+            << "    applyMove() {\n"
+            << "        _pos.x = _pos.x + 10.0\n"
+            << "    }\n"
+            << "}\n";
+    }
+    auto const futureTime = std::filesystem::last_write_time(scriptPath) + std::chrono::seconds(2);
+    std::filesystem::last_write_time(scriptPath, futureTime);
+
+    // Timer >= 0.5F triggers reload
+    scriptSystem.update(0.6F);
+
+    callApplyMove();
+    EXPECT_EQ(registry.getComponents<Position>().get(e1).x, 21.0F);
+    EXPECT_EQ(registry.getComponents<Position>().get(e1).y, 20.0F);
+
+    std::filesystem::remove(scriptPath);
+}
+
+TEST(Scripting, HotReloadSyntaxErrorResilience) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<Position>();
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+    scriptSystem.enableHotReload(true);
+
+    auto registerPosition = [](scripting::WrenVM& vm) {
+        scripting::ComponentBinder<Position> binder(vm, "core/Position", "Position");
+        binder.property<&Position::x>("x");
+        binder.property<&Position::y>("y");
+        std::string wrenPositionClass = binder.generateWrenClass();
+        EXPECT_TRUE(vm.interpret("core/Position", wrenPositionClass));
+    };
+    registerPosition(scriptSystem.getVm());
+    scriptSystem.addBinderReplay(registerPosition);
+
+    std::string const scriptPath = "TestSyntaxError.wren";
+    {
+        std::ofstream out(scriptPath);
+        out << "class TestSyntaxError {\n"
+            << "    construct new(entity) {}\n"
+            << "    value { 42.0 }\n"
+            << "}\n";
+    }
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "TestSyntaxError",
+                                                                         .className = "TestSyntaxError",
+                                                                         .instanceHandle = nullptr,
+                                                                         .hasUpdate = false,
+                                                                         .initialized = false});
+
+    scriptSystem.update(0.016F);
+    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
+    EXPECT_TRUE(script.initialized);
+
+    auto getValue = [&]() -> double {
+        auto valHandle = scriptSystem.getVm().makeCallHandle("value");
+        wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
+        wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
+        EXPECT_EQ(scriptSystem.getVm().call(valHandle), WREN_RESULT_SUCCESS);
+        return wrenGetSlotDouble(scriptSystem.getVm().raw(), 0);
+    };
+
+    EXPECT_EQ(getValue(), 42.0);
+
+    // Write syntax error
+    {
+        std::ofstream out(scriptPath);
+        out << "class TestSyntaxError { brokenCode { \n";
+    }
+    auto const futureTime = std::filesystem::last_write_time(scriptPath) + std::chrono::seconds(2);
+    std::filesystem::last_write_time(scriptPath, futureTime);
+
+    // Update triggers hot-reload attempt
+    scriptSystem.update(0.6F);
+
+    // The invalid code should be rejected, old script instance and VM still functional
+    EXPECT_EQ(getValue(), 42.0);
+
+    std::filesystem::remove(scriptPath);
+}
+
+namespace {
+int g_destroyHookCallCount = 0;
+void recordDestroyHook(::WrenVM* /*rawVm*/) { ++g_destroyHookCallCount; }
+
+int g_reloadHookCallCount = 0;
+void recordReloadHook(::WrenVM* /*rawVm*/) { ++g_reloadHookCallCount; }
+}  // namespace
+
+TEST(Scripting, LifecycleOnDestroy) {
+    g_destroyHookCallCount = 0;
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    scriptSystem.getVm().registerForeignMethod("gameplay", "LifecycleDestroyScript", true, "recordDestroyed()",
+                                               &recordDestroyHook);
+
+    const char* scriptCode =
+        "import \"core/Entity\" for Entity\n"
+        "class LifecycleDestroyScript {\n"
+        "    construct new(entity) {\n"
+        "        _entity = entity\n"
+        "    }\n"
+        "    onDestroy() {\n"
+        "        LifecycleDestroyScript.recordDestroyed()\n"
+        "    }\n"
+        "    die() {\n"
+        "        _entity.destroy()\n"
+        "    }\n"
+        "    foreign static recordDestroyed()\n"
+        "}\n";
+
+    EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay", scriptCode));
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
+                                                                         .className = "LifecycleDestroyScript",
+                                                                         .instanceHandle = nullptr,
+                                                                         .hasUpdate = false,
+                                                                         .initialized = false});
+
+    scriptSystem.update(0.016F);
+
+    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
+    auto dieHandle = scriptSystem.getVm().makeCallHandle("die()");
+    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
+    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
+    EXPECT_EQ(scriptSystem.getVm().call(dieHandle), WREN_RESULT_SUCCESS);
+
+    // Destruction is deferred, onDestroy has NOT run yet
+    EXPECT_EQ(g_destroyHookCallCount, 0);
+    EXPECT_TRUE(registry.getComponents<ecs::ScriptComponent>().contains(e1));
+
+    // Next update flushes command buffer and triggers onDestroy()
+    scriptSystem.update(0.016F);
+
+    EXPECT_EQ(g_destroyHookCallCount, 1);
+    EXPECT_FALSE(registry.getComponents<ecs::ScriptComponent>().contains(e1));
+}
+
+TEST(Scripting, LifecycleOnReload) {
+    g_reloadHookCallCount = 0;
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+    scriptSystem.enableHotReload(true);
+
+    auto registerForeigns = [](scripting::WrenVM& vm) {
+        vm.registerForeignMethod("TestReloadHook", "ReloadHookScript", true, "recordReloaded()", &recordReloadHook);
+    };
+    registerForeigns(scriptSystem.getVm());
+    scriptSystem.addBinderReplay(registerForeigns);
+
+    std::string const scriptPath = "TestReloadHook.wren";
+    {
+        std::ofstream out(scriptPath);
+        out << "class ReloadHookScript {\n"
+            << "    construct new(entity) {\n"
+            << "        _entity = entity\n"
+            << "    }\n"
+            << "    onReload() {\n"
+            << "        ReloadHookScript.recordReloaded()\n"
+            << "    }\n"
+            << "    foreign static recordReloaded()\n"
+            << "}\n";
+    }
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "TestReloadHook",
+                                                                         .className = "ReloadHookScript",
+                                                                         .instanceHandle = nullptr,
+                                                                         .hasUpdate = false,
+                                                                         .initialized = false});
+
+    scriptSystem.update(0.016F);
+    // Initial spawn should NOT trigger onReload()
+    EXPECT_EQ(g_reloadHookCallCount, 0);
+
+    // Touch file to trigger reload
+    auto const futureTime = std::filesystem::last_write_time(scriptPath) + std::chrono::seconds(2);
+    std::filesystem::last_write_time(scriptPath, futureTime);
+
+    // Update triggers hot-reload
+    scriptSystem.update(0.6F);
+
+    // onReload() was called once during hot-reload!
+    EXPECT_EQ(g_reloadHookCallCount, 1);
+
+    std::filesystem::remove(scriptPath);
 }
 
 int main(int argc, char** argv) {
