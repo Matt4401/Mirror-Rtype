@@ -16,31 +16,31 @@ void Registry::registerComponent() {
 template <class Component>
 SparseArray<Component>& Registry::getComponents() {
     const ComponentTypeId id = getComponentTypeId<Component>();
-    if (id >= _components_arrays.size()) {
-        _components_arrays.resize(id + 1);
+    if (id >= _componentsArrays.size()) {
+        _componentsArrays.resize(id + 1);
     }
-    if (!_components_arrays[id]) {
-        _components_arrays[id] = std::make_unique<SparseArray<Component>>();
+    if (!_componentsArrays[id]) {
+        _componentsArrays[id] = std::make_unique<SparseArray<Component>>();
     }
-    return *static_cast<SparseArray<Component>*>(_components_arrays[id].get());
+    return *static_cast<SparseArray<Component>*>(_componentsArrays[id].get());
 }
 
 template <class Component>
 SparseArray<Component> const& Registry::getComponents() const {
     const ComponentTypeId id = getComponentTypeId<Component>();
-    if (id >= _components_arrays.size() || !_components_arrays[id]) {
+    if (id >= _componentsArrays.size() || !_componentsArrays[id]) {
         throw std::runtime_error("Component not registered");
     }
-    return *static_cast<SparseArray<Component> const*>(_components_arrays[id].get());
+    return *static_cast<SparseArray<Component> const*>(_componentsArrays[id].get());
 }
 
 template <class Component>
 bool Registry::hasComponent(Entity e) const {
     const ComponentTypeId id = getComponentTypeId<Component>();
-    if (id >= _components_arrays.size() || !_components_arrays[id]) {
+    if (id >= _componentsArrays.size() || !_componentsArrays[id]) {
         return false;
     }
-    return static_cast<SparseArray<Component> const*>(_components_arrays[id].get())->contains(e);
+    return static_cast<SparseArray<Component> const*>(_componentsArrays[id].get())->contains(e);
 }
 
 template <class Component>
@@ -61,8 +61,8 @@ Component& Registry::emplaceComponent(Entity to, Args&&... args) {
 template <class Component>
 void Registry::removeComponent(Entity from) {
     const ComponentTypeId id = getComponentTypeId<Component>();
-    if (id < _components_arrays.size() && _components_arrays[id]) {
-        _components_arrays[id]->erase(from);
+    if (id < _componentsArrays.size() && _componentsArrays[id]) {
+        _componentsArrays[id]->erase(from);
     }
 }
 
@@ -72,9 +72,9 @@ void Registry::runSystem(Func func) {
         return;
     } else {
         std::tuple<SparseArray<Components>&...> arrays{getComponents<Components>()...};
-        auto& first_array = std::get<0>(arrays);
+        auto& firstArray = std::get<0>(arrays);
 
-        for (Entity const e : first_array.getDenseEntities()) {
+        for (Entity const e : firstArray.getDenseEntities()) {
             if ((std::get<SparseArray<Components>&>(arrays).contains(e) && ...)) {
                 func(e, std::get<SparseArray<Components>&>(arrays).get(e)...);
             }

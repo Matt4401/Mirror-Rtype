@@ -5,21 +5,21 @@
 namespace ecs {
 
 Entity Registry::spawnEntity() {
-    if (!_dead_entities.empty()) {
-        Entity const e = _dead_entities.front();
-        _dead_entities.pop();
+    if (!_deadEntities.empty()) {
+        Entity const e = _deadEntities.front();
+        _deadEntities.pop();
         return e;
     }
-    return _next_entity++;
+    return _nextEntity++;
 }
 
 void Registry::killEntity(Entity e) {
-    for (auto const& array : _components_arrays) {
+    for (auto const& array : _componentsArrays) {
         if (array) {
             array->erase(e);
         }
     }
-    _dead_entities.push(e);
+    _deadEntities.push(e);
 }
 
 }  // namespace ecs

@@ -45,14 +45,14 @@ void SparseArray<Component>::erase(Entity e) {
         return;
     }
 
-    std::size_t const dense_idx = opt.value();
-    std::size_t const last_dense_idx = _components.size() - 1;
-    Entity const last_entity = _dense[last_dense_idx];
+    std::size_t const denseIdx = opt.value();
+    std::size_t const lastDenseIdx = _components.size() - 1;
+    Entity const lastEntity = _dense[lastDenseIdx];
 
-    if (dense_idx != last_dense_idx) {
-        _components[dense_idx] = std::move(_components[last_dense_idx]);
-        _dense[dense_idx] = last_entity;
-        _sparse[last_entity] = dense_idx;
+    if (denseIdx != lastDenseIdx) {
+        _components[denseIdx] = std::move(_components[lastDenseIdx]);
+        _dense[denseIdx] = lastEntity;
+        _sparse[lastEntity] = denseIdx;
     }
 
     _components.pop_back();

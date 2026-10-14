@@ -130,7 +130,7 @@ To decouple systems, use the `EventBus`. Define an event struct, subscribe to it
 
 ```cpp
 struct PlayerDamagedEvent {
-    ecs::Entity player_id;
+    ecs::Entity player;
     int damage;
 };
 
@@ -142,5 +142,5 @@ auto token = bus.subscribe<PlayerDamagedEvent>([](const PlayerDamagedEvent& even
 });
 
 // Publishing (e.g., in a CollisionSystem)
-bus.publish(PlayerDamagedEvent{.player_id = player, .damage = 10});
+bus.publish(PlayerDamagedEvent{.player = player, .damage = 10});
 ```

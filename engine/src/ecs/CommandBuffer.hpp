@@ -59,8 +59,8 @@ class CommandBuffer {
     [[nodiscard]] bool empty() const noexcept;
 
   private:
-    std::vector<Entity> _destroy_queue;
-    std::vector<std::move_only_function<void(Entity, Registry&)>> _spawn_queue;
+    std::vector<Entity> _destroyQueue;
+    std::vector<std::move_only_function<void(Entity, Registry&)>> _spawnQueue;
 };
 
 }  // namespace ecs

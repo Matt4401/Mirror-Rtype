@@ -147,9 +147,9 @@ class Registry {
     void runSystem(Func func);
 
   private:
-    std::vector<std::unique_ptr<ISparseArray>> _components_arrays;
-    Entity _next_entity = 0;
-    std::queue<Entity> _dead_entities;
+    std::vector<std::unique_ptr<ISparseArray>> _componentsArrays;
+    Entity _nextEntity = 0;
+    std::queue<Entity> _deadEntities;
 };
 
 }  // namespace ecs

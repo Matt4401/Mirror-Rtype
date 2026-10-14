@@ -120,9 +120,9 @@ TEST(ECS, EmplaceAndRemoveComponent) {
 
 TEST(ECS, HighThroughputIteration) {
     ecs::Registry registry;
-    constexpr std::size_t entity_count = 10000;
+    constexpr std::size_t entityCount = 10000;
 
-    for (std::size_t i = 0; i < entity_count; ++i) {
+    for (std::size_t i = 0; i < entityCount; ++i) {
         ecs::Entity const e = registry.spawnEntity();
         registry.emplaceComponent<Position>(e, Position{.x = 0.0F, .y = 0.0F});
         registry.emplaceComponent<Velocity>(e, Velocity{.dx = 1.0F, .dy = 2.0F});
@@ -136,8 +136,8 @@ TEST(ECS, HighThroughputIteration) {
     auto const& positions = registry.getComponents<Position>();
     EXPECT_EQ(positions.get(0).x, 1.0F);
     EXPECT_EQ(positions.get(0).y, 2.0F);
-    EXPECT_EQ(positions.get(entity_count - 1).x, 1.0F);
-    EXPECT_EQ(positions.get(entity_count - 1).y, 2.0F);
+    EXPECT_EQ(positions.get(entityCount - 1).x, 1.0F);
+    EXPECT_EQ(positions.get(entityCount - 1).y, 2.0F);
 }
 
 #include "events/EventBus.hpp"
@@ -149,19 +149,19 @@ struct PlayerDamagedEvent {
 
 TEST(Events, EventBusPubSub) {
     ecs::EventBus bus;
-    int total_damage = 0;
+    int totalDamage = 0;
 
     auto token =
-        bus.subscribe<PlayerDamagedEvent>([&](const PlayerDamagedEvent& event) { total_damage += event.damage; });
+        bus.subscribe<PlayerDamagedEvent>([&](const PlayerDamagedEvent& event) { totalDamage += event.damage; });
 
     bus.publish(PlayerDamagedEvent{.player = 0, .damage = 10});
-    EXPECT_EQ(total_damage, 10);
+    EXPECT_EQ(totalDamage, 10);
 
     bus.unsubscribe<PlayerDamagedEvent>(token);
     bus.publish(PlayerDamagedEvent{.player = 0, .damage = 50});
 
     // Should still be 10 because we unsubscribed
-    EXPECT_EQ(total_damage, 10);
+    EXPECT_EQ(totalDamage, 10);
 }
 
 int main(int argc, char** argv) {
