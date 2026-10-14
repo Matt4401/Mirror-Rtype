@@ -65,21 +65,46 @@ Three ideas drive the design:
 
 ## 3. Library layout
 
+The network code is split between two xmake targets:
+
+| Target    | Kind           | Folder         | Content                                 | Depends on       |
+|-----------|----------------|----------------|-----------------------------------------|------------------|
+| `shared`  | header-only    | `shared/src/`  | Interfaces and types used by game code  | nothing          |
+| `network` | static library | `network/src/` | Asio implementation of these interfaces | `shared`, `asio` |
+
 ```
-network/
-├── include/network/            # PUBLIC — must not include Asio
-│   ├── Types.hpp
-│   ├── INetworkManager.hpp
-│   ├── INetworkServer.hpp
-│   ├── INetworkClient.hpp
-│   └── Factory.hpp
-└── src/                        # PRIVATE — Asio is used only here
-    ├── NetworkServer.hpp/.cpp
-    ├── NetworkClient.hpp/.cpp
-    ├── session/TcpSession.hpp/.cpp     # shared by NetworkServer and NetworkClient
-    ├── Wire.hpp                        # bytes the library adds on the wire (kinds, headers, delays)
-    ├── EventQueue.hpp/.cpp
-    └── Factory.cpp
+shared/src/                          # target "shared" (header-only), must not include Asio
+└── Network/
+    ├── INetworkManager.hpp          # ClientId, Bytes, Channel, EventType, State, NetworkEvent, INetworkManager
+    ├── INetworkServer.hpp           # rtype::net::server::INetworkServer
+    └── INetworkClient.hpp           # rtype::net::client::INetworkClient
+
+network/src/                         # target "network" (static library), Asio is used only here
+├── NetworkServer.hpp/.cpp
+├── NetworkClient.hpp/.cpp
+├── session/TcpSession.hpp/.cpp      # shared by NetworkServer and NetworkClient
+├── Wire.hpp                         # bytes the library adds on the wire (kinds, headers, delays)
+└── EventQueue.hpp/.cpp
+```
+
+Both targets export their `src/` folder as a public include directory, so an interface is included with its folder:
+
+```cpp
+#include "Network/INetworkServer.hpp"
+```
+
+### Why two targets
+
+- `shared` contains only abstract classes and plain types. Code that depends on it (game logic, tests using a mock
+  network) never pulls in Asio.
+- `network` is the only target linked against Asio. Changing the implementation (another transport, another library)
+  does not touch `shared` or the game code.
+
+```
+r-type_server ──┐
+                ├──► network ──► shared
+r-type_client ──┘       │
+                        └──► asio
 ```
 
 ### Layers
@@ -104,6 +129,8 @@ it.
 ## 4. Public API
 
 ### Types
+
+Declared in `shared/src/Network/INetworkManager.hpp`, next to `INetworkManager`.
 
 ```cpp
 namespace net {
@@ -375,7 +402,7 @@ without sockets.
 
 | Pitfall                                                                              | Consequence                                       | Fix                                                                      |
 |--------------------------------------------------------------------------------------|---------------------------------------------------|--------------------------------------------------------------------------|
-| Asio included in a public header                                                     | Slow builds, `<windows.h>` conflicts in game code | Asio only in `network/src/`                                              |
+| Asio included in a public header                                                     | Slow builds, `<windows.h>` conflicts in game code | Asio only in `network/src/`, never in `shared/`                          |
 | Windows: UDP receive fails with `connection_reset` after sending to a closed client  | Receive loop stops; server deaf to everyone       | Ignore `connection_reset` / `connection_refused` and restart the receive |
 | Callback uses a destroyed `TcpSession`                                               | Crash                                             | `shared_from_this()` in every async handler                              |
 | Socket used from the game thread                                                     | Data race                                         | `asio::post` to the network thread                                       |
