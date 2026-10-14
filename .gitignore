@@ -86,3 +86,7 @@ B-CPP-500_rtype.pdf
 site/
 .venv/
 .clangd
+
+# Claude
+.claude
+

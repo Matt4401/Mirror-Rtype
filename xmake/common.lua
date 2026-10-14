@@ -1,0 +1,5 @@
+rule("project.warnings")
+    on_load(function (target)
+        target:add("cxxflags", "-Wall", "-Wextra", "-Wpedantic", {tools = {"gcc", "clang"}})
+        target:add("cxxflags", "/W4", {tools = "cl"})
+    end)
