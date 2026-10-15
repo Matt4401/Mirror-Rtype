@@ -1,4 +1,4 @@
-name: macOS build (informational)
+name: macOS build
 
 on:
   push:
@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-macos:
-    name: Build (macOS, informational)
+    name: Build (macOS)
     if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
     runs-on: macos-latest
     # Never blocks merging: a failure is reported as a success with an annotation.
