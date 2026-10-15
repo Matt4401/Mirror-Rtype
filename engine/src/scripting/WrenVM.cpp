@@ -81,6 +81,29 @@ WrenVM& WrenVM::operator=(WrenVM&& other) noexcept {
 
 void WrenVM::setModuleLoader(ModuleLoader loader) { _moduleLoader = std::move(loader); }
 
+const WrenVM::ModuleLoader& WrenVM::getModuleLoader() const noexcept { return _moduleLoader; }
+
+void WrenVM::reset() {
+    if (_vm != nullptr) {
+        wrenFreeVM(_vm);
+        _vm = nullptr;
+    }
+    _loadedSources.clear();
+    _lastError.clear();
+
+    WrenConfiguration config;
+    wrenInitConfiguration(&config);
+
+    config.userData = this;
+    config.bindForeignMethodFn = &WrenVM::onBindForeignMethod;
+    config.bindForeignClassFn = &WrenVM::onBindForeignClass;
+    config.loadModuleFn = &WrenVM::onLoadModule;
+    config.writeFn = &WrenVM::onWrite;
+    config.errorFn = &WrenVM::onError;
+
+    _vm = wrenNewVM(&config);
+}
+
 void WrenVM::setWriteHandler(WriteHandler handler) { _writeHandler = std::move(handler); }
 
 void WrenVM::setErrorHandler(ErrorHandler handler) { _errorHandler = std::move(handler); }

@@ -62,8 +62,22 @@ class Dispatcher {
     static tryCallSpawn(instance) {
         var f = Fiber.new { instance.onSpawn() }
         var err = f.try()
-        if (err != null && !err.contains("does not implement 'onSpawn()'")) {
+        if (err != null && err.indexOf("does not implement 'onSpawn()'") == -1) {
             System.print("Error in onSpawn(): " + err)
+        }
+    }
+    static tryCallReload(instance) {
+        var f = Fiber.new { instance.onReload() }
+        var err = f.try()
+        if (err != null && err.indexOf("does not implement 'onReload()'") == -1) {
+            System.print("Error in onReload(): " + err)
+        }
+    }
+    static tryCallDestroy(instance) {
+        var f = Fiber.new { instance.onDestroy() }
+        var err = f.try()
+        if (err != null && err.indexOf("does not implement 'onDestroy()'") == -1) {
+            System.print("Error in onDestroy(): " + err)
         }
     }
 }
