@@ -1,16 +1,16 @@
-
 #pragma once
 
 #include <cstdint>
 #include <vector>
 
-namespace net {
+namespace rtype::net {
 
 using ClientId = std::uint32_t;
 using Bytes = std::vector<std::uint8_t>;
 
 enum class EventType : std::uint8_t { Connected, Disconnected, Data };
 enum class Channel : std::uint8_t { Reliable, Unreliable };
+enum class State : std::uint8_t { Idle, Running, Stopped };
 
 struct NetworkEvent {
     EventType type;
@@ -33,4 +33,4 @@ class INetworkManager {
     [[nodiscard]] virtual bool isRunning() const = 0;
 };
 
-}  // namespace net
+}  // namespace rtype::net
