@@ -4,6 +4,7 @@
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "utils/MoveOnlyFunction.hpp"
 
 namespace ecs {
 

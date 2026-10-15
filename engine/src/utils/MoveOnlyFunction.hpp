@@ -1,20 +1,27 @@
 #pragma once
+#include <version>  // IWYU pragma: keep
+
+// Apple libc++ does not ship std::move_only_function yet, so fall back to a minimal equivalent.
+#if defined(__cpp_lib_move_only_function) && __cpp_lib_move_only_function >= 202110L
+
+#include <functional>
+
+namespace ecs {
+
+template <typename Signature>
+using MoveOnlyFunction = std::move_only_function<Signature>;
+
+}  // namespace ecs
+
+#else
+
 #include <cstddef>
 #include <functional>
 #include <memory>
 #include <type_traits>
 #include <utility>
-#include <version>
 
 namespace ecs {
-
-// Apple libc++ does not ship std::move_only_function yet, so fall back to a minimal equivalent.
-#if defined(__cpp_lib_move_only_function) && __cpp_lib_move_only_function >= 202110L
-
-template <typename Signature>
-using MoveOnlyFunction = std::move_only_function<Signature>;
-
-#else
 
 template <typename Signature>
 class MoveOnlyFunction;
@@ -62,6 +69,6 @@ class MoveOnlyFunction<R(Args...)> {
     std::unique_ptr<Concept> _impl;
 };
 
-#endif
-
 }  // namespace ecs
+
+#endif
