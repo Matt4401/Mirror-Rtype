@@ -1,6 +1,5 @@
 #include "ecs/CommandBuffer.hpp"
 
-#include <functional>
 #include <utility>
 
 #include "ecs/Entity.hpp"
@@ -10,7 +9,7 @@ namespace ecs {
 
 void CommandBuffer::deferDestroy(Entity e) { _destroyQueue.push_back(e); }
 
-void CommandBuffer::deferSpawn(std::move_only_function<void(Entity, Registry&)> initializer) {
+void CommandBuffer::deferSpawn(MoveOnlyFunction<void(Entity, Registry&)> initializer) {
     _spawnQueue.push_back(std::move(initializer));
 }
 
