@@ -109,6 +109,25 @@ Wren provides native, stackful coroutines called **Fibers**. We bind the C++ eng
 
 To prevent scripts from operating in a vacuum, the C++ engine exposes high-performance spatial queries to the VM (`World.getNearestWithTag`, `World.getEntitiesInRadius`). The heavy computational lifting (iterating over Spatial Partitioning trees or Sparse Sets) remains 100% in native compiled C++, returning only the resulting Entity identifiers to Wren.
 
+### 4.6. Hot-Reloading Architecture: Clean VM Swap via DOD State Separation vs. OOP Managed State Corruption
+
+In traditional Object-Oriented game engines (e.g. standard Unity MonoBehaviours, Unreal Blueprints, or Python-based frameworks), hot-reloading scripts during live gameplay is notoriously fragile:
+
+1. **State Corruption in OOP:** When game state (positions, velocities, health, inventories) is stored inside the script instance's private fields, modifying a script class structure (adding/removing variables or changing types) causes the VM's serialization/deserialization pass to corrupt state or reset objects to default values.
+2. **Dynamic In-Place Mutation Risks:** Attempting to patch active bytecode tables or method dictionaries at runtime frequently causes dangling function pointers, stale closures, or undefined behavior in multithreaded systems.
+
+Our architecture resolves this entirely by leveraging our **Data-Oriented Design (DOD)** separation:
+
+* **100% Stateless Script Logic:** Script instances do not hold authoritative game state. All critical state lives exclusively in native C++ `SparseArray`s (`Position`, `Velocity`, `Health`).
+* **Wren Single-Pass Re-Compilation Constraint:** Wren's single-pass compiler prohibits re-declaring class symbols (`Variable 'X' is already defined`) within the same module scope, preventing naive in-place re-evaluation.
+* **Microsecond Clean VM Swap:** Rather than fighting the language compiler with brittle runtime bytecode patching, `ScriptSystem` performs a clean VM recreation:
+  1. Releases stale script handles and clears sleeping fibers.
+  2. Calls `wrenFreeVM()` and allocates a fresh `::WrenVM*` in `< 0.2 ms`.
+  3. Replays registered foreign methods and component binders via `addBinderReplay`.
+  4. Re-compiles all watched script files from disk.
+  5. Re-instantiates `ScriptComponent`s and triggers the `onReload()` lifecycle hook.
+* **Isolated Staging VM Validation:** Before committing a swap, the modified script source is validated in an isolated staging VM. If a syntax error or unresolved symbol is detected, the swap is rejected, leaving the running game session uninterrupted and completely stable.
+
 ---
 
 ## 5. Industry Comparisons & Validation

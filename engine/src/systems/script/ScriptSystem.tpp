@@ -1,5 +1,5 @@
 #pragma once
-#include "systems/ScriptSystem.hpp"
+#include "systems/script/ScriptSystem.hpp"
 
 namespace systems {
 

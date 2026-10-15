@@ -58,6 +58,16 @@ class WrenVM {
     void setModuleLoader(ModuleLoader loader);
 
     /**
+     * @brief Retrieves the active module loader callback.
+     */
+    [[nodiscard]] const ModuleLoader& getModuleLoader() const noexcept;
+
+    /**
+     * @brief Recreates the internal Wren virtual machine while preserving foreign bindings and callbacks.
+     */
+    void reset();
+
+    /**
      * @brief Sets the text output handler intercepting `System.print`.
      * @param handler Callable taking output text.
      */
