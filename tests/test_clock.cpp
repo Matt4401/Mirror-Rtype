@@ -8,7 +8,7 @@
 
 namespace {
 
-constexpr float FIXED_DT = 0.0166F;
+constexpr float FIXED_DT = ecs::time::DEFAULT_FIXED_DT;
 
 struct FakeTime {
     double now = 0.0;
