@@ -19,16 +19,10 @@ jobs:
     name: Build (${{ matrix.os }})
     if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
-        experimental: [false]
-        include:
-          # macOS is informational only and never blocks merging
-          - os: macos-latest
-            experimental: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
