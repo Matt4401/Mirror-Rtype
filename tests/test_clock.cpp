@@ -125,3 +125,8 @@ TEST(Clock, DefaultSourceUsesRealTime) {
     clock.tick(FIXED_DT, [&](const ecs::time::Time&) { ++calls; });
     EXPECT_LE(calls, ecs::time::Clock::DEFAULT_MAX_STEPS_PER_TICK);
 }
+
+int main(int argc, char** argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
