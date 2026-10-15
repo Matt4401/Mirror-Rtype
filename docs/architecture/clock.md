@@ -55,6 +55,8 @@ If the process freezes (debugger, OS suspend, heavy load), a huge amount of time
 | `totalElapsedTime` | `float` | Simulated time since the clock started (or was reset), in seconds |
 | `tickCount` | `std::uint64_t` | Number of steps executed since the clock started (or was reset) |
 
+`Time.hpp` also provides `ecs::time::DEFAULT_FIXED_DT` (`0.0166F`, i.e. 60 Hz), the step size to pass to `tick` unless a different rate is needed.
+
 The total is accumulated internally in `double` precision, so it does not drift even after many thousands of ticks.
 
 ## 4. API Reference
@@ -95,7 +97,7 @@ class Clock {
 
 ```cpp
 ecs::time::Clock clock;
-constexpr float FIXED_DT = 0.0166F;   // ~60 Hz
+constexpr float FIXED_DT = ecs::time::DEFAULT_FIXED_DT;   // 0.0166F, ~60 Hz
 
 while (running) {
     clock.tick(FIXED_DT, [&](const ecs::time::Time& time) {
