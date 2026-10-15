@@ -3,6 +3,9 @@
 
 namespace ecs::time {
 
+/// Default simulation step: 60 Hz.
+inline constexpr float DEFAULT_FIXED_DT = 0.0166F;
+
 /**
  * @brief Simulation time exposed to systems on each fixed tick.
  */
