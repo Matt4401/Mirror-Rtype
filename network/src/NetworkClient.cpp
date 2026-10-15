@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <asio/buffer.hpp>
-#include <asio/connect.hpp>  // IWYU pragma: keep (asio::connect is declared here, defined in asio/impl/)
+#include <asio/connect.hpp>
 #include <asio/error.hpp>
 #include <asio/executor_work_guard.hpp>
 #include <asio/ip/tcp.hpp>
@@ -54,14 +54,10 @@ bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
         return false;
     }
 
-    // The client has a single connection: its events always carry ClientId 0.
     _tcp = std::make_shared<session::TcpSession>(
         std::move(socket), 0,
         [this](ClientId, const MessageKind kind, Bytes payload) { onTcpMessage(kind, std::move(payload)); },
         [this](const ClientId client) {
-            // The connection is gone (kick, timeout, protocol violation): the client is single-use, so it is stopped.
-            // Set before pushing Disconnected, so that isRunning() is already false when the game reads the event.
-            // The network thread keeps running until stop() releases _work and joins it.
             _state = State::Stopped;
             closeUdpNow();
             _events.push({.type = EventType::Disconnected, .client = client, .data = {}, .channel = Channel::Reliable});
@@ -86,11 +82,9 @@ void NetworkClient::onTcpMessage(const MessageKind kind, Bytes payload) {
             _clientId = wire::readU32(std::span(payload).first<4>());
             _token = wire::readU32(std::span(payload).subspan<4, 4>());
             _welcomed = true;
-            // Connected = the library is ready (openUdp() can be called), same meaning as on the server.
             _events.push({.type = EventType::Connected, .client = 0, .data = {}, .channel = Channel::Reliable});
             break;
         default:
-            // UdpOpen / UdpClose only go client -> server, and any other value is not a known kind.
             _tcp->close();
             break;
     }
@@ -100,8 +94,6 @@ bool NetworkClient::openUdp(const std::uint16_t port) {
     if (_state.load() != State::Running) {
         return false;
     }
-
-    // Runs on the network thread: only that thread touches the sockets.
     auto open = [this, port] {
         if (!_welcomed) {
             std::cerr << "[network] cannot open UDP: no Welcome received from the server yet\n";
@@ -109,16 +101,15 @@ bool NetworkClient::openUdp(const std::uint16_t port) {
         }
         try {
             _serverUdp = {_serverAddress, port};
-            // Replaces (and closes) the previous socket if UDP was already open.
             _udpSocket = asio::ip::udp::socket(_io, {_serverUdp.protocol(), 0});
         } catch (const asio::system_error& e) {
             std::cerr << "[network] cannot open UDP to port " << port << ": " << e.what() << '\n';
             return false;
         }
         _tcp->send(MessageKind::UdpOpen);
-        _lastUdpReceived = std::chrono::steady_clock::now();  // the 5 s timeout starts here
+        _lastUdpReceived = std::chrono::steady_clock::now();
         _udpBound = false;
-        sendDatagram({});  // lets the server learn our endpoint right away
+        sendDatagram({});
         receiveUdp();
         scheduleUdpTick();
         return true;
@@ -156,7 +147,7 @@ void NetworkClient::receiveUdp() {
                                       if (!ec && _udpFrom == _serverUdp && size <= wire::MAX_DATAGRAM) {
                                           _lastUdpReceived = std::chrono::steady_clock::now();
                                           _udpBound = true;
-                                          if (size > 0) {  // an empty datagram is a keepalive
+                                          if (size > 0) {
                                               const auto payload = std::span(_udpBuffer).first(size);
                                               _events.push({.type = EventType::Data,
                                                             .client = 0,
@@ -175,8 +166,6 @@ void NetworkClient::sendDatagram(const Bytes& payload) {
     std::ranges::copy(payload, datagram->begin() + wire::UDP_HEADER_SIZE);
 
     _lastUdpSent = std::chrono::steady_clock::now();
-    // [datagram] is NOT an unused capture: asio::buffer() does not copy, so this shared_ptr is what keeps the bytes
-    // alive until the send completes. Without it, the bytes are freed when this function returns: use-after-free.
     _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [datagram](std::error_code, std::size_t) {});
 }
 
@@ -194,12 +183,11 @@ void NetworkClient::onUdpTick() {
     const auto now = std::chrono::steady_clock::now();
 
     if (now - _lastUdpReceived > wire::UDP_TIMEOUT) {
-        // Server unreachable: drop the whole connection. The close handler closes UDP and pushes Disconnected.
-        _tcp->close();
+        _tcp->close();  // Server unreachable: drop the whole connection. The close handler closes UDP and pushes
+                        // Disconnected.
+
         return;
     }
-    // Until the server answers, our bind datagram may have been dropped (it can arrive before UdpOpen, which travels
-    // over TCP): resend it every tick. Afterwards, a keepalive after 1 s of silence.
     if (!_udpBound || now - _lastUdpSent >= wire::KEEPALIVE_INTERVAL) {
         sendDatagram({});
     }
