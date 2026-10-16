@@ -8,13 +8,18 @@ repos:
         args: [--unsafe]
       - id: check-added-large-files
 
-  - repo: https://github.com/pocc/pre-commit-hooks
-    rev: v1.3.5
+  - repo: local
     hooks:
       - id: clang-format
-        args: [--style=file]
+        name: clang-format
+        entry: clang-format -i
+        language: system
+        types_or: [c++, c]
       - id: clang-tidy
-        args: [-p=.]
+        name: clang-tidy
+        entry: clang-tidy -p=.
+        language: system
+        types_or: [c++, c]
         exclude: (^tests/|.*\.tpp$)
 
   - repo: local
