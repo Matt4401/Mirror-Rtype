@@ -16,3 +16,13 @@ repos:
       - id: clang-tidy
         args: [-p=.]
         exclude: (^tests/|.*\.tpp$)
+
+  - repo: local
+    hooks:
+      - id: docstring-coverage
+        name: Check C++ docstring coverage
+        entry: python3 scripts/check_docstring_coverage.py
+        args: [--min-coverage, "80", --dirs, "engine/src"]
+        language: system
+        pass_filenames: false
+        always_run: true
