@@ -1,3 +1,8 @@
+/**
+ * @file CoreModules.hpp
+ * @brief Embedded Wren source code for core engine modules and dispatchers.
+ */
+
 #pragma once
 #include <string_view>
 

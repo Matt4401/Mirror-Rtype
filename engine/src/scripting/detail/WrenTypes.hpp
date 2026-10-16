@@ -1,3 +1,8 @@
+/**
+ * @file WrenTypes.hpp
+ * @brief Internal type definitions, composite keys, and smart handle deleters for Wren.
+ */
+
 #pragma once
 #include <cstddef>
 #include <functional>
@@ -23,6 +28,11 @@ struct ForeignMethodKey {
     /** @brief Signature including parameter count (e.g. "wait(_)"). */
     std::string signature;
 
+    /**
+     * @brief Compares two ForeignMethodKey instances for exact field equality.
+     * @param other Key to compare with.
+     * @return True if all fields match, false otherwise.
+     */
     bool operator==(const ForeignMethodKey& other) const noexcept {
         return isStatic == other.isStatic && module == other.module && className == other.className &&
                signature == other.signature;
@@ -33,6 +43,11 @@ struct ForeignMethodKey {
  * @brief Custom hasher for ForeignMethodKey allowing use in std::unordered_map.
  */
 struct ForeignMethodKeyHash {
+    /**
+     * @brief Computes a combined hash code for a ForeignMethodKey.
+     * @param k The foreign method key to hash.
+     * @return Hash code as std::size_t.
+     */
     std::size_t operator()(const ForeignMethodKey& k) const noexcept {
         std::size_t const h1 = std::hash<std::string>{}(k.module);
         std::size_t const h2 = std::hash<std::string>{}(k.className);

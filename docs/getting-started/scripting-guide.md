@@ -11,7 +11,7 @@ This guide is designed for **Game Designers and scripters**. You do not need to 
 The engine adopts a **hybrid, event-driven architecture**:
 
 * **Zero Overhead by Default:** Scripts react to events (`onCollision`, `onDamage`) rather than running expensive loops every frame.
-* **Optional Continuous Updates:** If you need continuous motion (e.g. steering a homing missile), define `update(dt)`. The engine only polls scripts that explicitly implement this method.
+* **Optional Continuous Updates:** If you need continuous motion (e.g. steering a homing missile), set `hasUpdate = true` in `ScriptComponent` and define `update(dt)`. The engine only polls scripts that explicitly opt in with `hasUpdate = true`.
 * **Direct Component Access:** You interact with entities and components using natural object-oriented syntax (`_entity.position.x = 100.0`).
 * **Safe Mutations:** Deleting entities via `_entity.destroy()` or spawning prefabs is deferred through an engine command buffer, ensuring game stability.
 
@@ -24,7 +24,8 @@ In C++ or level configuration files, an entity receives a script by attaching a 
 ```cpp
 registry.addComponent<ScriptComponent>(entity, ScriptComponent{
     .moduleName = "scripts/gameplay/HomingMissile",
-    .className = "HomingMissile"
+    .className = "HomingMissile",
+    .hasUpdate = true
 });
 ```
 

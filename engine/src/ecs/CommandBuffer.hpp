@@ -15,12 +15,18 @@ namespace ecs {
  */
 class CommandBuffer {
   public:
+    /** @brief Default constructor initializing empty command queues. */
     CommandBuffer() = default;
+    /** @brief Default destructor. */
     ~CommandBuffer() = default;
 
+    /** @brief Deleted copy constructor. */
     CommandBuffer(const CommandBuffer&) = delete;
+    /** @brief Deleted copy assignment operator. */
     CommandBuffer& operator=(const CommandBuffer&) = delete;
+    /** @brief Defaulted move constructor. */
     CommandBuffer(CommandBuffer&&) noexcept = default;
+    /** @brief Defaulted move assignment operator. */
     CommandBuffer& operator=(CommandBuffer&&) noexcept = default;
 
     /**
@@ -59,7 +65,9 @@ class CommandBuffer {
     [[nodiscard]] bool empty() const noexcept;
 
   private:
+    /** @brief Queue of entities scheduled for deferred destruction on flush. */
     std::vector<Entity> _destroyQueue;
+    /** @brief Queue of initializer functions for newly spawned entities on flush. */
     std::vector<std::move_only_function<void(Entity, Registry&)>> _spawnQueue;
 };
 

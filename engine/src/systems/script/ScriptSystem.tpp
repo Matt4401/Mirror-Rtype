@@ -1,3 +1,8 @@
+/**
+ * @file ScriptSystem.tpp
+ * @brief Template implementation for ScriptSystem event forwarding subscriptions.
+ */
+
 #pragma once
 #include "systems/script/ScriptSystem.hpp"
 
@@ -7,12 +12,12 @@ template <typename EventType, typename ArgExtractor>
 void ScriptSystem::registerEventForwarding(ecs::EventBus& bus, std::string const& methodName,
                                            ArgExtractor&& extractor) {
     std::string const signature = methodName + "(_)";
-    auto callHandle = _vm.makeCallHandle(signature);
-    WrenHandle* rawHandle = callHandle.get();
-    _cachedMethodHandles[signature] = std::move(callHandle);
+    if (!_cachedMethodHandles.contains(signature)) {
+        _cachedMethodHandles[signature] = _vm.makeCallHandle(signature);
+    }
 
     bus.subscribe<EventType>(
-        [this, rawHandle, extractor = std::forward<ArgExtractor>(extractor)](const EventType& event) {
+        [this, signature, extractor = std::forward<ArgExtractor>(extractor)](const EventType& event) {
             auto [targetEntity, argEntity] = extractor(event);
             if (!_registry->template getComponents<ecs::ScriptComponent>().contains(targetEntity)) {
                 return;
@@ -21,6 +26,12 @@ void ScriptSystem::registerEventForwarding(ecs::EventBus& bus, std::string const
             if (script.instanceHandle == nullptr) {
                 return;
             }
+
+            auto it = _cachedMethodHandles.find(signature);
+            if (it == _cachedMethodHandles.end() || it->second.get() == nullptr) {
+                return;
+            }
+            WrenHandle* rawHandle = it->second.get();
 
             ::WrenVM* raw = _vm.raw();
             WrenHandle* argHandle = nullptr;

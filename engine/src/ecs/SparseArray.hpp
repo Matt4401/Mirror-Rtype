@@ -16,12 +16,18 @@ namespace ecs {
  */
 class ISparseArray {
   public:
+    /** @brief Default constructor for the type-erased sparse array interface. */
     ISparseArray() = default;
+    /** @brief Virtual destructor. */
     virtual ~ISparseArray() = default;
 
+    /** @brief Deleted copy constructor. */
     ISparseArray(const ISparseArray&) = delete;
+    /** @brief Deleted copy assignment operator. */
     ISparseArray& operator=(const ISparseArray&) = delete;
+    /** @brief Deleted move constructor. */
     ISparseArray(ISparseArray&&) = delete;
+    /** @brief Deleted move assignment operator. */
     ISparseArray& operator=(ISparseArray&&) = delete;
 
     /**
@@ -45,12 +51,18 @@ class ISparseArray {
 template <typename Component>
 class SparseArray : public ISparseArray {
   public:
+    /** @brief Default constructor initializing an empty sparse set. */
     SparseArray() = default;
+    /** @brief Override destructor releasing stored component arrays. */
     ~SparseArray() override = default;
 
+    /** @brief Deleted copy constructor. */
     SparseArray(const SparseArray&) = delete;
+    /** @brief Deleted copy assignment operator. */
     SparseArray& operator=(const SparseArray&) = delete;
+    /** @brief Defaulted move constructor. */
     SparseArray(SparseArray&&) noexcept = default;
+    /** @brief Defaulted move assignment operator. */
     SparseArray& operator=(SparseArray&&) noexcept = default;
 
     /**
@@ -123,8 +135,11 @@ class SparseArray : public ISparseArray {
     [[nodiscard]] std::vector<Entity> const& getDenseEntities() const noexcept;
 
   private:
+    /** @brief Sparse array indexed by Entity ID holding indices into the dense vectors. */
     std::vector<std::optional<std::size_t>> _sparse;
+    /** @brief Dense array of active entity IDs corresponding to components. */
     std::vector<Entity> _dense;
+    /** @brief Contiguous dense array storing packed component instances. */
     std::vector<Component> _components;
 };
 
