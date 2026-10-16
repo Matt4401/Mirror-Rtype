@@ -92,9 +92,11 @@ TEST(Clock, SpiralOfDeathIsCapped) {
     EXPECT_EQ(clock.tick(FIXED_DT, [&](const ecs::time::Time&) { ++calls; }), 5U);
     EXPECT_EQ(calls, 5U);
 
-    // The backlog was dropped: the next short frame does not trigger a burst.
-    fake.now = 10.001;
+    // The backlog was dropped: only a remainder below one step is kept, so no time passing means no step
+    // and one more step of real time yields at most two steps instead of a burst.
     EXPECT_EQ(clock.tick(FIXED_DT, [](const ecs::time::Time&) {}), 0U);
+    fake.now = 10.0 + static_cast<double>(FIXED_DT);
+    EXPECT_LE(clock.tick(FIXED_DT, [](const ecs::time::Time&) {}), 2U);
 }
 
 TEST(Clock, ResetClearsCounters) {
