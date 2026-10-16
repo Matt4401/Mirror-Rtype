@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package rtype;
+
+// ---------------------------------------------------------------------------
+// Shared types
+// ---------------------------------------------------------------------------
+
+enum RoomState {
+    ROOM_WAITING = 0;
+    ROOM_IN_GAME  = 1;
+}
+
+// One room entry as sent inside LobbyList.
+message RoomEntry {
+    uint32    room_id       = 1;
+    uint32    player_count  = 2; // 0–4
+    uint32    max_players   = 3; // always 4
+    RoomState state         = 4;
+}
+
+// One player slot as sent inside LobbyUpdate.
+// A slot with client_id == 0 is empty.
+message PlayerSlot {
+    uint32 client_id = 1;
+    bool   ready     = 2;
+}
+
+// ---------------------------------------------------------------------------
+// Opcode 0x10 — LOBBY_LIST_REQ (Client → Server, TCP, Lobby phase)
+// Requests the current list of available rooms.  No payload fields.
+// ---------------------------------------------------------------------------
+message LobbyListReq {}
+
+// ---------------------------------------------------------------------------
+// Opcode 0x11 — LOBBY_LIST (Server → Client, TCP, Lobby phase)
+// Sent in reply to LobbyListReq and pushed proactively on any room change.
+// ---------------------------------------------------------------------------
+message LobbyList {
+    repeated RoomEntry rooms = 1; // 0–8 entries
+}
+
+// ---------------------------------------------------------------------------
+// Opcode 0x12 — LOBBY_CREATE (Client → Server, TCP, Lobby phase)
+// Requests creation of a new room.  No payload fields.
+// ---------------------------------------------------------------------------
+message LobbyCreate {}
+
+// ---------------------------------------------------------------------------
+// Opcode 0x13 — LOBBY_JOIN (Client → Server, TCP, Lobby phase)
+// Requests to join an existing room.
+// Ignored if the room is full (player_count == 4) or state == ROOM_IN_GAME.
+// ---------------------------------------------------------------------------
+message LobbyJoin {
+    uint32 room_id = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Opcode 0x14 — LOBBY_READY (Client → Server, TCP, Lobby phase)
+// Toggles the client's ready state.
+// The server starts the game when all players have ready == true and player_count >= 1.
+// ---------------------------------------------------------------------------
+message LobbyReady {
+    bool ready = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Opcode 0x15 — LOBBY_UPDATE (Server → Client, TCP, Lobby phase)
+// Pushed whenever a player joins, leaves, or changes their ready state.
+// slots always contains exactly 4 entries; empty slots have client_id == 0.
+// ---------------------------------------------------------------------------
+message LobbyUpdate {
+    uint32            room_id      = 1;
+    uint32            player_count = 2; // 0–4
+    repeated PlayerSlot slots      = 3; // exactly 4 entries
+}

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package rtype;
+
+// Payload for opcode 0x01 — HELLO (Client → Server, TCP, Handshake phase)
+// Sent immediately after the transport layer delivers the internal Welcome message.
+message Hello {
+    uint32 client_version = 1; // must be 0x01; server closes TCP if it doesn't match
+}
+
+// Payload for opcode 0x02 — WELCOME (Server → Client, TCP, Handshake phase)
+// Confirms the handshake and provides the UDP port the client must call openUdp() with.
+message Welcome {
+    uint32 udp_port = 1; // server's UDP listening port (same as TCP by default: 4242)
+}
