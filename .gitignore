@@ -82,6 +82,10 @@ B-CPP-500_rtype.pdf
 # XMake
 .xmake/
 
+# Documentation build & Python venv
+site/
+.venv/
+.clangd
+
 # Claude
 .claude
-

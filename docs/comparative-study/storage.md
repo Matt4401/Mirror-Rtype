@@ -38,8 +38,28 @@ The components only store a lightweight reference (e.g., `std::string texture_id
 
 ### Hardcoding vs. Data-Driven Definitions
 
-Currently, entities are instantiated in code (`registry.add_component(...)`). As the project scales, having designers tweak C++ code to balance an enemy's health is counter-productive.
+Currently, entities are instantiated in code (`registry.addComponent(...)`). As the project scales, having designers tweak C++ code to balance an enemy's health is counter-productive.
 
 #### The Data-Driven Strategy
 
 Because our components are PODs, they perfectly map to data formats like JSON. A `Prefab` storage system can parse a `.json` file containing blueprint data (e.g., `{"Health": {"hp": 100}}`) and dynamically push these components into the ECS. This guarantees clear separation between the engine's binary storage and the game's configuration storage.
+
+---
+
+## 4. ECS Table Storage: Sparse Set & Sequential Type IDs
+
+### The Sparse Set Pattern
+
+Instead of storing components as an array-of-structures (AoS) on an entity object, our engine uses the **Sparse Set** pattern:
+
+- **Dense Component Vector:** Components are packed tightly in contiguous memory, maximizing CPU cache line utilization ($L1/L2$) during system loops.
+- **Sparse Entity Index:** A vector indexed directly by entity ID mapping to the dense index in $O(1)$.
+- **Swap-and-Pop Deletions:** Entity removal swaps the last dense element into the deleted slot in $O(1)$, maintaining continuous memory without fragmentation.
+
+### Sequential Type ID Optimization
+
+Rather than identifying components at runtime with `std::unordered_map<std::type_index, ...>` (which introduces 64-bit hash computations, bucket traversals, and pointer chasing):
+
+- The engine assigns dense **sequential integer IDs (`0, 1, 2, ...`)** to each component type via static local counters (`ComponentTypeId`).
+- Component arrays are held in a **flat `std::vector<std::unique_ptr<ISparseArray>>`**.
+- Lookup overhead is reduced to a single direct array index in $O(1)$, allowing systems in `runSystem` to resolve multiple component arrays once into registers before iteration.
