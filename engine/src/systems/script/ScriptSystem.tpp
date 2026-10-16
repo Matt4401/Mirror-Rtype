@@ -28,7 +28,7 @@ void ScriptSystem::registerEventForwarding(ecs::EventBus& bus, std::string const
             }
 
             auto it = _cachedMethodHandles.find(signature);
-            if (it == _cachedMethodHandles.end() || it->second.get() == nullptr) {
+            if (it == _cachedMethodHandles.end() || it->second == nullptr) {
                 return;
             }
             WrenHandle* rawHandle = it->second.get();

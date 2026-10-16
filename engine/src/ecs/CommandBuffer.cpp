@@ -31,8 +31,9 @@ void CommandBuffer::flush(Registry& registry) {
     }
     _spawnQueue.clear();
 
-    std::sort(_destroyQueue.begin(), _destroyQueue.end());
-    _destroyQueue.erase(std::unique(_destroyQueue.begin(), _destroyQueue.end()), _destroyQueue.end());
+    std::ranges::sort(_destroyQueue);
+    auto const [first, last] = std::ranges::unique(_destroyQueue);
+    _destroyQueue.erase(first, last);
 
     for (Entity const e : _destroyQueue) {
         registry.killEntity(e);
