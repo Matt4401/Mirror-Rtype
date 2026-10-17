@@ -4,12 +4,11 @@
 namespace ecs {
 
 template <typename EventType>
-EventBus::EventToken EventBus::subscribe(std::move_only_function<void(const EventType&)> callback) {
+EventBus::EventToken EventBus::subscribe(MoveOnlyFunction<void(const EventType&)> callback) {
     const auto type = std::type_index(typeid(EventType));
     const EventToken token = _nextToken++;
 
-    std::move_only_function<void(const void*)> erasedCallback = [callback =
-                                                                     std::move(callback)](const void* event) mutable {
+    MoveOnlyFunction<void(const void*)> erasedCallback = [callback = std::move(callback)](const void* event) mutable {
         callback(*static_cast<const EventType*>(event));
     };
 

@@ -1,9 +1,10 @@
 #pragma once
 #include <cstdint>
-#include <functional>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
+
+#include "utils/MoveOnlyFunction.hpp"
 
 namespace ecs {
 
@@ -12,7 +13,7 @@ namespace ecs {
  *
  * Provides a type-safe pub-sub messaging architecture:
  * - Systems or scripts subscribe to specific event types (`CollisionEvent`, etc.).
- * - Type erasure (`std::move_only_function<void(const void*)>`) allows storing callbacks generically.
+ * - Type erasure (`MoveOnlyFunction<void(const void*)>`) allows storing callbacks generically.
  * - Supports listener removal via subscription tokens (`EventToken`).
  */
 class EventBus {
@@ -44,7 +45,7 @@ class EventBus {
      * @return Unique `EventToken` for unsubscribing later.
      */
     template <typename EventType>
-    EventToken subscribe(std::move_only_function<void(const EventType&)> callback);
+    EventToken subscribe(MoveOnlyFunction<void(const EventType&)> callback);
 
     /**
      * @brief Unsubscribes a listener identified by its token.
@@ -72,7 +73,7 @@ class EventBus {
         /** @brief Unique cancellation token identifying this listener. */
         EventToken token;
         /** @brief Type-erased invocation callback receiving an opaque event pointer. */
-        std::move_only_function<void(const void*)> callback;
+        MoveOnlyFunction<void(const void*)> callback;
     };
 
     /** @brief Map of event types to their active subscriber callback lists. */

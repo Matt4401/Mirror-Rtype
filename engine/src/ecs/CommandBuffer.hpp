@@ -1,9 +1,9 @@
 #pragma once
-#include <functional>
 #include <vector>
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "utils/MoveOnlyFunction.hpp"
 
 namespace ecs {
 
@@ -41,7 +41,7 @@ class CommandBuffer {
      *
      * @param initializer Move-only callback invoked with the newly allocated entity and registry.
      */
-    void deferSpawn(std::move_only_function<void(Entity, Registry&)> initializer = nullptr);
+    void deferSpawn(MoveOnlyFunction<void(Entity, Registry&)> initializer = nullptr);
 
     /**
      * @brief Flushes all queued commands into the provided ECS Registry.
@@ -68,7 +68,7 @@ class CommandBuffer {
     /** @brief Queue of entities scheduled for deferred destruction on flush. */
     std::vector<Entity> _destroyQueue;
     /** @brief Queue of initializer functions for newly spawned entities on flush. */
-    std::vector<std::move_only_function<void(Entity, Registry&)>> _spawnQueue;
+    std::vector<MoveOnlyFunction<void(Entity, Registry&)>> _spawnQueue;
 };
 
 }  // namespace ecs
