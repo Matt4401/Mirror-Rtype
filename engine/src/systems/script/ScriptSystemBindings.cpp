@@ -1,3 +1,8 @@
+/**
+ * @file ScriptSystemBindings.cpp
+ * @brief Foreign method bindings and built-in core module loader for ScriptSystem.
+ */
+
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -18,6 +23,10 @@ namespace systems {
 
 namespace {
 
+/**
+ * @brief Foreign static method `Engine.registerWait(fiber, seconds)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
 void engineRegisterWait(::WrenVM* rawVm) {
     auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
     if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
@@ -29,6 +38,10 @@ void engineRegisterWait(::WrenVM* rawVm) {
     scriptSystem->addSleepingFiber(fiber, static_cast<float>(seconds));
 }
 
+/**
+ * @brief Foreign static method `Engine.spawnPrefab(name, x, y)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
 void engineSpawnPrefab(::WrenVM* rawVm) {
     auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
     if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
@@ -46,6 +59,10 @@ void engineSpawnPrefab(::WrenVM* rawVm) {
         });
 }
 
+/**
+ * @brief Foreign static method `Entity.destroyEntity(id)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
 void entityDestroy(::WrenVM* rawVm) {
     auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
     if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
@@ -56,13 +73,25 @@ void entityDestroy(::WrenVM* rawVm) {
     scriptSystem->queueDestroyEntity(e);
 }
 
+/**
+ * @brief Foreign static method `World.getEntitiesWithTag(tag)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
 void worldGetEntitiesWithTag(::WrenVM* rawVm) {
     wrenEnsureSlots(rawVm, 1);
     wrenSetSlotNewList(rawVm, 0);
 }
 
+/**
+ * @brief Foreign static method `World.getNearestWithTag(x, y, tag)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
 void worldGetNearestWithTag(::WrenVM* rawVm) { wrenSetSlotNull(rawVm, 0); }
 
+/**
+ * @brief Foreign static method `World.getEntitiesInRadius(x, y, radius)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
 void worldGetEntitiesInRadius(::WrenVM* rawVm) {
     wrenEnsureSlots(rawVm, 1);
     wrenSetSlotNewList(rawVm, 0);

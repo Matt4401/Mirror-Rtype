@@ -1,3 +1,8 @@
+/**
+ * @file ComponentBinder.hpp
+ * @brief Type-safe fluent builder for binding C++ ECS components to Wren scripts.
+ */
+
 #pragma once
 #include <string>
 #include <vector>
@@ -28,12 +33,29 @@ class ComponentBinderBase {
      * @param className The name of the class exposed to Wren (e.g. "Position").
      */
     ComponentBinderBase(WrenVM& vm, std::string moduleName, std::string className);
+
+    /**
+     * @brief Virtual destructor.
+     */
     virtual ~ComponentBinderBase() = default;
 
+    /** @brief Deleted copy constructor. */
     ComponentBinderBase(const ComponentBinderBase&) = delete;
+    /** @brief Deleted copy assignment operator. */
     ComponentBinderBase& operator=(const ComponentBinderBase&) = delete;
-    ComponentBinderBase(ComponentBinderBase&&) noexcept = default;
-    ComponentBinderBase& operator=(ComponentBinderBase&&) noexcept = default;
+
+    /**
+     * @brief Defaulted move constructor.
+     * @param other Source rvalue reference.
+     */
+    ComponentBinderBase(ComponentBinderBase&& other) noexcept = default;
+
+    /**
+     * @brief Defaulted move assignment operator.
+     * @param other Source rvalue reference.
+     * @return Reference to this binder.
+     */
+    ComponentBinderBase& operator=(ComponentBinderBase&& other) noexcept = default;
 
     /**
      * @brief Generates the corresponding Wren script class definition.
@@ -67,9 +89,13 @@ class ComponentBinderBase {
     void registerPropertyMethods(const std::string& propName, WrenForeignMethodFn getter, WrenForeignMethodFn setter);
 
   private:
+    /** @brief Non-owning pointer to the target WrenVM instance. */
     WrenVM* _vm = nullptr;
+    /** @brief Target Wren module name. */
     std::string _module;
+    /** @brief Target Wren class name. */
     std::string _className;
+    /** @brief Names of all bound properties for script generation. */
     std::vector<std::string> _properties;
 };
 

@@ -1,3 +1,8 @@
+/**
+ * @file WrenVM.hpp
+ * @brief High-level C++23 RAII wrapper and manager for the Wren Virtual Machine.
+ */
+
 #pragma once
 #include <expected>
 #include <functional>
@@ -42,13 +47,32 @@ class WrenVM {
     using ErrorHandler =
         std::function<void(WrenErrorType type, std::string_view module, int line, std::string_view message)>;
 
+    /**
+     * @brief Constructs a new WrenVM instance and initializes internal configuration.
+     */
     WrenVM();
+
+    /**
+     * @brief Destroys the WrenVM instance and releases all associated VM resources.
+     */
     ~WrenVM();
 
+    /** @brief Deleted copy constructor. */
     WrenVM(const WrenVM&) = delete;
+    /** @brief Deleted copy assignment operator. */
     WrenVM& operator=(const WrenVM&) = delete;
 
+    /**
+     * @brief Move constructor transferring VM ownership, handles, and callbacks.
+     * @param other Rvalue reference to the source WrenVM.
+     */
     WrenVM(WrenVM&& other) noexcept;
+
+    /**
+     * @brief Move assignment operator transferring VM ownership, handles, and callbacks.
+     * @param other Rvalue reference to the source WrenVM.
+     * @return Reference to this instance.
+     */
     WrenVM& operator=(WrenVM&& other) noexcept;
 
     /**
@@ -237,25 +261,72 @@ class WrenVM {
     [[nodiscard]] T getSlot(int slot);
 
   private:
+    /**
+     * @brief Wren VM callback binding foreign methods to C++ functions.
+     * @param vm Raw Wren VM pointer.
+     * @param module Module name.
+     * @param className Class name.
+     * @param isStatic True if static method.
+     * @param signature Method signature.
+     * @return Function pointer to the foreign method implementation, or nullptr.
+     */
     static WrenForeignMethodFn onBindForeignMethod(::WrenVM* vm, const char* module, const char* className,
                                                    bool isStatic, const char* signature);
 
+    /**
+     * @brief Wren VM callback binding foreign class allocation and finalization functions.
+     * @param vm Raw Wren VM pointer.
+     * @param module Module name.
+     * @param className Class name.
+     * @return Struct containing allocate and finalize callbacks.
+     */
     static WrenForeignClassMethods onBindForeignClass(::WrenVM* vm, const char* module, const char* className);
 
+    /**
+     * @brief Wren VM callback for module import resolution.
+     * @param vm Raw Wren VM pointer.
+     * @param name Module name to import.
+     * @return Struct containing source code or load error status.
+     */
     static WrenLoadModuleResult onLoadModule(::WrenVM* vm, const char* name);
+
+    /**
+     * @brief Wren VM callback redirecting standard output from `System.print`.
+     * @param vm Raw Wren VM pointer.
+     * @param text Printed text string.
+     */
     static void onWrite(::WrenVM* vm, const char* text);
+
+    /**
+     * @brief Wren VM callback receiving compile and runtime error diagnostics.
+     * @param vm Raw Wren VM pointer.
+     * @param type Error category (compile error, runtime error, stack trace).
+     * @param module Module where the error occurred.
+     * @param line Line number of the error.
+     * @param message Diagnostic error message.
+     */
     static void onError(::WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message);
 
+    /** @brief Underlying raw pointer to the Wren VM C instance. */
     ::WrenVM* _vm = nullptr;
+    /** @brief Opaque pointer to the ECS Registry for component lookups. */
     void* _registry = nullptr;
+    /** @brief Opaque pointer to user context (e.g. ScriptSystem). */
     void* _userContext = nullptr;
+    /** @brief Registered module loader callback. */
     ModuleLoader _moduleLoader;
+    /** @brief Registered standard output callback. */
     WriteHandler _writeHandler;
+    /** @brief Registered error diagnostic callback. */
     ErrorHandler _errorHandler;
+    /** @brief Diagnostic error message from the last interpretation error. */
     std::string _lastError;
 
+    /** @brief Cache of loaded module source strings for inspection. */
     std::unordered_map<std::string, std::string> _loadedSources;
+    /** @brief Registry of foreign method callbacks indexed by composite key. */
     std::unordered_map<detail::ForeignMethodKey, WrenForeignMethodFn, detail::ForeignMethodKeyHash> _foreignMethods;
+    /** @brief Registry of foreign class lifecycle callback tables indexed by "module:class". */
     std::unordered_map<std::string, WrenForeignClassMethods> _foreignClasses;
 };
 

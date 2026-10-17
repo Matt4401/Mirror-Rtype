@@ -1,5 +1,6 @@
 #include "ecs/CommandBuffer.hpp"
 
+#include <algorithm>
 #include <utility>
 
 #include "ecs/Entity.hpp"
@@ -29,6 +30,10 @@ void CommandBuffer::flush(Registry& registry) {
         }
     }
     _spawnQueue.clear();
+
+    std::ranges::sort(_destroyQueue);
+    auto const [first, last] = std::ranges::unique(_destroyQueue);
+    _destroyQueue.erase(first, last);
 
     for (Entity const e : _destroyQueue) {
         registry.killEntity(e);

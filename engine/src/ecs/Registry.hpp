@@ -19,12 +19,18 @@ namespace ecs {
  */
 class Registry {
   public:
+    /** @brief Default constructor initializing an empty ECS registry. */
     Registry() = default;
+    /** @brief Default destructor releasing component sparse arrays. */
     ~Registry() = default;
 
+    /** @brief Deleted copy constructor. */
     Registry(const Registry&) = delete;
+    /** @brief Deleted copy assignment operator. */
     Registry& operator=(const Registry&) = delete;
+    /** @brief Defaulted move constructor. */
     Registry(Registry&&) noexcept = default;
+    /** @brief Defaulted move assignment operator. */
     Registry& operator=(Registry&&) noexcept = default;
 
     /**
@@ -38,6 +44,13 @@ class Registry {
      * @param e Entity to destroy.
      */
     void killEntity(Entity e);
+
+    /**
+     * @brief Checks if an entity is currently alive.
+     * @param e Entity to query.
+     * @return True if the entity is active and not destroyed.
+     */
+    [[nodiscard]] bool isAlive(Entity e) const noexcept;
 
     /**
      * @brief Registers or pre-allocates storage for a component type.
@@ -147,9 +160,14 @@ class Registry {
     void runSystem(Func func);
 
   private:
+    /** @brief Vector of type-erased sparse array containers indexed by component type ID. */
     std::vector<std::unique_ptr<ISparseArray>> _componentsArrays;
+    /** @brief Next available entity ID counter when no recycled IDs exist. */
     Entity _nextEntity = 0;
+    /** @brief Queue of recycled entity IDs from previously destroyed entities. */
     std::queue<Entity> _deadEntities;
+    /** @brief Liveness tracking bitmap for entity IDs. */
+    std::vector<bool> _isAlive;
 };
 
 }  // namespace ecs

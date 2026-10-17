@@ -1,3 +1,8 @@
+/**
+ * @file ComponentBinder.cpp
+ * @brief Implementation of ComponentBinderBase foreign class registration and script generation.
+ */
+
 #include "scripting/ComponentBinder.hpp"
 
 #include <sstream>
