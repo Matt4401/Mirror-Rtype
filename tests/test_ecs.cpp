@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <optional>
+
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 
@@ -35,6 +37,25 @@ TEST(ECS, EntityRecycling) {
 
     ecs::Entity const e3 = registry.spawnEntity();
     EXPECT_EQ(e3, 0);  // Should recycle e1's ID
+}
+
+TEST(ECS, DestroyListenerRunsBeforeComponentsAreRemoved) {
+    ecs::Registry registry;
+    registry.registerComponent<Position>();
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent<Position>(entity, Position{.x = 1.0F, .y = 2.0F});
+
+    std::optional<ecs::Entity> notifiedEntity;
+    const std::size_t listenerId = registry.addDestroyListener([&](ecs::Entity destroyed) {
+        EXPECT_TRUE(registry.hasComponent<Position>(destroyed));
+        notifiedEntity = destroyed;
+    });
+
+    registry.killEntity(entity);
+
+    EXPECT_EQ(notifiedEntity, entity);
+    EXPECT_FALSE(registry.hasComponent<Position>(entity));
+    registry.removeDestroyListener(listenerId);
 }
 
 TEST(ECS, SparseArraySwapAndPop) {
