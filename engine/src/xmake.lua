@@ -2,7 +2,7 @@ target("engine")
     set_kind("static")
     add_files("**.cpp|render/**.cpp")
     add_includedirs(".", {public = true})
-    add_packages("wren", {public = true})
+    add_packages("wren", "box2d", {public = true})
 
 if has_config("graphics") then
     includes("render")
