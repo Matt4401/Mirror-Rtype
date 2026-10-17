@@ -47,6 +47,19 @@ High-performance data-oriented ECS architecture utilizing sparse sets and deferr
 
 ---
 
+### 3. Network Subsystem (`rtype::net`)
+
+Asynchronous networking architecture providing TCP sessions and client/server network management.
+
+| Class / Struct | Role & Description |
+| :--- | :--- |
+| [`rtype::net::client::NetworkClient`](rtype/classrtype_1_1net_1_1client_1_1NetworkClient.md) | High-level client managing network connection lifecycle, event-driven socket multiplexing, and packet queues. |
+| [`rtype::net::server::NetworkServer`](rtype/classrtype_1_1net_1_1server_1_1NetworkServer.md) | Network server coordinating client sessions, connection accept loops, and incoming packet routing. |
+| [`rtype::net::session::TcpSession`](rtype/classrtype_1_1net_1_1session_1_1TcpSession.md) | Asynchronous TCP session handling serialized packet framing, message callbacks, and connection states. |
+| [`rtype::net::queue::EventQueue`](rtype/classrtype_1_1net_1_1queue_1_1EventQueue.md) | Thread-safe event queue for network event dispatching and buffering. |
+
+---
+
 ## How to Document New Code
 
 All classes, methods, and structures must include Doxygen docstrings (`/** ... */`) in their `.hpp` headers. MkDoxy automatically parses these tags upon running `mkdocs build`.

@@ -1,3 +1,8 @@
+/**
+ * @file CoreModules.cpp
+ * @brief Implementation of built-in Wren module retrieval.
+ */
+
 #include "scripting/CoreModules.hpp"
 
 #include <string_view>

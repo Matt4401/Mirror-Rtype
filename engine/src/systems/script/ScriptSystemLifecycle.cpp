@@ -1,9 +1,15 @@
+/**
+ * @file ScriptSystemLifecycle.cpp
+ * @brief Implementation of script module compilation, instantiation, and destruction hooks.
+ */
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <utility>
 
 #include "systems/script/ScriptSystem.hpp"
 
@@ -28,7 +34,8 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
     if (std::filesystem::exists(filename, ec)) {
         auto const lastWrite = std::filesystem::last_write_time(filename, ec);
         if (!ec) {
-            _watchedScripts[moduleName] = ScriptFileWatch{.filePath = filename, .lastWriteTime = lastWrite};
+            _watchedScripts[moduleName] =
+                ScriptFileWatch{.filePath = filename, .lastWriteTime = lastWrite, .lastGoodSource = ""};
         }
     }
 
@@ -43,10 +50,21 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
     }
     std::stringstream buffer;
     buffer << file.rdbuf();
-    auto res = _vm.interpret(moduleName, buffer.str());
+    std::string source = buffer.str();
+    auto res = _vm.interpret(moduleName, source);
     if (!res) {
         std::cerr << "[ScriptSystem] Failed to load module " << moduleName << ": " << res.error() << "\n";
         return false;
+    }
+    if (auto it = _watchedScripts.find(moduleName); it != _watchedScripts.end()) {
+        it->second.lastGoodSource = std::move(source);
+    } else {
+        std::error_code timeEc;
+        auto const lastWrite = std::filesystem::last_write_time(filename, timeEc);
+        _watchedScripts[moduleName] =
+            ScriptFileWatch{.filePath = filename,
+                            .lastWriteTime = timeEc ? std::filesystem::file_time_type{} : lastWrite,
+                            .lastGoodSource = std::move(source)};
     }
     return true;
 }

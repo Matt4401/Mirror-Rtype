@@ -1,3 +1,8 @@
+/**
+ * @file PropertyAccessor.hpp
+ * @brief Compile-time NTTP property accessor and Wren FFI marshaler for ECS components.
+ */
+
 #pragma once
 #include <cstddef>
 #include <string>

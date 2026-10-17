@@ -1,16 +1,17 @@
 #include "ecs/CommandBuffer.hpp"
 
-#include <functional>
+#include <algorithm>
 #include <utility>
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "utils/MoveOnlyFunction.hpp"
 
 namespace ecs {
 
 void CommandBuffer::deferDestroy(Entity e) { _destroyQueue.push_back(e); }
 
-void CommandBuffer::deferSpawn(std::move_only_function<void(Entity, Registry&)> initializer) {
+void CommandBuffer::deferSpawn(MoveOnlyFunction<void(Entity, Registry&)> initializer) {
     _spawnQueue.push_back(std::move(initializer));
 }
 
@@ -29,6 +30,10 @@ void CommandBuffer::flush(Registry& registry) {
         }
     }
     _spawnQueue.clear();
+
+    std::ranges::sort(_destroyQueue);
+    auto const [first, last] = std::ranges::unique(_destroyQueue);
+    _destroyQueue.erase(first, last);
 
     for (Entity const e : _destroyQueue) {
         registry.killEntity(e);

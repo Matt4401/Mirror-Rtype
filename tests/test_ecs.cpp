@@ -164,6 +164,63 @@ TEST(Events, EventBusPubSub) {
     EXPECT_EQ(totalDamage, 10);
 }
 
+#include "ecs/CommandBuffer.hpp"
+
+TEST(ECS, EntityLivenessAndDoubleKill) {
+    ecs::Registry registry;
+
+    EXPECT_FALSE(registry.isAlive(0));
+    EXPECT_FALSE(registry.isAlive(999));
+
+    // Calling killEntity on non-existent entity should be safe no-op
+    registry.killEntity(999);
+    EXPECT_FALSE(registry.isAlive(999));
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    EXPECT_TRUE(registry.isAlive(e1));
+
+    registry.killEntity(e1);
+    EXPECT_FALSE(registry.isAlive(e1));
+
+    // Second killEntity must be no-op and NOT recycle e1 twice
+    registry.killEntity(e1);
+    EXPECT_FALSE(registry.isAlive(e1));
+
+    ecs::Entity const e2 = registry.spawnEntity();
+    EXPECT_EQ(e2, e1);
+    EXPECT_TRUE(registry.isAlive(e2));
+
+    // Next spawn must be a new entity, NOT e1 again
+    ecs::Entity const e3 = registry.spawnEntity();
+    EXPECT_NE(e3, e1);
+    EXPECT_TRUE(registry.isAlive(e3));
+}
+
+TEST(ECS, CommandBufferDeduplication) {
+    ecs::Registry registry;
+    ecs::CommandBuffer cmd;
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    EXPECT_TRUE(registry.isAlive(e1));
+
+    // Queue multiple destroy requests for the same entity
+    cmd.deferDestroy(e1);
+    cmd.deferDestroy(e1);
+    cmd.deferDestroy(e1);
+
+    cmd.flush(registry);
+
+    EXPECT_FALSE(registry.isAlive(e1));
+
+    // Recycle e1 once
+    ecs::Entity const e2 = registry.spawnEntity();
+    EXPECT_EQ(e2, e1);
+
+    // Ensure e1 was not recycled multiple times
+    ecs::Entity const e3 = registry.spawnEntity();
+    EXPECT_NE(e3, e1);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

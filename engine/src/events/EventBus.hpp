@@ -1,9 +1,10 @@
 #pragma once
 #include <cstdint>
-#include <functional>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
+
+#include "utils/MoveOnlyFunction.hpp"
 
 namespace ecs {
 
@@ -12,7 +13,7 @@ namespace ecs {
  *
  * Provides a type-safe pub-sub messaging architecture:
  * - Systems or scripts subscribe to specific event types (`CollisionEvent`, etc.).
- * - Type erasure (`std::move_only_function<void(const void*)>`) allows storing callbacks generically.
+ * - Type erasure (`MoveOnlyFunction<void(const void*)>`) allows storing callbacks generically.
  * - Supports listener removal via subscription tokens (`EventToken`).
  */
 class EventBus {
@@ -22,12 +23,18 @@ class EventBus {
      */
     using EventToken = uint32_t;
 
+    /** @brief Default constructor initializing an empty event bus. */
     EventBus() = default;
+    /** @brief Default destructor. */
     ~EventBus() = default;
 
+    /** @brief Deleted copy constructor. */
     EventBus(const EventBus&) = delete;
+    /** @brief Deleted copy assignment operator. */
     EventBus& operator=(const EventBus&) = delete;
+    /** @brief Deleted move constructor. */
     EventBus(EventBus&&) = delete;
+    /** @brief Deleted move assignment operator. */
     EventBus& operator=(EventBus&&) = delete;
 
     /**
@@ -38,7 +45,7 @@ class EventBus {
      * @return Unique `EventToken` for unsubscribing later.
      */
     template <typename EventType>
-    EventToken subscribe(std::move_only_function<void(const EventType&)> callback);
+    EventToken subscribe(MoveOnlyFunction<void(const EventType&)> callback);
 
     /**
      * @brief Unsubscribes a listener identified by its token.
@@ -59,12 +66,19 @@ class EventBus {
     void publish(const EventType& event);
 
   private:
+    /**
+     * @brief Internal tracking structure pairing a subscription token with a type-erased callback.
+     */
     struct Listener {
+        /** @brief Unique cancellation token identifying this listener. */
         EventToken token;
-        std::move_only_function<void(const void*)> callback;
+        /** @brief Type-erased invocation callback receiving an opaque event pointer. */
+        MoveOnlyFunction<void(const void*)> callback;
     };
 
+    /** @brief Map of event types to their active subscriber callback lists. */
     std::unordered_map<std::type_index, std::vector<Listener>> _listeners;
+    /** @brief Monotonically increasing counter issuing unique event tokens. */
     EventToken _nextToken = 0;
 };
 

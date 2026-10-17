@@ -556,6 +556,100 @@ TEST(Scripting, LifecycleOnReload) {
     std::filesystem::remove(scriptPath);
 }
 
+TEST(Scripting, CoroutineChainedWait) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    const char* scriptCode =
+        "import \"core/Engine\" for Engine\n"
+        "class ChainedBossScript {\n"
+        "    construct new(entityId) {\n"
+        "        _step = 0\n"
+        "    }\n"
+        "    start() {\n"
+        "        Fiber.new {\n"
+        "            _step = 1\n"
+        "            Engine.wait(0.1)\n"
+        "            _step = 2\n"
+        "            Engine.wait(0.1)\n"
+        "            _step = 3\n"
+        "        }.call()\n"
+        "    }\n"
+        "    step { _step }\n"
+        "}\n";
+
+    EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay", scriptCode));
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
+                                                                         .className = "ChainedBossScript",
+                                                                         .instanceHandle = nullptr,
+                                                                         .hasUpdate = false,
+                                                                         .initialized = false});
+
+    scriptSystem.update(0.016F);
+
+    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
+    auto startHandle = scriptSystem.getVm().makeCallHandle("start()");
+    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
+    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
+    EXPECT_EQ(scriptSystem.getVm().call(startHandle), WREN_RESULT_SUCCESS);
+
+    auto stepHandle = scriptSystem.getVm().makeCallHandle("step");
+    auto checkStep = [&](double expected) {
+        wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
+        wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
+        EXPECT_EQ(scriptSystem.getVm().call(stepHandle), WREN_RESULT_SUCCESS);
+        EXPECT_EQ(wrenGetSlotDouble(scriptSystem.getVm().raw(), 0), expected);
+    };
+
+    checkStep(1.0);
+
+    // Resuming first wait enters second Engine.wait during updateSleepingFibers
+    scriptSystem.update(0.15F);
+    checkStep(2.0);
+
+    // Resuming second wait finishes
+    scriptSystem.update(0.15F);
+    checkStep(3.0);
+}
+
+TEST(Scripting, TeardownHandleRelease) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    const char* scriptCode =
+        "class TeardownScript {\n"
+        "    construct new(entityId) {}\n"
+        "}\n";
+
+    {
+        systems::ScriptSystem scriptSystem;
+        scriptSystem.init(registry, bus);
+        EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay", scriptCode));
+
+        ecs::Entity const e1 = registry.spawnEntity();
+        registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
+                                                                             .className = "TeardownScript",
+                                                                             .instanceHandle = nullptr,
+                                                                             .hasUpdate = false,
+                                                                             .initialized = false});
+
+        scriptSystem.update(0.016F);
+        EXPECT_NE(registry.getComponents<ecs::ScriptComponent>().get(e1).instanceHandle, nullptr);
+        // scriptSystem goes out of scope here: destructor must release handles cleanly
+    }
+
+    // Handles must have been reset to nullptr upon teardown
+    EXPECT_EQ(registry.getComponents<ecs::ScriptComponent>().get(0).instanceHandle, nullptr);
+    EXPECT_FALSE(registry.getComponents<ecs::ScriptComponent>().get(0).initialized);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
