@@ -18,3 +18,26 @@ target("test_clock")
     add_packages("gtest")
     add_files("test_clock.cpp")
     add_tests("test_clock")
+
+target("test_components")
+    set_kind("binary")
+    add_deps("engine")
+    add_packages("gtest")
+    add_files("test_components.cpp")
+    add_tests("test_components")
+
+target("test_renderable")
+    set_kind("binary")
+    add_deps("engine")
+    add_packages("gtest")
+    add_files("test_renderable.cpp")
+    add_tests("test_renderable")
+
+if has_config("graphics") then
+    target("test_render")
+        set_kind("binary")
+        add_deps("engine_render")
+        add_packages("gtest")
+        add_files("test_render.cpp")
+        add_tests("test_render")
+end
