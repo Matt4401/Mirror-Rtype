@@ -19,5 +19,7 @@ includes("shared/*/xmake.lua")
 includes("engine/*/xmake.lua")
 includes("network/*/xmake.lua")
 includes("server/*/xmake.lua")
-includes("client/*/xmake.lua")
+if has_config("graphics") then
+    includes("client/*/xmake.lua")
+end
 includes("tests/xmake.lua")
