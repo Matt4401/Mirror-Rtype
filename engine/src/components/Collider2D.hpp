@@ -5,7 +5,7 @@
 namespace ecs {
 
 /** @brief Geometries supported by a 2D collider. */
-enum class ColliderShape {
+enum class ColliderShape : std::uint8_t {
     Box,
     Circle,
 };

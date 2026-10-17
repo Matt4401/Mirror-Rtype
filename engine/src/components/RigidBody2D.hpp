@@ -1,9 +1,11 @@
 #pragma once
 
+#include <cstdint>
+
 namespace ecs {
 
 /** @brief Simulation modes supported by a 2D rigid body. */
-enum class BodyType {
+enum class BodyType : std::uint8_t {
     Static,
     Kinematic,
     Dynamic,
@@ -12,8 +14,8 @@ enum class BodyType {
 /**
  * @brief Physical motion properties for an entity.
  *
- * Velocities and limits use pixels per second at the ECS boundary. The physics system converts them to
- * Box2D meters with its shared pixels-per-meter constant.
+ * Velocities and limits use pixels per second at the ECS boundary. The physics system converts them
+ * to Box2D meters with its shared pixels-per-meter constant.
  */
 struct RigidBody2D {
     BodyType bodyType = BodyType::Static;
