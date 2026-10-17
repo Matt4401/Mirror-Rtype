@@ -62,6 +62,7 @@ The engine is partitioned into decoupled subsystems:
 - **Physics & Collisions:** Manages spatial partitioning (e.g., Quadtree or Grid) and AABB collision queries.
 - **Event Bus:** Decoupled publisher/subscriber messaging mechanism enabling asynchronous events (e.g., audio triggers on collision without direct coupling).
 - **Network Abstraction (Asio):** Transport layer supporting both TCP (lobby, auth) and UDP (real-time gameplay state synchronization).
+- **Scripting Subsystem (`ScriptSystem` & `WrenVM`):** Embeds Wren for rapid gameplay prototyping. Supports C++23 compile-time member property reflection (`ComponentBinder`), selective `update(dt)` polling, coroutine fibers (`Engine.wait`), deferred structural mutations (`CommandBuffer`), and non-intrusive live hot-reloading with staging validation and lifecycle hooks (`onSpawn`, `onReload`, `onDestroy`).
 
 ## 4. Decoupling & Modularity
 
@@ -91,26 +92,33 @@ struct Velocity {
 
 ### 5.2 Spawning an Entity & Adding Components
 
-Use the `Registry` to spawn entities and attach your components using designated initializers.
+Use the `Registry` to spawn entities and attach components using designated initializers.
+Storage is **automatically registered on first access** via sequential Type IDs, eliminating manual registration boilerplate:
 
 ```cpp
 ecs::Registry registry;
-registry.register_component<Transform>();
-registry.register_component<Velocity>();
 
-ecs::Entity player = registry.spawn_entity();
-registry.add_component<Transform>(player, {.x = 100.0F, .y = 100.0F});
-registry.add_component<Velocity>(player, {.dx = 5.0F, .dy = 0.0F});
+ecs::Entity player = registry.spawnEntity();
+
+// Direct in-place emplacement:
+registry.emplaceComponent<Transform>(player, Transform{.x = 100.0F, .y = 100.0F});
+registry.emplaceComponent<Velocity>(player, Velocity{.dx = 5.0F, .dy = 0.0F});
+
+// Fast O(1) query and removal:
+if (registry.hasComponent<Transform>(player)) {
+    // Player is positioned
+}
+registry.removeComponent<Velocity>(player); // Remove component without killing entity
 ```
 
 ### 5.3 Writing a System
 
-Systems are just logic blocks (often lambda functions) passed to `run_system`. The registry automatically fetches the entities that possess *all* the requested components.
+Systems are logic blocks (often lambda functions) passed to `runSystem`. All component sparse array references are **hoisted outside the loop once** into a tuple, enabling register-level execution with zero hash map lookups per entity:
 
 ```cpp
 // MovementSystem: Applies velocity to transform
-void update_movement(ecs::Registry& registry, float dt) {
-    registry.run_system<Transform, Velocity>([dt]([[maybe_unused]] ecs::Entity e, Transform& pos, Velocity& vel) {
+void updateMovement(ecs::Registry& registry, float dt) {
+    registry.runSystem<Transform, Velocity>([dt]([[maybe_unused]] ecs::Entity e, Transform& pos, Velocity const& vel) {
         pos.x += vel.dx * dt;
         pos.y += vel.dy * dt;
     });
@@ -123,7 +131,7 @@ To decouple systems, use the `EventBus`. Define an event struct, subscribe to it
 
 ```cpp
 struct PlayerDamagedEvent {
-    ecs::Entity player_id;
+    ecs::Entity player;
     int damage;
 };
 
@@ -135,5 +143,5 @@ auto token = bus.subscribe<PlayerDamagedEvent>([](const PlayerDamagedEvent& even
 });
 
 // Publishing (e.g., in a CollisionSystem)
-bus.publish(PlayerDamagedEvent{.player_id = player, .damage = 10});
+bus.publish(PlayerDamagedEvent{.player = player, .damage = 10});
 ```

@@ -4,20 +4,34 @@
 
 namespace ecs {
 
-Entity Registry::spawn_entity() {
-    if (!_dead_entities.empty()) {
-        Entity const e = _dead_entities.front();
-        _dead_entities.pop();
+bool Registry::isAlive(Entity e) const noexcept { return e < _isAlive.size() && _isAlive[e]; }
+
+Entity Registry::spawnEntity() {
+    if (!_deadEntities.empty()) {
+        Entity const e = _deadEntities.front();
+        _deadEntities.pop();
+        _isAlive[e] = true;
         return e;
     }
-    return _next_entity++;
+    Entity const e = _nextEntity++;
+    if (e >= _isAlive.size()) {
+        _isAlive.resize(e + 1, false);
+    }
+    _isAlive[e] = true;
+    return e;
 }
 
-void Registry::kill_entity(Entity e) {
-    for (auto& [type, array] : _components_arrays) {
-        array->erase(e);
+void Registry::killEntity(Entity e) {
+    if (e >= _isAlive.size() || !_isAlive[e]) {
+        return;
     }
-    _dead_entities.push(e);
+    _isAlive[e] = false;
+    for (auto const& array : _componentsArrays) {
+        if (array) {
+            array->erase(e);
+        }
+    }
+    _deadEntities.push(e);
 }
 
 }  // namespace ecs

@@ -1,0 +1,48 @@
+name: macOS build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-macos:
+    name: Build (macOS)
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
+    runs-on: macos-latest
+    # Never blocks merging: a failure is reported as a success with an annotation.
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Restore xmake packages cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.xmake/packages
+          key: xmake-pkgs-${{ runner.os }}-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-pkgs-${{ runner.os }}-
+
+      - name: Configure
+        run: xmake f -m release -y
+
+      - name: Build
+        run: xmake build -v -y
+
+      - name: Run tests
+        run: xmake test "test_*/*"
