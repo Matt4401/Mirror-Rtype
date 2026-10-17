@@ -1,0 +1,59 @@
+name: Cross-platform build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libgl1-mesa-dev
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Restore xmake packages cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.xmake/packages
+            ~\AppData\Local\.xmake\packages
+          key: xmake-pkgs-${{ runner.os }}-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-pkgs-${{ runner.os }}-
+
+      - name: Configure
+        run: xmake f -m release -y
+
+      - name: Build
+        run: xmake build -v -y
+
+      - name: Run tests
+        run: xmake test "test_*/*"

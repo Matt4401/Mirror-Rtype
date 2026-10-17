@@ -1,3 +1,8 @@
+/**
+ * @file ScriptComponent.hpp
+ * @brief ECS component binding a Wren script class instance to an entity.
+ */
+
 #pragma once
 #include <string>
 

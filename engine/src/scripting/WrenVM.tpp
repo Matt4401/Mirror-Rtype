@@ -1,3 +1,8 @@
+/**
+ * @file WrenVM.tpp
+ * @brief Template method implementations for WrenVM slot marshaling.
+ */
+
 #pragma once
 #include <type_traits>
 
