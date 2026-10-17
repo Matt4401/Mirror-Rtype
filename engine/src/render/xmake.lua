@@ -1,0 +1,5 @@
+target("engine_render")
+    set_kind("static")
+    add_files("**.cpp")
+    add_deps("engine", {public = true})
+    add_packages("raylib", {public = true})
