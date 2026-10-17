@@ -1,4 +1,6 @@
 #pragma once
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <queue>
 #include <vector>
@@ -19,6 +21,9 @@ namespace ecs {
  */
 class Registry {
   public:
+    /** @brief Callback invoked immediately before an entity's components are removed. */
+    using DestroyListener = std::function<void(Entity)>;
+
     /** @brief Default constructor initializing an empty ECS registry. */
     Registry() = default;
     /** @brief Default destructor releasing component sparse arrays. */
@@ -44,6 +49,19 @@ class Registry {
      * @param e Entity to destroy.
      */
     void killEntity(Entity e);
+
+    /**
+     * @brief Registers a callback invoked before an entity is destroyed.
+     * @param listener Callback receiving the entity being destroyed.
+     * @return Identifier used to unregister the callback.
+     */
+    std::size_t addDestroyListener(DestroyListener listener);
+
+    /**
+     * @brief Unregisters an entity-destruction callback.
+     * @param listenerId Identifier returned by `addDestroyListener`.
+     */
+    void removeDestroyListener(std::size_t listenerId);
 
     /**
      * @brief Checks if an entity is currently alive.
@@ -168,6 +186,10 @@ class Registry {
     std::queue<Entity> _deadEntities;
     /** @brief Liveness tracking bitmap for entity IDs. */
     std::vector<bool> _isAlive;
+    /** @brief Callbacks notified before an entity's components are removed. */
+    std::vector<std::pair<std::size_t, DestroyListener>> _destroyListeners;
+    /** @brief Identifier assigned to the next registered destruction callback. */
+    std::size_t _nextDestroyListenerId = 0;
 };
 
 }  // namespace ecs

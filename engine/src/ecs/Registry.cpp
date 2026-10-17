@@ -1,5 +1,7 @@
 #include "ecs/Registry.hpp"
 
+#include <algorithm>
+
 #include "ecs/Entity.hpp"
 
 namespace ecs {
@@ -25,6 +27,10 @@ void Registry::killEntity(Entity e) {
     if (e >= _isAlive.size() || !_isAlive[e]) {
         return;
     }
+    for (const auto& [listenerId, listener] : _destroyListeners) {
+        (void)listenerId;
+        listener(e);
+    }
     _isAlive[e] = false;
     for (auto const& array : _componentsArrays) {
         if (array) {
@@ -32,6 +38,17 @@ void Registry::killEntity(Entity e) {
         }
     }
     _deadEntities.push(e);
+}
+
+std::size_t Registry::addDestroyListener(DestroyListener listener) {
+    const std::size_t listenerId = _nextDestroyListenerId++;
+    _destroyListeners.emplace_back(listenerId, std::move(listener));
+    return listenerId;
+}
+
+void Registry::removeDestroyListener(std::size_t listenerId) {
+    std::erase_if(_destroyListeners,
+                  [listenerId](const auto& listener) { return listener.first == listenerId; });
 }
 
 }  // namespace ecs
