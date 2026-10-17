@@ -69,16 +69,17 @@ A purely event-driven model completely avoids per-frame Foreign Function Interfa
 To resolve this without sacrificing performance:
 
 1. **Event-Driven by Default:** Scripts listen to specific engine events via convention-based "magic methods" (`onCollision`, `onDamage`, `onSpawn`). No per-frame FFI cost is incurred for entities that only react to occurrences.
-2. **Selective `update(dt)` Polling:** If a script explicitly defines an `update(dt)` method, the C++ `ScriptSystem` registers that specific entity into an active polling list. Only these entities incur per-frame FFI dispatch overhead, keeping thousands of purely reactive entities at zero cost.
+2. **Selective `update(dt)` Polling:** Entities opt in to per-frame polling by setting `ScriptComponent::hasUpdate = true`. The C++ `ScriptSystem` only registers these opt-in entities into an active polling list, keeping purely reactive entities at zero cost.
 
 ### 4.2. C++23 Type-Safe Binding via Pointer-to-Member
 
 Exposing ECS components to the scripting VM often degenerates into brittle C-preprocessor macros or heavy runtime reflection libraries. We leverage modern C++23 pointer-to-member templates (`ComponentBinder<T>`):
 
 ```cpp
-ScriptEngine::bindComponent<Position>("Position")
-    .property("x", &Position::x)
-    .property("y", &Position::y);
+scripting::ComponentBinder<Position> binder(vm, "game", "Position");
+binder.property<&Position::x>("x")
+      .property<&Position::y>("y");
+vm.interpret("game", binder.generateWrenClass());
 ```
 
 * **Type Safety:** The compiler verifies member types at compile time and auto-deduces the required Wren slot conversions (e.g., float, double, integer, boolean).

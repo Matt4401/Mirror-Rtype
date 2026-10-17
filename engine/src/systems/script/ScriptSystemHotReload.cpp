@@ -1,3 +1,8 @@
+/**
+ * @file ScriptSystemHotReload.cpp
+ * @brief Implementation of live hot-reloading pipeline, staging VM validation, and state replay.
+ */
+
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -68,6 +73,7 @@ std::vector<std::pair<std::string, std::string>> ScriptSystem::collectModifiedMo
             continue;
         }
 
+        watch.lastGoodSource = newSource;
         modifiedModules.emplace_back(modName, std::move(newSource));
         watch.lastWriteTime = currentWriteTime;
     }
@@ -75,13 +81,17 @@ std::vector<std::pair<std::string, std::string>> ScriptSystem::collectModifiedMo
 }
 
 void ScriptSystem::releaseActiveHandles() {
+    _entitiesToReinstantiate.clear();
     if (_registry == nullptr || _registry->getComponents<ecs::ScriptComponent>().getDense().empty()) {
         return;
     }
     for (ecs::Entity const e : _registry->getComponents<ecs::ScriptComponent>().getDenseEntities()) {
         auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
         if (script.instanceHandle != nullptr) {
-            wrenReleaseHandle(_vm.raw(), static_cast<WrenHandle*>(script.instanceHandle));
+            _entitiesToReinstantiate.push_back(e);
+            if (_vm.raw() != nullptr) {
+                wrenReleaseHandle(_vm.raw(), static_cast<WrenHandle*>(script.instanceHandle));
+            }
             script.instanceHandle = nullptr;
             script.initialized = false;
         }
@@ -95,6 +105,12 @@ void ScriptSystem::recreateVmAndModules(const std::vector<std::pair<std::string,
     _updateHandle.reset();
     _onSpawnHandle.reset();
     _fiberCallHandle.reset();
+
+    std::vector<std::string> cachedSignatures;
+    cachedSignatures.reserve(_cachedMethodHandles.size());
+    for (auto const& [sig, _] : _cachedMethodHandles) {
+        cachedSignatures.push_back(sig);
+    }
     _cachedMethodHandles.clear();
 
     _vm.reset();
@@ -103,6 +119,10 @@ void ScriptSystem::recreateVmAndModules(const std::vector<std::pair<std::string,
     _updateHandle = _vm.makeCallHandle("update(_)");
     _onSpawnHandle = _vm.makeCallHandle("onSpawn()");
     _fiberCallHandle = _vm.makeCallHandle("call()");
+
+    for (auto const& sig : cachedSignatures) {
+        _cachedMethodHandles[sig] = _vm.makeCallHandle(sig);
+    }
 
     auto const dispRes = _vm.interpret("_internal", scripting::INTERNAL_DISPATCHER_SOURCE);
     if (!dispRes) {
@@ -114,23 +134,25 @@ void ScriptSystem::recreateVmAndModules(const std::vector<std::pair<std::string,
     }
 
     for (auto const& [modName, watch] : _watchedScripts) {
-        std::ifstream file(watch.filePath);
-        if (file.is_open()) {
-            std::stringstream buffer;
-            buffer << file.rdbuf();
-            auto const scriptRes = _vm.interpret(modName, buffer.str());
-            if (!scriptRes) {
-                std::cerr << "[ScriptSystem] Failed to reload " << modName << ": " << scriptRes.error() << "\n";
-            }
+        if (watch.lastGoodSource.empty()) {
+            continue;
+        }
+        auto const scriptRes = _vm.interpret(modName, watch.lastGoodSource);
+        if (!scriptRes) {
+            std::cerr << "[ScriptSystem] Failed to reload " << modName << ": " << scriptRes.error() << "\n";
         }
     }
 }
 
 void ScriptSystem::reinstantiateActiveScripts() {
-    if (_registry == nullptr || _registry->getComponents<ecs::ScriptComponent>().getDense().empty()) {
+    if (_registry == nullptr) {
+        _entitiesToReinstantiate.clear();
         return;
     }
-    for (ecs::Entity const e : _registry->getComponents<ecs::ScriptComponent>().getDenseEntities()) {
+    for (ecs::Entity const e : _entitiesToReinstantiate) {
+        if (!_registry->getComponents<ecs::ScriptComponent>().contains(e)) {
+            continue;
+        }
         auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
         instantiateScript(e, script, true);
 
@@ -143,6 +165,7 @@ void ScriptSystem::reinstantiateActiveScripts() {
             wrenCall(raw, tryReloadHandle.get());
         }
     }
+    _entitiesToReinstantiate.clear();
 }
 
 bool ScriptSystem::reloadModifiedScripts() {

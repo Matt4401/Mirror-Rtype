@@ -1,3 +1,8 @@
+/**
+ * @file ScriptSystem.cpp
+ * @brief Implementation of ScriptSystem initialization, main loop, and fiber scheduling.
+ */
+
 #include "systems/script/ScriptSystem.hpp"
 
 #include <functional>
@@ -20,7 +25,7 @@ namespace systems {
 
 ScriptSystem::ScriptSystem() = default;
 
-ScriptSystem::~ScriptSystem() = default;
+ScriptSystem::~ScriptSystem() { releaseActiveHandles(); }
 
 ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
     : _registry(other._registry),
@@ -36,6 +41,7 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _fiberCallHandle(std::move(other._fiberCallHandle)),
       _cachedMethodHandles(std::move(other._cachedMethodHandles)),
       _watchedScripts(std::move(other._watchedScripts)),
+      _entitiesToReinstantiate(std::move(other._entitiesToReinstantiate)),
       _binderReplayList(std::move(other._binderReplayList)),
       _reloadCheckTimer(other._reloadCheckTimer),
       _hotReloadEnabled(other._hotReloadEnabled) {
@@ -44,6 +50,7 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
 
 ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
     if (this != &other) {
+        releaseActiveHandles();
         _registry = other._registry;
         _bus = other._bus;
         _commandBuffer = std::move(other._commandBuffer);
@@ -57,6 +64,7 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _fiberCallHandle = std::move(other._fiberCallHandle);
         _cachedMethodHandles = std::move(other._cachedMethodHandles);
         _watchedScripts = std::move(other._watchedScripts);
+        _entitiesToReinstantiate = std::move(other._entitiesToReinstantiate);
         _binderReplayList = std::move(other._binderReplayList);
         _reloadCheckTimer = other._reloadCheckTimer;
         _hotReloadEnabled = other._hotReloadEnabled;
@@ -82,17 +90,22 @@ void ScriptSystem::init(ecs::Registry& registry, ecs::EventBus& bus) {
 }
 
 void ScriptSystem::updateSleepingFibers(float dt) {
+    std::vector<SleepingFiber> readyFibers;
     for (auto it = _sleepingFibers.begin(); it != _sleepingFibers.end();) {
         it->timeRemaining -= dt;
         if (it->timeRemaining <= 0.0F) {
-            ::WrenVM* raw = _vm.raw();
-            wrenEnsureSlots(raw, 1);
-            wrenSetSlotHandle(raw, 0, it->fiber.get());
-            wrenCall(raw, _fiberCallHandle.get());
+            readyFibers.push_back(std::move(*it));
             it = _sleepingFibers.erase(it);
         } else {
             ++it;
         }
+    }
+
+    ::WrenVM* raw = _vm.raw();
+    for (auto& sleeping : readyFibers) {
+        wrenEnsureSlots(raw, 1);
+        wrenSetSlotHandle(raw, 0, sleeping.fiber.get());
+        wrenCall(raw, _fiberCallHandle.get());
     }
 }
 

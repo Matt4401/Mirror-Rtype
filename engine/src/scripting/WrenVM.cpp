@@ -1,3 +1,8 @@
+/**
+ * @file WrenVM.cpp
+ * @brief Implementation of the WrenVM high-level wrapper and FFI dispatchers.
+ */
+
 #include "scripting/WrenVM.hpp"
 
 #include <expected>

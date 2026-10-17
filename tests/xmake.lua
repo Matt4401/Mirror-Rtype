@@ -12,6 +12,13 @@ target("test_scripting")
     add_files("test_scripting.cpp")
     add_tests("test_scripting")
 
+target("test_clock")
+    set_kind("binary")
+    add_deps("engine")
+    add_packages("gtest")
+    add_files("test_clock.cpp")
+    add_tests("test_clock")
+
 if has_config("graphics") then
     target("test_render")
         set_kind("binary")

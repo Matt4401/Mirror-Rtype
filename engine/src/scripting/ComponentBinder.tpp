@@ -1,3 +1,8 @@
+/**
+ * @file ComponentBinder.tpp
+ * @brief Template method implementations for ComponentBinder.
+ */
+
 #pragma once
 #include "scripting/ComponentBinder.hpp"
 #include "scripting/detail/PropertyAccessor.hpp"
