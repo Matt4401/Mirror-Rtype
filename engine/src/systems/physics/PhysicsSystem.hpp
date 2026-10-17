@@ -1,9 +1,9 @@
 #pragma once
 
+#include <box2d/box2d.h>
+
 #include <cstddef>
 #include <unordered_map>
-
-#include <box2d/box2d.h>
 
 #include "components/RigidBody2D.hpp"
 #include "components/Transform.hpp"

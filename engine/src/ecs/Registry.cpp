@@ -1,6 +1,7 @@
 #include "ecs/Registry.hpp"
 
-#include <algorithm>
+#include <cstddef>
+#include <utility>
 
 #include "ecs/Entity.hpp"
 
@@ -47,8 +48,7 @@ std::size_t Registry::addDestroyListener(DestroyListener listener) {
 }
 
 void Registry::removeDestroyListener(std::size_t listenerId) {
-    std::erase_if(_destroyListeners,
-                  [listenerId](const auto& listener) { return listener.first == listenerId; });
+    std::erase_if(_destroyListeners, [listenerId](const auto& listener) { return listener.first == listenerId; });
 }
 
 }  // namespace ecs

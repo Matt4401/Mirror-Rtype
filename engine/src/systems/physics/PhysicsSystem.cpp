@@ -1,11 +1,19 @@
 #include "systems/physics/PhysicsSystem.hpp"
 
+#include <box2d/b2_body.h>
+#include <box2d/b2_circle_shape.h>
+#include <box2d/b2_fixture.h>
+#include <box2d/b2_math.h>
+#include <box2d/b2_polygon_shape.h>
+
 #include <algorithm>
 #include <cmath>
 
 #include "components/Collider2D.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/Transform.hpp"
+#include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
 #include "systems/physics/PhysicsConstants.hpp"
 #include "systems/physics/PhysicsHelpers.hpp"
 
