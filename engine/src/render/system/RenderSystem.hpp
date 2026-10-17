@@ -17,13 +17,13 @@ namespace render {
  */
 struct DrawItem {
     /** @brief Entity being drawn, used as the last sort tie-breaker. */
-    ecs::Entity entity;
+    ecs::Entity entity = 0;
 
     /** @brief Draw layer copied from `ecs::Renderable`. */
-    int layer;
+    int layer = 0;
 
     /** @brief Texture to draw, or `ecs::NO_TEXTURE` for a flat colored placeholder. */
-    ecs::TextureId textureId;
+    ecs::TextureId textureId = ecs::NO_TEXTURE;
 
     /** @brief Spatial state copied from `ecs::Transform`. */
     ecs::Transform transform;
@@ -92,7 +92,7 @@ class RenderSystem {
     void drawItem(const DrawItem& item) const;
 
     /** @brief Resolves texture identifiers. */
-    const TextureStore& _textures;
+    const TextureStore* _textures;
 
     /** @brief Items gathered for the current frame; its capacity is kept between frames. */
     std::vector<DrawItem> _queue;

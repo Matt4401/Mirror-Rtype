@@ -29,7 +29,7 @@ bool drawsBefore(const DrawItem& lhs, const DrawItem& rhs) {
 
 }  // namespace
 
-RenderSystem::RenderSystem(const TextureStore& textures) : _textures(textures), _camera(detail::neutralCamera()) {
+RenderSystem::RenderSystem(const TextureStore& textures) : _textures(&textures), _camera(detail::neutralCamera()) {
     _queue.reserve(detail::INITIAL_QUEUE_CAPACITY);
 }
 
@@ -83,7 +83,7 @@ void RenderSystem::drawItem(const DrawItem& item) const {
         return;
     }
 
-    const Texture2D* texture = _textures.get(item.textureId);
+    const Texture2D* texture = _textures->get(item.textureId);
     if (texture == nullptr) {
         return;
     }

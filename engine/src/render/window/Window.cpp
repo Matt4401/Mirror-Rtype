@@ -4,6 +4,8 @@
 
 #include <stdexcept>
 
+#include "render/window/WindowConfig.hpp"
+
 namespace render {
 
 Window::Window(const WindowConfig& config) {

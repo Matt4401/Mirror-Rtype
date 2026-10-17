@@ -18,6 +18,7 @@
 #include "render/system/RenderSystem.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
+#include "render/window/WindowConfig.hpp"
 
 namespace {
 
