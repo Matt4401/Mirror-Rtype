@@ -15,10 +15,10 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
-#include "systems/render/RenderSystem.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
+#include "systems/render/RenderSystem.hpp"
 
 namespace {
 

@@ -10,9 +10,9 @@
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "render/texture/TextureStore.hpp"
 #include "systems/render/RenderSystemDefaults.hpp"
 #include "systems/render/RenderSystemSort.hpp"
-#include "render/texture/TextureStore.hpp"
 
 namespace render {
 
@@ -41,10 +41,12 @@ void RenderSystem::collect(ecs::Registry& registry) {
     registry.runSystem<ecs::CameraComponent>(
         [this, &cameraFound](ecs::Entity /*entity*/, const ecs::CameraComponent& component) {
             if (!cameraFound && component.active) {
-                _camera = Camera2D{.offset = {.x = component.offsetX, .y = component.offsetY},
-                                   .target = {.x = component.targetX, .y = component.targetY},
-                                   .rotation = component.rotation,
-                                   .zoom = component.zoom};
+                _camera = Camera2D{
+                    .offset = {.x = component.offsetX, .y = component.offsetY},
+                    .target = {.x = component.targetX, .y = component.targetY},
+                    .rotation = component.rotation,
+                    .zoom = component.zoom,
+                };
                 cameraFound = true;
             }
         });
