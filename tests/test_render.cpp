@@ -9,7 +9,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "render/CameraComponent.hpp"
-#include "render/system/RenderSystem.hpp"
+#include "systems/render/RenderSystem.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 

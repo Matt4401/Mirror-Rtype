@@ -1,4 +1,4 @@
-#include "render/system/RenderSystem.hpp"
+#include "systems/render/RenderSystem.hpp"
 
 #include <raylib.h>
 
@@ -10,7 +10,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "render/CameraComponent.hpp"
-#include "render/system/RenderSystemDefaults.hpp"
+#include "systems/render/RenderSystemDefaults.hpp"
 #include "render/texture/TextureStore.hpp"
 
 namespace render {

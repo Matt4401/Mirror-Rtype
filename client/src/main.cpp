@@ -15,7 +15,7 @@
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
 #include "render/CameraComponent.hpp"
-#include "render/system/RenderSystem.hpp"
+#include "systems/render/RenderSystem.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
