@@ -42,10 +42,10 @@ TEST(CameraComponent, WorksAsEcsComponent) {
 
 namespace {
 
-ecs::Entity spawnDrawable(ecs::Registry& registry, int layer, float z) {
+ecs::Entity spawnDrawable(ecs::Registry& registry, int layer, float z, ecs::TextureId textureId = ecs::NO_TEXTURE) {
     const ecs::Entity entity = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(entity, ecs::Transform{.z = z});
-    registry.addComponent<ecs::Renderable>(entity, ecs::Renderable{.layer = layer});
+    registry.addComponent<ecs::Renderable>(entity, ecs::Renderable{.textureId = textureId, .layer = layer});
     return entity;
 }
 
@@ -59,7 +59,7 @@ std::vector<ecs::Entity> drawOrder(const render::RenderSystem& system) {
 
 }  // namespace
 
-TEST(RenderSystem, SortsByLayerThenDepthThenEntity) {
+TEST(RenderSystem, SortsByLayerThenDepthThenTextureThenEntity) {
     ecs::Registry registry;
     const render::TextureStore textures;
     render::RenderSystem system(textures);
@@ -76,6 +76,24 @@ TEST(RenderSystem, SortsByLayerThenDepthThenEntity) {
     system.collect(registry);
 
     const std::vector<ecs::Entity> expected{back, middleFar, middleNear, front, tieSecond, tieFirst};
+    EXPECT_EQ(drawOrder(system), expected);
+}
+
+TEST(RenderSystem, GroupsTexturesOnlyAtMatchingLayerAndDepth) {
+    ecs::Registry registry;
+    const render::TextureStore textures;
+    render::RenderSystem system(textures);
+
+    const ecs::Entity textureNine = spawnDrawable(registry, 1, 2.0F, 9);
+    const ecs::Entity textureThreeFirst = spawnDrawable(registry, 1, 2.0F, 3);
+    const ecs::Entity textureThreeSecond = spawnDrawable(registry, 1, 2.0F, 3);
+    const ecs::Entity otherDepth = spawnDrawable(registry, 1, 1.0F, 9);
+    const ecs::Entity otherLayer = spawnDrawable(registry, 0, 2.0F, 9);
+
+    system.collect(registry);
+
+    const std::vector<ecs::Entity> expected{
+        otherLayer, otherDepth, textureThreeFirst, textureThreeSecond, textureNine};
     EXPECT_EQ(drawOrder(system), expected);
 }
 

@@ -24,6 +24,9 @@ bool drawsBefore(const DrawItem& lhs, const DrawItem& rhs) {
     if (lhs.transform.z != rhs.transform.z) {
         return lhs.transform.z < rhs.transform.z;
     }
+    if (lhs.textureId != rhs.textureId) {
+        return lhs.textureId < rhs.textureId;
+    }
     return lhs.entity < rhs.entity;
 }
 
