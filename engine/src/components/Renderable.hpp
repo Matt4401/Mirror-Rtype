@@ -18,6 +18,18 @@ struct Rgba {
 };
 
 /**
+ * @brief Rectangular pixel region inside a texture.
+ *
+ * A zero width and height select the complete texture.
+ */
+struct TextureRect {
+    int x = 0;
+    int y = 0;
+    int width = 0;
+    int height = 0;
+};
+
+/**
  * @brief Marks an entity as drawable by the rendering system.
  *
  * Plain data with no graphics-library types, so the headless server can carry it
@@ -26,6 +38,9 @@ struct Rgba {
 struct Renderable {
     /** @brief Texture to draw, or `NO_TEXTURE`. */
     TextureId textureId = NO_TEXTURE;
+
+    /** @brief Texture region to draw; a zero-sized region draws the complete texture. */
+    TextureRect sourceRect;
 
     /** @brief Color multiplied with the texture; white leaves it unchanged. */
     Rgba tint;
