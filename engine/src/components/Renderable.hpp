@@ -30,6 +30,16 @@ struct TextureRect {
 };
 
 /**
+ * @brief Normalized render pivot within the drawable rectangle.
+ *
+ * `{0.0F, 0.0F}` is the top-left corner and `{0.5F, 0.5F}` is the center.
+ */
+struct RenderOrigin {
+    float x = 0.5F;
+    float y = 0.5F;
+};
+
+/**
  * @brief Marks an entity as drawable by the rendering system.
  *
  * Plain data with no graphics-library types, so the headless server can carry it
@@ -41,6 +51,9 @@ struct Renderable {
 
     /** @brief Texture region to draw; a zero-sized region draws the complete texture. */
     TextureRect sourceRect;
+
+    /** @brief Normalized pivot used for alignment and rotation during rendering. */
+    RenderOrigin origin;
 
     /** @brief Color multiplied with the texture; white leaves it unchanged. */
     Rgba tint;

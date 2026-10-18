@@ -45,6 +45,7 @@ void RenderSystem::collect(ecs::Registry& registry) {
                 .layer = renderable.layer,
                 .textureId = renderable.textureId,
                 .sourceRect = renderable.sourceRect,
+                .origin = renderable.origin,
                 .transform = transform,
                 .tint = renderable.tint,
             });
@@ -83,7 +84,7 @@ void RenderSystem::drawItem(const DrawItem& item) const {
         const float width = PLACEHOLDER_SIZE * std::fabs(transform.scaleX);
         const float height = PLACEHOLDER_SIZE * std::fabs(transform.scaleY);
         const Rectangle rect{.x = transform.x, .y = transform.y, .width = width, .height = height};
-        DrawRectanglePro(rect, Vector2{.x = width / 2.0F, .y = height / 2.0F}, degrees, tint);
+        DrawRectanglePro(rect, Vector2{.x = width * item.origin.x, .y = height * item.origin.y}, degrees, tint);
         return;
     }
 
@@ -109,7 +110,8 @@ void RenderSystem::drawItem(const DrawItem& item) const {
     const float destWidth = sourceWidth * std::fabs(transform.scaleX);
     const float destHeight = sourceHeight * std::fabs(transform.scaleY);
     const Rectangle dest{.x = transform.x, .y = transform.y, .width = destWidth, .height = destHeight};
-    DrawTexturePro(*texture, source, dest, Vector2{.x = destWidth / 2.0F, .y = destHeight / 2.0F}, degrees, tint);
+    DrawTexturePro(*texture, source, dest, Vector2{.x = destWidth * item.origin.x, .y = destHeight * item.origin.y},
+                   degrees, tint);
 }
 
 }  // namespace render

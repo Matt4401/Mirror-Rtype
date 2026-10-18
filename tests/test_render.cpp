@@ -124,6 +124,7 @@ TEST(RenderSystem, CopiesRenderableDataIntoTheQueue) {
         entity,
         ecs::Renderable{.textureId = 4,
                         .sourceRect = {.x = 32, .y = 16, .width = 24, .height = 24},
+                        .origin = {.x = 0.0F, .y = 1.0F},
                         .tint = {.r = 10, .g = 20, .b = 30, .a = 40},
                         .layer = 1});
 
@@ -138,6 +139,8 @@ TEST(RenderSystem, CopiesRenderableDataIntoTheQueue) {
     EXPECT_EQ(item.sourceRect.y, 16);
     EXPECT_EQ(item.sourceRect.width, 24);
     EXPECT_EQ(item.sourceRect.height, 24);
+    EXPECT_EQ(item.origin.x, 0.0F);
+    EXPECT_EQ(item.origin.y, 1.0F);
     EXPECT_EQ(item.tint.b, 30);
     EXPECT_EQ(item.layer, 1);
 }

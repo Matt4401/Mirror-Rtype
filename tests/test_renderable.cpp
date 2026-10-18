@@ -12,6 +12,8 @@ TEST(Renderable, DefaultValues) {
     EXPECT_EQ(renderable.sourceRect.y, 0);
     EXPECT_EQ(renderable.sourceRect.width, 0);
     EXPECT_EQ(renderable.sourceRect.height, 0);
+    EXPECT_EQ(renderable.origin.x, 0.5F);
+    EXPECT_EQ(renderable.origin.y, 0.5F);
     EXPECT_EQ(renderable.layer, 0);
     EXPECT_EQ(renderable.tint.r, 255);
     EXPECT_EQ(renderable.tint.g, 255);
@@ -23,6 +25,7 @@ TEST(Renderable, DesignatedInitializers) {
     const ecs::Renderable renderable{
         .textureId = 7,
         .sourceRect = {.x = 32, .y = 16, .width = 24, .height = 24},
+        .origin = {.x = 0.0F, .y = 0.0F},
         .tint = {.r = 255, .g = 0, .b = 0, .a = 128},
         .layer = 3,
     };
@@ -32,6 +35,8 @@ TEST(Renderable, DesignatedInitializers) {
     EXPECT_EQ(renderable.sourceRect.y, 16);
     EXPECT_EQ(renderable.sourceRect.width, 24);
     EXPECT_EQ(renderable.sourceRect.height, 24);
+    EXPECT_EQ(renderable.origin.x, 0.0F);
+    EXPECT_EQ(renderable.origin.y, 0.0F);
     EXPECT_EQ(renderable.tint.g, 0);
     EXPECT_EQ(renderable.tint.a, 128);
     EXPECT_EQ(renderable.layer, 3);

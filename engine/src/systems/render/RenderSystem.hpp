@@ -28,6 +28,9 @@ struct DrawItem {
     /** @brief Texture region copied from `ecs::Renderable`. */
     ecs::TextureRect sourceRect;
 
+    /** @brief Normalized render pivot copied from `ecs::Renderable`. */
+    ecs::RenderOrigin origin;
+
     /** @brief Spatial state copied from `ecs::Transform`. */
     ecs::Transform transform;
 
