@@ -78,13 +78,15 @@ Resource& Registry::emplaceResource(Args&&... args) {
 }
 
 template <typename Resource>
-Resource& Registry::addResource(Resource&& resource) {
-    return emplaceResource<Resource>(std::forward<Resource>(resource));
+std::remove_cvref_t<Resource>& Registry::addResource(Resource&& resource) {
+    using CleanType = std::remove_cvref_t<Resource>;
+    return emplaceResource<CleanType>(std::forward<Resource>(resource));
 }
 
 template <typename Resource>
-Resource& Registry::addResource(const Resource& resource) {
-    return emplaceResource<Resource>(resource);
+std::remove_cvref_t<Resource>& Registry::addResource(const Resource& resource) {
+    using CleanType = std::remove_cvref_t<Resource>;
+    return emplaceResource<CleanType>(resource);
 }
 
 template <typename Resource>

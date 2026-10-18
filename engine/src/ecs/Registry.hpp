@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <queue>
+#include <type_traits>
 #include <vector>
 
 #include "Entity.hpp"
@@ -216,7 +217,7 @@ class Registry {
      * @return Reference to the stored resource.
      */
     template <typename Resource>
-    Resource& addResource(Resource&& resource);
+    std::remove_cvref_t<Resource>& addResource(Resource&& resource);
 
     /**
      * @brief Stores a singleton resource using copy semantics.
@@ -226,7 +227,7 @@ class Registry {
      * @return Reference to the stored resource.
      */
     template <typename Resource>
-    Resource& addResource(const Resource& resource);
+    std::remove_cvref_t<Resource>& addResource(const Resource& resource);
 
     /**
      * @brief Retrieves a mutable reference to a registered resource.
