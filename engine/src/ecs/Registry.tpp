@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "ComponentType.hpp"
+#include "ResourceType.hpp"
 #include "ecs/Registry.hpp"
 
 namespace ecs {
@@ -63,6 +64,58 @@ void Registry::removeComponent(Entity from) {
     const ComponentTypeId id = getComponentTypeId<Component>();
     if (id < _componentsArrays.size() && _componentsArrays[id]) {
         _componentsArrays[id]->erase(from);
+    }
+}
+
+template <typename Resource, typename... Args>
+Resource& Registry::emplaceResource(Args&&... args) {
+    const ResourceTypeId id = getResourceTypeId<Resource>();
+    if (id >= _resources.size()) {
+        _resources.resize(id + 1);
+    }
+    _resources[id] = std::make_unique<detail::ResourceSlot<Resource>>(std::forward<Args>(args)...);
+    return static_cast<detail::ResourceSlot<Resource>*>(_resources[id].get())->get();
+}
+
+template <typename Resource>
+Resource& Registry::addResource(Resource&& resource) {
+    return emplaceResource<Resource>(std::forward<Resource>(resource));
+}
+
+template <typename Resource>
+Resource& Registry::addResource(const Resource& resource) {
+    return emplaceResource<Resource>(resource);
+}
+
+template <typename Resource>
+Resource& Registry::getResource() {
+    const ResourceTypeId id = getResourceTypeId<Resource>();
+    if (id >= _resources.size() || !_resources[id]) {
+        throw std::runtime_error("Resource not registered in Registry");
+    }
+    return static_cast<detail::ResourceSlot<Resource>*>(_resources[id].get())->get();
+}
+
+template <typename Resource>
+const Resource& Registry::getResource() const {
+    const ResourceTypeId id = getResourceTypeId<Resource>();
+    if (id >= _resources.size() || !_resources[id]) {
+        throw std::runtime_error("Resource not registered in Registry");
+    }
+    return static_cast<const detail::ResourceSlot<Resource>*>(_resources[id].get())->get();
+}
+
+template <typename Resource>
+bool Registry::hasResource() const noexcept {
+    const ResourceTypeId id = getResourceTypeId<Resource>();
+    return id < _resources.size() && _resources[id] != nullptr;
+}
+
+template <typename Resource>
+void Registry::removeResource() {
+    const ResourceTypeId id = getResourceTypeId<Resource>();
+    if (id < _resources.size()) {
+        _resources[id].reset();
     }
 }
 
