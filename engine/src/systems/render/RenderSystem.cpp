@@ -5,11 +5,11 @@
 #include <algorithm>
 #include <cmath>
 
+#include "components/CameraComponent.hpp"
 #include "components/Renderable.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
-#include "render/CameraComponent.hpp"
 #include "systems/render/RenderSystemDefaults.hpp"
 #include "systems/render/RenderSystemSort.hpp"
 #include "render/texture/TextureStore.hpp"
@@ -38,12 +38,16 @@ void RenderSystem::collect(ecs::Registry& registry) {
 
     _camera = detail::neutralCamera();
     bool cameraFound = false;
-    registry.runSystem<CameraComponent>([this, &cameraFound](ecs::Entity /*entity*/, const CameraComponent& component) {
-        if (!cameraFound && component.active) {
-            _camera = component.camera;
-            cameraFound = true;
-        }
-    });
+    registry.runSystem<ecs::CameraComponent>(
+        [this, &cameraFound](ecs::Entity /*entity*/, const ecs::CameraComponent& component) {
+            if (!cameraFound && component.active) {
+                _camera = Camera2D{.offset = {.x = component.offsetX, .y = component.offsetY},
+                                   .target = {.x = component.targetX, .y = component.targetY},
+                                   .rotation = component.rotation,
+                                   .zoom = component.zoom};
+                cameraFound = true;
+            }
+        });
 }
 
 void RenderSystem::draw() const {
