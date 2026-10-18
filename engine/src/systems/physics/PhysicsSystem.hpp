@@ -1,6 +1,7 @@
 #pragma once
 
-#include <box2d/box2d.h>
+#include <box2d/b2_body.h>
+#include <box2d/b2_world.h>
 
 #include <cstddef>
 #include <unordered_map>
