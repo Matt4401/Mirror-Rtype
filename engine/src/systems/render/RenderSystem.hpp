@@ -47,9 +47,6 @@ struct DrawItem {
  */
 class RenderSystem {
   public:
-    /** @brief Size in pixels of the square drawn for entities without a texture, at scale 1. */
-    static constexpr float PLACEHOLDER_SIZE = 32.0F;
-
     /**
      * @brief Creates the system.
      *

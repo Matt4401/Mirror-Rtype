@@ -65,8 +65,8 @@ void RenderSystem::drawItem(const DrawItem& item) const {
     const float degrees = transform.rotation * detail::RADIANS_TO_DEGREES;
 
     if (item.textureId == ecs::NO_TEXTURE) {
-        const float width = PLACEHOLDER_SIZE * std::fabs(transform.scaleX);
-        const float height = PLACEHOLDER_SIZE * std::fabs(transform.scaleY);
+        const float width = detail::PLACEHOLDER_SIZE * std::fabs(transform.scaleX);
+        const float height = detail::PLACEHOLDER_SIZE * std::fabs(transform.scaleY);
         const Rectangle rect{.x = transform.x, .y = transform.y, .width = width, .height = height};
         DrawRectanglePro(rect, Vector2{.x = width * item.origin.x, .y = height * item.origin.y}, degrees, tint);
         return;
