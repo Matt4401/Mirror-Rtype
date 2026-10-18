@@ -11,26 +11,10 @@
 #include "ecs/Registry.hpp"
 #include "render/CameraComponent.hpp"
 #include "systems/render/RenderSystemDefaults.hpp"
+#include "systems/render/RenderSystemSort.hpp"
 #include "render/texture/TextureStore.hpp"
 
 namespace render {
-
-namespace {
-
-bool drawsBefore(const DrawItem& lhs, const DrawItem& rhs) {
-    if (lhs.layer != rhs.layer) {
-        return lhs.layer < rhs.layer;
-    }
-    if (lhs.transform.z != rhs.transform.z) {
-        return lhs.transform.z < rhs.transform.z;
-    }
-    if (lhs.textureId != rhs.textureId) {
-        return lhs.textureId < rhs.textureId;
-    }
-    return lhs.entity < rhs.entity;
-}
-
-}  // namespace
 
 RenderSystem::RenderSystem(const TextureStore& textures) : _textures(&textures), _camera(detail::neutralCamera()) {
     _queue.reserve(detail::INITIAL_QUEUE_CAPACITY);
@@ -50,7 +34,7 @@ void RenderSystem::collect(ecs::Registry& registry) {
                 .tint = renderable.tint,
             });
         });
-    std::ranges::sort(_queue, drawsBefore);
+    std::ranges::sort(_queue, detail::drawsBefore);
 
     _camera = detail::neutralCamera();
     bool cameraFound = false;
