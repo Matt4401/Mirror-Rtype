@@ -1,6 +1,6 @@
 target("engine_core")
     set_kind("static")
-    add_files("**.cpp|render/**.cpp|systems/render/**.cpp")
+    add_files("ecs/*.cpp")
     add_includedirs(".", {public = true})
 
 target("engine_time")
@@ -22,6 +22,7 @@ target("engine_scripting")
 
 if has_config("graphics") then
     includes("render")
+    includes("input")
 end
 
 target("engine_all")
