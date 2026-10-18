@@ -74,13 +74,13 @@ int main() {
         spawnDemoScene(registry);
 
         ecs::time::Clock clock;
-        while (!window.shouldClose()) {
+        while (!render::Window::shouldClose()) {
             clock.tick(ecs::time::DEFAULT_FIXED_DT,
                        [&registry](const ecs::time::Time& time) { moveProjectiles(registry, time.deltaTime); });
 
-            window.beginFrame();
+            render::Window::beginFrame();
             renderSystem.update(registry);
-            window.endFrame();
+            render::Window::endFrame();
         }
     } catch (const std::exception& error) {
         std::cerr << "client: " << error.what() << '\n';

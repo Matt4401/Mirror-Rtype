@@ -34,17 +34,13 @@ Window::~Window() {
     }
 }
 
-// The window is a process-wide raylib resource; the instance only proves it is open.
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-bool Window::shouldClose() const { return WindowShouldClose(); }
+bool Window::shouldClose() { return WindowShouldClose(); }
 
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-void Window::beginFrame() const {
+void Window::beginFrame() {
     BeginDrawing();
     ClearBackground(BLACK);
 }
 
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-void Window::endFrame() const { EndDrawing(); }
+void Window::endFrame() { EndDrawing(); }
 
 }  // namespace render
