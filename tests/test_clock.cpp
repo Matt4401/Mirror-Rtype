@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
 
@@ -126,6 +127,29 @@ TEST(Clock, DefaultSourceUsesRealTime) {
     std::size_t calls = 0;
     clock.tick(FIXED_DT, [&](const ecs::time::Time&) { ++calls; });
     EXPECT_LE(calls, ecs::time::Clock::DEFAULT_MAX_STEPS_PER_TICK);
+}
+
+TEST(Clock, SyncsTimeResourceInRegistry) {
+    FakeTime fake;
+    ecs::time::Clock clock(fake.source());
+    ecs::Registry registry;
+
+    EXPECT_FALSE(registry.hasResource<ecs::time::Time>());
+
+    fake.now = static_cast<double>(FIXED_DT);
+    std::size_t steps = 0;
+    clock.tick(FIXED_DT, registry, [&](ecs::Registry& reg) {
+        ++steps;
+        EXPECT_TRUE(reg.hasResource<ecs::time::Time>());
+        const auto& time = reg.getResource<ecs::time::Time>();
+        EXPECT_FLOAT_EQ(time.deltaTime, FIXED_DT);
+        EXPECT_EQ(time.tickCount, 1U);
+        EXPECT_NEAR(time.totalElapsedTime, FIXED_DT, 0.001F);
+    });
+
+    EXPECT_EQ(steps, 1U);
+    EXPECT_TRUE(registry.hasResource<ecs::time::Time>());
+    EXPECT_EQ(registry.getResource<ecs::time::Time>().tickCount, 1U);
 }
 
 int main(int argc, char** argv) {

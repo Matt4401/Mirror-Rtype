@@ -1,12 +1,72 @@
 #pragma once
 #include <memory>
 #include <queue>
+#include <type_traits>
 #include <vector>
 
 #include "Entity.hpp"
 #include "SparseArray.hpp"
 
 namespace ecs {
+
+namespace detail {
+
+/**
+ * @brief Base interface for type-erased resource storage slots.
+ */
+class IResourceSlot {
+  public:
+    IResourceSlot() = default;
+
+    /** @brief Virtual destructor for type-erased cleanup. */
+    virtual ~IResourceSlot() = default;
+
+    /** @brief Deleted copy constructor. */
+    IResourceSlot(const IResourceSlot&) = delete;
+
+    /** @brief Deleted copy assignment operator. */
+    IResourceSlot& operator=(const IResourceSlot&) = delete;
+
+    /** @brief Defaulted move constructor. */
+    IResourceSlot(IResourceSlot&&) noexcept = default;
+
+    /** @brief Defaulted move assignment operator. */
+    IResourceSlot& operator=(IResourceSlot&&) noexcept = default;
+};
+
+/**
+ * @brief Typed resource slot holding an instance of Resource.
+ * @tparam Resource Type of stored resource.
+ */
+template <typename Resource>
+class ResourceSlot final : public IResourceSlot {
+  public:
+    /**
+     * @brief In-place constructor forwarding arguments to Resource constructor.
+     * @tparam Args Constructor argument types.
+     * @param args Arguments forwarded to Resource.
+     */
+    template <typename... Args>
+    explicit ResourceSlot(Args&&... args) : _resource(std::forward<Args>(args)...) {}
+
+    /**
+     * @brief Retrieves mutable reference to stored resource.
+     * @return Reference to Resource.
+     */
+    [[nodiscard]] Resource& get() noexcept { return _resource; }
+
+    /**
+     * @brief Retrieves const reference to stored resource.
+     * @return Const reference to Resource.
+     */
+    [[nodiscard]] const Resource& get() const noexcept { return _resource; }
+
+  private:
+    /** @brief Stored resource instance. */
+    Resource _resource;
+};
+
+}  // namespace detail
 
 /**
  * @brief Central coordinator for the Entity Component System (ECS).
@@ -15,6 +75,7 @@ namespace ecs {
  * - Entity lifecycle: creates new entity IDs and recycles destroyed entities.
  * - Component storage: maintains a flat vector of type-erased `ISparseArray` containers indexed by dense
  * ComponentTypeId.
+ * - Resource storage: maintains global unique singleton data instances indexed by dense ResourceTypeId.
  * - System execution: executes variadic queries across entities possessing all requested components.
  */
 class Registry {
@@ -138,6 +199,74 @@ class Registry {
     void removeComponent(Entity from);
 
     /**
+     * @brief Constructs and stores a singleton resource in-place.
+     *
+     * @tparam Resource Resource type.
+     * @tparam Args Constructor argument types.
+     * @param args Arguments forwarded to Resource constructor.
+     * @return Reference to the newly constructed resource.
+     */
+    template <typename Resource, typename... Args>
+    Resource& emplaceResource(Args&&... args);
+
+    /**
+     * @brief Stores a singleton resource using move semantics.
+     *
+     * @tparam Resource Resource type.
+     * @param resource Resource rvalue to move into storage.
+     * @return Reference to the stored resource.
+     */
+    template <typename Resource>
+    std::remove_cvref_t<Resource>& addResource(Resource&& resource);
+
+    /**
+     * @brief Stores a singleton resource using copy semantics.
+     *
+     * @tparam Resource Resource type.
+     * @param resource Resource lvalue to copy into storage.
+     * @return Reference to the stored resource.
+     */
+    template <typename Resource>
+    std::remove_cvref_t<Resource>& addResource(const Resource& resource);
+
+    /**
+     * @brief Retrieves a mutable reference to a registered resource.
+     *
+     * @tparam Resource Resource type to retrieve.
+     * @return Mutable reference to the resource.
+     * @throws std::runtime_error If the resource has not been registered.
+     */
+    template <typename Resource>
+    [[nodiscard]] Resource& getResource();
+
+    /**
+     * @brief Retrieves a const reference to a registered resource.
+     *
+     * @tparam Resource Resource type to retrieve.
+     * @return Const reference to the resource.
+     * @throws std::runtime_error If the resource has not been registered.
+     */
+    template <typename Resource>
+    [[nodiscard]] const Resource& getResource() const;
+
+    /**
+     * @brief Checks if a resource of the given type is currently registered.
+     *
+     * @tparam Resource Resource type to check.
+     * @return True if the resource is present in the registry.
+     */
+    template <typename Resource>
+    [[nodiscard]] bool hasResource() const noexcept;
+
+    /**
+     * @brief Removes a resource from the registry.
+     *
+     * @tparam Resource Resource type to remove.
+     */
+    template <typename Resource>
+    void removeResource();
+
+    /**
      * @brief Executes a system callback over all entities possessing a specific set of components.
      *
      * Utilizes the dense entity array of the first component as the iteration driver,
@@ -162,6 +291,8 @@ class Registry {
   private:
     /** @brief Vector of type-erased sparse array containers indexed by component type ID. */
     std::vector<std::unique_ptr<ISparseArray>> _componentsArrays;
+    /** @brief Vector of type-erased resource slots indexed by resource type ID. */
+    std::vector<std::unique_ptr<detail::IResourceSlot>> _resources;
     /** @brief Next available entity ID counter when no recycled IDs exist. */
     Entity _nextEntity = 0;
     /** @brief Queue of recycled entity IDs from previously destroyed entities. */
