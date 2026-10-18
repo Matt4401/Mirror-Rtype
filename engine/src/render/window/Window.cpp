@@ -12,6 +12,9 @@ Window::Window(const WindowConfig& config) {
     if (config.width <= 0 || config.height <= 0) {
         throw std::invalid_argument("Window dimensions must be positive");
     }
+    if (config.targetFps <= 0) {
+        throw std::invalid_argument("Target FPS must be positive");
+    }
 
     unsigned int flags = 0;
     if (config.vsync) {
@@ -26,6 +29,7 @@ Window::Window(const WindowConfig& config) {
     if (!IsWindowReady()) {
         throw std::runtime_error("Failed to create the game window");
     }
+    SetTargetFPS(config.targetFps);
 }
 
 Window::~Window() {

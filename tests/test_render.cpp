@@ -205,6 +205,11 @@ TEST(Window, RejectsNonPositiveDimensions) {
     EXPECT_THROW(render::Window(render::WindowConfig{.width = 1280, .height = -1}), std::invalid_argument);
 }
 
+TEST(Window, RejectsNonPositiveTargetFps) {
+    EXPECT_THROW(render::Window(render::WindowConfig{.targetFps = 0}), std::invalid_argument);
+    EXPECT_THROW(render::Window(render::WindowConfig{.targetFps = -1}), std::invalid_argument);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
