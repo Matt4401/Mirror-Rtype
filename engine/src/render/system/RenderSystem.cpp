@@ -41,6 +41,7 @@ void RenderSystem::collect(ecs::Registry& registry) {
                 .entity = entity,
                 .layer = renderable.layer,
                 .textureId = renderable.textureId,
+                .sourceRect = renderable.sourceRect,
                 .transform = transform,
                 .tint = renderable.tint,
             });
@@ -90,15 +91,20 @@ void RenderSystem::drawItem(const DrawItem& item) const {
 
     const auto textureWidth = static_cast<float>(texture->width);
     const auto textureHeight = static_cast<float>(texture->height);
+    const bool usesWholeTexture = item.sourceRect.width == 0 && item.sourceRect.height == 0;
+    const float sourceX = usesWholeTexture ? 0.0F : static_cast<float>(item.sourceRect.x);
+    const float sourceY = usesWholeTexture ? 0.0F : static_cast<float>(item.sourceRect.y);
+    const float sourceWidth = usesWholeTexture ? textureWidth : static_cast<float>(item.sourceRect.width);
+    const float sourceHeight = usesWholeTexture ? textureHeight : static_cast<float>(item.sourceRect.height);
     // A negative source size mirrors the texture, which is how negative scales flip a sprite.
     const Rectangle source{
-        .x = 0.0F,
-        .y = 0.0F,
-        .width = transform.scaleX < 0.0F ? -textureWidth : textureWidth,
-        .height = transform.scaleY < 0.0F ? -textureHeight : textureHeight,
+        .x = sourceX,
+        .y = sourceY,
+        .width = transform.scaleX < 0.0F ? -sourceWidth : sourceWidth,
+        .height = transform.scaleY < 0.0F ? -sourceHeight : sourceHeight,
     };
-    const float destWidth = textureWidth * std::fabs(transform.scaleX);
-    const float destHeight = textureHeight * std::fabs(transform.scaleY);
+    const float destWidth = sourceWidth * std::fabs(transform.scaleX);
+    const float destHeight = sourceHeight * std::fabs(transform.scaleY);
     const Rectangle dest{.x = transform.x, .y = transform.y, .width = destWidth, .height = destHeight};
     DrawTexturePro(*texture, source, dest, Vector2{.x = destWidth / 2.0F, .y = destHeight / 2.0F}, degrees, tint);
 }

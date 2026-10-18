@@ -25,6 +25,9 @@ struct DrawItem {
     /** @brief Texture to draw, or `ecs::NO_TEXTURE` for a flat colored placeholder. */
     ecs::TextureId textureId = ecs::NO_TEXTURE;
 
+    /** @brief Texture region copied from `ecs::Renderable`. */
+    ecs::TextureRect sourceRect;
+
     /** @brief Spatial state copied from `ecs::Transform`. */
     ecs::Transform transform;
 

@@ -95,7 +95,7 @@ TEST(RenderSystem, IgnoresEntitiesMissingAComponent) {
     EXPECT_EQ(drawOrder(system), std::vector<ecs::Entity>{drawable});
 }
 
-TEST(RenderSystem, CopiesTransformAndTintIntoTheQueue) {
+TEST(RenderSystem, CopiesRenderableDataIntoTheQueue) {
     ecs::Registry registry;
     const render::TextureStore textures;
     render::RenderSystem system(textures);
@@ -103,7 +103,11 @@ TEST(RenderSystem, CopiesTransformAndTintIntoTheQueue) {
     const ecs::Entity entity = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(entity, ecs::Transform{.x = 100.0F, .y = 200.0F});
     registry.addComponent<ecs::Renderable>(
-        entity, ecs::Renderable{.textureId = 4, .tint = {.r = 10, .g = 20, .b = 30, .a = 40}, .layer = 1});
+        entity,
+        ecs::Renderable{.textureId = 4,
+                        .sourceRect = {.x = 32, .y = 16, .width = 24, .height = 24},
+                        .tint = {.r = 10, .g = 20, .b = 30, .a = 40},
+                        .layer = 1});
 
     system.collect(registry);
 
@@ -112,6 +116,10 @@ TEST(RenderSystem, CopiesTransformAndTintIntoTheQueue) {
     EXPECT_EQ(item.transform.x, 100.0F);
     EXPECT_EQ(item.transform.y, 200.0F);
     EXPECT_EQ(item.textureId, 4U);
+    EXPECT_EQ(item.sourceRect.x, 32);
+    EXPECT_EQ(item.sourceRect.y, 16);
+    EXPECT_EQ(item.sourceRect.width, 24);
+    EXPECT_EQ(item.sourceRect.height, 24);
     EXPECT_EQ(item.tint.b, 30);
     EXPECT_EQ(item.layer, 1);
 }
