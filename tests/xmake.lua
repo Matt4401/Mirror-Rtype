@@ -26,6 +26,13 @@ target("test_components")
     add_files("test_components.cpp")
     add_tests("test_components")
 
+target("test_clock")
+    set_kind("binary")
+    add_deps("engine")
+    add_packages("gtest")
+    add_files("test_components.cpp")
+    add_tests("test_components")
+
 target("test_renderable")
     set_kind("binary")
     add_deps("engine")
