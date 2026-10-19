@@ -4,6 +4,10 @@
 
 #include "ecs/time/Time.hpp"
 
+namespace ecs {
+class Registry;
+}
+
 namespace ecs::time {
 
 /**
@@ -40,6 +44,20 @@ class Clock {
      */
     template <typename Step>
     std::size_t tick(float fixedDt, Step&& step);
+
+    /**
+     * @brief Advances the simulation by elapsed time, automatically updating the Time resource in the Registry.
+     *
+     * Invokes `step(Registry&)` once per whole `fixedDt` contained in the accumulated time.
+     * The `ecs::time::Time` resource is stored or updated in `registry` before each step execution.
+     *
+     * @param fixedDt Duration of one simulation step in seconds (must be > 0).
+     * @param registry ECS Registry containing or receiving the Time resource.
+     * @param step Callable executed for each step, with signature `void(Registry&)`.
+     * @return Number of steps executed.
+     */
+    template <typename Step>
+    std::size_t tick(float fixedDt, Registry& registry, Step&& step);
 
     /**
      * @brief Time data of the latest executed step.

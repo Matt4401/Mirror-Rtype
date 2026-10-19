@@ -2,15 +2,18 @@
 
 ## 1. Purpose
 
-The game simulation must not depend on CPU speed: an enemy moving at 100 units per second has to travel 100 units in one real second on a slow laptop as well as on a fast server. The **`Clock`** class turns the real time that elapses between two loop iterations into a whole number of **fixed-duration simulation steps** (the *fixed timestep* pattern).
+The game simulation must not depend on CPU speed: an enemy moving at 100 units per second has to travel 100 units in one
+real second on a slow laptop as well as on a fast server. The **`Clock`** class turns the real time that elapses between
+two loop iterations into a whole number of **fixed-duration simulation steps** (the *fixed timestep* pattern).
 
-It lives in `engine/src/ecs/time/` under the `ecs::time` namespace and has **no graphical dependency**, so the headless server and the client use the exact same code.
+It lives in `engine/src/ecs/time/` under the `ecs::time` namespace and has **no graphical dependency**, so the headless
+server and the client use the exact same code.
 
-| File | Content |
-|------|---------|
-| `Time.hpp` | `Time` structure handed to every simulation step |
+| File                                    | Content                                                        |
+|-----------------------------------------|----------------------------------------------------------------|
+| `Time.hpp`                              | `Time` structure handed to every simulation step               |
 | `Clock.hpp` / `Clock.tpp` / `Clock.cpp` | The `Clock` class (`tick` is a template defined in the `.tpp`) |
-| `SteadyNow.hpp` / `SteadyNow.cpp` | `steadyNowSeconds()`, the default time source |
+| `SteadyNow.hpp` / `SteadyNow.cpp`       | `steadyNowSeconds()`, the default time source                  |
 
 ## 2. How It Works
 
@@ -32,7 +35,8 @@ flowchart TD
 On each call to `tick`:
 
 1. The real time elapsed since the previous call is added to the accumulator (negative values are clamped to `0`).
-2. While the accumulator holds at least one `fixedDt`, one step is consumed: the accumulator is decreased by `fixedDt`, the `Time` data is updated and your callback runs.
+2. While the accumulator holds at least one `fixedDt`, one step is consumed: the accumulator is decreased by `fixedDt`,
+   the `Time` data is updated and your callback runs.
 3. Whatever remains (less than one step) is kept for the next call, so no time is ever lost.
 
 Consequences:
@@ -43,19 +47,23 @@ Consequences:
 
 ### Spiral-of-death protection
 
-If the process freezes (debugger, OS suspend, heavy load), a huge amount of time accumulates. Running every missed step would take even longer and make the next frame worse, and so on. To avoid this, a single `tick` runs at most **`maxStepsPerTick`** steps (default: `5`). If a backlog still remains after that, it is dropped and only the remainder smaller than one step is kept.
+If the process freezes (debugger, OS suspend, heavy load), a huge amount of time accumulates. Running every missed step
+would take even longer and make the next frame worse, and so on. To avoid this, a single `tick` runs at most **
+`maxStepsPerTick`** steps (default: `5`). If a backlog still remains after that, it is dropped and only the remainder
+smaller than one step is kept.
 
 ## 3. The `Time` Structure
 
 `Time` is passed (by `const&`) to every step.
 
-| Field | Type | Meaning |
-|-------|------|---------|
-| `deltaTime` | `float` | Constant duration of one step, in seconds (equals the `fixedDt` given to `tick`) |
-| `totalElapsedTime` | `float` | Simulated time since the clock started (or was reset), in seconds |
-| `tickCount` | `std::uint64_t` | Number of steps executed since the clock started (or was reset) |
+| Field              | Type            | Meaning                                                                          |
+|--------------------|-----------------|----------------------------------------------------------------------------------|
+| `deltaTime`        | `float`         | Constant duration of one step, in seconds (equals the `fixedDt` given to `tick`) |
+| `totalElapsedTime` | `float`         | Simulated time since the clock started (or was reset), in seconds                |
+| `tickCount`        | `std::uint64_t` | Number of steps executed since the clock started (or was reset)                  |
 
-`Time.hpp` also provides `ecs::time::DEFAULT_FIXED_DT` (`1.0F / 60.0F`, i.e. 60 Hz), the step size to pass to `tick` unless a different rate is needed.
+`Time.hpp` also provides `ecs::time::DEFAULT_FIXED_DT` (`1.0F / 60.0F`, i.e. 60 Hz), the step size to pass to `tick`
+unless a different rate is needed.
 
 The total is accumulated internally in `double` precision, so it does not drift even after many thousands of ticks.
 
@@ -75,6 +83,9 @@ class Clock {
     template <typename Step>
     std::size_t tick(float fixedDt, Step&& step);          // returns number of steps run
 
+    template <typename Step>
+    std::size_t tick(float fixedDt, Registry& registry, Step&& step); // updates Time resource in registry
+
     const Time& time() const noexcept;                     // data of the latest step
     void reset();                                          // restart accumulator and counters
 };
@@ -82,14 +93,16 @@ class Clock {
 }
 ```
 
-| Member | Description |
-|--------|-------------|
+| Member                           | Description                                                                                                                                                      |
+|----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `Clock(source, maxStepsPerTick)` | Records the starting instant. A `nullptr` source selects `steadyNowSeconds` (based on `std::chrono::steady_clock`). `maxStepsPerTick` is forced to at least `1`. |
-| `tick(fixedDt, step)` | Runs `step(const Time&)` once per whole `fixedDt` of accumulated time. Does nothing and returns `0` if `fixedDt <= 0`. |
-| `time()` | Returns the `Time` of the last executed step. |
-| `reset()` | Re-reads the current instant and clears the accumulator, the total and the counters. |
+| `tick(fixedDt, step)`            | Runs `step(const Time&)` once per whole `fixedDt` of accumulated time. Does nothing and returns `0` if `fixedDt <= 0`.                                           |
+| `tick(fixedDt, registry, step)`  | Runs `step(Registry&)` once per whole `fixedDt` of accumulated time, automatically updating the `ecs::time::Time` resource stored in `registry`.                 |
+| `time()`                         | Returns the `Time` of the last executed step.                                                                                                                    |
+| `reset()`                        | Re-reads the current instant and clears the accumulator, the total and the counters.                                                                             |
 
-`tick` is a template so that any callable (lambda, functor, function pointer, even move-only ones) can be passed without type erasure, heap allocation or indirect call on a path executed every frame.
+`tick` is a template so that any callable (lambda, functor, function pointer, even move-only ones) can be passed without
+type erasure, heap allocation or indirect call on a path executed every frame.
 
 ## 5. Usage
 
@@ -126,14 +139,18 @@ while (!window.shouldClose()) {
 
 ### Guidelines
 
-- The callback receives a `const ecs::time::Time&` argument: a lambda must accept it, even if it ignores it (`[&](const ecs::time::Time&) { ... }`).
+- The callback receives a `const ecs::time::Time&` argument: a lambda must accept it, even if it ignores it
+  (`[&](const ecs::time::Time&) { ... }`).
 - Systems must take their `dt` from `Time::deltaTime` and **never measure time themselves**.
-- Put in the callback only what must advance at a fixed rate (logic, AI, scripts, physics, network tick). Keep rendering and sleeping out of it.
-- To run something less often than every step (for example sending snapshots every 3 ticks), use `time.tickCount`: `if (time.tickCount % 3 == 0) { ... }`.
+- Put in the callback only what must advance at a fixed rate (logic, AI, scripts, physics, network tick). Keep rendering
+  and sleeping out of it.
+- To run something less often than every step (for example sending snapshots every 3 ticks), use `time.tickCount`:
+  `if (time.tickCount % 3 == 0) { ... }`.
 
 ## 6. Testing
 
-The time source is injectable, so tests never wait for real time: they provide a function returning a variable that they advance by hand.
+The time source is injectable, so tests never wait for real time: they provide a function returning a variable that they
+advance by hand.
 
 ```cpp
 double now = 0.0;

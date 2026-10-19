@@ -4,16 +4,24 @@
 
 The project is structured into three primary tiers:
 
-1. **Engine Core:** An agnostic standalone library providing ECS, event dispatching, rendering wrappers (Raylib), and networking primitives (Asio).
-2. **Authoritative Server:** Hosts game simulation sessions, runs logical systems, enforces validation, and synchronizes states.
-3. **Graphical Client:** Renders the world, handles local inputs, performs interpolation and client-side prediction, and queries user devices.
+1. **Modular Engine:** An agnostic standalone set of link-time sub-libraries:
+    - **`engine_core`**: Lightweight ECS Core (Registry, Sparse Arrays, Entity, CommandBuffer, Resources).
+    - **`engine_time`**: Fixed-timestep simulation clock (`Clock`), time data (`Time`), and monotonic time providers.
+    - **`engine_events`**: Decoupled message passing interface (`EventBus`).
+    - **`engine_scripting`**: Embedded Wren virtual machine and runtime scripting system (`ScriptSystem`).
+    - **`engine_all`**: Meta/phony target building all engine sub-components together.
+2. **Authoritative Server:** Hosts game simulation sessions, runs logical systems, enforces validation, and synchronizes
+   states.
+3. **Graphical Client:** Renders the world, handles local inputs, performs interpolation and client-side prediction, and
+   queries user devices.
 
 ```mermaid
 graph TB
-    subgraph Engine["Engine (Shared Core)"]
-        ECS["ECS Core (Registry, Sparse Sets)"]
-        NetWrapper["Networking Primitives (Asio)"]
-        Events["Event Bus"]
+    subgraph Engine["Modular Engine Sub-Libraries"]
+        Core["engine_core (ECS, Sparse Sets, Resources)"]
+        Time["engine_time (Clock, Time)"]
+        Events["engine_events (Event Bus)"]
+        Scripting["engine_scripting (WrenVM, ScriptSystem)"]
     end
 
     subgraph ServerApp["r-type_server"]
@@ -39,8 +47,10 @@ graph TB
 
 The game follows an **Authoritative Server** architecture:
 
-- **Client:** Captures player input and sends it across UDP datagrams. It renders local feedback and reconciles discrepancies when server updates arrive.
-- **Server:** Runs at a fixed simulation tick rate, advances the game state, handles collision and damage calculations, and broadcasts compressed world updates.
+- **Client:** Captures player input and sends it across UDP datagrams. It renders local feedback and reconciles
+  discrepancies when server updates arrive.
+- **Server:** Runs at a fixed simulation tick rate, advances the game state, handles collision and damage calculations,
+  and broadcasts compressed world updates.
 
 ```mermaid
 sequenceDiagram
