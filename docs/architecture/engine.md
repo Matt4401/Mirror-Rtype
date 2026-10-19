@@ -145,3 +145,26 @@ auto token = bus.subscribe<PlayerDamagedEvent>([](const PlayerDamagedEvent& even
 // Publishing (e.g., in a CollisionSystem)
 bus.publish(PlayerDamagedEvent{.player = player, .damage = 10});
 ```
+
+## 6. Input System Architecture & Roadmap
+
+### 6.1 Current Architecture
+
+The input pipeline consists of three core components:
+
+1. **`ActionMapping`**: Translates raw hardware events (keyboard keys, gamepad buttons, axes) into logical `Action` states.
+2. **`InputState`**: Singleton ECS resource storing current-frame digital held/pressed/released bitsets and normalized movement axes.
+3. **`InputSystem`**: Polls hardware, synchronizes `InputState`, dispatches `InputActionEvent` over the event bus, and updates matching `InputReceiver` components.
+
+To support multi-player local configurations (e.g. split-screen, multiple gamepads) and online player slot assignment, `InputSystem` supports configurable `playerIndex` and `gamepadIndex`:
+
+- `_gamepadIndex`: Selects which hardware controller device is polled.
+- `_playerIndex`: Labels published events and filters `InputReceiver` components so that each player entity is only driven by its assigned controller.
+
+### 6.2 Modularity Roadmap (Engine / Game Decoupling)
+
+To maintain true engine reusability across genres (e.g. Pong, RPG, platformer), input semantics must not be hardcoded in the engine core:
+
+- **Game-Driven Action Registration**: Replace the fixed `input::Action` enum (`Shoot`, `ChargeWeapon`) with a dynamic registration API (`registerAction(ActionId)` / string hash).
+- **Binding Responsibility**: Move default keybindings from the engine to the game client layer.
+- **Device-to-Player Abstraction**: Abstract device allocation (Keyboard, Gamepad 0..N) to logical players via a dedicated game-level mapping manager.
