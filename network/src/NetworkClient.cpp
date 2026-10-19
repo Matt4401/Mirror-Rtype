@@ -36,7 +36,8 @@ NetworkClient::NetworkClient() : _work(asio::make_work_guard(_io)), _udpSocket(_
 NetworkClient::~NetworkClient() { NetworkClient::stop(); }
 
 bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
-    // compare_exchange: only Idle -> Running is allowed. Running (already connected) and Stopped (single-use) refuse.
+    // compare_exchange: only Idle -> Running is allowed. Running (already connected) and Stopped (single-use)
+    // refuse.
     auto expected = State::Idle;
     if (!_state.compare_exchange_strong(expected, State::Running)) {
         return false;
