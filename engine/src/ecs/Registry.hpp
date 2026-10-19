@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "ComponentType.hpp"
 #include "Entity.hpp"
 #include "SparseArray.hpp"
 
@@ -24,6 +25,8 @@ class Registry {
   public:
     /** @brief Callback invoked immediately before an entity's components are removed. */
     using DestroyListener = std::function<void(Entity)>;
+    /** @brief Callback invoked after a component has been removed from an entity. */
+    using ComponentRemoveListener = std::function<void(Entity, ComponentTypeId)>;
 
     /** @brief Default constructor initializing an empty ECS registry. */
     Registry() = default;
@@ -63,6 +66,19 @@ class Registry {
      * @param listenerId Identifier returned by `addDestroyListener`.
      */
     void removeDestroyListener(std::size_t listenerId);
+
+    /**
+     * @brief Registers a callback invoked after a component is removed.
+     * @param listener Callback receiving the entity and removed component type.
+     * @return Identifier used to unregister the callback.
+     */
+    std::size_t addComponentRemoveListener(ComponentRemoveListener listener);
+
+    /**
+     * @brief Unregisters a component-removal callback.
+     * @param listenerId Identifier returned by addComponentRemoveListener.
+     */
+    void removeComponentRemoveListener(std::size_t listenerId);
 
     /**
      * @brief Checks if an entity is currently alive.
@@ -191,6 +207,10 @@ class Registry {
     std::vector<std::pair<std::size_t, DestroyListener>> _destroyListeners;
     /** @brief Identifier assigned to the next registered destruction callback. */
     std::size_t _nextDestroyListenerId = 0;
+    /** @brief Callbacks notified after a component is explicitly removed. */
+    std::vector<std::pair<std::size_t, ComponentRemoveListener>> _componentRemoveListeners;
+    /** @brief Identifier assigned to the next registered component-removal callback. */
+    std::size_t _nextComponentRemoveListenerId = 0;
 };
 
 }  // namespace ecs

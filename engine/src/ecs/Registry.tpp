@@ -61,8 +61,17 @@ Component& Registry::emplaceComponent(Entity to, Args&&... args) {
 template <class Component>
 void Registry::removeComponent(Entity from) {
     const ComponentTypeId id = getComponentTypeId<Component>();
-    if (id < _componentsArrays.size() && _componentsArrays[id]) {
-        _componentsArrays[id]->erase(from);
+    if (id >= _componentsArrays.size() || !_componentsArrays[id]) {
+        return;
+    }
+    auto& components = *static_cast<SparseArray<Component>*>(_componentsArrays[id].get());
+    if (!components.contains(from)) {
+        return;
+    }
+    components.erase(from);
+    for (const auto& [listenerId, listener] : _componentRemoveListeners) {
+        (void)listenerId;
+        listener(from, id);
     }
 }
 

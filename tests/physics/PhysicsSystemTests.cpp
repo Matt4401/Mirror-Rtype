@@ -94,6 +94,21 @@ TEST(PhysicsSystem, EntityDestructionDestroysBody) {
     EXPECT_EQ(physicsSystem.bodyCount(), 0U);
 }
 
+TEST(PhysicsSystem, RemovingRigidBodyDestroysBody) {
+    ecs::Registry registry;
+    systems::PhysicsSystem physicsSystem(registry);
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(entity, ecs::Transform{});
+    registry.addComponent<ecs::RigidBody2D>(entity, ecs::RigidBody2D{});
+
+    physicsSystem.update(FIXED_DT);
+    ASSERT_EQ(physicsSystem.bodyCount(), 1U);
+
+    registry.removeComponent<ecs::RigidBody2D>(entity);
+
+    EXPECT_EQ(physicsSystem.bodyCount(), 0U);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {

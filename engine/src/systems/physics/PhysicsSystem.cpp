@@ -22,9 +22,18 @@ namespace systems {
 PhysicsSystem::PhysicsSystem(ecs::Registry& registry)
     : _registry(&registry),
       _world(b2Vec2_zero),
-      _destroyListenerId(_registry->addDestroyListener([this](ecs::Entity entity) { destroyBody(entity); })) {}
+      _destroyListenerId(_registry->addDestroyListener([this](ecs::Entity entity) { destroyBody(entity); })),
+      _rigidBodyRemoveListenerId(_registry->addComponentRemoveListener(
+          [this](ecs::Entity entity, ecs::ComponentTypeId componentType) {
+              if (componentType == ecs::getComponentTypeId<ecs::RigidBody2D>()) {
+                  destroyBody(entity);
+              }
+          })) {}
 
-PhysicsSystem::~PhysicsSystem() { _registry->removeDestroyListener(_destroyListenerId); }
+PhysicsSystem::~PhysicsSystem() {
+    _registry->removeDestroyListener(_destroyListenerId);
+    _registry->removeComponentRemoveListener(_rigidBodyRemoveListenerId);
+}
 
 void PhysicsSystem::update(float fixedDt) {
     if (fixedDt <= 0.0F) {

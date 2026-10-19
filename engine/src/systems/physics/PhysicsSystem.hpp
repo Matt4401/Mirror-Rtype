@@ -44,6 +44,7 @@ class PhysicsSystem {
     b2World _world;
     std::unordered_map<ecs::Entity, b2Body*> _bodies;
     std::size_t _destroyListenerId;
+    std::size_t _rigidBodyRemoveListenerId;
 };
 
 }  // namespace systems

@@ -51,4 +51,15 @@ void Registry::removeDestroyListener(std::size_t listenerId) {
     std::erase_if(_destroyListeners, [listenerId](const auto& listener) { return listener.first == listenerId; });
 }
 
+std::size_t Registry::addComponentRemoveListener(ComponentRemoveListener listener) {
+    const std::size_t listenerId = _nextComponentRemoveListenerId++;
+    _componentRemoveListeners.emplace_back(listenerId, std::move(listener));
+    return listenerId;
+}
+
+void Registry::removeComponentRemoveListener(std::size_t listenerId) {
+    std::erase_if(_componentRemoveListeners,
+                  [listenerId](const auto& listener) { return listener.first == listenerId; });
+}
+
 }  // namespace ecs
