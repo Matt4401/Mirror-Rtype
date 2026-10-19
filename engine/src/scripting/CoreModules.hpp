@@ -60,6 +60,21 @@ class World {
 )wren";
 
 /**
+ * @brief Core Wren script source code for the `core/Input` module.
+ *
+ * Exposes static query methods for action buttons and continuous axes (`isDown`, `isJustPressed`, `isJustReleased`,
+ * `getAxis`).
+ */
+inline constexpr std::string_view CORE_INPUT_SOURCE = R"wren(
+class Input {
+    foreign static isDown(action)
+    foreign static isJustPressed(action)
+    foreign static isJustReleased(action)
+    foreign static getAxis(action)
+}
+)wren";
+
+/**
  * @brief Internal dispatcher script source code for safe optional lifecycle callback invocation.
  */
 inline constexpr std::string_view INTERNAL_DISPATCHER_SOURCE = R"wren(

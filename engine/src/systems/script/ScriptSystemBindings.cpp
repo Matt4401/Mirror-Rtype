@@ -16,6 +16,7 @@ extern "C" {
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "input/InputState.hpp"
 #include "scripting/CoreModules.hpp"
 #include "scripting/WrenVM.hpp"
 
@@ -97,6 +98,106 @@ void worldGetEntitiesInRadius(::WrenVM* rawVm) {
     wrenSetSlotNewList(rawVm, 0);
 }
 
+/**
+ * @brief Foreign static method `Input.isDown(action)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
+void inputIsDown(::WrenVM* rawVm) {
+    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
+    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
+    auto* registry = scriptSystem->getRegistry();
+    if (registry == nullptr || !registry->hasResource<input::InputState>()) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    const char* actionName = wrenGetSlotString(rawVm, 1);
+    if (actionName == nullptr) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    const auto& inputState = registry->getResource<input::InputState>();
+    wrenSetSlotBool(rawVm, 0, inputState.isDown(actionName));
+}
+
+/**
+ * @brief Foreign static method `Input.isJustPressed(action)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
+void inputIsJustPressed(::WrenVM* rawVm) {
+    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
+    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
+    auto* registry = scriptSystem->getRegistry();
+    if (registry == nullptr || !registry->hasResource<input::InputState>()) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    const char* actionName = wrenGetSlotString(rawVm, 1);
+    if (actionName == nullptr) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    const auto& inputState = registry->getResource<input::InputState>();
+    wrenSetSlotBool(rawVm, 0, inputState.isJustPressed(actionName));
+}
+
+/**
+ * @brief Foreign static method `Input.isJustReleased(action)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
+void inputIsJustReleased(::WrenVM* rawVm) {
+    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
+    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
+    auto* registry = scriptSystem->getRegistry();
+    if (registry == nullptr || !registry->hasResource<input::InputState>()) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    const char* actionName = wrenGetSlotString(rawVm, 1);
+    if (actionName == nullptr) {
+        wrenSetSlotBool(rawVm, 0, false);
+        return;
+    }
+    const auto& inputState = registry->getResource<input::InputState>();
+    wrenSetSlotBool(rawVm, 0, inputState.isJustReleased(actionName));
+}
+
+/**
+ * @brief Foreign static method `Input.getAxis(action)` callback.
+ * @param rawVm Raw Wren VM pointer.
+ */
+void inputGetAxis(::WrenVM* rawVm) {
+    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
+    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
+        wrenSetSlotDouble(rawVm, 0, 0.0);
+        return;
+    }
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
+    auto* registry = scriptSystem->getRegistry();
+    if (registry == nullptr || !registry->hasResource<input::InputState>()) {
+        wrenSetSlotDouble(rawVm, 0, 0.0);
+        return;
+    }
+    const char* actionName = wrenGetSlotString(rawVm, 1);
+    if (actionName == nullptr) {
+        wrenSetSlotDouble(rawVm, 0, 0.0);
+        return;
+    }
+    const auto& inputState = registry->getResource<input::InputState>();
+    wrenSetSlotDouble(rawVm, 0, static_cast<double>(inputState.getAxis(actionName)));
+}
+
 }  // namespace
 
 void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
@@ -106,6 +207,10 @@ void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
     vm.registerForeignMethod("core/World", "World", true, "getEntitiesWithTag(_)", &worldGetEntitiesWithTag);
     vm.registerForeignMethod("core/World", "World", true, "getNearestWithTag(_,_,_)", &worldGetNearestWithTag);
     vm.registerForeignMethod("core/World", "World", true, "getEntitiesInRadius(_,_,_)", &worldGetEntitiesInRadius);
+    vm.registerForeignMethod("core/Input", "Input", true, "isDown(_)", &inputIsDown);
+    vm.registerForeignMethod("core/Input", "Input", true, "isJustPressed(_)", &inputIsJustPressed);
+    vm.registerForeignMethod("core/Input", "Input", true, "isJustReleased(_)", &inputIsJustReleased);
+    vm.registerForeignMethod("core/Input", "Input", true, "getAxis(_)", &inputGetAxis);
 }
 
 void ScriptSystem::loadCoreModules() {

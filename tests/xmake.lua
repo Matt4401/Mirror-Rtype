@@ -7,7 +7,7 @@ target("test_ecs")
 
 target("test_scripting")
     set_kind("binary")
-    add_deps("engine_core", "engine_events", "engine_scripting")
+    add_deps("engine_core", "engine_events", "engine_scripting", "engine_input")
     add_packages("gtest", "wren")
     add_files("test_scripting.cpp")
     add_tests("test_scripting")

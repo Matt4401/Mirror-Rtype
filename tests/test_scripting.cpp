@@ -9,6 +9,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
+#include "input/InputState.hpp"
 #include "scripting/ComponentBinder.hpp"
 #include "scripting/WrenVM.hpp"
 #include "systems/script/ScriptSystem.hpp"
@@ -648,6 +649,84 @@ TEST(Scripting, TeardownHandleRelease) {
     // Handles must have been reset to nullptr upon teardown
     EXPECT_EQ(registry.getComponents<ecs::ScriptComponent>().get(0).instanceHandle, nullptr);
     EXPECT_FALSE(registry.getComponents<ecs::ScriptComponent>().get(0).initialized);
+}
+
+TEST(Scripting, InputModuleBindings) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<Position>();
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    auto& inputState = registry.emplaceResource<input::InputState>();
+    inputState.setDown("shoot", true);
+    inputState.setJustPressed("shoot", true);
+    inputState.setAxis("move_y", -0.75F);
+
+    scripting::ComponentBinder<Position> binder(scriptSystem.getVm(), "core/Position", "Position");
+    binder.property<&Position::x>("x");
+    binder.property<&Position::y>("y");
+    std::string wrenPositionClass = binder.generateWrenClass();
+    EXPECT_TRUE(scriptSystem.getVm().interpret("core/Position", wrenPositionClass));
+
+    const char* scriptCode =
+        "import \"core/Entity\" for Entity\n"
+        "import \"core/Position\" for Position\n"
+        "import \"core/Input\" for Input\n"
+        "class InputTestScript {\n"
+        "    construct new(entity) {\n"
+        "        _entity = entity\n"
+        "        _pos = Position.new(entity.id)\n"
+        "    }\n"
+        "    pollInput() {\n"
+        "        if (Input.isDown(\"shoot\")) {\n"
+        "            _pos.x = 100.0\n"
+        "        }\n"
+        "        _pos.y = Input.getAxis(\"move_y\")\n"
+        "    }\n"
+        "}\n";
+
+    EXPECT_TRUE(scriptSystem.getVm().interpret("game", scriptCode));
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<Position>(e1, Position{.x = 0.0F, .y = 0.0F});
+    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "game",
+                                                                         .className = "InputTestScript",
+                                                                         .instanceHandle = nullptr,
+                                                                         .hasUpdate = false,
+                                                                         .initialized = false});
+
+    scriptSystem.update(0.016F);
+
+    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
+    EXPECT_TRUE(script.initialized);
+    EXPECT_NE(script.instanceHandle, nullptr);
+
+    auto pollHandle = scriptSystem.getVm().makeCallHandle("pollInput()");
+    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
+    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
+    EXPECT_EQ(scriptSystem.getVm().call(pollHandle), WREN_RESULT_SUCCESS);
+
+    auto& pos = registry.getComponents<Position>().get(e1);
+    EXPECT_FLOAT_EQ(pos.x, 100.0F);
+    EXPECT_FLOAT_EQ(pos.y, -0.75F);
+
+    // Direct static method query
+    auto isJustPressedHandle = scriptSystem.getVm().makeCallHandle("isJustPressed(_)");
+    wrenEnsureSlots(scriptSystem.getVm().raw(), 2);
+    wrenGetVariable(scriptSystem.getVm().raw(), "core/Input", "Input", 0);
+    wrenSetSlotString(scriptSystem.getVm().raw(), 1, "shoot");
+    EXPECT_EQ(scriptSystem.getVm().call(isJustPressedHandle), WREN_RESULT_SUCCESS);
+    EXPECT_TRUE(wrenGetSlotBool(scriptSystem.getVm().raw(), 0));
+
+    auto isJustReleasedHandle = scriptSystem.getVm().makeCallHandle("isJustReleased(_)");
+    wrenEnsureSlots(scriptSystem.getVm().raw(), 2);
+    wrenGetVariable(scriptSystem.getVm().raw(), "core/Input", "Input", 0);
+    wrenSetSlotString(scriptSystem.getVm().raw(), 1, "shoot");
+    EXPECT_EQ(scriptSystem.getVm().call(isJustReleasedHandle), WREN_RESULT_SUCCESS);
+    EXPECT_FALSE(wrenGetSlotBool(scriptSystem.getVm().raw(), 0));
 }
 
 int main(int argc, char** argv) {
