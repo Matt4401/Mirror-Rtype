@@ -9,10 +9,7 @@ namespace systems {
 /**
  * @brief System that samples hardware inputs, updates the InputState resource, and publishes input action events.
  *
- * @note TODO(architecture): Decouple input actions from the engine core. Move game-specific actions (e.g. Shoot,
- * ChargeWeapon, MoveUp/Down/Left/Right) and default key bindings to the game layer (client). The engine should
- * provide a generic dynamic action mapping system (e.g. string/hash-based ActionId with discrete buttons and continuous
- * 1D/2D axes) and a device-to-player abstraction.
+ * Polling is driven by dynamic action bindings (discrete buttons and continuous 1D axes) configured via ActionMapping.
  */
 class InputSystem {
   public:

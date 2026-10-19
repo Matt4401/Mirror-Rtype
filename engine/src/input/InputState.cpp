@@ -1,43 +1,45 @@
 #include "input/InputState.hpp"
 
-#include <cstddef>
-
-#include "input/InputAction.hpp"
-
 namespace input {
 
-bool InputState::isDown(Action action) const noexcept { return _held.test(static_cast<std::size_t>(action)); }
-
-bool InputState::isJustPressed(Action action) const noexcept {
-    return _justPressed.test(static_cast<std::size_t>(action));
+bool InputState::isDown(ActionId action) const noexcept {
+    const auto it = _held.find(action);
+    return (it != _held.end()) ? it->second : false;
 }
 
-bool InputState::isJustReleased(Action action) const noexcept {
-    return _justReleased.test(static_cast<std::size_t>(action));
+bool InputState::isJustPressed(ActionId action) const noexcept {
+    const auto it = _justPressed.find(action);
+    return (it != _justPressed.end()) ? it->second : false;
 }
 
-float InputState::axisX() const noexcept { return _axisX; }
-
-float InputState::axisY() const noexcept { return _axisY; }
-
-void InputState::setDown(Action action, bool down) noexcept { _held.set(static_cast<std::size_t>(action), down); }
-
-void InputState::setJustPressed(Action action, bool pressed) noexcept {
-    _justPressed.set(static_cast<std::size_t>(action), pressed);
+bool InputState::isJustReleased(ActionId action) const noexcept {
+    const auto it = _justReleased.find(action);
+    return (it != _justReleased.end()) ? it->second : false;
 }
 
-void InputState::setJustReleased(Action action, bool released) noexcept {
-    _justReleased.set(static_cast<std::size_t>(action), released);
+float InputState::getAxis(ActionId action) const noexcept {
+    const auto it = _axes.find(action);
+    return (it != _axes.end()) ? it->second : 0.0F;
 }
 
-void InputState::setAxes(float x, float y) noexcept {
-    _axisX = x;
-    _axisY = y;
-}
+void InputState::setDown(ActionId action, bool down) { _held[action] = down; }
+
+void InputState::setJustPressed(ActionId action, bool pressed) { _justPressed[action] = pressed; }
+
+void InputState::setJustReleased(ActionId action, bool released) { _justReleased[action] = released; }
+
+void InputState::setAxis(ActionId action, float value) { _axes[action] = value; }
 
 void InputState::resetFrameTransitions() noexcept {
-    _justPressed.reset();
-    _justReleased.reset();
+    _justPressed.clear();
+    _justReleased.clear();
+}
+
+void InputState::clear() noexcept {
+    _held.clear();
+    _justPressed.clear();
+    _justReleased.clear();
+    _axes.clear();
 }
 
 }  // namespace input

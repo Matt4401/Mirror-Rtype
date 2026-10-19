@@ -1,19 +1,18 @@
 #include "systems/input/InputSystem.hpp"
 
-#include <cmath>
-#include <cstddef>
+#include <utility>
 
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/InputActionEvent.hpp"
+#include "input/ActionId.hpp"
 #include "input/ActionMapping.hpp"
-#include "input/InputAction.hpp"
 #include "input/InputState.hpp"
 
 namespace systems {
 
 InputSystem::InputSystem(input::ActionMapping mapping, int playerIndex, int gamepadIndex)
-    : _mapping(mapping), _playerIndex(playerIndex), _gamepadIndex(gamepadIndex) {}
+    : _mapping(std::move(mapping)), _playerIndex(playerIndex), _gamepadIndex(gamepadIndex) {}
 
 void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
     if (!registry.hasResource<input::InputState>()) {
@@ -22,58 +21,39 @@ void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
     auto& state = registry.getResource<input::InputState>();
     state.resetFrameTransitions();
 
-    for (std::size_t i = 0; i < input::ACTION_COUNT; ++i) {
-        const auto action = static_cast<input::Action>(i);
-        const bool isDown = _mapping.isActionDown(action, _gamepadIndex);
-        const bool wasDown = state.isDown(action);
+    for (const auto& [actionId, binding] : _mapping.bindings()) {
+        if (binding.type == input::ActionType::Button) {
+            const bool isDown = _mapping.isActionDown(actionId, _gamepadIndex);
+            const bool wasDown = state.isDown(actionId);
 
-        state.setDown(action, isDown);
+            state.setDown(actionId, isDown);
 
-        if (!wasDown && isDown) {
-            state.setJustPressed(action, true);
-            if (eventBus != nullptr) {
-                eventBus->publish(events::InputActionEvent{
-                    .action = action,
-                    .state = input::ActionState::Pressed,
-                    .value = 1.0F,
-                    .playerIndex = _playerIndex,
-                });
+            if (!wasDown && isDown) {
+                state.setJustPressed(actionId, true);
+                if (eventBus != nullptr) {
+                    eventBus->publish(events::InputActionEvent{
+                        .action = actionId,
+                        .state = input::ActionState::Pressed,
+                        .value = 1.0F,
+                        .playerIndex = _playerIndex,
+                    });
+                }
+            } else if (wasDown && !isDown) {
+                state.setJustReleased(actionId, true);
+                if (eventBus != nullptr) {
+                    eventBus->publish(events::InputActionEvent{
+                        .action = actionId,
+                        .state = input::ActionState::Released,
+                        .value = 0.0F,
+                        .playerIndex = _playerIndex,
+                    });
+                }
             }
-        } else if (wasDown && !isDown) {
-            state.setJustReleased(action, true);
-            if (eventBus != nullptr) {
-                eventBus->publish(events::InputActionEvent{
-                    .action = action,
-                    .state = input::ActionState::Released,
-                    .value = 0.0F,
-                    .playerIndex = _playerIndex,
-                });
-            }
+        } else if (binding.type == input::ActionType::Axis) {
+            const float axisValue = _mapping.getAxis(actionId, _gamepadIndex);
+            state.setAxis(actionId, axisValue);
         }
     }
-
-    float moveX = 0.0F;
-    float moveY = 0.0F;
-    if (state.isDown(input::Action::MoveRight)) {
-        moveX += 1.0F;
-    }
-    if (state.isDown(input::Action::MoveLeft)) {
-        moveX -= 1.0F;
-    }
-    if (state.isDown(input::Action::MoveDown)) {
-        moveY += 1.0F;
-    }
-    if (state.isDown(input::Action::MoveUp)) {
-        moveY -= 1.0F;
-    }
-
-    const float lenSq = (moveX * moveX) + (moveY * moveY);
-    if (lenSq > 1.0F) {
-        const float invLen = 1.0F / std::sqrt(lenSq);
-        moveX *= invLen;
-        moveY *= invLen;
-    }
-    state.setAxes(moveX, moveY);
 }
 
 }  // namespace systems
