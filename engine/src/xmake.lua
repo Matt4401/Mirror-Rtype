@@ -36,4 +36,9 @@ target("engine_all")
 
 if has_config("graphics") then
     includes("render")
+    includes("input")
 end
+
+target("engine_all")
+    set_kind("phony")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting")

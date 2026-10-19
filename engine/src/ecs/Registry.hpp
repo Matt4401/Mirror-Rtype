@@ -20,6 +20,7 @@ namespace detail {
  */
 class IResourceSlot {
   public:
+    /** @brief Default constructor. */
     IResourceSlot() = default;
 
     /** @brief Virtual destructor for type-erased cleanup. */
