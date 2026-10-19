@@ -20,13 +20,25 @@ target("engine_scripting")
     add_deps("engine_core", "engine_events")
     add_packages("wren", {public = true})
 
+target("engine_physics")
+    set_kind("static")
+    add_files("systems/physics/**.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core")
+    add_packages("box2d", {public = true})
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting", "engine_physics")
     if has_config("graphics") then
         add_deps("engine_render")
     end
 
 if has_config("graphics") then
     includes("render")
+    includes("input")
 end
+
+target("engine_all")
+    set_kind("phony")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting")

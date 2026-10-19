@@ -11,9 +11,16 @@ inline constexpr TextureId NO_TEXTURE = 0;
  * @brief 8-bit RGBA color, independent of any graphics library.
  */
 struct Rgba {
+    /** @brief Red color component [0, 255]. */
     std::uint8_t r = 255;
+
+    /** @brief Green color component [0, 255]. */
     std::uint8_t g = 255;
+
+    /** @brief Blue color component [0, 255]. */
     std::uint8_t b = 255;
+
+    /** @brief Alpha opacity component [0, 255]. */
     std::uint8_t a = 255;
 };
 
@@ -23,9 +30,16 @@ struct Rgba {
  * A zero width and height select the complete texture.
  */
 struct TextureRect {
+    /** @brief Horizontal pixel coordinate of top-left corner in texture space. */
     int x = 0;
+
+    /** @brief Vertical pixel coordinate of top-left corner in texture space. */
     int y = 0;
+
+    /** @brief Width in pixels of the source sub-rectangle. */
     int width = 0;
+
+    /** @brief Height in pixels of the source sub-rectangle. */
     int height = 0;
 };
 
@@ -35,7 +49,10 @@ struct TextureRect {
  * `{0.0F, 0.0F}` is the top-left corner and `{0.5F, 0.5F}` is the center.
  */
 struct RenderOrigin {
+    /** @brief Horizontal normalized pivot position in [0.0F, 1.0F]. */
     float x = 0.5F;
+
+    /** @brief Vertical normalized pivot position in [0.0F, 1.0F]. */
     float y = 0.5F;
 };
 

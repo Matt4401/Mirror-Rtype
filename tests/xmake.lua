@@ -33,6 +33,20 @@ target("test_renderable")
     add_files("test_renderable.cpp")
     add_tests("test_renderable")
 
+target("test_physics")
+    set_kind("binary")
+    add_deps("engine_physics")
+    add_packages("gtest")
+    add_files("physics/PhysicsSystemTests.cpp")
+    add_tests("test_physics")
+
+target("test_input")
+    set_kind("binary")
+    add_deps("engine_core", "engine_events", "engine_input")
+    add_packages("gtest")
+    add_files("test_input.cpp")
+    add_tests("test_input")
+
 if has_config("graphics") then
     target("test_render")
         set_kind("binary")

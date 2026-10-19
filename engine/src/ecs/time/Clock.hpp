@@ -22,6 +22,7 @@ class Clock {
     /// Returns the current time in seconds, from an arbitrary but monotonic origin.
     using TimeSource = std::function<double()>;
 
+    /// Default maximum simulation steps allowed in a single tick call.
     static constexpr std::size_t DEFAULT_MAX_STEPS_PER_TICK = 5;
 
     /**
@@ -70,13 +71,25 @@ class Clock {
     void reset();
 
   private:
+    /** @brief Queries time source and computes seconds elapsed since last call. */
     double pollElapsed();
 
+    /** @brief Monotonic time query callback. */
     TimeSource _source;
+
+    /** @brief Upper bound of steps permitted per tick call. */
     std::size_t _maxStepsPerTick;
+
+    /** @brief Timestamp of the previous poll instant. */
     double _lastInstant = 0.0;
+
+    /** @brief Accumulated real time awaiting consumption in fixedDt steps. */
     double _accumulator = 0.0;
+
+    /** @brief Total accumulated elapsed simulation time. */
     double _totalElapsed = 0.0;
+
+    /** @brief Exposed step time state. */
     Time _time;
 };
 
