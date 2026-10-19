@@ -12,6 +12,10 @@ namespace systems {
  */
 class InputSystem {
   public:
+    /**
+     * @brief Constructs an input system with optional custom action mappings.
+     * @param mapping Action mapping configuration.
+     */
     explicit InputSystem(input::ActionMapping mapping = input::ActionMapping{});
 
     /**
@@ -29,6 +33,7 @@ class InputSystem {
     [[nodiscard]] const input::ActionMapping& mapping() const noexcept { return _mapping; }
 
   private:
+    /** @brief Active input action mapping configuration. */
     input::ActionMapping _mapping;
 };
 

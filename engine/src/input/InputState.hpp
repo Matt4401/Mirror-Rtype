@@ -13,6 +13,7 @@ namespace input {
  */
 class InputState {
   public:
+    /** @brief Default constructor. */
     InputState() = default;
 
     /** @brief Tells whether an action is currently held down. */
@@ -46,10 +47,19 @@ class InputState {
     void resetFrameTransitions() noexcept;
 
   private:
+    /** @brief Bitset of actions currently held down. */
     std::bitset<ACTION_COUNT> _held;
+
+    /** @brief Bitset of actions pressed on this frame. */
     std::bitset<ACTION_COUNT> _justPressed;
+
+    /** @brief Bitset of actions released on this frame. */
     std::bitset<ACTION_COUNT> _justReleased;
+
+    /** @brief Horizontal movement axis magnitude [-1.0F, 1.0F]. */
     float _axisX = 0.0F;
+
+    /** @brief Vertical movement axis magnitude [-1.0F, 1.0F]. */
     float _axisY = 0.0F;
 };
 

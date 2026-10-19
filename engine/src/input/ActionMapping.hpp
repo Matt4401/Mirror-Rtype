@@ -12,13 +12,22 @@ namespace input {
  * @brief Bindings configured for a single semantic action.
  */
 struct ActionBinding {
+    /** @brief Array of keyboard key codes bound to this action. */
     std::array<int, MAX_KEY_BINDINGS> keys = {0, 0, 0, 0};
+
+    /** @brief Number of active key bindings in the keys array. */
     std::size_t keyCount = 0;
 
+    /** @brief Array of gamepad button codes bound to this action. */
     std::array<int, MAX_PAD_BUTTON_BINDINGS> padButtons = {-1, -1};
+
+    /** @brief Number of active gamepad button bindings. */
     std::size_t padButtonCount = 0;
 
+    /** @brief Gamepad analog axis index bound to this action. */
     int padAxis = -1;
+
+    /** @brief Required direction of the axis (-1.0F or +1.0F) to trigger the action. */
     float padAxisDirection = 0.0F;
 };
 
@@ -30,6 +39,7 @@ struct ActionBinding {
  */
 class ActionMapping {
   public:
+    /** @brief Constructs action mapping initialized with default accessible bindings. */
     ActionMapping();
 
     /** @brief Associates a keyboard keycode with an action. */
@@ -72,7 +82,10 @@ class ActionMapping {
     [[nodiscard]] const ActionBinding& getBinding(Action action) const;
 
   private:
+    /** @brief Table of bindings indexed by action enum value. */
     std::array<ActionBinding, ACTION_COUNT> _bindings;
+
+    /** @brief Deadzone threshold for analog axis input. */
     float _deadzone = DEFAULT_DEADZONE;
 };
 
