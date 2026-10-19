@@ -23,6 +23,7 @@ inline constexpr std::uint32_t MAX_TCP_PAYLOAD = 64 * 1024;
 inline constexpr std::size_t UDP_HEADER_SIZE = 8;
 inline constexpr std::size_t MAX_DATAGRAM = 1200;
 inline constexpr std::size_t MAX_UDP_PAYLOAD = MAX_DATAGRAM - UDP_HEADER_SIZE;
+inline constexpr std::uint16_t DEFAULT_PORT = 4242;
 
 inline constexpr auto UDP_TICK = std::chrono::milliseconds(250);
 inline constexpr auto KEEPALIVE_INTERVAL = std::chrono::seconds(1);
