@@ -7,6 +7,10 @@ namespace input {
 
 /**
  * @brief Semantic game actions decoupled from physical hardware inputs.
+ *
+ * @note TODO(architecture): Action enums currently embed game-specific actions (Shoot, ChargeWeapon).
+ * In a future refactoring step for engine modularity, action definitions will be moved to the game layer (client)
+ * and the engine will provide dynamic action registration.
  */
 enum class Action : std::uint8_t {
     MoveUp = 0,

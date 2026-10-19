@@ -143,6 +143,44 @@ TEST(InputSystem, AutomaticallyInitializesResourceAndUpdatesReceiver) {
     EXPECT_FLOAT_EQ(receiver.speed, 400.0F);
 }
 
+TEST(InputSystem, ConfigurablePlayerAndGamepadIndices) {
+    const systems::InputSystem defaultSystem;
+    EXPECT_EQ(defaultSystem.playerIndex(), 0);
+    EXPECT_EQ(defaultSystem.gamepadIndex(), 0);
+
+    systems::InputSystem customSystem(input::ActionMapping{}, 2, 1);
+    EXPECT_EQ(customSystem.playerIndex(), 2);
+    EXPECT_EQ(customSystem.gamepadIndex(), 1);
+
+    customSystem.setPlayerIndex(3);
+    customSystem.setGamepadIndex(2);
+    EXPECT_EQ(customSystem.playerIndex(), 3);
+    EXPECT_EQ(customSystem.gamepadIndex(), 2);
+}
+
+TEST(InputSystem, OnlyUpdatesReceiverMatchingPlayerIndex) {
+    ecs::Registry registry;
+    ecs::EventBus eventBus;
+
+    const ecs::Entity player0 = registry.spawnEntity();
+    registry.addComponent<ecs::InputReceiver>(
+        player0, ecs::InputReceiver{.playerIndex = 0, .moveX = 0.0F, .moveY = 0.0F, .shooting = false});
+
+    const ecs::Entity player1 = registry.spawnEntity();
+    registry.addComponent<ecs::InputReceiver>(
+        player1, ecs::InputReceiver{.playerIndex = 1, .moveX = 0.0F, .moveY = 0.0F, .shooting = false});
+
+    // Run system configured specifically for player 1
+    systems::InputSystem systemPlayer1(input::ActionMapping{}, 1, 0);
+    systemPlayer1.update(registry, &eventBus);
+
+    // Both should exist, but player 0's receiver is filtered out by player 1's system
+    const auto& r0 = registry.getComponents<ecs::InputReceiver>().get(player0);
+    const auto& r1 = registry.getComponents<ecs::InputReceiver>().get(player1);
+    EXPECT_EQ(r0.playerIndex, 0);
+    EXPECT_EQ(r1.playerIndex, 1);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

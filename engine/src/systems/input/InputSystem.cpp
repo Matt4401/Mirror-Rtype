@@ -14,7 +14,8 @@
 
 namespace systems {
 
-InputSystem::InputSystem(input::ActionMapping mapping) : _mapping(mapping) {}
+InputSystem::InputSystem(input::ActionMapping mapping, int playerIndex, int gamepadIndex)
+    : _mapping(mapping), _playerIndex(playerIndex), _gamepadIndex(gamepadIndex) {}
 
 void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
     if (!registry.hasResource<input::InputState>()) {
@@ -25,7 +26,7 @@ void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
 
     for (std::size_t i = 0; i < input::ACTION_COUNT; ++i) {
         const auto action = static_cast<input::Action>(i);
-        const bool isDown = _mapping.isActionDown(action, 0);
+        const bool isDown = _mapping.isActionDown(action, _gamepadIndex);
         const bool wasDown = state.isDown(action);
 
         state.setDown(action, isDown);
@@ -37,7 +38,7 @@ void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
                     .action = action,
                     .state = input::ActionState::Pressed,
                     .value = 1.0F,
-                    .playerIndex = 0,
+                    .playerIndex = _playerIndex,
                 });
             }
         } else if (wasDown && !isDown) {
@@ -47,7 +48,7 @@ void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
                     .action = action,
                     .state = input::ActionState::Released,
                     .value = 0.0F,
-                    .playerIndex = 0,
+                    .playerIndex = _playerIndex,
                 });
             }
         }
@@ -76,8 +77,8 @@ void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
     }
     state.setAxes(moveX, moveY);
 
-    registry.runSystem<ecs::InputReceiver>([&state](ecs::Entity /*entity*/, ecs::InputReceiver& receiver) {
-        if (!receiver.enabled) {
+    registry.runSystem<ecs::InputReceiver>([&state, this](ecs::Entity /*entity*/, ecs::InputReceiver& receiver) {
+        if (!receiver.enabled || receiver.playerIndex != _playerIndex) {
             return;
         }
         receiver.moveX = state.axisX();
