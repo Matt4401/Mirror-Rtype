@@ -1,6 +1,5 @@
 #include "ecs/Registry.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <utility>
 
