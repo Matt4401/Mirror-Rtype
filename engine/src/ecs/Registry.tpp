@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
@@ -72,8 +73,12 @@ void Registry::removeComponent(Entity from) {
     components.erase(from);
     const auto componentRemoveListeners = _componentRemoveListeners;
     for (const auto& [listenerId, listener] : componentRemoveListeners) {
-        (void)listenerId;
-        listener(from, id);
+        const auto isRegistered = std::any_of(
+            _componentRemoveListeners.cbegin(), _componentRemoveListeners.cend(),
+            [listenerId](const auto& registeredListener) { return registeredListener.first == listenerId; });
+        if (isRegistered) {
+            listener(from, id);
+        }
     }
 }
 

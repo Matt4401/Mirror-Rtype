@@ -81,7 +81,7 @@ TEST(ECS, DestroyListenerCannotDestroyEntityRecursively) {
     EXPECT_NE(registry.spawnEntity(), entity);
 }
 
-TEST(ECS, ListenerRemovalDuringDispatchDoesNotInvalidateIteration) {
+TEST(ECS, ListenerRemovalDuringDispatchSkipsUnregisteredListeners) {
     ecs::Registry registry;
     const ecs::Entity entity = registry.spawnEntity();
     int destroyCalls = 0;
@@ -97,7 +97,7 @@ TEST(ECS, ListenerRemovalDuringDispatchDoesNotInvalidateIteration) {
     secondDestroyListenerId = registry.addDestroyListener([&](ecs::Entity) { ++destroyCalls; });
 
     registry.killEntity(entity);
-    EXPECT_EQ(destroyCalls, 2);
+    EXPECT_EQ(destroyCalls, 1);
 
     const ecs::Entity componentEntity = registry.spawnEntity();
     registry.addComponent<Position>(componentEntity, Position{.x = 1.0F, .y = 2.0F});
@@ -113,7 +113,7 @@ TEST(ECS, ListenerRemovalDuringDispatchDoesNotInvalidateIteration) {
         registry.addComponentRemoveListener([&](ecs::Entity, ecs::ComponentTypeId) { ++componentRemoveCalls; });
 
     registry.removeComponent<Position>(componentEntity);
-    EXPECT_EQ(componentRemoveCalls, 2);
+    EXPECT_EQ(componentRemoveCalls, 1);
 }
 
 TEST(ECS, SparseArraySwapAndPop) {

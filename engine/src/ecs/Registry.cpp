@@ -1,5 +1,6 @@
 #include "ecs/Registry.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <utility>
 
@@ -31,8 +32,12 @@ void Registry::killEntity(Entity e) {
     _isAlive[e] = false;
     const auto destroyListeners = _destroyListeners;
     for (const auto& [listenerId, listener] : destroyListeners) {
-        (void)listenerId;
-        listener(e);
+        const auto isRegistered = std::any_of(
+            _destroyListeners.cbegin(), _destroyListeners.cend(),
+            [listenerId](const auto& registeredListener) { return registeredListener.first == listenerId; });
+        if (isRegistered) {
+            listener(e);
+        }
     }
     for (auto const& array : _componentsArrays) {
         if (array) {
