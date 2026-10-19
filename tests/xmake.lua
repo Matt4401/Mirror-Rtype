@@ -35,7 +35,7 @@ target("test_renderable")
 
 target("test_physics")
     set_kind("binary")
-    add_deps("engine")
+    add_deps("engine_physics")
     add_packages("gtest")
     add_files("physics/PhysicsSystemTests.cpp")
     add_tests("test_physics")
