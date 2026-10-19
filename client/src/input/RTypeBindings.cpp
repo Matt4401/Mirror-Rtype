@@ -2,7 +2,6 @@
 
 #include <raylib.h>
 
-#include "input/ActionMapping.hpp"
 #include "input/InputAction.hpp"
 
 namespace client::input {
