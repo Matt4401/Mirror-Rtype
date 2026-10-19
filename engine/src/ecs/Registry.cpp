@@ -28,11 +28,12 @@ void Registry::killEntity(Entity e) {
     if (e >= _isAlive.size() || !_isAlive[e]) {
         return;
     }
-    for (const auto& [listenerId, listener] : _destroyListeners) {
+    _isAlive[e] = false;
+    const auto destroyListeners = _destroyListeners;
+    for (const auto& [listenerId, listener] : destroyListeners) {
         (void)listenerId;
         listener(e);
     }
-    _isAlive[e] = false;
     for (auto const& array : _componentsArrays) {
         if (array) {
             array->erase(e);

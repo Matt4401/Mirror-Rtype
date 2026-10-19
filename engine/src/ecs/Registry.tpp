@@ -70,7 +70,8 @@ void Registry::removeComponent(Entity from) {
         return;
     }
     components.erase(from);
-    for (const auto& [listenerId, listener] : _componentRemoveListeners) {
+    const auto componentRemoveListeners = _componentRemoveListeners;
+    for (const auto& [listenerId, listener] : componentRemoveListeners) {
         (void)listenerId;
         listener(from, id);
     }
