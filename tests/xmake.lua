@@ -40,6 +40,13 @@ target("test_physics")
     add_files("physics/PhysicsSystemTests.cpp")
     add_tests("test_physics")
 
+target("test_prefabs")
+    set_kind("binary")
+    add_deps("engine_core", "engine_prefabs")
+    add_packages("gtest")
+    add_files("prefabs/PrefabManagerTests.cpp")
+    add_tests("test_prefabs")
+
 target("test_input")
     set_kind("binary")
     add_deps("engine_core", "engine_events", "engine_input")
