@@ -99,7 +99,32 @@ void worldGetEntitiesInRadius(::WrenVM* rawVm) {
 }
 
 /**
- * @brief Foreign static method `Input.isDown(action)` callback.
+ * @brief Resolves the InputState component matching playerIndex or falls back to global resource.
+ * @param registry Active ECS registry.
+ * @param playerIndex Logical player identifier.
+ * @return Pointer to InputState or nullptr if missing.
+ */
+const input::InputState* resolvePlayerInputState(ecs::Registry* registry, int playerIndex) {
+    if (registry == nullptr) {
+        return nullptr;
+    }
+    const input::InputState* matched = nullptr;
+    registry->runSystem<input::InputState>([&matched, playerIndex](ecs::Entity /*e*/, const input::InputState& state) {
+        if (state.playerIndex == playerIndex && matched == nullptr) {
+            matched = &state;
+        }
+    });
+    if (matched != nullptr) {
+        return matched;
+    }
+    if (registry->hasResource<input::InputState>()) {
+        return &registry->getResource<input::InputState>();
+    }
+    return nullptr;
+}
+
+/**
+ * @brief Foreign static method `Input.isDown(playerIndex, action)` callback.
  * @param rawVm Raw Wren VM pointer.
  */
 void inputIsDown(::WrenVM* rawVm) {
@@ -109,22 +134,18 @@ void inputIsDown(::WrenVM* rawVm) {
         return;
     }
     auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    auto* registry = scriptSystem->getRegistry();
-    if (registry == nullptr || !registry->hasResource<input::InputState>()) {
-        wrenSetSlotBool(rawVm, 0, false);
-        return;
-    }
-    const char* actionName = wrenGetSlotString(rawVm, 1);
+    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
+    const char* actionName = wrenGetSlotString(rawVm, 2);
     if (actionName == nullptr) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    const auto& inputState = registry->getResource<input::InputState>();
-    wrenSetSlotBool(rawVm, 0, inputState.isDown(actionName));
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), playerIndex);
+    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isDown(actionName) : false);
 }
 
 /**
- * @brief Foreign static method `Input.isJustPressed(action)` callback.
+ * @brief Foreign static method `Input.isJustPressed(playerIndex, action)` callback.
  * @param rawVm Raw Wren VM pointer.
  */
 void inputIsJustPressed(::WrenVM* rawVm) {
@@ -134,22 +155,18 @@ void inputIsJustPressed(::WrenVM* rawVm) {
         return;
     }
     auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    auto* registry = scriptSystem->getRegistry();
-    if (registry == nullptr || !registry->hasResource<input::InputState>()) {
-        wrenSetSlotBool(rawVm, 0, false);
-        return;
-    }
-    const char* actionName = wrenGetSlotString(rawVm, 1);
+    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
+    const char* actionName = wrenGetSlotString(rawVm, 2);
     if (actionName == nullptr) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    const auto& inputState = registry->getResource<input::InputState>();
-    wrenSetSlotBool(rawVm, 0, inputState.isJustPressed(actionName));
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), playerIndex);
+    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isJustPressed(actionName) : false);
 }
 
 /**
- * @brief Foreign static method `Input.isJustReleased(action)` callback.
+ * @brief Foreign static method `Input.isJustReleased(playerIndex, action)` callback.
  * @param rawVm Raw Wren VM pointer.
  */
 void inputIsJustReleased(::WrenVM* rawVm) {
@@ -159,22 +176,18 @@ void inputIsJustReleased(::WrenVM* rawVm) {
         return;
     }
     auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    auto* registry = scriptSystem->getRegistry();
-    if (registry == nullptr || !registry->hasResource<input::InputState>()) {
-        wrenSetSlotBool(rawVm, 0, false);
-        return;
-    }
-    const char* actionName = wrenGetSlotString(rawVm, 1);
+    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
+    const char* actionName = wrenGetSlotString(rawVm, 2);
     if (actionName == nullptr) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    const auto& inputState = registry->getResource<input::InputState>();
-    wrenSetSlotBool(rawVm, 0, inputState.isJustReleased(actionName));
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), playerIndex);
+    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isJustReleased(actionName) : false);
 }
 
 /**
- * @brief Foreign static method `Input.getAxis(action)` callback.
+ * @brief Foreign static method `Input.getAxis(playerIndex, action)` callback.
  * @param rawVm Raw Wren VM pointer.
  */
 void inputGetAxis(::WrenVM* rawVm) {
@@ -184,18 +197,14 @@ void inputGetAxis(::WrenVM* rawVm) {
         return;
     }
     auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    auto* registry = scriptSystem->getRegistry();
-    if (registry == nullptr || !registry->hasResource<input::InputState>()) {
-        wrenSetSlotDouble(rawVm, 0, 0.0);
-        return;
-    }
-    const char* actionName = wrenGetSlotString(rawVm, 1);
+    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
+    const char* actionName = wrenGetSlotString(rawVm, 2);
     if (actionName == nullptr) {
         wrenSetSlotDouble(rawVm, 0, 0.0);
         return;
     }
-    const auto& inputState = registry->getResource<input::InputState>();
-    wrenSetSlotDouble(rawVm, 0, static_cast<double>(inputState.getAxis(actionName)));
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), playerIndex);
+    wrenSetSlotDouble(rawVm, 0, (inputState != nullptr) ? static_cast<double>(inputState->getAxis(actionName)) : 0.0);
 }
 
 }  // namespace
@@ -207,10 +216,10 @@ void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
     vm.registerForeignMethod("core/World", "World", true, "getEntitiesWithTag(_)", &worldGetEntitiesWithTag);
     vm.registerForeignMethod("core/World", "World", true, "getNearestWithTag(_,_,_)", &worldGetNearestWithTag);
     vm.registerForeignMethod("core/World", "World", true, "getEntitiesInRadius(_,_,_)", &worldGetEntitiesInRadius);
-    vm.registerForeignMethod("core/Input", "Input", true, "isDown(_)", &inputIsDown);
-    vm.registerForeignMethod("core/Input", "Input", true, "isJustPressed(_)", &inputIsJustPressed);
-    vm.registerForeignMethod("core/Input", "Input", true, "isJustReleased(_)", &inputIsJustReleased);
-    vm.registerForeignMethod("core/Input", "Input", true, "getAxis(_)", &inputGetAxis);
+    vm.registerForeignMethod("core/Input", "Input", true, "isDown(_,_)", &inputIsDown);
+    vm.registerForeignMethod("core/Input", "Input", true, "isJustPressed(_,_)", &inputIsJustPressed);
+    vm.registerForeignMethod("core/Input", "Input", true, "isJustReleased(_,_)", &inputIsJustReleased);
+    vm.registerForeignMethod("core/Input", "Input", true, "getAxis(_,_)", &inputGetAxis);
 }
 
 void ScriptSystem::loadCoreModules() {

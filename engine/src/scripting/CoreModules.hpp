@@ -67,10 +67,15 @@ class World {
  */
 inline constexpr std::string_view CORE_INPUT_SOURCE = R"wren(
 class Input {
-    foreign static isDown(action)
-    foreign static isJustPressed(action)
-    foreign static isJustReleased(action)
-    foreign static getAxis(action)
+    foreign static isDown(playerIndex, action)
+    foreign static isJustPressed(playerIndex, action)
+    foreign static isJustReleased(playerIndex, action)
+    foreign static getAxis(playerIndex, action)
+
+    static isDown(action) { isDown(0, action) }
+    static isJustPressed(action) { isJustPressed(0, action) }
+    static isJustReleased(action) { isJustReleased(0, action) }
+    static getAxis(action) { getAxis(0, action) }
 }
 )wren";
 

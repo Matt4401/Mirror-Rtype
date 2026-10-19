@@ -661,9 +661,9 @@ TEST(Scripting, InputModuleBindings) {
     scriptSystem.init(registry, bus);
 
     auto& inputState = registry.emplaceResource<input::InputState>();
-    inputState.setDown("shoot", true);
-    inputState.setJustPressed("shoot", true);
-    inputState.setAxis("move_y", -0.75F);
+    input::InputStateTestAccess::setDown(inputState, "shoot", true);
+    input::InputStateTestAccess::setJustPressed(inputState, "shoot", true);
+    input::InputStateTestAccess::setAxis(inputState, "move_y", -0.75F);
 
     scripting::ComponentBinder<Position> binder(scriptSystem.getVm(), "core/Position", "Position");
     binder.property<&Position::x>("x");
@@ -681,10 +681,10 @@ TEST(Scripting, InputModuleBindings) {
         "        _pos = Position.new(entity.id)\n"
         "    }\n"
         "    pollInput() {\n"
-        "        if (Input.isDown(\"shoot\")) {\n"
+        "        if (Input.isDown(0, \"shoot\")) {\n"
         "            _pos.x = 100.0\n"
         "        }\n"
-        "        _pos.y = Input.getAxis(\"move_y\")\n"
+        "        _pos.y = Input.getAxis(0, \"move_y\")\n"
         "    }\n"
         "}\n";
 
@@ -713,18 +713,28 @@ TEST(Scripting, InputModuleBindings) {
     EXPECT_FLOAT_EQ(pos.x, 100.0F);
     EXPECT_FLOAT_EQ(pos.y, -0.75F);
 
-    // Direct static method query
-    auto isJustPressedHandle = scriptSystem.getVm().makeCallHandle("isJustPressed(_)");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 2);
+    // Direct static method query with player index
+    auto isJustPressedHandle = scriptSystem.getVm().makeCallHandle("isJustPressed(_,_)");
+    wrenEnsureSlots(scriptSystem.getVm().raw(), 3);
     wrenGetVariable(scriptSystem.getVm().raw(), "core/Input", "Input", 0);
-    wrenSetSlotString(scriptSystem.getVm().raw(), 1, "shoot");
+    wrenSetSlotDouble(scriptSystem.getVm().raw(), 1, 0.0);
+    wrenSetSlotString(scriptSystem.getVm().raw(), 2, "shoot");
     EXPECT_EQ(scriptSystem.getVm().call(isJustPressedHandle), WREN_RESULT_SUCCESS);
     EXPECT_TRUE(wrenGetSlotBool(scriptSystem.getVm().raw(), 0));
 
-    auto isJustReleasedHandle = scriptSystem.getVm().makeCallHandle("isJustReleased(_)");
+    // Default wrapper query without player index
+    auto defaultIsJustPressedHandle = scriptSystem.getVm().makeCallHandle("isJustPressed(_)");
     wrenEnsureSlots(scriptSystem.getVm().raw(), 2);
     wrenGetVariable(scriptSystem.getVm().raw(), "core/Input", "Input", 0);
     wrenSetSlotString(scriptSystem.getVm().raw(), 1, "shoot");
+    EXPECT_EQ(scriptSystem.getVm().call(defaultIsJustPressedHandle), WREN_RESULT_SUCCESS);
+    EXPECT_TRUE(wrenGetSlotBool(scriptSystem.getVm().raw(), 0));
+
+    auto isJustReleasedHandle = scriptSystem.getVm().makeCallHandle("isJustReleased(_,_)");
+    wrenEnsureSlots(scriptSystem.getVm().raw(), 3);
+    wrenGetVariable(scriptSystem.getVm().raw(), "core/Input", "Input", 0);
+    wrenSetSlotDouble(scriptSystem.getVm().raw(), 1, 0.0);
+    wrenSetSlotString(scriptSystem.getVm().raw(), 2, "shoot");
     EXPECT_EQ(scriptSystem.getVm().call(isJustReleasedHandle), WREN_RESULT_SUCCESS);
     EXPECT_FALSE(wrenGetSlotBool(scriptSystem.getVm().raw(), 0));
 }
