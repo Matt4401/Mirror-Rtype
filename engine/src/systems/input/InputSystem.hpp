@@ -11,7 +11,8 @@ class InputState;
 namespace systems {
 
 /**
- * @brief System that samples hardware inputs, updates the InputState resource, and publishes input action events.
+ * @brief System that samples hardware inputs, updates matching InputState components, and publishes input action
+ * events.
  *
  * Polling is driven by dynamic action bindings (discrete buttons and continuous 1D axes) configured via ActionMapping.
  */
@@ -27,7 +28,7 @@ class InputSystem {
                          int gamepadIndex = 0);
 
     /**
-     * @brief Polls inputs, updates the registry InputState resource, and publishes transition events.
+     * @brief Polls inputs, updates matching InputState components, and publishes transition events.
      *
      * @param registry ECS registry containing entities and resources.
      * @param eventBus Optional event bus to publish InputActionEvent on state transitions.

@@ -132,10 +132,11 @@ TEST(InputActionEvent, DesignatedInitializers) {
     EXPECT_EQ(event.playerIndex, 1);
 }
 
-TEST(InputSystem, UpdatesComponentAndResource) {
+TEST(InputSystem, UpdatesComponentForMatchingPlayerIndex) {
     ecs::Registry registry;
     ecs::EventBus eventBus;
-    systems::InputSystem system(input::ActionMapping{}, 0, 0);
+    systems::InputSystem system0(input::ActionMapping{}, 0, 0);
+    systems::InputSystem system1(input::ActionMapping{}, 1, 1);
 
     const ecs::Entity player0 = registry.spawnEntity();
     registry.addComponent<input::InputState>(player0, input::InputState{.playerIndex = 0, .actions = {}});
@@ -143,11 +144,28 @@ TEST(InputSystem, UpdatesComponentAndResource) {
     const ecs::Entity player1 = registry.spawnEntity();
     registry.addComponent<input::InputState>(player1, input::InputState{.playerIndex = 1, .actions = {}});
 
-    system.update(registry, &eventBus);
+    system0.update(registry, &eventBus);
+    system1.update(registry, &eventBus);
 
-    EXPECT_TRUE(registry.hasResource<input::InputState>());
     const auto& p0State = registry.getComponents<input::InputState>().get(player0);
     EXPECT_EQ(p0State.playerIndex, 0);
+
+    const auto& p1State = registry.getComponents<input::InputState>().get(player1);
+    EXPECT_EQ(p1State.playerIndex, 1);
+}
+
+TEST(InputSystem, DoesNothingWhenNoEntityHasInputState) {
+    ecs::Registry registry;
+    ecs::EventBus eventBus;
+    systems::InputSystem system(input::ActionMapping{}, 0, 0);
+
+    bool eventTriggered = false;
+    eventBus.subscribe<events::InputActionEvent>(
+        [&eventTriggered](const events::InputActionEvent& /*event*/) { eventTriggered = true; });
+
+    system.update(registry, &eventBus);
+    EXPECT_FALSE(registry.hasResource<input::InputState>());
+    EXPECT_FALSE(eventTriggered);
 }
 
 TEST(InputSystem, ConfigurablePlayerAndGamepadIndices) {

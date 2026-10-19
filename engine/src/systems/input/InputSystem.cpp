@@ -16,23 +16,11 @@ InputSystem::InputSystem(input::ActionMapping mapping, int playerIndex, int game
     : _mapping(std::move(mapping)), _playerIndex(playerIndex), _gamepadIndex(gamepadIndex) {}
 
 void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
-    bool updatedAny = false;
-    registry.runSystem<input::InputState>(
-        [this, eventBus, &updatedAny](ecs::Entity /*entity*/, input::InputState& state) {
-            if (state.playerIndex == _playerIndex) {
-                updateState(state, eventBus);
-                updatedAny = true;
-            }
-        });
-
-    if (_playerIndex == 0 || !updatedAny || registry.hasResource<input::InputState>()) {
-        if (!registry.hasResource<input::InputState>()) {
-            registry.emplaceResource<input::InputState>(input::InputState{.playerIndex = 0, .actions = {}});
+    registry.runSystem<input::InputState>([this, eventBus](ecs::Entity /*entity*/, input::InputState& state) {
+        if (state.playerIndex == _playerIndex) {
+            updateState(state, eventBus);
         }
-        if (_playerIndex == 0) {
-            updateState(registry.getResource<input::InputState>(), eventBus);
-        }
-    }
+    });
 }
 
 void InputSystem::updateState(input::InputState& state, ecs::EventBus* eventBus) {
@@ -41,12 +29,13 @@ void InputSystem::updateState(input::InputState& state, ecs::EventBus* eventBus)
     for (const auto& [actionId, binding] : _mapping.bindings()) {
         if (binding.type == input::ActionType::Button) {
             const bool isDown = _mapping.isActionDown(actionId, _gamepadIndex);
-            const bool wasDown = state.isDown(actionId);
+            auto& actionData = state.actions[actionId];
+            const bool wasDown = actionData.held;
 
-            state.setDown(actionId, isDown);
+            actionData.held = isDown;
 
             if (!wasDown && isDown) {
-                state.setJustPressed(actionId, true);
+                actionData.justPressed = true;
                 if (eventBus != nullptr) {
                     eventBus->publish(events::InputActionEvent{
                         .action = actionId,
@@ -56,7 +45,7 @@ void InputSystem::updateState(input::InputState& state, ecs::EventBus* eventBus)
                     });
                 }
             } else if (wasDown && !isDown) {
-                state.setJustReleased(actionId, true);
+                actionData.justReleased = true;
                 if (eventBus != nullptr) {
                     eventBus->publish(events::InputActionEvent{
                         .action = actionId,
@@ -68,7 +57,7 @@ void InputSystem::updateState(input::InputState& state, ecs::EventBus* eventBus)
             }
         } else if (binding.type == input::ActionType::Axis) {
             const float axisValue = _mapping.getAxis(actionId, _gamepadIndex);
-            state.setAxis(actionId, axisValue);
+            state.actions[actionId].axis = axisValue;
         }
     }
 }
