@@ -73,6 +73,7 @@ TEST(Collider2D, DefaultValues) {
     EXPECT_EQ(collider.halfWidth, 16.0F);
     EXPECT_EQ(collider.halfHeight, 16.0F);
     EXPECT_EQ(collider.radius, 16.0F);
+    EXPECT_EQ(collider.density, 1.0F);
     EXPECT_EQ(collider.friction, 0.2F);
     EXPECT_EQ(collider.restitution, 0.0F);
     EXPECT_EQ(collider.categoryBits, 0x0001);
@@ -84,11 +85,13 @@ TEST(Collider2D, DesignatedInitializersKeepOtherDefaults) {
     const ecs::Collider2D collider{
         .shape = ecs::ColliderShape::Circle,
         .radius = 24.0F,
+        .density = 0.5F,
         .restitution = 0.75F,
     };
 
     EXPECT_EQ(collider.shape, ecs::ColliderShape::Circle);
     EXPECT_EQ(collider.radius, 24.0F);
+    EXPECT_EQ(collider.density, 0.5F);
     EXPECT_EQ(collider.restitution, 0.75F);
     EXPECT_EQ(collider.friction, 0.2F);
     EXPECT_EQ(collider.maskBits, 0xFFFF);

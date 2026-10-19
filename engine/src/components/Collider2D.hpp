@@ -20,6 +20,7 @@ struct Collider2D {
     float halfWidth = 16.0F;
     float halfHeight = 16.0F;
     float radius = 16.0F;
+    float density = 1.0F;
     float friction = 0.2F;
     float restitution = 0.0F;
     std::uint16_t categoryBits = 0x0001;

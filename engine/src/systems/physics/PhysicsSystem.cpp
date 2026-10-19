@@ -130,7 +130,7 @@ void PhysicsSystem::synchronizeCollider(ecs::Entity entity, b2Body& body) {
 
     const ecs::Collider2D& collider = _registry->getComponents<ecs::Collider2D>().get(entity);
     b2FixtureDef fixtureDef;
-    fixtureDef.density = 1.0F;
+    fixtureDef.density = collider.density;
     fixtureDef.friction = collider.friction;
     fixtureDef.restitution = collider.restitution;
     fixtureDef.isSensor = collider.isSensor;

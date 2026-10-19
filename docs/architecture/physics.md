@@ -51,6 +51,7 @@ Before each simulation step, changes made directly to these fields reposition th
 | `shape` | `ColliderShape::Box` | `Box` or `Circle`. |
 | `halfWidth`, `halfHeight` | `16.0F` | Half-extents of a box, in pixels. |
 | `radius` | `16.0F` | Circle radius, in pixels. |
+| `density` | `1.0F` | Fixture density. |
 | `friction` | `0.2F` | Fixture friction. |
 | `restitution` | `0.0F` | Fixture bounciness. |
 | `categoryBits` | `0x0001` | Collision category bit mask. |
