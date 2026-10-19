@@ -19,11 +19,13 @@ void buildPowerUp(ecs::Entity e, ecs::Registry& registry, float x, float y, floa
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
     registry.addComponent<ecs::RigidBody2D>(
         e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Kinematic, .velocityX = driftSpeed});
-    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{.shape = ecs::ColliderShape::Circle,
-                                                              .radius = POWER_UP_RADIUS,
-                                                              .categoryBits = collision::POWER_UP,
-                                                              .maskBits = collision::POWER_UP_MASK,
-                                                              .isSensor = true});
+    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
+                                                  .shape = ecs::ColliderShape::Circle,
+                                                  .radius = POWER_UP_RADIUS,
+                                                  .categoryBits = collision::POWER_UP,
+                                                  .maskBits = collision::POWER_UP_MASK,
+                                                  .isSensor = true,
+                                              });
 }
 
 void registerPowerUpPrefab(PrefabManager& manager, float driftSpeed, std::string_view name) {

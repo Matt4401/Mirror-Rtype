@@ -19,11 +19,13 @@ void buildMissile(ecs::Entity e, ecs::Registry& registry, float x, float y, floa
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
     registry.addComponent<ecs::RigidBody2D>(
         e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Kinematic, .velocityX = speed, .bullet = true});
-    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{.halfWidth = 8.0F,
-                                                              .halfHeight = 3.0F,
-                                                              .categoryBits = collision::ENEMY_SHOT,
-                                                              .maskBits = collision::ENEMY_SHOT_MASK,
-                                                              .isSensor = true});
+    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
+                                                  .halfWidth = 8.0F,
+                                                  .halfHeight = 3.0F,
+                                                  .categoryBits = collision::ENEMY_SHOT,
+                                                  .maskBits = collision::ENEMY_SHOT_MASK,
+                                                  .isSensor = true,
+                                              });
 }
 
 void registerMissilePrefab(PrefabManager& manager, float speed, std::string_view name) {

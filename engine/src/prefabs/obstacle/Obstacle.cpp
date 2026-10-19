@@ -18,10 +18,12 @@ void buildObstacle(ecs::Entity e, ecs::Registry& registry, float x, float y, flo
     registry.addComponent<ecs::Transform>(e, ecs::Transform{.x = x, .y = y});
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{});
     registry.addComponent<ecs::RigidBody2D>(e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Static});
-    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{.halfWidth = halfWidth,
-                                                              .halfHeight = halfHeight,
-                                                              .categoryBits = collision::OBSTACLE,
-                                                              .maskBits = collision::OBSTACLE_MASK});
+    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
+                                                  .halfWidth = halfWidth,
+                                                  .halfHeight = halfHeight,
+                                                  .categoryBits = collision::OBSTACLE,
+                                                  .maskBits = collision::OBSTACLE_MASK,
+                                              });
 }
 
 void registerObstaclePrefab(PrefabManager& manager, float halfWidth, float halfHeight, std::string_view name) {

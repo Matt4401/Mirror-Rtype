@@ -19,11 +19,13 @@ void buildAlienScout(ecs::Entity e, ecs::Registry& registry, float x, float y, f
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
     registry.addComponent<ecs::RigidBody2D>(e,
                                             ecs::RigidBody2D{.bodyType = ecs::BodyType::Kinematic, .velocityX = speed});
-    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{.halfWidth = ALIEN_SCOUT_HALF_SIZE,
-                                                              .halfHeight = ALIEN_SCOUT_HALF_SIZE,
-                                                              .categoryBits = collision::ENEMY,
-                                                              .maskBits = collision::ENEMY_MASK,
-                                                              .isSensor = true});
+    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
+                                                  .halfWidth = ALIEN_SCOUT_HALF_SIZE,
+                                                  .halfHeight = ALIEN_SCOUT_HALF_SIZE,
+                                                  .categoryBits = collision::ENEMY,
+                                                  .maskBits = collision::ENEMY_MASK,
+                                                  .isSensor = true,
+                                              });
 }
 
 void registerAlienScoutPrefab(PrefabManager& manager, float speed, std::string_view name) {

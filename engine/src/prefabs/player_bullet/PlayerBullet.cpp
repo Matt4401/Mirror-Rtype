@@ -19,11 +19,13 @@ void buildPlayerBullet(ecs::Entity e, ecs::Registry& registry, float x, float y,
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
     registry.addComponent<ecs::RigidBody2D>(
         e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Kinematic, .velocityX = speed, .bullet = true});
-    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{.halfWidth = 6.0F,
-                                                              .halfHeight = 2.0F,
-                                                              .categoryBits = collision::PLAYER_SHOT,
-                                                              .maskBits = collision::PLAYER_SHOT_MASK,
-                                                              .isSensor = true});
+    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
+                                                  .halfWidth = 6.0F,
+                                                  .halfHeight = 2.0F,
+                                                  .categoryBits = collision::PLAYER_SHOT,
+                                                  .maskBits = collision::PLAYER_SHOT_MASK,
+                                                  .isSensor = true,
+                                              });
 }
 
 void registerPlayerBulletPrefab(PrefabManager& manager, float speed, std::string_view name) {
