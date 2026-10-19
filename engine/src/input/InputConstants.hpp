@@ -20,4 +20,10 @@ inline constexpr std::size_t MAX_PAD_BUTTON_BINDINGS = 2;
 /** @brief Default analog stick deadzone to filter hardware noise. */
 inline constexpr float DEFAULT_DEADZONE = 0.2F;
 
+/** @brief Windows Primary Language Identifier for French (France) AZERTY layout. */
+inline constexpr uint16_t WIN_LANGID_FRENCH_FRANCE = 0x040CU;
+
+/** @brief Windows Primary Language Identifier for French (Belgium) AZERTY layout. */
+inline constexpr uint16_t WIN_LANGID_FRENCH_BELGIUM = 0x080CU;
+
 }  // namespace input
