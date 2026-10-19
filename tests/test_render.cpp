@@ -4,48 +4,46 @@
 #include <stdexcept>
 #include <vector>
 
+#include "components/CameraComponent.hpp"
 #include "components/Renderable.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
-#include "render/CameraComponent.hpp"
-#include "render/system/RenderSystem.hpp"
+#include "systems/render/RenderSystem.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 
 TEST(CameraComponent, DefaultValues) {
-    const render::CameraComponent component;
+    const ecs::CameraComponent component;
 
     EXPECT_TRUE(component.active);
-    EXPECT_EQ(component.camera.zoom, 1.0F);
-    EXPECT_EQ(component.camera.rotation, 0.0F);
-    EXPECT_EQ(component.camera.target.x, 0.0F);
-    EXPECT_EQ(component.camera.target.y, 0.0F);
-    EXPECT_EQ(component.camera.offset.x, 0.0F);
-    EXPECT_EQ(component.camera.offset.y, 0.0F);
+    EXPECT_EQ(component.zoom, 1.0F);
+    EXPECT_EQ(component.rotation, 0.0F);
+    EXPECT_EQ(component.targetX, 0.0F);
+    EXPECT_EQ(component.targetY, 0.0F);
+    EXPECT_EQ(component.offsetX, 0.0F);
+    EXPECT_EQ(component.offsetY, 0.0F);
 }
 
 TEST(CameraComponent, WorksAsEcsComponent) {
     ecs::Registry registry;
     const ecs::Entity entity = registry.spawnEntity();
 
-    render::CameraComponent component;
-    component.camera.target = {.x = 400.0F, .y = 300.0F};
-    component.camera.zoom = 2.0F;
-    registry.addComponent<render::CameraComponent>(entity, component);
+    ecs::CameraComponent component{.targetX = 400.0F, .targetY = 300.0F, .zoom = 2.0F};
+    registry.addComponent<ecs::CameraComponent>(entity, component);
 
-    ASSERT_TRUE(registry.hasComponent<render::CameraComponent>(entity));
-    const auto& stored = registry.getComponents<render::CameraComponent>().get(entity);
-    EXPECT_EQ(stored.camera.target.x, 400.0F);
-    EXPECT_EQ(stored.camera.zoom, 2.0F);
+    ASSERT_TRUE(registry.hasComponent<ecs::CameraComponent>(entity));
+    const auto& stored = registry.getComponents<ecs::CameraComponent>().get(entity);
+    EXPECT_EQ(stored.targetX, 400.0F);
+    EXPECT_EQ(stored.zoom, 2.0F);
 }
 
 namespace {
 
-ecs::Entity spawnDrawable(ecs::Registry& registry, int layer, float z) {
+ecs::Entity spawnDrawable(ecs::Registry& registry, int layer, float z, ecs::TextureId textureId = ecs::NO_TEXTURE) {
     const ecs::Entity entity = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(entity, ecs::Transform{.z = z});
-    registry.addComponent<ecs::Renderable>(entity, ecs::Renderable{.layer = layer});
+    registry.addComponent<ecs::Renderable>(entity, ecs::Renderable{.textureId = textureId, .layer = layer});
     return entity;
 }
 
@@ -59,7 +57,7 @@ std::vector<ecs::Entity> drawOrder(const render::RenderSystem& system) {
 
 }  // namespace
 
-TEST(RenderSystem, SortsByLayerThenDepthThenEntity) {
+TEST(RenderSystem, SortsByLayerThenDepthThenTextureThenEntity) {
     ecs::Registry registry;
     const render::TextureStore textures;
     render::RenderSystem system(textures);
@@ -79,6 +77,24 @@ TEST(RenderSystem, SortsByLayerThenDepthThenEntity) {
     EXPECT_EQ(drawOrder(system), expected);
 }
 
+TEST(RenderSystem, GroupsTexturesOnlyAtMatchingLayerAndDepth) {
+    ecs::Registry registry;
+    const render::TextureStore textures;
+    render::RenderSystem system(textures);
+
+    const ecs::Entity textureNine = spawnDrawable(registry, 1, 2.0F, 9);
+    const ecs::Entity textureThreeFirst = spawnDrawable(registry, 1, 2.0F, 3);
+    const ecs::Entity textureThreeSecond = spawnDrawable(registry, 1, 2.0F, 3);
+    const ecs::Entity otherDepth = spawnDrawable(registry, 1, 1.0F, 9);
+    const ecs::Entity otherLayer = spawnDrawable(registry, 0, 2.0F, 9);
+
+    system.collect(registry);
+
+    const std::vector<ecs::Entity> expected{
+        otherLayer, otherDepth, textureThreeFirst, textureThreeSecond, textureNine};
+    EXPECT_EQ(drawOrder(system), expected);
+}
+
 TEST(RenderSystem, IgnoresEntitiesMissingAComponent) {
     ecs::Registry registry;
     const render::TextureStore textures;
@@ -95,7 +111,7 @@ TEST(RenderSystem, IgnoresEntitiesMissingAComponent) {
     EXPECT_EQ(drawOrder(system), std::vector<ecs::Entity>{drawable});
 }
 
-TEST(RenderSystem, CopiesTransformAndTintIntoTheQueue) {
+TEST(RenderSystem, CopiesRenderableDataIntoTheQueue) {
     ecs::Registry registry;
     const render::TextureStore textures;
     render::RenderSystem system(textures);
@@ -103,7 +119,12 @@ TEST(RenderSystem, CopiesTransformAndTintIntoTheQueue) {
     const ecs::Entity entity = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(entity, ecs::Transform{.x = 100.0F, .y = 200.0F});
     registry.addComponent<ecs::Renderable>(
-        entity, ecs::Renderable{.textureId = 4, .tint = {.r = 10, .g = 20, .b = 30, .a = 40}, .layer = 1});
+        entity,
+        ecs::Renderable{.textureId = 4,
+                        .sourceRect = {.x = 32, .y = 16, .width = 24, .height = 24},
+                        .origin = {.x = 0.0F, .y = 1.0F},
+                        .tint = {.r = 10, .g = 20, .b = 30, .a = 40},
+                        .layer = 1});
 
     system.collect(registry);
 
@@ -112,6 +133,12 @@ TEST(RenderSystem, CopiesTransformAndTintIntoTheQueue) {
     EXPECT_EQ(item.transform.x, 100.0F);
     EXPECT_EQ(item.transform.y, 200.0F);
     EXPECT_EQ(item.textureId, 4U);
+    EXPECT_EQ(item.sourceRect.x, 32);
+    EXPECT_EQ(item.sourceRect.y, 16);
+    EXPECT_EQ(item.sourceRect.width, 24);
+    EXPECT_EQ(item.sourceRect.height, 24);
+    EXPECT_EQ(item.origin.x, 0.0F);
+    EXPECT_EQ(item.origin.y, 1.0F);
     EXPECT_EQ(item.tint.b, 30);
     EXPECT_EQ(item.layer, 1);
 }
@@ -138,15 +165,15 @@ TEST(RenderSystem, UsesTheFirstActiveCamera) {
     render::RenderSystem system(textures);
 
     const ecs::Entity inactive = registry.spawnEntity();
-    render::CameraComponent inactiveCamera;
+    ecs::CameraComponent inactiveCamera;
     inactiveCamera.active = false;
-    inactiveCamera.camera.zoom = 9.0F;
-    registry.addComponent<render::CameraComponent>(inactive, inactiveCamera);
+    inactiveCamera.zoom = 9.0F;
+    registry.addComponent<ecs::CameraComponent>(inactive, inactiveCamera);
 
     const ecs::Entity active = registry.spawnEntity();
-    render::CameraComponent activeCamera;
-    activeCamera.camera.zoom = 2.0F;
-    registry.addComponent<render::CameraComponent>(active, activeCamera);
+    ecs::CameraComponent activeCamera;
+    activeCamera.zoom = 2.0F;
+    registry.addComponent<ecs::CameraComponent>(active, activeCamera);
 
     system.collect(registry);
 
@@ -174,6 +201,11 @@ TEST(TextureStore, UnknownIdentifiersResolveToNothing) {
 TEST(Window, RejectsNonPositiveDimensions) {
     EXPECT_THROW(render::Window(render::WindowConfig{.width = 0, .height = 720}), std::invalid_argument);
     EXPECT_THROW(render::Window(render::WindowConfig{.width = 1280, .height = -1}), std::invalid_argument);
+}
+
+TEST(Window, RejectsNonPositiveTargetFps) {
+    EXPECT_THROW(render::Window(render::WindowConfig{.targetFps = 0}), std::invalid_argument);
+    EXPECT_THROW(render::Window(render::WindowConfig{.targetFps = -1}), std::invalid_argument);
 }
 
 int main(int argc, char** argv) {

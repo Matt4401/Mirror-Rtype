@@ -37,13 +37,13 @@ class Window {
      * @brief Tells whether the user asked to close the window.
      * @return True once the close button or the escape key was pressed.
      */
-    [[nodiscard]] bool shouldClose() const;
+    [[nodiscard]] static bool shouldClose();
 
     /** @brief Starts a frame and clears the screen to black. */
-    void beginFrame() const;
+    static void beginFrame();
 
     /** @brief Ends the frame and presents it on screen. */
-    void endFrame() const;
+    static void endFrame();
 };
 
 }  // namespace render

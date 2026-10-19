@@ -25,6 +25,12 @@ struct DrawItem {
     /** @brief Texture to draw, or `ecs::NO_TEXTURE` for a flat colored placeholder. */
     ecs::TextureId textureId = ecs::NO_TEXTURE;
 
+    /** @brief Texture region copied from `ecs::Renderable`. */
+    ecs::TextureRect sourceRect;
+
+    /** @brief Normalized render pivot copied from `ecs::Renderable`. */
+    ecs::RenderOrigin origin;
+
     /** @brief Spatial state copied from `ecs::Transform`. */
     ecs::Transform transform;
 
@@ -35,15 +41,12 @@ struct DrawItem {
 /**
  * @brief Draws every entity that has both `ecs::Transform` and `ecs::Renderable`.
  *
- * Entities are sorted back to front by layer, then by `Transform::z`, then by entity id, so the result is
- * deterministic. The draw queue is reused between frames: once it has grown to the number of visible
- * entities, no heap allocation happens per frame. Client-side only.
+ * Entities are sorted back to front by layer, then by `Transform::z`, then by texture identifier, and finally
+ * by entity id. The draw queue is reused between frames: once it has grown to the number of visible entities,
+ * no heap allocation happens per frame. Client-side only.
  */
 class RenderSystem {
   public:
-    /** @brief Size in pixels of the square drawn for entities without a texture, at scale 1. */
-    static constexpr float PLACEHOLDER_SIZE = 32.0F;
-
     /**
      * @brief Creates the system.
      *

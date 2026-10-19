@@ -8,17 +8,17 @@
 #include <exception>
 #include <iostream>
 
+#include "components/CameraComponent.hpp"
 #include "components/Renderable.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
-#include "render/CameraComponent.hpp"
-#include "render/system/RenderSystem.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
+#include "systems/render/RenderSystem.hpp"
 
 namespace {
 
@@ -31,7 +31,7 @@ struct Projectile {};
 // Placeholder scene until entities come from the server: two projectiles cross an obstacle,
 // one drawn behind it and one in front, to check depth layering by eye.
 void spawnDemoScene(ecs::Registry& registry) {
-    registry.addComponent<render::CameraComponent>(registry.spawnEntity(), render::CameraComponent{});
+    registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
 
     const ecs::Entity obstacle = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(obstacle,
@@ -74,13 +74,13 @@ int main() {
         spawnDemoScene(registry);
 
         ecs::time::Clock clock;
-        while (!window.shouldClose()) {
+        while (!render::Window::shouldClose()) {
             clock.tick(ecs::time::DEFAULT_FIXED_DT,
                        [&registry](const ecs::time::Time& time) { moveProjectiles(registry, time.deltaTime); });
 
-            window.beginFrame();
+            render::Window::beginFrame();
             renderSystem.update(registry);
-            window.endFrame();
+            render::Window::endFrame();
         }
     } catch (const std::exception& error) {
         std::cerr << "client: " << error.what() << '\n';
