@@ -7,8 +7,7 @@
 namespace systems {
 
 /**
- * @brief System that samples hardware inputs, updates the InputState resource, and propagates intent to InputReceiver
- * entities.
+ * @brief System that samples hardware inputs, updates the InputState resource, and publishes input action events.
  *
  * @note TODO(architecture): Decouple input actions from the engine core. Move game-specific actions (e.g. Shoot,
  * ChargeWeapon, MoveUp/Down/Left/Right) and default key bindings to the game layer (client). The engine should
@@ -27,7 +26,7 @@ class InputSystem {
                          int gamepadIndex = 0);
 
     /**
-     * @brief Polls inputs, updates the registry resource and entities with InputReceiver.
+     * @brief Polls inputs, updates the registry InputState resource, and publishes transition events.
      *
      * @param registry ECS registry containing entities and resources.
      * @param eventBus Optional event bus to publish InputActionEvent on state transitions.

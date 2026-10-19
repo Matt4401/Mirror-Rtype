@@ -3,8 +3,6 @@
 #include <cmath>
 #include <cstddef>
 
-#include "components/InputReceiver.hpp"
-#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/InputActionEvent.hpp"
@@ -76,16 +74,6 @@ void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
         moveY *= invLen;
     }
     state.setAxes(moveX, moveY);
-
-    registry.runSystem<ecs::InputReceiver>([&state, this](ecs::Entity /*entity*/, ecs::InputReceiver& receiver) {
-        if (!receiver.enabled || receiver.playerIndex != _playerIndex) {
-            return;
-        }
-        receiver.moveX = state.axisX();
-        receiver.moveY = state.axisY();
-        receiver.shooting = state.isDown(input::Action::Shoot);
-        receiver.charging = state.isDown(input::Action::ChargeWeapon);
-    });
 }
 
 }  // namespace systems

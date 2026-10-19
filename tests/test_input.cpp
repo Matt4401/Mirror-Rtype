@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 #include <raylib.h>
 
-#include "components/InputReceiver.hpp"
-#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/InputActionEvent.hpp"
@@ -67,34 +65,6 @@ TEST(InputState, BitsetFlagsAndAxes) {
     EXPECT_FALSE(state.isJustPressed(input::Action::Shoot));
 }
 
-TEST(InputReceiver, DefaultValuesAndDesignatedInitializers) {
-    const ecs::InputReceiver defaultReceiver;
-    EXPECT_EQ(defaultReceiver.playerIndex, 0);
-    EXPECT_TRUE(defaultReceiver.enabled);
-    EXPECT_FLOAT_EQ(defaultReceiver.moveX, 0.0F);
-    EXPECT_FLOAT_EQ(defaultReceiver.moveY, 0.0F);
-    EXPECT_FALSE(defaultReceiver.shooting);
-    EXPECT_FALSE(defaultReceiver.charging);
-    EXPECT_FLOAT_EQ(defaultReceiver.speed, 350.0F);
-
-    const ecs::InputReceiver customReceiver{
-        .playerIndex = 2,
-        .enabled = false,
-        .moveX = -1.0F,
-        .moveY = 1.0F,
-        .shooting = true,
-        .charging = true,
-        .speed = 500.0F,
-    };
-    EXPECT_EQ(customReceiver.playerIndex, 2);
-    EXPECT_FALSE(customReceiver.enabled);
-    EXPECT_FLOAT_EQ(customReceiver.moveX, -1.0F);
-    EXPECT_FLOAT_EQ(customReceiver.moveY, 1.0F);
-    EXPECT_TRUE(customReceiver.shooting);
-    EXPECT_TRUE(customReceiver.charging);
-    EXPECT_FLOAT_EQ(customReceiver.speed, 500.0F);
-}
-
 TEST(InputActionEvent, DesignatedInitializers) {
     const events::InputActionEvent event{
         .action = input::Action::Shoot,
@@ -108,13 +78,10 @@ TEST(InputActionEvent, DesignatedInitializers) {
     EXPECT_EQ(event.playerIndex, 1);
 }
 
-TEST(InputSystem, AutomaticallyInitializesResourceAndUpdatesReceiver) {
+TEST(InputSystem, AutomaticallyInitializesResource) {
     ecs::Registry registry;
     ecs::EventBus eventBus;
     systems::InputSystem system;
-
-    const ecs::Entity player = registry.spawnEntity();
-    registry.addComponent<ecs::InputReceiver>(player, ecs::InputReceiver{.speed = 400.0F});
 
     EXPECT_FALSE(registry.hasResource<input::InputState>());
 
@@ -124,9 +91,6 @@ TEST(InputSystem, AutomaticallyInitializesResourceAndUpdatesReceiver) {
     const auto& state = registry.getResource<input::InputState>();
     EXPECT_FLOAT_EQ(state.axisX(), 0.0F);
     EXPECT_FLOAT_EQ(state.axisY(), 0.0F);
-
-    const auto& receiver = registry.getComponents<ecs::InputReceiver>().get(player);
-    EXPECT_FLOAT_EQ(receiver.speed, 400.0F);
 }
 
 TEST(InputSystem, ConfigurablePlayerAndGamepadIndices) {
@@ -142,29 +106,6 @@ TEST(InputSystem, ConfigurablePlayerAndGamepadIndices) {
     customSystem.setGamepadIndex(2);
     EXPECT_EQ(customSystem.playerIndex(), 3);
     EXPECT_EQ(customSystem.gamepadIndex(), 2);
-}
-
-TEST(InputSystem, OnlyUpdatesReceiverMatchingPlayerIndex) {
-    ecs::Registry registry;
-    ecs::EventBus eventBus;
-
-    const ecs::Entity player0 = registry.spawnEntity();
-    registry.addComponent<ecs::InputReceiver>(
-        player0, ecs::InputReceiver{.playerIndex = 0, .moveX = 0.0F, .moveY = 0.0F, .shooting = false});
-
-    const ecs::Entity player1 = registry.spawnEntity();
-    registry.addComponent<ecs::InputReceiver>(
-        player1, ecs::InputReceiver{.playerIndex = 1, .moveX = 0.0F, .moveY = 0.0F, .shooting = false});
-
-    // Run system configured specifically for player 1
-    systems::InputSystem systemPlayer1(input::ActionMapping{}, 1, 0);
-    systemPlayer1.update(registry, &eventBus);
-
-    // Both should exist, but player 0's receiver is filtered out by player 1's system
-    const auto& r0 = registry.getComponents<ecs::InputReceiver>().get(player0);
-    const auto& r1 = registry.getComponents<ecs::InputReceiver>().get(player1);
-    EXPECT_EQ(r0.playerIndex, 0);
-    EXPECT_EQ(r1.playerIndex, 1);
 }
 
 int main(int argc, char** argv) {
