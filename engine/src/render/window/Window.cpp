@@ -12,6 +12,9 @@ Window::Window(const WindowConfig& config) {
     if (config.width <= 0 || config.height <= 0) {
         throw std::invalid_argument("Window dimensions must be positive");
     }
+    if (config.targetFps <= 0) {
+        throw std::invalid_argument("Target FPS must be positive");
+    }
 
     unsigned int flags = 0;
     if (config.vsync) {
@@ -26,6 +29,7 @@ Window::Window(const WindowConfig& config) {
     if (!IsWindowReady()) {
         throw std::runtime_error("Failed to create the game window");
     }
+    SetTargetFPS(config.targetFps);
 }
 
 Window::~Window() {
@@ -34,17 +38,13 @@ Window::~Window() {
     }
 }
 
-// The window is a process-wide raylib resource; the instance only proves it is open.
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-bool Window::shouldClose() const { return WindowShouldClose(); }
+bool Window::shouldClose() { return WindowShouldClose(); }
 
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-void Window::beginFrame() const {
+void Window::beginFrame() {
     BeginDrawing();
     ClearBackground(BLACK);
 }
 
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
-void Window::endFrame() const { EndDrawing(); }
+void Window::endFrame() { EndDrawing(); }
 
 }  // namespace render

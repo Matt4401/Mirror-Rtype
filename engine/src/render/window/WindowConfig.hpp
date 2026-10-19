@@ -17,6 +17,9 @@ struct WindowConfig {
     /** @brief Title shown in the window decoration. */
     std::string title = "R-Type";
 
+    /** @brief Maximum render frames per second (must be positive). */
+    int targetFps = 60;
+
     /** @brief Synchronize frame presentation with the display refresh rate. */
     bool vsync = true;
 

@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "components/Collider2D.hpp"
+#include "components/CameraComponent.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/Transform.hpp"
@@ -16,12 +17,11 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
-#include "render/CameraComponent.hpp"
-#include "render/system/RenderSystem.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
 #include "systems/physics/PhysicsSystem.hpp"
+#include "systems/render/RenderSystem.hpp"
 
 namespace {
 
@@ -29,7 +29,7 @@ constexpr float PROJECTILE_SPEED = 200.0F;
 
 // Placeholder scene until entities come from the server: projectiles collide with a static obstacle.
 void spawnDemoScene(ecs::Registry& registry) {
-    registry.addComponent<render::CameraComponent>(registry.spawnEntity(), render::CameraComponent{});
+    registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
 
     const ecs::Entity obstacle = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(obstacle,
@@ -71,13 +71,13 @@ int main() {
         spawnDemoScene(registry);
 
         ecs::time::Clock clock;
-        while (!window.shouldClose()) {
+        while (!render::Window::shouldClose()) {
             clock.tick(ecs::time::DEFAULT_FIXED_DT,
                        [&physicsSystem](const ecs::time::Time& time) { physicsSystem.update(time.deltaTime); });
 
-            window.beginFrame();
+            render::Window::beginFrame();
             renderSystem.update(registry);
-            window.endFrame();
+            render::Window::endFrame();
         }
     } catch (const std::exception& error) {
         std::cerr << "client: " << error.what() << '\n';

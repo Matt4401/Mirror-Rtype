@@ -10,6 +10,10 @@
 namespace render {
 
 TextureStore::~TextureStore() {
+    if (!IsWindowReady()) {
+        return;
+    }
+
     for (const Texture2D& texture : _textures) {
         UnloadTexture(texture);
     }
