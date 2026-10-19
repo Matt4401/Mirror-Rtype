@@ -83,20 +83,19 @@ void spawnDemoScene(ecs::Registry& registry) {
     registry.addComponent<ecs::Renderable>(player,
                                            ecs::Renderable{.tint = {.r = 50, .g = 220, .b = 90, .a = 255}, .layer = 3});
     registry.addComponent<client::ShipInput>(player, client::ShipInput{.playerIndex = 0, .speed = 350.0F});
+    registry.addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
 }
 
 void movePlayer(ecs::Registry& registry, float deltaTime) {
-    if (!registry.hasResource<input::InputState>()) {
-        return;
-    }
-    const auto& inputState = registry.getResource<input::InputState>();
-    registry.runSystem<ecs::Transform, client::ShipInput>(
-        [&inputState, deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship) {
+    registry.runSystem<ecs::Transform, client::ShipInput, input::InputState>(
+        [deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
+                    const input::InputState& inputState) {
             if (!ship.enabled) {
                 return;
             }
-            transform.x += inputState.getAxis("move_x") * ship.speed * deltaTime;
-            transform.y += inputState.getAxis("move_y") * ship.speed * deltaTime;
+            const auto move = inputState.getVector2("move_x", "move_y", true);
+            transform.x += move.x * ship.speed * deltaTime;
+            transform.y += move.y * ship.speed * deltaTime;
 
             transform.x = std::clamp(transform.x, MIN_X, MAX_X);
             transform.y = std::clamp(transform.y, MIN_Y, MAX_Y);
@@ -104,18 +103,11 @@ void movePlayer(ecs::Registry& registry, float deltaTime) {
 }
 
 void handlePlayerShoot(ecs::Registry& registry) {
-    if (!registry.hasResource<input::InputState>()) {
-        return;
-    }
-    const auto& inputState = registry.getResource<input::InputState>();
-    if (!inputState.isJustPressed("shoot")) {
-        return;
-    }
-
     std::vector<ecs::Transform> spawnPositions;
-    registry.runSystem<ecs::Transform, client::ShipInput>(
-        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship) {
-            if (ship.enabled) {
+    registry.runSystem<ecs::Transform, client::ShipInput, input::InputState>(
+        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
+                          const input::InputState& inputState) {
+            if (ship.enabled && inputState.isJustPressed("shoot")) {
                 spawnPositions.push_back(transform);
             }
         });
