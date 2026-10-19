@@ -78,7 +78,7 @@ b2Body* PhysicsSystem::createBody(ecs::Entity entity, const ecs::Transform& tran
 
     b2Body* body = _world.CreateBody(&bodyDef);
     _bodies.emplace(entity, body);
-    synchronizeCollider(entity, *body);
+    synchronizeCollider(entity, transform, *body);
     return body;
 }
 
@@ -114,21 +114,40 @@ void PhysicsSystem::synchronizeBody(ecs::Entity entity, ecs::Transform& transfor
         rigidBody.velocityY = velocity.y * physics::PPM;
     }
     body.SetLinearVelocity(velocity);
-    synchronizeCollider(entity, body);
+    synchronizeCollider(entity, transform, body);
 }
 
-void PhysicsSystem::synchronizeCollider(ecs::Entity entity, b2Body& body) {
+void PhysicsSystem::synchronizeCollider(ecs::Entity entity, const ecs::Transform& transform, b2Body& body) {
     if (!_registry->hasComponent<ecs::Collider2D>(entity)) {
         while (b2Fixture* fixture = body.GetFixtureList()) {
             body.DestroyFixture(fixture);
         }
-        return;
-    }
-    if (body.GetFixtureList() != nullptr) {
+        _colliderScales.erase(entity);
         return;
     }
 
+    const b2Vec2 scale{std::fabs(transform.scaleX), std::fabs(transform.scaleY)};
+    const auto scaleIt = _colliderScales.find(entity);
+    const bool scaleChanged = scaleIt == _colliderScales.end() ||
+                              std::fabs(scaleIt->second.x - scale.x) > physics::POSITION_EPSILON ||
+                              std::fabs(scaleIt->second.y - scale.y) > physics::POSITION_EPSILON;
+    if (body.GetFixtureList() != nullptr && !scaleChanged) {
+        return;
+    }
+
+    while (b2Fixture* fixture = body.GetFixtureList()) {
+        body.DestroyFixture(fixture);
+    }
+
     const ecs::Collider2D& collider = _registry->getComponents<ecs::Collider2D>().get(entity);
+    const bool hasValidDimensions = collider.shape == ecs::ColliderShape::Circle
+                                        ? std::max(scale.x, scale.y) > physics::POSITION_EPSILON
+                                        : scale.x > physics::POSITION_EPSILON && scale.y > physics::POSITION_EPSILON;
+    if (!hasValidDimensions) {
+        _colliderScales.insert_or_assign(entity, scale);
+        return;
+    }
+
     b2FixtureDef fixtureDef;
     fixtureDef.density = collider.density;
     fixtureDef.friction = collider.friction;
@@ -139,16 +158,18 @@ void PhysicsSystem::synchronizeCollider(ecs::Entity entity, b2Body& body) {
 
     if (collider.shape == ecs::ColliderShape::Circle) {
         b2CircleShape shape;
-        shape.m_radius = collider.radius / physics::PPM;
+        shape.m_radius = collider.radius * std::max(scale.x, scale.y) / physics::PPM;
         fixtureDef.shape = &shape;
         body.CreateFixture(&fixtureDef);
+        _colliderScales.insert_or_assign(entity, scale);
         return;
     }
 
     b2PolygonShape shape;
-    shape.SetAsBox(collider.halfWidth / physics::PPM, collider.halfHeight / physics::PPM);
+    shape.SetAsBox(collider.halfWidth * scale.x / physics::PPM, collider.halfHeight * scale.y / physics::PPM);
     fixtureDef.shape = &shape;
     body.CreateFixture(&fixtureDef);
+    _colliderScales.insert_or_assign(entity, scale);
 }
 
 void PhysicsSystem::destroyBody(ecs::Entity entity) {
@@ -158,6 +179,7 @@ void PhysicsSystem::destroyBody(ecs::Entity entity) {
     }
     _world.DestroyBody(it->second);
     _bodies.erase(it);
+    _colliderScales.erase(entity);
 }
 
 }  // namespace systems

@@ -53,6 +53,34 @@ TEST(PhysicsSystem, DynamicBodyStopsAtStaticWall) {
     EXPECT_NEAR(rigidBody.velocityX, 0.0F, 0.1F);
 }
 
+TEST(PhysicsSystem, ColliderScaleChangesCollisionBounds) {
+    ecs::Registry registry;
+    systems::PhysicsSystem physicsSystem(registry);
+
+    const ecs::Entity wall = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(wall, ecs::Transform{.x = 100.0F});
+    registry.addComponent<ecs::RigidBody2D>(wall, ecs::RigidBody2D{});
+    registry.addComponent<ecs::Collider2D>(wall, ecs::Collider2D{.halfWidth = 5.0F, .halfHeight = 100.0F});
+
+    const ecs::Entity movingBody = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(movingBody, ecs::Transform{});
+    registry.addComponent<ecs::RigidBody2D>(movingBody,
+                                            ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic,
+                                                              .velocityX = 600.0F,
+                                                              .maxLinearSpeed = 1000.0F});
+    registry.addComponent<ecs::Collider2D>(
+        movingBody, ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 8.0F});
+
+    physicsSystem.update(FIXED_DT);
+    registry.getComponents<ecs::Transform>().get(movingBody).scaleX = 2.0F;
+
+    for (int step = 0; step < 60; ++step) {
+        physicsSystem.update(FIXED_DT);
+    }
+
+    EXPECT_LE(registry.getComponents<ecs::Transform>().get(movingBody).x, 79.1F);
+}
+
 TEST(PhysicsSystem, FastBulletDoesNotPassThroughThinWall) {
     ecs::Registry registry;
     systems::PhysicsSystem physicsSystem(registry);

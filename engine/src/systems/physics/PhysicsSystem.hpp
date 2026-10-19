@@ -37,12 +37,13 @@ class PhysicsSystem {
   private:
     b2Body* createBody(ecs::Entity entity, const ecs::Transform& transform, const ecs::RigidBody2D& rigidBody);
     void synchronizeBody(ecs::Entity entity, ecs::Transform& transform, ecs::RigidBody2D& rigidBody);
-    void synchronizeCollider(ecs::Entity entity, b2Body& body);
+    void synchronizeCollider(ecs::Entity entity, const ecs::Transform& transform, b2Body& body);
     void destroyBody(ecs::Entity entity);
 
     ecs::Registry* _registry;
     b2World _world;
     std::unordered_map<ecs::Entity, b2Body*> _bodies;
+    std::unordered_map<ecs::Entity, b2Vec2> _colliderScales;
     std::size_t _destroyListenerId;
     std::size_t _rigidBodyRemoveListenerId;
 };

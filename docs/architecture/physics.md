@@ -16,6 +16,7 @@ Physics uses the existing `Transform` component as its ECS-facing pose:
 |-------|------|--------------|
 | `x`, `y` | pixels | Body position |
 | `rotation` | radians | Body angle |
+| `scaleX`, `scaleY` | factor | Collider dimensions; negative values are treated as their absolute values. |
 
 Before each simulation step, changes made directly to these fields reposition the Box2D body. After the step, the simulated body pose is copied back to the same fields.
 
@@ -58,10 +59,10 @@ Before each simulation step, changes made directly to these fields reposition th
 | `maskBits` | `0xFFFF` | Categories this fixture can collide with. |
 | `isSensor` | `false` | Detects overlaps without physical collision response. |
 
-For `ColliderShape::Box`, `halfWidth` and `halfHeight` are passed to Box2D as half-extents. The unused geometry fields are ignored: a circle uses `radius`, while a box uses `halfWidth` and `halfHeight`.
+For `ColliderShape::Box`, `halfWidth` and `halfHeight` are multiplied by `Transform::scaleX` and `Transform::scaleY` before being passed to Box2D as half-extents. The unused geometry fields are ignored: a circle uses `radius`, scaled by the larger absolute transform scale to remain circular, while a box uses `halfWidth` and `halfHeight`.
 
 !!! warning "Collider changes after creation"
-    The current system creates a fixture only when a body has none. Editing the dimensions, shape, material, filters, or sensor flag of an existing `Collider2D` does not update its existing Box2D fixture. Remove `Collider2D` for one update to destroy the fixture, then add it again to create a replacement.
+    The system recreates a fixture when `Transform::scaleX` or `Transform::scaleY` changes. Editing the dimensions, shape, material, filters, or sensor flag of an existing `Collider2D` does not update its existing Box2D fixture. Remove `Collider2D` for one update to destroy the fixture, then add it again to create a replacement.
 
 ## Units and Fixed Step
 
