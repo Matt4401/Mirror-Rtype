@@ -245,11 +245,48 @@ The C++ glue in [`ScriptSystemBindings.cpp`](file:///home/tom-gatin/EPITECH/ING/
 
 ---
 
-## 8. Summary of Technical Trade-Offs
+## 8. Keyboard Layout Detection & Unified Physical Mappings
+
+### The Pitfall of Simultaneous Dual-Binding
+
+Binding both QWERTY (`WASD`) and AZERTY (`ZQSD`) keys simultaneously to the same movement axes causes conflicting behavior:
+
+- In GLFW (Raylib's desktop backend), key tokens represent **physical spatial scancodes on a standard keyboard**, not local character letters.
+- On an AZERTY layout, the physical `W` key (bottom row) generates `KEY_Z`, while the physical `Z` key (top row) generates `KEY_W`.
+- If both `KEY_W` and `KEY_Z` are bound to Move Up, pressing the physical key labeled `W` on AZERTY causes the ship to move forward!
+- Similarly, the physical key labeled `A` on AZERTY generates `KEY_Q`. If `KEY_Q` is bound to Move Left, hitting `A` triggers unwanted horizontal displacement.
+
+### Unified Spatial Key Bindings
+
+Because `KEY_W`, `KEY_A`, `KEY_S`, `KEY_D` represent the physical inverted-T cluster in Raylib/GLFW:
+
+- On an AZERTY keyboard, they correspond directly to the keys labeled **`Z`**, **`Q`**, **`S`**, **`D`**.
+- On a QWERTY keyboard, they correspond directly to the keys labeled **`W`**, **`A`**, **`S`**, **`D`**.
+
+By solely binding the spatial cluster keys in [`RTypeBindings.cpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/client/src/input/RTypeBindings.cpp) and omitting `KEY_Z` and `KEY_Q`, both keyboard layouts are cleanly supported by a single, unified `setupDefaultBindings()` function without duplicate binding profiles or phantom inputs.
+
+### Purpose of Engine `KeyboardLayout` Detection
+
+The engine's layout detection utility ([`KeyboardLayout.hpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/engine/src/input/KeyboardLayout.hpp)) is preserved as an informational service for **UI/HUD localization and tutorial prompts**:
+
+- On AZERTY: On-screen tutorial hints display *"Press [Z] to move up"*.
+- On QWERTY: On-screen tutorial hints display *"Press [W] to move up"*.
+
+Detection order:
+
+1. **Linux System Config**: Reads `/etc/default/keyboard` (`XKBLAYOUT`).
+2. **Win32 Platform API**: Queries `GetKeyboardLayout(0)`.
+3. **POSIX Locale Fallback**: Inspects environment variables (`LC_ALL`, `LANG`, etc.).
+4. **Safe Default**: Defaults to `KeyboardLayout::Qwerty`.
+
+---
+
+## 9. Summary of Technical Trade-Offs
 
 | Alternative Considered | Decision | Architectural Rationale |
 | :--- | :---: | :--- |
 | **Rigid `enum class Action`** | **Rejected** | Prevented runtime extensibility, required engine recompilation for new game actions, incompatible with dynamic Wren scripting. |
 | **Raw `std::string` Map Keys** | **Rejected** | High memory footprint (32 bytes per key), slow string comparison loops on every frame, bloated UDP networking payloads. |
+| **Simultaneous WASD + ZQSD Binding** | **Rejected** | Caused accidental vertical movement on AZERTY keyboards when hitting `W`, and blocked future key rebinding for special abilities. |
 | **Global Singleton Resource** | **Rejected** | Made local multiplayer impossible (player 2 overwrote player 1 inputs). Replaced with entity-based `InputState` component. |
 | **Immediate Input Buffering** | **Deferred** | Not consumed by current combat mechanics (no weapon cooldown lockouts or animation priority chains). Avoids dead code and premature optimization. |

@@ -10,6 +10,8 @@
 #include "input/ActionMapping.hpp"
 #include "input/InputConstants.hpp"
 #include "input/InputState.hpp"
+#include "input/KeyboardLayout.hpp"
+#include "input/RTypeBindings.hpp"
 #include "systems/input/InputSystem.hpp"
 
 TEST(ActionId, Fnv1aHashConsistency) {
@@ -181,6 +183,61 @@ TEST(InputSystem, ConfigurablePlayerAndGamepadIndices) {
     customSystem.setGamepadIndex(2);
     EXPECT_EQ(customSystem.playerIndex(), 3);
     EXPECT_EQ(customSystem.gamepadIndex(), 2);
+}
+
+TEST(KeyboardLayout, DetectLayoutAndString) {
+    EXPECT_STREQ(input::keyboardLayoutToString(input::KeyboardLayout::Qwerty), "QWERTY");
+    EXPECT_STREQ(input::keyboardLayoutToString(input::KeyboardLayout::Azerty), "AZERTY");
+    EXPECT_STREQ(input::keyboardLayoutToString(static_cast<input::KeyboardLayout>(99)), "UNKNOWN");
+
+    const input::KeyboardLayout detected = input::detectKeyboardLayout();
+    EXPECT_TRUE(detected == input::KeyboardLayout::Qwerty || detected == input::KeyboardLayout::Azerty);
+}
+
+TEST(KeyboardLayout, DetailIsAzertyLocale) {
+    EXPECT_TRUE(input::detail::isAzertyLocale("fr_FR.UTF-8"));
+    EXPECT_TRUE(input::detail::isAzertyLocale("fr_BE.UTF-8"));
+    EXPECT_TRUE(input::detail::isAzertyLocale("fr-FR"));
+    EXPECT_TRUE(input::detail::isAzertyLocale("fr-BE"));
+    EXPECT_FALSE(input::detail::isAzertyLocale("fr_CA.UTF-8"));
+    EXPECT_FALSE(input::detail::isAzertyLocale("fr-CA"));
+    EXPECT_FALSE(input::detail::isAzertyLocale("en_US.UTF-8"));
+    EXPECT_FALSE(input::detail::isAzertyLocale("C"));
+    EXPECT_FALSE(input::detail::isAzertyLocale(""));
+
+    EXPECT_EQ(input::WIN_LANGID_FRENCH_FRANCE, 0x040CU);
+    EXPECT_EQ(input::WIN_LANGID_FRENCH_BELGIUM, 0x080CU);
+}
+
+TEST(KeyboardLayout, DetailDetectFromLinuxConfig) {
+#ifdef __linux__
+    const auto layout = input::detail::detectFromLinuxConfig();
+    if (layout.has_value()) {
+        EXPECT_TRUE(*layout == input::KeyboardLayout::Azerty || *layout == input::KeyboardLayout::Qwerty);
+    }
+#endif
+}
+
+TEST(RTypeBindings, SetupDefaultBindings) {
+    input::ActionMapping mapping;
+    client::input::setupDefaultBindings(mapping);
+
+    // Spatial cluster keys: KEY_A (physical Left) and KEY_W (physical Up)
+    EXPECT_TRUE(mapping.hasKey("move_x", KEY_A));
+    EXPECT_TRUE(mapping.hasKey("move_x", KEY_D));
+    EXPECT_TRUE(mapping.hasKey("move_x", KEY_LEFT));
+    EXPECT_TRUE(mapping.hasKey("move_x", KEY_RIGHT));
+    // Physical 'A' on AZERTY (KEY_Q) and physical 'W' on AZERTY (KEY_Z) must NOT move the ship
+    EXPECT_FALSE(mapping.hasKey("move_x", KEY_Q));
+
+    EXPECT_TRUE(mapping.hasKey("move_y", KEY_W));
+    EXPECT_TRUE(mapping.hasKey("move_y", KEY_S));
+    EXPECT_TRUE(mapping.hasKey("move_y", KEY_UP));
+    EXPECT_TRUE(mapping.hasKey("move_y", KEY_DOWN));
+    EXPECT_FALSE(mapping.hasKey("move_y", KEY_Z));
+
+    EXPECT_TRUE(mapping.hasKey("shoot", KEY_SPACE));
+    EXPECT_TRUE(mapping.hasKey("charge_weapon", KEY_LEFT_SHIFT));
 }
 
 int main(int argc, char** argv) {
