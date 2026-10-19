@@ -12,6 +12,13 @@ target("test_scripting")
     add_files("test_scripting.cpp")
     add_tests("test_scripting")
 
+target("test_renderable")
+    set_kind("binary")
+    add_deps("engine")
+    add_packages("gtest")
+    add_files("test_renderable.cpp")
+    add_tests("test_renderable")
+
 target("test_components")
     set_kind("binary")
     add_deps("engine")
