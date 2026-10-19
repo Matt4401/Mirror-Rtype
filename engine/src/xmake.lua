@@ -20,6 +20,13 @@ target("engine_scripting")
     add_deps("engine_core", "engine_events")
     add_packages("wren", {public = true})
 
+target("engine_all")
+    set_kind("phony")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting")
+    if has_config("graphics") then
+        add_deps("engine_render")
+    end
+
 if has_config("graphics") then
     includes("render")
     includes("input")
