@@ -7,7 +7,7 @@ The game simulation must not depend on CPU speed: an enemy moving at 100 units p
 It lives in `engine/src/ecs/time/` under the `ecs::time` namespace and has **no graphical dependency**, so the headless server and the client use the exact same code.
 
 | File | Content |
-|------|---------|
+| ------ | --------- |
 | `Time.hpp` | `Time` structure handed to every simulation step |
 | `Clock.hpp` / `Clock.tpp` / `Clock.cpp` | The `Clock` class (`tick` is a template defined in the `.tpp`) |
 | `SteadyNow.hpp` / `SteadyNow.cpp` | `steadyNowSeconds()`, the default time source |
@@ -50,7 +50,7 @@ If the process freezes (debugger, OS suspend, heavy load), a huge amount of time
 `Time` is passed (by `const&`) to every step.
 
 | Field | Type | Meaning |
-|-------|------|---------|
+| ------- | ------ | --------- |
 | `deltaTime` | `float` | Constant duration of one step, in seconds (equals the `fixedDt` given to `tick`) |
 | `totalElapsedTime` | `float` | Simulated time since the clock started (or was reset), in seconds |
 | `tickCount` | `std::uint64_t` | Number of steps executed since the clock started (or was reset) |
@@ -75,6 +75,9 @@ class Clock {
     template <typename Step>
     std::size_t tick(float fixedDt, Step&& step);          // returns number of steps run
 
+    template <typename Step>
+    std::size_t tick(float fixedDt, Registry& registry, Step&& step); // updates Time resource in registry
+
     const Time& time() const noexcept;                     // data of the latest step
     void reset();                                          // restart accumulator and counters
 };
@@ -83,9 +86,10 @@ class Clock {
 ```
 
 | Member | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `Clock(source, maxStepsPerTick)` | Records the starting instant. A `nullptr` source selects `steadyNowSeconds` (based on `std::chrono::steady_clock`). `maxStepsPerTick` is forced to at least `1`. |
 | `tick(fixedDt, step)` | Runs `step(const Time&)` once per whole `fixedDt` of accumulated time. Does nothing and returns `0` if `fixedDt <= 0`. |
+| `tick(fixedDt, registry, step)` | Runs `step(Registry&)` once per whole `fixedDt` of accumulated time, automatically updating the `ecs::time::Time` resource stored in `registry`. |
 | `time()` | Returns the `Time` of the last executed step. |
 | `reset()` | Re-reads the current instant and clears the accumulator, the total and the counters. |
 

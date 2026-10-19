@@ -242,6 +242,73 @@ TEST(ECS, CommandBufferDeduplication) {
     EXPECT_NE(e3, e1);
 }
 
+struct GameConfig {
+    int width;
+    int height;
+    float volume;
+};
+
+TEST(ECS, EmplaceAndGetResource) {
+    ecs::Registry registry;
+
+    EXPECT_FALSE(registry.hasResource<GameConfig>());
+
+    registry.emplaceResource<GameConfig>(GameConfig{.width = 1920, .height = 1080, .volume = 0.8F});
+    EXPECT_TRUE(registry.hasResource<GameConfig>());
+
+    auto& config = registry.getResource<GameConfig>();
+    EXPECT_EQ(config.width, 1920);
+    EXPECT_EQ(config.height, 1080);
+    EXPECT_FLOAT_EQ(config.volume, 0.8F);
+
+    // Modify resource in place
+    config.volume = 0.5F;
+    EXPECT_FLOAT_EQ(registry.getResource<GameConfig>().volume, 0.5F);
+}
+
+TEST(ECS, AddResourceMoveAndCopy) {
+    ecs::Registry registry;
+
+    GameConfig cfg{.width = 1280, .height = 720, .volume = 1.0F};
+    registry.addResource(cfg);
+    EXPECT_TRUE(registry.hasResource<GameConfig>());
+    EXPECT_EQ(registry.getResource<GameConfig>().width, 1280);
+
+    // Overwrite via move
+    registry.addResource(GameConfig{.width = 800, .height = 600, .volume = 0.0F});
+    EXPECT_EQ(registry.getResource<GameConfig>().width, 800);
+    EXPECT_FLOAT_EQ(registry.getResource<GameConfig>().volume, 0.0F);
+}
+
+TEST(ECS, HasAndRemoveResource) {
+    ecs::Registry registry;
+
+    registry.emplaceResource<GameConfig>(GameConfig{.width = 640, .height = 480, .volume = 1.0F});
+    EXPECT_TRUE(registry.hasResource<GameConfig>());
+
+    registry.removeResource<GameConfig>();
+    EXPECT_FALSE(registry.hasResource<GameConfig>());
+
+    // Removing again should be safe (no-op)
+    EXPECT_NO_THROW(registry.removeResource<GameConfig>());
+}
+
+TEST(ECS, ThrowOnMissingResource) {
+    ecs::Registry registry;
+
+    EXPECT_THROW((void)registry.getResource<GameConfig>(), std::runtime_error);
+}
+
+TEST(ECS, ConstRegistryResourceAccess) {
+    ecs::Registry registry;
+    registry.emplaceResource<GameConfig>(GameConfig{.width = 1024, .height = 768, .volume = 0.9F});
+
+    const ecs::Registry& constRef = registry;
+    EXPECT_TRUE(constRef.hasResource<GameConfig>());
+    EXPECT_EQ(constRef.getResource<GameConfig>().width, 1024);
+    EXPECT_FLOAT_EQ(constRef.getResource<GameConfig>().volume, 0.9F);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

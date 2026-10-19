@@ -19,6 +19,9 @@ jobs:
     name: Check C++ formatting and linting
     if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -50,6 +53,8 @@ jobs:
       - name: Run C++ linter
         uses: cpp-linter/cpp-linter-action@v2
         id: linter
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           version: "20"
           style: "file"
