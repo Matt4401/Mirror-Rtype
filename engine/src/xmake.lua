@@ -18,7 +18,7 @@ target("engine_scripting")
     add_files("scripting/**.cpp", "systems/script/**.cpp")
     add_includedirs(".", {public = true})
     add_deps("engine_core", "engine_events")
-    add_packages("wren", {public = true})
+    add_packages("wren", "box2d", {public = true})
 
 target("engine_all")
     set_kind("phony")
