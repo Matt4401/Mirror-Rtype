@@ -3,8 +3,9 @@
 The client and the server, layer by layer, and what travels between them.
 
 !!! note "Status"
-The `network/` library and the `shared/` interfaces already exist. `engine/`, `common/` (the `.proto`),
-`GameServer`, `Lobby` and `Room` describe the planned design.
+The `network/` library, the `shared/` interfaces and the ECS core of `engine/` (registry, clock) exist.
+`ServerManager` and `Room` exist as a skeleton: the game systems and the protocol are still `TODO`s. `common/`
+(the `.proto`), the lobby and the gameplay systems describe the planned design.
 
 **Layers**
 
@@ -44,13 +45,13 @@ flowchart LR
 
     subgraph SERVER["SERVER · r-type_server · headless"]
         direction TB
-        subgraph SG["Game thread · GameServer::run 60 Hz"]
+        subgraph SG["Game thread · ServerManager::run"]
             direction TB
             SI["INetworkServer<br/>poll · send · broadcast · kick"]
             SP["Protocol · common/<br/>decode Envelope · encodeSnapshot"]
-            SH["GameServer::handleEvent<br/>Connected · Disconnected · Data"]
+            SH["ServerManager::handleEvents<br/>Connected · Disconnected · Data"]
             L["Lobby<br/>rooms · ready · GAME_START"]
-            RM["Room · one per game<br/>onInput · update · snapshots"]
+            RM["Room · one per game · own Clock<br/>onInput · advance · snapshots"]
         end
         subgraph SN["Network thread · NetworkServer"]
             direction TB
@@ -110,12 +111,24 @@ Key points:
   be tested without any socket.
 - **Only `common/` knows about Protobuf.** Changing the format only touches that layer.
 
-### One server tick
+### One server loop iteration
 
-1. `poll()` and decode the messages.
-2. `Room::update()`: `applyInput` for each player, ECS systems, `tick++`.
-3. Snapshots → `send()` to each player.
-4. `sleep_until(next)`, then the next tick.
+Each room owns its own [`ecs::time::Clock`](clock.md): rooms are independent games, each with its own game time and
+rate. The `ServerManager` runs them all on the game thread, one loop iteration about every millisecond:
+
+1. `poll()` the network once and route the events: lobby messages, inputs stored in the player's room. This is the
+   only place that reads the network: it has one event queue for every player.
+2. `room.advance()` for each room: the room's clock runs the steps that are due (60 Hz by default, `DEFAULT_FIXED_DT`).
+   Each step applies `applyInput` for each player, then the ECS systems with `time.deltaTime`.
+3. For each room that ran at least one step: a snapshot → `send()` to each of its players, numbered with the room's
+   `time().tickCount`.
+4. Sleep 1 ms.
+
+- `Room::start()` resets the room's clock: the game time (`tickCount`, `totalElapsedTime`) starts at 0 when the game
+  starts, however long the room waited for its players. A waiting room does not step.
+- If a room falls behind (debugger, overload), its clock runs at most 5 steps in a row, then drops the backlog. After
+  several catch-up steps, a single snapshot is sent: it carries the latest state.
+- Rooms are referred to by `RoomId`, never by pointer: an event for a room that no longer exists is simply ignored.
 
 ---
 
