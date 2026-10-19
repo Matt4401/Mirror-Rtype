@@ -39,7 +39,7 @@ struct ActionBinding {
  */
 class ActionMapping {
   public:
-    /** @brief Constructs action mapping initialized with default accessible bindings. */
+    /** @brief Constructs empty action mapping. */
     ActionMapping();
 
     /** @brief Associates a keyboard keycode with an action. */
@@ -66,8 +66,8 @@ class ActionMapping {
     /** @brief Gets the analog stick deadzone threshold. */
     [[nodiscard]] float deadzone() const noexcept { return _deadzone; }
 
-    /** @brief Resets all mappings to default accessible configurations. */
-    void resetToDefaults();
+    /** @brief Clears all action bindings and resets deadzone to default. */
+    void clear();
 
     /** @brief Tells whether an action is currently active on hardware devices. */
     [[nodiscard]] bool isActionDown(Action action, int gamepadIndex = 0) const;

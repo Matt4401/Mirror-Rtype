@@ -10,51 +10,37 @@
 #include "input/InputState.hpp"
 #include "systems/input/InputSystem.hpp"
 
-TEST(ActionMapping, DefaultBindingsIncludeInternationalAndArrows) {
+TEST(ActionMapping, DefaultConstructorIsEmpty) {
     const input::ActionMapping mapping;
 
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveUp, KEY_W));
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveUp, KEY_Z));
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveUp, KEY_UP));
-
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveDown, KEY_S));
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveDown, KEY_DOWN));
-
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveLeft, KEY_A));
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveLeft, KEY_Q));
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveLeft, KEY_LEFT));
-
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveRight, KEY_D));
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveRight, KEY_RIGHT));
-
-    EXPECT_TRUE(mapping.hasKey(input::Action::Shoot, KEY_SPACE));
-    EXPECT_TRUE(mapping.hasKey(input::Action::Shoot, KEY_ENTER));
-
-    EXPECT_TRUE(mapping.hasKey(input::Action::ChargeWeapon, KEY_LEFT_SHIFT));
-    EXPECT_TRUE(mapping.hasKey(input::Action::ChargeWeapon, KEY_RIGHT_SHIFT));
-
+    EXPECT_FALSE(mapping.hasKey(input::Action::MoveUp, KEY_W));
+    EXPECT_FALSE(mapping.hasKey(input::Action::MoveUp, KEY_Z));
+    EXPECT_FALSE(mapping.hasKey(input::Action::Shoot, KEY_SPACE));
     EXPECT_FLOAT_EQ(mapping.deadzone(), 0.2F);
 }
 
-TEST(ActionMapping, RuntimeRemappingForAccessibility) {
+TEST(ActionMapping, RuntimeBindingAndRemapping) {
     input::ActionMapping mapping;
 
     EXPECT_TRUE(mapping.bindKey(input::Action::Shoot, KEY_E));
     EXPECT_TRUE(mapping.hasKey(input::Action::Shoot, KEY_E));
 
-    EXPECT_TRUE(mapping.unbindKey(input::Action::Shoot, KEY_SPACE));
-    EXPECT_FALSE(mapping.hasKey(input::Action::Shoot, KEY_SPACE));
+    EXPECT_TRUE(mapping.unbindKey(input::Action::Shoot, KEY_E));
+    EXPECT_FALSE(mapping.hasKey(input::Action::Shoot, KEY_E));
+
+    EXPECT_TRUE(mapping.bindKey(input::Action::MoveUp, KEY_W));
+    EXPECT_TRUE(mapping.bindKey(input::Action::MoveUp, KEY_Z));
+    EXPECT_TRUE(mapping.hasKey(input::Action::MoveUp, KEY_W));
+    EXPECT_TRUE(mapping.hasKey(input::Action::MoveUp, KEY_Z));
 
     mapping.clearKeyBindings(input::Action::MoveUp);
     EXPECT_FALSE(mapping.hasKey(input::Action::MoveUp, KEY_W));
     EXPECT_FALSE(mapping.hasKey(input::Action::MoveUp, KEY_Z));
-    EXPECT_FALSE(mapping.hasKey(input::Action::MoveUp, KEY_UP));
 
     mapping.setDeadzone(0.35F);
     EXPECT_FLOAT_EQ(mapping.deadzone(), 0.35F);
 
-    mapping.resetToDefaults();
-    EXPECT_TRUE(mapping.hasKey(input::Action::MoveUp, KEY_W));
+    mapping.clear();
     EXPECT_FLOAT_EQ(mapping.deadzone(), 0.2F);
 }
 

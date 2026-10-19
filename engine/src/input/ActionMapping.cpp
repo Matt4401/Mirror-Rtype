@@ -9,49 +9,13 @@
 
 namespace input {
 
-ActionMapping::ActionMapping() { resetToDefaults(); }
+ActionMapping::ActionMapping() = default;
 
-void ActionMapping::resetToDefaults() {
+void ActionMapping::clear() {
     _deadzone = DEFAULT_DEADZONE;
     for (auto& binding : _bindings) {
         binding = ActionBinding{};
     }
-
-    // MoveUp (AZERTY Z, QWERTY W, Arrow Up, D-Pad Up, Left Stick Up)
-    bindKey(Action::MoveUp, KEY_W);
-    bindKey(Action::MoveUp, KEY_Z);
-    bindKey(Action::MoveUp, KEY_UP);
-    bindGamepadButton(Action::MoveUp, GAMEPAD_BUTTON_LEFT_FACE_UP);
-    bindGamepadAxis(Action::MoveUp, GAMEPAD_AXIS_LEFT_Y, -1.0F);
-
-    // MoveDown (S, Arrow Down, D-Pad Down, Left Stick Down)
-    bindKey(Action::MoveDown, KEY_S);
-    bindKey(Action::MoveDown, KEY_DOWN);
-    bindGamepadButton(Action::MoveDown, GAMEPAD_BUTTON_LEFT_FACE_DOWN);
-    bindGamepadAxis(Action::MoveDown, GAMEPAD_AXIS_LEFT_Y, 1.0F);
-
-    // MoveLeft (AZERTY Q, QWERTY A, Arrow Left, D-Pad Left, Left Stick Left)
-    bindKey(Action::MoveLeft, KEY_A);
-    bindKey(Action::MoveLeft, KEY_Q);
-    bindKey(Action::MoveLeft, KEY_LEFT);
-    bindGamepadButton(Action::MoveLeft, GAMEPAD_BUTTON_LEFT_FACE_LEFT);
-    bindGamepadAxis(Action::MoveLeft, GAMEPAD_AXIS_LEFT_X, -1.0F);
-
-    // MoveRight (D, Arrow Right, D-Pad Right, Left Stick Right)
-    bindKey(Action::MoveRight, KEY_D);
-    bindKey(Action::MoveRight, KEY_RIGHT);
-    bindGamepadButton(Action::MoveRight, GAMEPAD_BUTTON_LEFT_FACE_RIGHT);
-    bindGamepadAxis(Action::MoveRight, GAMEPAD_AXIS_LEFT_X, 1.0F);
-
-    // Shoot (Space, Enter, Gamepad A / Cross)
-    bindKey(Action::Shoot, KEY_SPACE);
-    bindKey(Action::Shoot, KEY_ENTER);
-    bindGamepadButton(Action::Shoot, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
-
-    // ChargeWeapon (Shift, Gamepad Right Trigger)
-    bindKey(Action::ChargeWeapon, KEY_LEFT_SHIFT);
-    bindKey(Action::ChargeWeapon, KEY_RIGHT_SHIFT);
-    bindGamepadButton(Action::ChargeWeapon, GAMEPAD_BUTTON_RIGHT_TRIGGER_2);
 }
 
 const ActionBinding& ActionMapping::getBinding(Action action) const {
