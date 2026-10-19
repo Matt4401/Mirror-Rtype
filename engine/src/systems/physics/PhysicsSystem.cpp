@@ -49,6 +49,10 @@ void PhysicsSystem::update(float fixedDt) {
 
     _registry->runSystem<ecs::Transform, ecs::RigidBody2D>(
         [this](ecs::Entity entity, ecs::Transform& transform, ecs::RigidBody2D& rigidBody) {
+            if (rigidBody.bodyType == ecs::BodyType::Static) {
+                return;
+            }
+
             const auto it = _bodies.find(entity);
             if (it == _bodies.end()) {
                 return;
@@ -105,15 +109,17 @@ void PhysicsSystem::synchronizeBody(ecs::Entity entity, ecs::Transform& transfor
         body.SetTransform(b2Vec2{targetX, targetY}, transform.rotation);
     }
 
-    b2Vec2 velocity{rigidBody.velocityX / physics::PPM, rigidBody.velocityY / physics::PPM};
-    const float maxSpeed = std::max(0.0F, rigidBody.maxLinearSpeed / physics::PPM);
-    const float speed = velocity.Length();
-    if (speed > maxSpeed && speed > 0.0F) {
-        velocity *= maxSpeed / speed;
-        rigidBody.velocityX = velocity.x * physics::PPM;
-        rigidBody.velocityY = velocity.y * physics::PPM;
+    if (rigidBody.bodyType != ecs::BodyType::Static) {
+        b2Vec2 velocity{rigidBody.velocityX / physics::PPM, rigidBody.velocityY / physics::PPM};
+        const float maxSpeed = std::max(0.0F, rigidBody.maxLinearSpeed / physics::PPM);
+        const float speed = velocity.Length();
+        if (speed > maxSpeed && speed > 0.0F) {
+            velocity *= maxSpeed / speed;
+            rigidBody.velocityX = velocity.x * physics::PPM;
+            rigidBody.velocityY = velocity.y * physics::PPM;
+        }
+        body.SetLinearVelocity(velocity);
     }
-    body.SetLinearVelocity(velocity);
     synchronizeCollider(entity, transform, body);
 }
 
