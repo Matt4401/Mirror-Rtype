@@ -1,6 +1,6 @@
 target("engine_core")
     set_kind("static")
-    add_files("ecs/*.cpp")
+    add_files("**.cpp|render/**.cpp|systems/render/**.cpp")
     add_includedirs(".", {public = true})
 
 target("engine_time")
@@ -23,3 +23,7 @@ target("engine_scripting")
 target("engine_all")
     set_kind("phony")
     add_deps("engine_core", "engine_time", "engine_events", "engine_scripting")
+
+if has_config("graphics") then
+    includes("render")
+end
