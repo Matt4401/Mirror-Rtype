@@ -174,8 +174,7 @@ To uphold Data-Oriented Design (DOD) principles and C++20 designated initializer
   InputSystem(mapping, playerIndex, gamepadIndex);
   ```
 
-- During `InputSystem::update()`, the system iterates over entities owning an `InputState` component and updates only those where `state.playerIndex == _playerIndex`.
-- **Backward Compatibility**: If no entity has spawned yet or client code queries the global resource, player 0 transparently synchronizes a fallback global `InputState` resource.
+- During `InputSystem::update()`, the system iterates over entities owning an `InputState` component and updates only those where `state.playerIndex == _playerIndex`. If no entity has an `InputState` component for this player, no hardware polling or state mutation is performed.
 
 ---
 
