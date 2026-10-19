@@ -99,7 +99,7 @@ void worldGetEntitiesInRadius(::WrenVM* rawVm) {
 }
 
 /**
- * @brief Resolves the InputState component matching playerIndex or falls back to global resource.
+ * @brief Resolves the InputState component matching playerIndex.
  * @param registry Active ECS registry.
  * @param playerIndex Logical player identifier.
  * @return Pointer to InputState or nullptr if missing.
@@ -114,13 +114,7 @@ const input::InputState* resolvePlayerInputState(ecs::Registry* registry, int pl
             matched = &state;
         }
     });
-    if (matched != nullptr) {
-        return matched;
-    }
-    if (registry->hasResource<input::InputState>()) {
-        return &registry->getResource<input::InputState>();
-    }
-    return nullptr;
+    return matched;
 }
 
 /**

@@ -659,7 +659,9 @@ TEST(Scripting, InputModuleBindings) {
     systems::ScriptSystem scriptSystem;
     scriptSystem.init(registry, bus);
 
-    auto& inputState = registry.emplaceResource<input::InputState>();
+    const ecs::Entity player = registry.spawnEntity();
+    auto& inputState =
+        registry.addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
     inputState.setDown("shoot", true);
     inputState.setJustPressed("shoot", true);
     inputState.setAxis("move_y", -0.75F);
