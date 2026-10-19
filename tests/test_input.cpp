@@ -1,18 +1,25 @@
 #include <gtest/gtest.h>
 #include <raylib.h>
 
+#include <cmath>
+
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/InputActionEvent.hpp"
 #include "input/ActionId.hpp"
 #include "input/ActionMapping.hpp"
+#include "input/InputConstants.hpp"
 #include "input/InputState.hpp"
 #include "systems/input/InputSystem.hpp"
+
+using TestAccess = input::InputStateTestAccess;
 
 TEST(ActionId, Fnv1aHashConsistency) {
     constexpr input::ActionId shootId = input::makeActionId("shoot");
     EXPECT_EQ(shootId, input::makeActionId("shoot"));
     EXPECT_NE(shootId, input::makeActionId("move_x"));
+    EXPECT_EQ(input::FNV1A_OFFSET_BASIS_32, 2166136261U);
+    EXPECT_EQ(input::FNV1A_PRIME_32, 16777619U);
 }
 
 TEST(ActionMapping, DefaultConstructorIsEmpty) {
@@ -72,28 +79,46 @@ TEST(InputState, DynamicActionsAndAxes) {
     EXPECT_FLOAT_EQ(state.getAxis("move_x"), 0.0F);
     EXPECT_FLOAT_EQ(state.getAxis("move_y"), 0.0F);
 
-    state.setDown("shoot", true);
-    state.setJustPressed("shoot", true);
-    state.setAxis("move_x", 0.707F);
-    state.setAxis("move_y", -0.707F);
+    TestAccess::setDown(state, "shoot", true);
+    TestAccess::setJustPressed(state, "shoot", true);
+    TestAccess::setAxis(state, "move_x", 0.707F);
+    TestAccess::setAxis(state, "move_y", -0.707F);
 
     EXPECT_TRUE(state.isDown("shoot"));
     EXPECT_TRUE(state.isJustPressed("shoot"));
     EXPECT_FLOAT_EQ(state.getAxis("move_x"), 0.707F);
     EXPECT_FLOAT_EQ(state.getAxis("move_y"), -0.707F);
 
-    state.resetFrameTransitions();
+    TestAccess::resetFrameTransitions(state);
     EXPECT_TRUE(state.isDown("shoot"));
     EXPECT_FALSE(state.isJustPressed("shoot"));
 
-    state.setDown("shoot", false);
-    state.setJustReleased("shoot", true);
+    TestAccess::setDown(state, "shoot", false);
+    TestAccess::setJustReleased(state, "shoot", true);
     EXPECT_FALSE(state.isDown("shoot"));
     EXPECT_TRUE(state.isJustReleased("shoot"));
 
-    state.clear();
+    TestAccess::clear(state);
     EXPECT_FALSE(state.isDown("shoot"));
     EXPECT_FLOAT_EQ(state.getAxis("move_x"), 0.0F);
+}
+
+TEST(InputState, Vector2Normalization) {
+    input::InputState state;
+    TestAccess::setAxis(state, "move_x", 1.0F);
+    TestAccess::setAxis(state, "move_y", 1.0F);
+
+    // Without normalization, magnitude is sqrt(2) ~ 1.414
+    const auto unnormalized = state.getVector2("move_x", "move_y", false);
+    EXPECT_FLOAT_EQ(unnormalized.x, 1.0F);
+    EXPECT_FLOAT_EQ(unnormalized.y, 1.0F);
+
+    // With normalization, magnitude is clamped to 1.0F
+    const auto normalized = state.getVector2("move_x", "move_y", true);
+    const float length = std::sqrt((normalized.x * normalized.x) + (normalized.y * normalized.y));
+    EXPECT_NEAR(length, 1.0F, 0.0001F);
+    EXPECT_NEAR(normalized.x, 0.7071F, 0.001F);
+    EXPECT_NEAR(normalized.y, 0.7071F, 0.001F);
 }
 
 TEST(InputActionEvent, DesignatedInitializers) {
@@ -109,19 +134,22 @@ TEST(InputActionEvent, DesignatedInitializers) {
     EXPECT_EQ(event.playerIndex, 1);
 }
 
-TEST(InputSystem, AutomaticallyInitializesResource) {
+TEST(InputSystem, UpdatesComponentAndResource) {
     ecs::Registry registry;
     ecs::EventBus eventBus;
-    systems::InputSystem system;
+    systems::InputSystem system(input::ActionMapping{}, 0, 0);
 
-    EXPECT_FALSE(registry.hasResource<input::InputState>());
+    const ecs::Entity player0 = registry.spawnEntity();
+    registry.addComponent<input::InputState>(player0, input::InputState{.playerIndex = 0, .actions = {}});
+
+    const ecs::Entity player1 = registry.spawnEntity();
+    registry.addComponent<input::InputState>(player1, input::InputState{.playerIndex = 1, .actions = {}});
 
     system.update(registry, &eventBus);
 
     EXPECT_TRUE(registry.hasResource<input::InputState>());
-    const auto& state = registry.getResource<input::InputState>();
-    EXPECT_FLOAT_EQ(state.getAxis("move_x"), 0.0F);
-    EXPECT_FLOAT_EQ(state.getAxis("move_y"), 0.0F);
+    const auto& p0State = registry.getComponents<input::InputState>().get(player0);
+    EXPECT_EQ(p0State.playerIndex, 0);
 }
 
 TEST(InputSystem, ConfigurablePlayerAndGamepadIndices) {

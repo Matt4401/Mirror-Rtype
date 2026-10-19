@@ -1,45 +1,58 @@
 #include "input/InputState.hpp"
 
+#include <cmath>
+
 namespace input {
 
 bool InputState::isDown(ActionId action) const noexcept {
-    const auto it = _held.find(action);
-    return (it != _held.end()) ? it->second : false;
+    const auto it = actions.find(action);
+    return (it != actions.end()) ? it->second.held : false;
 }
 
 bool InputState::isJustPressed(ActionId action) const noexcept {
-    const auto it = _justPressed.find(action);
-    return (it != _justPressed.end()) ? it->second : false;
+    const auto it = actions.find(action);
+    return (it != actions.end()) ? it->second.justPressed : false;
 }
 
 bool InputState::isJustReleased(ActionId action) const noexcept {
-    const auto it = _justReleased.find(action);
-    return (it != _justReleased.end()) ? it->second : false;
+    const auto it = actions.find(action);
+    return (it != actions.end()) ? it->second.justReleased : false;
 }
 
 float InputState::getAxis(ActionId action) const noexcept {
-    const auto it = _axes.find(action);
-    return (it != _axes.end()) ? it->second : 0.0F;
+    const auto it = actions.find(action);
+    return (it != actions.end()) ? it->second.axis : 0.0F;
 }
 
-void InputState::setDown(ActionId action, bool down) { _held[action] = down; }
+AxisVector2 InputState::getVector2(ActionId axisX, ActionId axisY, bool normalize) const noexcept {
+    float x = getAxis(axisX);
+    float y = getAxis(axisY);
+    if (normalize) {
+        const float lenSq = (x * x) + (y * y);
+        if (lenSq > 1.0F) {
+            const float invLen = 1.0F / std::sqrt(lenSq);
+            x *= invLen;
+            y *= invLen;
+        }
+    }
+    return AxisVector2{.x = x, .y = y};
+}
 
-void InputState::setJustPressed(ActionId action, bool pressed) { _justPressed[action] = pressed; }
+void InputState::setDown(ActionId action, bool down) { actions[action].held = down; }
 
-void InputState::setJustReleased(ActionId action, bool released) { _justReleased[action] = released; }
+void InputState::setJustPressed(ActionId action, bool pressed) { actions[action].justPressed = pressed; }
 
-void InputState::setAxis(ActionId action, float value) { _axes[action] = value; }
+void InputState::setJustReleased(ActionId action, bool released) { actions[action].justReleased = released; }
+
+void InputState::setAxis(ActionId action, float value) { actions[action].axis = value; }
 
 void InputState::resetFrameTransitions() noexcept {
-    _justPressed.clear();
-    _justReleased.clear();
+    for (auto& [id, actionData] : actions) {
+        actionData.justPressed = false;
+        actionData.justReleased = false;
+    }
 }
 
-void InputState::clear() noexcept {
-    _held.clear();
-    _justPressed.clear();
-    _justReleased.clear();
-    _axes.clear();
-}
+void InputState::clear() noexcept { actions.clear(); }
 
 }  // namespace input

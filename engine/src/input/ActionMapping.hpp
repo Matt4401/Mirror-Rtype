@@ -152,6 +152,15 @@ class ActionMapping {
     /** @brief Retrieves or creates a binding entry for the specified action. */
     ActionBinding& getOrCreateBinding(ActionId action);
 
+    /** @brief Samples continuous composite keyboard contributions for an action binding. */
+    [[nodiscard]] static float sampleKeyboardComposite(const ActionBinding& binding);
+
+    /** @brief Samples continuous composite gamepad button contributions for an action binding. */
+    [[nodiscard]] static float sampleGamepadButtonComposite(const ActionBinding& binding, int gamepadIndex);
+
+    /** @brief Samples analog stick axis contribution for an action binding with deadzone threshold. */
+    [[nodiscard]] static float sampleGamepadStick(const ActionBinding& binding, int gamepadIndex, float deadzone);
+
     /** @brief Table of bindings indexed by ActionId. */
     std::unordered_map<ActionId, ActionBinding> _bindings;
 

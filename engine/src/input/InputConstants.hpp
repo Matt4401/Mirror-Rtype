@@ -1,8 +1,15 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 
 namespace input {
+
+/** @brief FNV-1a 32-bit initial offset basis (0x811C9DC5). */
+inline constexpr uint32_t FNV1A_OFFSET_BASIS_32 = 2166136261U;
+
+/** @brief FNV-1a 32-bit prime multiplier (0x01000193). */
+inline constexpr uint32_t FNV1A_PRIME_32 = 16777619U;
 
 /** @brief Maximum number of alternative keyboard keycodes mapped to a single action. */
 inline constexpr std::size_t MAX_KEY_BINDINGS = 4;

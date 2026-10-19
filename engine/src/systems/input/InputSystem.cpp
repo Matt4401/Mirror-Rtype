@@ -15,10 +15,26 @@ InputSystem::InputSystem(input::ActionMapping mapping, int playerIndex, int game
     : _mapping(std::move(mapping)), _playerIndex(playerIndex), _gamepadIndex(gamepadIndex) {}
 
 void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
-    if (!registry.hasResource<input::InputState>()) {
-        registry.emplaceResource<input::InputState>();
+    bool updatedAny = false;
+    registry.runSystem<input::InputState>(
+        [this, eventBus, &updatedAny](ecs::Entity /*entity*/, input::InputState& state) {
+            if (state.playerIndex == _playerIndex) {
+                updateState(state, eventBus);
+                updatedAny = true;
+            }
+        });
+
+    if (_playerIndex == 0 || !updatedAny || registry.hasResource<input::InputState>()) {
+        if (!registry.hasResource<input::InputState>()) {
+            registry.emplaceResource<input::InputState>(input::InputState{.playerIndex = 0, .actions = {}});
+        }
+        if (_playerIndex == 0) {
+            updateState(registry.getResource<input::InputState>(), eventBus);
+        }
     }
-    auto& state = registry.getResource<input::InputState>();
+}
+
+void InputSystem::updateState(input::InputState& state, ecs::EventBus* eventBus) {
     state.resetFrameTransitions();
 
     for (const auto& [actionId, binding] : _mapping.bindings()) {

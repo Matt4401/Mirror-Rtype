@@ -4,6 +4,10 @@
 #include "events/EventBus.hpp"
 #include "input/ActionMapping.hpp"
 
+namespace input {
+class InputState;
+}
+
 namespace systems {
 
 /**
@@ -49,6 +53,9 @@ class InputSystem {
     void setGamepadIndex(int gamepadIndex) noexcept { _gamepadIndex = gamepadIndex; }
 
   private:
+    /** @brief Updates an individual InputState instance against hardware bindings and publishes events. */
+    void updateState(input::InputState& state, ecs::EventBus* eventBus);
+
     /** @brief Active input action mapping configuration. */
     input::ActionMapping _mapping;
 

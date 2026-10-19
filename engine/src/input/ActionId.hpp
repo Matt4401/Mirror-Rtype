@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string_view>
 
+#include "input/InputConstants.hpp"
+
 namespace input {
 
 /**
@@ -16,10 +18,10 @@ using ActionId = std::uint32_t;
  * @return 32-bit hash identifying the action.
  */
 constexpr ActionId makeActionId(std::string_view name) noexcept {
-    std::uint32_t hash = 2166136261U;
+    std::uint32_t hash = FNV1A_OFFSET_BASIS_32;
     for (char c : name) {
         hash ^= static_cast<std::uint8_t>(c);
-        hash *= 16777619U;
+        hash *= FNV1A_PRIME_32;
     }
     return hash;
 }

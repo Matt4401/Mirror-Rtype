@@ -12,9 +12,7 @@
 
 namespace input {
 
-namespace {
-
-float sampleKeyboardComposite(const ActionBinding& binding) {
+float ActionMapping::sampleKeyboardComposite(const ActionBinding& binding) {
     float value = 0.0F;
     for (std::size_t i = 0; i < binding.negativeKeyCount; ++i) {
         if (IsKeyDown(binding.negativeKeys.at(i))) {
@@ -31,7 +29,7 @@ float sampleKeyboardComposite(const ActionBinding& binding) {
     return value;
 }
 
-float sampleGamepadButtonComposite(const ActionBinding& binding, int gamepadIndex) {
+float ActionMapping::sampleGamepadButtonComposite(const ActionBinding& binding, int gamepadIndex) {
     float value = 0.0F;
     for (std::size_t i = 0; i < binding.negativePadButtonCount; ++i) {
         if (IsGamepadButtonDown(gamepadIndex, binding.negativePadButtons.at(i))) {
@@ -48,7 +46,7 @@ float sampleGamepadButtonComposite(const ActionBinding& binding, int gamepadInde
     return value;
 }
 
-float sampleGamepadStick(const ActionBinding& binding, int gamepadIndex, float deadzone) {
+float ActionMapping::sampleGamepadStick(const ActionBinding& binding, int gamepadIndex, float deadzone) {
     if (binding.padAxis < 0) {
         return 0.0F;
     }
@@ -58,8 +56,6 @@ float sampleGamepadStick(const ActionBinding& binding, int gamepadIndex, float d
     }
     return 0.0F;
 }
-
-}  // namespace
 
 ActionMapping::ActionMapping() = default;
 
