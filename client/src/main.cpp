@@ -23,6 +23,7 @@
 #include "events/EventBus.hpp"
 #include "input/InputAction.hpp"
 #include "input/InputState.hpp"
+#include "input/RTypeBindings.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
@@ -158,6 +159,7 @@ int main() {
         const render::TextureStore textures;
         render::RenderSystem renderSystem(textures);
         systems::InputSystem inputSystem;
+        client::input::setupDefaultBindings(inputSystem.mapping());
         ecs::EventBus eventBus;
 
         ecs::Registry registry;
