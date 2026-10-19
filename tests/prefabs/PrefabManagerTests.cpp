@@ -7,9 +7,12 @@
 #include "ecs/CommandBuffer.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "prefabs/CollisionCategories.hpp"
 #include "prefabs/PrefabManager.hpp"
+#include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/obstacle/Obstacle.hpp"
+#include "prefabs/player_bullet/PlayerBullet.hpp"
 #include "prefabs/power_up/PowerUp.hpp"
 
 namespace {
@@ -142,6 +145,79 @@ TEST(PrefabManager, ObstacleIsStaticSolidBox) {
     EXPECT_FLOAT_EQ(colliders.get(0).halfWidth, prefabs::DEFAULT_OBSTACLE_HALF_WIDTH);
     EXPECT_FLOAT_EQ(colliders.get(1).halfWidth, 128.0F);
     EXPECT_FLOAT_EQ(colliders.get(1).halfHeight, 16.0F);
+}
+
+TEST(PrefabManager, PlayerBulletFliesTowardsEnemies) {
+    prefabs::PrefabManager manager;
+    prefabs::registerPlayerBulletPrefab(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    ASSERT_TRUE(manager.spawn(prefabs::PLAYER_BULLET_PREFAB, buffer, 100.0F, 300.0F));
+    buffer.flush(registry);
+
+    auto const& body = registry.getComponents<ecs::RigidBody2D>().get(0);
+    EXPECT_FLOAT_EQ(body.velocityX, prefabs::DEFAULT_PLAYER_BULLET_SPEED);
+    EXPECT_TRUE(body.bullet);
+    EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::PLAYER_SHOT);
+}
+
+TEST(PrefabManager, AlienScoutHasNoScriptYet) {
+    prefabs::PrefabManager manager;
+    prefabs::registerAlienScoutPrefab(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    ASSERT_TRUE(manager.spawn(prefabs::ALIEN_SCOUT_PREFAB, buffer, 800.0F, 300.0F));
+    buffer.flush(registry);
+
+    ASSERT_TRUE(registry.hasComponent<ecs::Transform>(0));
+    ASSERT_TRUE(registry.hasComponent<ecs::Renderable>(0));
+    ASSERT_TRUE(registry.hasComponent<ecs::RigidBody2D>(0));
+    ASSERT_TRUE(registry.hasComponent<ecs::Collider2D>(0));
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).velocityX, prefabs::DEFAULT_ALIEN_SCOUT_SPEED);
+    EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
+}
+
+TEST(PrefabManager, CollisionCategoriesFilterPairs) {
+    prefabs::PrefabManager manager;
+    prefabs::registerMissilePrefab(manager);
+    prefabs::registerPlayerBulletPrefab(manager);
+    prefabs::registerAlienScoutPrefab(manager);
+    prefabs::registerObstaclePrefab(manager);
+    prefabs::registerPowerUpPrefab(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::MISSILE_PREFAB, buffer, 0.0F, 0.0F);
+    manager.spawn(prefabs::PLAYER_BULLET_PREFAB, buffer, 0.0F, 0.0F);
+    manager.spawn(prefabs::ALIEN_SCOUT_PREFAB, buffer, 0.0F, 0.0F);
+    manager.spawn(prefabs::OBSTACLE_PREFAB, buffer, 0.0F, 0.0F);
+    manager.spawn(prefabs::POWER_UP_PREFAB, buffer, 0.0F, 0.0F);
+    buffer.flush(registry);
+
+    auto const& colliders = registry.getComponents<ecs::Collider2D>();
+    auto const& missile = colliders.get(0);
+    auto const& playerBullet = colliders.get(1);
+    auto const& alienScout = colliders.get(2);
+    auto const& obstacle = colliders.get(3);
+    auto const& powerUp = colliders.get(4);
+    ecs::Collider2D const player{.categoryBits = prefabs::collision::PLAYER,
+                                 .maskBits = prefabs::collision::PLAYER_MASK};
+
+    using prefabs::collision::canCollide;
+    EXPECT_TRUE(canCollide(playerBullet, alienScout));
+    EXPECT_TRUE(canCollide(playerBullet, obstacle));
+    EXPECT_FALSE(canCollide(playerBullet, player));
+    EXPECT_FALSE(canCollide(playerBullet, missile));
+
+    EXPECT_TRUE(canCollide(missile, player));
+    EXPECT_TRUE(canCollide(missile, obstacle));
+    EXPECT_FALSE(canCollide(missile, alienScout));
+
+    EXPECT_TRUE(canCollide(alienScout, player));
+    EXPECT_FALSE(canCollide(alienScout, powerUp));
+    EXPECT_TRUE(canCollide(powerUp, player));
 }
 
 }  // namespace
