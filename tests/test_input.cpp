@@ -12,8 +12,6 @@
 #include "input/InputState.hpp"
 #include "systems/input/InputSystem.hpp"
 
-using TestAccess = input::InputStateTestAccess;
-
 TEST(ActionId, Fnv1aHashConsistency) {
     constexpr input::ActionId shootId = input::makeActionId("shoot");
     EXPECT_EQ(shootId, input::makeActionId("shoot"));
@@ -79,34 +77,34 @@ TEST(InputState, DynamicActionsAndAxes) {
     EXPECT_FLOAT_EQ(state.getAxis("move_x"), 0.0F);
     EXPECT_FLOAT_EQ(state.getAxis("move_y"), 0.0F);
 
-    TestAccess::setDown(state, "shoot", true);
-    TestAccess::setJustPressed(state, "shoot", true);
-    TestAccess::setAxis(state, "move_x", 0.707F);
-    TestAccess::setAxis(state, "move_y", -0.707F);
+    state.setDown("shoot", true);
+    state.setJustPressed("shoot", true);
+    state.setAxis("move_x", 0.707F);
+    state.setAxis("move_y", -0.707F);
 
     EXPECT_TRUE(state.isDown("shoot"));
     EXPECT_TRUE(state.isJustPressed("shoot"));
     EXPECT_FLOAT_EQ(state.getAxis("move_x"), 0.707F);
     EXPECT_FLOAT_EQ(state.getAxis("move_y"), -0.707F);
 
-    TestAccess::resetFrameTransitions(state);
+    state.resetFrameTransitions();
     EXPECT_TRUE(state.isDown("shoot"));
     EXPECT_FALSE(state.isJustPressed("shoot"));
 
-    TestAccess::setDown(state, "shoot", false);
-    TestAccess::setJustReleased(state, "shoot", true);
+    state.setDown("shoot", false);
+    state.setJustReleased("shoot", true);
     EXPECT_FALSE(state.isDown("shoot"));
     EXPECT_TRUE(state.isJustReleased("shoot"));
 
-    TestAccess::clear(state);
+    state.clear();
     EXPECT_FALSE(state.isDown("shoot"));
     EXPECT_FLOAT_EQ(state.getAxis("move_x"), 0.0F);
 }
 
 TEST(InputState, Vector2Normalization) {
     input::InputState state;
-    TestAccess::setAxis(state, "move_x", 1.0F);
-    TestAccess::setAxis(state, "move_y", 1.0F);
+    state.setAxis("move_x", 1.0F);
+    state.setAxis("move_y", 1.0F);
 
     // Without normalization, magnitude is sqrt(2) ~ 1.414
     const auto unnormalized = state.getVector2("move_x", "move_y", false);

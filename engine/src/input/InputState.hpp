@@ -39,7 +39,7 @@ struct InputState {
     int playerIndex = 0;
 
     /** @brief Table of action states and magnitudes indexed by action ID. */
-    std::unordered_map<ActionId, ActionData> actions = {};
+    std::unordered_map<ActionId, ActionData> actions;
 
     /**
      * @brief Tells whether an action is currently held down.
@@ -145,40 +145,6 @@ struct InputState {
 
     /** @brief Clears all action states and axis values. */
     void clear() noexcept;
-};
-
-/**
- * @brief Testing harness access helper allowing unit tests to mutate InputState state.
- */
-struct InputStateTestAccess {
-    /** @brief Sets held state for unit tests. */
-    static void setDown(InputState& state, ActionId action, bool down) { state.setDown(action, down); }
-    /** @brief Sets held state for unit tests by name. */
-    static void setDown(InputState& state, std::string_view name, bool down) { state.setDown(name, down); }
-    /** @brief Sets just-pressed state for unit tests. */
-    static void setJustPressed(InputState& state, ActionId action, bool pressed) {
-        state.setJustPressed(action, pressed);
-    }
-    /** @brief Sets just-pressed state for unit tests by name. */
-    static void setJustPressed(InputState& state, std::string_view name, bool pressed) {
-        state.setJustPressed(name, pressed);
-    }
-    /** @brief Sets just-released state for unit tests. */
-    static void setJustReleased(InputState& state, ActionId action, bool released) {
-        state.setJustReleased(action, released);
-    }
-    /** @brief Sets just-released state for unit tests by name. */
-    static void setJustReleased(InputState& state, std::string_view name, bool released) {
-        state.setJustReleased(name, released);
-    }
-    /** @brief Sets axis magnitude for unit tests. */
-    static void setAxis(InputState& state, ActionId action, float value) { state.setAxis(action, value); }
-    /** @brief Sets axis magnitude for unit tests by name. */
-    static void setAxis(InputState& state, std::string_view name, float value) { state.setAxis(name, value); }
-    /** @brief Resets transitions for unit tests. */
-    static void resetFrameTransitions(InputState& state) noexcept { state.resetFrameTransitions(); }
-    /** @brief Clears state for unit tests. */
-    static void clear(InputState& state) noexcept { state.clear(); }
 };
 
 }  // namespace input

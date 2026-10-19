@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/InputActionEvent.hpp"

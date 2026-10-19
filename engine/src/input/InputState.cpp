@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "input/ActionId.hpp"
+
 namespace input {
 
 bool InputState::isDown(ActionId action) const noexcept {

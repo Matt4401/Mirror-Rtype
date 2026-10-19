@@ -19,7 +19,7 @@ using ActionId = std::uint32_t;
  */
 constexpr ActionId makeActionId(std::string_view name) noexcept {
     std::uint32_t hash = FNV1A_OFFSET_BASIS_32;
-    for (char c : name) {
+    for (const char c : name) {
         hash ^= static_cast<std::uint8_t>(c);
         hash *= FNV1A_PRIME_32;
     }

@@ -3,7 +3,6 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <thread>
 
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
@@ -661,9 +660,9 @@ TEST(Scripting, InputModuleBindings) {
     scriptSystem.init(registry, bus);
 
     auto& inputState = registry.emplaceResource<input::InputState>();
-    input::InputStateTestAccess::setDown(inputState, "shoot", true);
-    input::InputStateTestAccess::setJustPressed(inputState, "shoot", true);
-    input::InputStateTestAccess::setAxis(inputState, "move_y", -0.75F);
+    inputState.setDown("shoot", true);
+    inputState.setJustPressed("shoot", true);
+    inputState.setAxis("move_y", -0.75F);
 
     scripting::ComponentBinder<Position> binder(scriptSystem.getVm(), "core/Position", "Position");
     binder.property<&Position::x>("x");

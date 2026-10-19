@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <string>
+#include <string_view>
 
 #include "input/ActionId.hpp"
 #include "input/InputConstants.hpp"
