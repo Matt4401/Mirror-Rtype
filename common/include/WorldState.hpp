@@ -14,9 +14,9 @@ enum class EntityType : std::uint8_t {
 };
 
 // Flags field bit masks (WorldState.EntityState.flags)
-enum EntityFlags : std::uint8_t {
-    FLAG_ALIVE    = 0x01,
-    FLAG_SHOOTING = 0x02,
+enum class EntityFlags : std::uint8_t {
+    Alive    = 0x01,
+    Shooting = 0x02,
 };
 
 // Maps to EntityState in common/proto/ingame.proto (opcode 0x70 — WORLD_STATE)
@@ -27,7 +27,7 @@ struct EntityState {
     std::int16_t  x;
     std::int16_t  y;
     std::uint8_t  health; // 0 = died this tick (appears exactly once, then gone)
-    std::uint8_t  flags;  // see EntityFlags
+    std::uint8_t  flags;  // see EntityFlags (Alive, Shooting)
 };
 
 // Maps to WorldState in common/proto/ingame.proto
