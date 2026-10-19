@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <cstddef>
 #include <stdexcept>
 #include <vector>
 
@@ -9,9 +8,9 @@
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
-#include "systems/render/RenderSystem.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
+#include "systems/render/RenderSystem.hpp"
 
 TEST(CameraComponent, DefaultValues) {
     const ecs::CameraComponent component;
@@ -90,8 +89,7 @@ TEST(RenderSystem, GroupsTexturesOnlyAtMatchingLayerAndDepth) {
 
     system.collect(registry);
 
-    const std::vector<ecs::Entity> expected{
-        otherLayer, otherDepth, textureThreeFirst, textureThreeSecond, textureNine};
+    const std::vector<ecs::Entity> expected{otherLayer, otherDepth, textureThreeFirst, textureThreeSecond, textureNine};
     EXPECT_EQ(drawOrder(system), expected);
 }
 
@@ -118,13 +116,12 @@ TEST(RenderSystem, CopiesRenderableDataIntoTheQueue) {
 
     const ecs::Entity entity = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(entity, ecs::Transform{.x = 100.0F, .y = 200.0F});
-    registry.addComponent<ecs::Renderable>(
-        entity,
-        ecs::Renderable{.textureId = 4,
-                        .sourceRect = {.x = 32, .y = 16, .width = 24, .height = 24},
-                        .origin = {.x = 0.0F, .y = 1.0F},
-                        .tint = {.r = 10, .g = 20, .b = 30, .a = 40},
-                        .layer = 1});
+    registry.addComponent<ecs::Renderable>(entity,
+                                           ecs::Renderable{.textureId = 4,
+                                                           .sourceRect = {.x = 32, .y = 16, .width = 24, .height = 24},
+                                                           .origin = {.x = 0.0F, .y = 1.0F},
+                                                           .tint = {.r = 10, .g = 20, .b = 30, .a = 40},
+                                                           .layer = 1});
 
     system.collect(registry);
 
