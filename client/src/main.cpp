@@ -21,7 +21,6 @@
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
-#include "input/InputAction.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
 #include "render/texture/TextureStore.hpp"
@@ -96,8 +95,8 @@ void movePlayer(ecs::Registry& registry, float deltaTime) {
             if (!ship.enabled) {
                 return;
             }
-            transform.x += inputState.axisX() * ship.speed * deltaTime;
-            transform.y += inputState.axisY() * ship.speed * deltaTime;
+            transform.x += inputState.getAxis("move_x") * ship.speed * deltaTime;
+            transform.y += inputState.getAxis("move_y") * ship.speed * deltaTime;
 
             transform.x = std::clamp(transform.x, MIN_X, MAX_X);
             transform.y = std::clamp(transform.y, MIN_Y, MAX_Y);
@@ -109,7 +108,7 @@ void handlePlayerShoot(ecs::Registry& registry) {
         return;
     }
     const auto& inputState = registry.getResource<input::InputState>();
-    if (!inputState.isJustPressed(input::Action::Shoot)) {
+    if (!inputState.isJustPressed("shoot")) {
         return;
     }
 
