@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <asio/buffer.hpp>
-#include <asio/connect.hpp>
+#include <asio/connect.hpp>  // IWYU pragma: keep
 #include <asio/error.hpp>
 #include <asio/executor_work_guard.hpp>
 #include <asio/ip/tcp.hpp>
@@ -36,8 +36,6 @@ NetworkClient::NetworkClient() : _work(asio::make_work_guard(_io)), _udpSocket(_
 NetworkClient::~NetworkClient() { NetworkClient::stop(); }
 
 bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
-    // compare_exchange: only Idle -> Running is allowed. Running (already connected) and Stopped (single-use)
-    // refuse.
     auto expected = State::Idle;
     if (!_state.compare_exchange_strong(expected, State::Running)) {
         return false;
@@ -184,9 +182,7 @@ void NetworkClient::onUdpTick() {
     const auto now = std::chrono::steady_clock::now();
 
     if (now - _lastUdpReceived > wire::UDP_TIMEOUT) {
-        _tcp->close();  // Server unreachable: drop the whole connection. The close handler closes UDP and pushes
-                        // Disconnected.
-
+        _tcp->close();
         return;
     }
     if (!_udpBound || now - _lastUdpSent >= wire::KEEPALIVE_INTERVAL) {
