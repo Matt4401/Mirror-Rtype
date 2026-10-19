@@ -11,8 +11,10 @@
 #include <vector>
 
 #include "components/CameraComponent.hpp"
+#include "components/Collider2D.hpp"
 #include "components/InputReceiver.hpp"
 #include "components/Renderable.hpp"
+#include "components/RigidBody2D.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -25,6 +27,7 @@
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
 #include "systems/input/InputSystem.hpp"
+#include "systems/physics/PhysicsSystem.hpp"
 #include "systems/render/RenderSystem.hpp"
 
 namespace {
@@ -53,13 +56,18 @@ void spawnDemoScene(ecs::Registry& registry) {
                                           ecs::Transform{.x = 640.0F, .y = 360.0F, .scaleX = 3.0F, .scaleY = 8.0F});
     registry.addComponent<ecs::Renderable>(
         obstacle, ecs::Renderable{.tint = {.r = 120, .g = 120, .b = 120, .a = 255}, .layer = 1});
+    registry.addComponent<ecs::RigidBody2D>(obstacle, ecs::RigidBody2D{});
+    registry.addComponent<ecs::Collider2D>(obstacle, ecs::Collider2D{.halfWidth = 48.0F, .halfHeight = 128.0F});
 
     // Projectile behind the obstacle
     const ecs::Entity behind = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(behind, ecs::Transform{.x = 0.0F, .y = 330.0F, .scaleX = 2.0F});
     registry.addComponent<ecs::Renderable>(
         behind, ecs::Renderable{.tint = {.r = 80, .g = 160, .b = 255, .a = 255}, .layer = 0});
-    registry.addComponent<Projectile>(behind, Projectile{});
+    registry.addComponent<ecs::RigidBody2D>(
+        behind, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = PROJECTILE_SPEED, .bullet = true});
+    registry.addComponent<ecs::Collider2D>(behind,
+                                           ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 16.0F});
 
     // Projectile in front of the obstacle
     const ecs::Entity front = registry.spawnEntity();
@@ -153,6 +161,7 @@ int main() {
         ecs::EventBus eventBus;
 
         ecs::Registry registry;
+        systems::PhysicsSystem physicsSystem(registry);
         spawnDemoScene(registry);
 
         ecs::time::Clock clock;
@@ -164,6 +173,7 @@ int main() {
                 movePlayer(registry, time.deltaTime);
                 movePlayerBullets(registry, time.deltaTime);
                 moveProjectiles(registry, time.deltaTime);
+                physicsSystem.update(time.deltaTime);
             });
 
             render::Window::beginFrame();

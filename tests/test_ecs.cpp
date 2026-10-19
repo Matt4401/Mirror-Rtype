@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <optional>
+
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 
@@ -35,6 +37,83 @@ TEST(ECS, EntityRecycling) {
 
     ecs::Entity const e3 = registry.spawnEntity();
     EXPECT_EQ(e3, 0);  // Should recycle e1's ID
+}
+
+TEST(ECS, DestroyListenerRunsBeforeComponentsAreRemoved) {
+    ecs::Registry registry;
+    registry.registerComponent<Position>();
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent<Position>(entity, Position{.x = 1.0F, .y = 2.0F});
+
+    std::optional<ecs::Entity> notifiedEntity;
+    const std::size_t listenerId = registry.addDestroyListener([&](ecs::Entity destroyed) {
+        EXPECT_TRUE(registry.hasComponent<Position>(destroyed));
+        notifiedEntity = destroyed;
+    });
+
+    registry.killEntity(entity);
+
+    EXPECT_EQ(notifiedEntity, entity);
+    EXPECT_FALSE(registry.hasComponent<Position>(entity));
+    registry.removeDestroyListener(listenerId);
+}
+
+TEST(ECS, DestroyListenerCannotDestroyEntityRecursively) {
+    ecs::Registry registry;
+    registry.registerComponent<Position>();
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent<Position>(entity, Position{.x = 1.0F, .y = 2.0F});
+
+    int calls = 0;
+    registry.addDestroyListener([&](ecs::Entity destroyed) {
+        ++calls;
+        EXPECT_FALSE(registry.isAlive(destroyed));
+        EXPECT_TRUE(registry.hasComponent<Position>(destroyed));
+        registry.killEntity(destroyed);
+    });
+
+    registry.killEntity(entity);
+
+    EXPECT_EQ(calls, 1);
+    EXPECT_FALSE(registry.isAlive(entity));
+    EXPECT_FALSE(registry.hasComponent<Position>(entity));
+    EXPECT_EQ(registry.spawnEntity(), entity);
+    EXPECT_NE(registry.spawnEntity(), entity);
+}
+
+TEST(ECS, ListenerRemovalDuringDispatchSkipsUnregisteredListeners) {
+    ecs::Registry registry;
+    const ecs::Entity entity = registry.spawnEntity();
+    int destroyCalls = 0;
+    int componentRemoveCalls = 0;
+
+    std::size_t firstDestroyListenerId = 0;
+    std::size_t secondDestroyListenerId = 0;
+    firstDestroyListenerId = registry.addDestroyListener([&](ecs::Entity) {
+        ++destroyCalls;
+        registry.removeDestroyListener(firstDestroyListenerId);
+        registry.removeDestroyListener(secondDestroyListenerId);
+    });
+    secondDestroyListenerId = registry.addDestroyListener([&](ecs::Entity) { ++destroyCalls; });
+
+    registry.killEntity(entity);
+    EXPECT_EQ(destroyCalls, 1);
+
+    const ecs::Entity componentEntity = registry.spawnEntity();
+    registry.addComponent<Position>(componentEntity, Position{.x = 1.0F, .y = 2.0F});
+
+    std::size_t firstComponentListenerId = 0;
+    std::size_t secondComponentListenerId = 0;
+    firstComponentListenerId = registry.addComponentRemoveListener([&](ecs::Entity, ecs::ComponentTypeId) {
+        ++componentRemoveCalls;
+        registry.removeComponentRemoveListener(firstComponentListenerId);
+        registry.removeComponentRemoveListener(secondComponentListenerId);
+    });
+    secondComponentListenerId =
+        registry.addComponentRemoveListener([&](ecs::Entity, ecs::ComponentTypeId) { ++componentRemoveCalls; });
+
+    registry.removeComponent<Position>(componentEntity);
+    EXPECT_EQ(componentRemoveCalls, 1);
 }
 
 TEST(ECS, SparseArraySwapAndPop) {

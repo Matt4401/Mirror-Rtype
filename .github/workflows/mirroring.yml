@@ -23,7 +23,7 @@ jobs:
       contents: read
       pull-requests: read
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v7
 
       - name: Install tooling

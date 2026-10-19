@@ -68,6 +68,7 @@ nav:
       - Overview: architecture/overview.md
       - Engine: architecture/engine.md
       - Engine Clock: architecture/clock.md
+      - Physics: architecture/physics.md
       - Server: architecture/server.md
       - Client: architecture/client.md
       - Network: architecture/network.md

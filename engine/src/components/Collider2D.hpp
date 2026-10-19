@@ -28,6 +28,9 @@ struct Collider2D {
     /** @brief Radius in pixels for Circle shapes. */
     float radius = 16.0F;
 
+    /** @brief Density of the entity/ */
+    float density = 1.0F;
+
     /** @brief Surface friction coefficient. */
     float friction = 0.2F;
 
