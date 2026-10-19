@@ -72,11 +72,11 @@ void Registry::removeComponent(Entity from) {
     }
     components.erase(from);
     const auto componentRemoveListeners = _componentRemoveListeners;
-    for (const auto& [listenerId, listener] : componentRemoveListeners) {
-        const auto isRegistered = std::any_of(
-            _componentRemoveListeners.cbegin(), _componentRemoveListeners.cend(),
-            [listenerId](const auto& registeredListener) { return registeredListener.first == listenerId; });
-        if (isRegistered) {
+    for (const auto& [listenerId, unusedListener] : componentRemoveListeners) {
+        const auto registeredListener = std::ranges::find_if(
+            _componentRemoveListeners, [listenerId](const auto& listener) { return listener.first == listenerId; });
+        if (registeredListener != _componentRemoveListeners.end() && registeredListener->second) {
+            const ComponentRemoveListener listener = registeredListener->second;
             listener(from, id);
         }
     }

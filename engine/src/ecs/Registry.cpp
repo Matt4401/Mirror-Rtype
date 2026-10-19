@@ -31,11 +31,11 @@ void Registry::killEntity(Entity e) {
     }
     _isAlive[e] = false;
     const auto destroyListeners = _destroyListeners;
-    for (const auto& [listenerId, listener] : destroyListeners) {
-        const auto isRegistered = std::any_of(
-            _destroyListeners.cbegin(), _destroyListeners.cend(),
-            [listenerId](const auto& registeredListener) { return registeredListener.first == listenerId; });
-        if (isRegistered) {
+    for (const auto& [listenerId, unusedListener] : destroyListeners) {
+        const auto registeredListener = std::ranges::find_if(
+            _destroyListeners, [listenerId](const auto& listener) { return listener.first == listenerId; });
+        if (registeredListener != _destroyListeners.end() && registeredListener->second) {
+            const DestroyListener listener = registeredListener->second;
             listener(e);
         }
     }
