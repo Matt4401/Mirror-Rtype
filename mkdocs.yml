@@ -38,7 +38,7 @@ plugins:
   - mkdoxy:
       projects:
         rtype:
-          src-dirs: "engine/src client/src server/src network/src shared/src"
+          src-dirs: "engine/src client/src server/src network/src shared/src common/include"
           full-doc: True
           doxy-cfg:
             FILE_PATTERNS: "*.cpp *.hpp *.h"
@@ -73,7 +73,6 @@ nav:
       - Client: architecture/client.md
       - Network: architecture/network.md
   - Protocol:
-      - RFC: protocol/rfc.md
       - Packets: protocol/packets.md
       - Transport & Connection: protocol/transport.md
   - Comparative Study:
