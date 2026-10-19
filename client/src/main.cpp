@@ -10,8 +10,8 @@
 #include <iostream>
 #include <vector>
 
-#include "components/Collider2D.hpp"
 #include "components/CameraComponent.hpp"
+#include "components/Collider2D.hpp"
 #include "components/InputReceiver.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"

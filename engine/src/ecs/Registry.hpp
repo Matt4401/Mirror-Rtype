@@ -3,8 +3,8 @@
 #include <functional>
 #include <memory>
 #include <queue>
-#include <utility>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "ComponentType.hpp"

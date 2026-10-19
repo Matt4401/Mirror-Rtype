@@ -12,6 +12,7 @@
 #include "components/Collider2D.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/Transform.hpp"
+#include "ecs/ComponentType.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "systems/physics/PhysicsConstants.hpp"
@@ -23,8 +24,8 @@ PhysicsSystem::PhysicsSystem(ecs::Registry& registry)
     : _registry(&registry),
       _world(b2Vec2_zero),
       _destroyListenerId(_registry->addDestroyListener([this](ecs::Entity entity) { destroyBody(entity); })),
-      _rigidBodyRemoveListenerId(_registry->addComponentRemoveListener(
-          [this](ecs::Entity entity, ecs::ComponentTypeId componentType) {
+      _rigidBodyRemoveListenerId(
+          _registry->addComponentRemoveListener([this](ecs::Entity entity, ecs::ComponentTypeId componentType) {
               if (componentType == ecs::getComponentTypeId<ecs::RigidBody2D>()) {
                   destroyBody(entity);
               }
