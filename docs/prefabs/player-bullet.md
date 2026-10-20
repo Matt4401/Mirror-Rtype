@@ -11,7 +11,7 @@ A fast projectile fired by a player, flying straight to the right towards the en
 
 | Component | Values |
 |-----------|--------|
-| `Transform` | `x`, `y` from the spawn call |
+| `Transform` | built from the spawn parameters (`makeTransform`) |
 | `Renderable` | `layer = 1` |
 | `RigidBody2D` | `Dynamic`, `velocityX = speed`, `bullet = true` |
 | `Collider2D` | Box, `halfWidth = 6`, `halfHeight = 2`, sensor |
@@ -29,15 +29,19 @@ The bullet hits enemies and is stopped by obstacles. It never hits a player (no 
 
 ## Parameters
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `DEFAULT_PLAYER_BULLET_SPEED` | `900` px/s | Horizontal velocity (positive: to the right). |
+Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`, `scaleY`) plus:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `speed` | `float` | `DEFAULT_PLAYER_BULLET_SPEED` (`900` px/s) | Horizontal velocity (positive: to the right). |
 
 ## API
 
 ```cpp
-void buildPlayerBullet(ecs::Entity e, ecs::Registry& registry, float x, float y, float speed);
-void registerPlayerBulletPrefab(PrefabManager& manager,
-                                float speed = DEFAULT_PLAYER_BULLET_SPEED,
-                                std::string_view name = PLAYER_BULLET_PREFAB);
+void buildPlayerBullet(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params);
+```
+
+```cpp
+manager.registerPrefab(prefabs::PLAYER_BULLET_PREFAB, prefabs::buildPlayerBullet);
+manager.spawn(prefabs::PLAYER_BULLET_PREFAB, buffer, {{"x", 800.0F}, {"y", 300.0F}, {"speed", -400.0F}});
 ```

@@ -11,7 +11,7 @@ A fast projectile fired by enemies, flying straight to the left towards the play
 
 | Component | Values |
 |-----------|--------|
-| `Transform` | `x`, `y` from the spawn call |
+| `Transform` | built from the spawn parameters (`makeTransform`) |
 | `Renderable` | `layer = 1` |
 | `RigidBody2D` | `Dynamic`, `velocityX = speed`, `bullet = true` |
 | `Collider2D` | Box, `halfWidth = 8`, `halfHeight = 3`, sensor |
@@ -29,21 +29,25 @@ The missile hits the player and is stopped by obstacles. It ignores enemies, oth
 
 ## Parameters
 
-| Constant | Value | Description |
-|----------|-------|-------------|
-| `DEFAULT_MISSILE_SPEED` | `-600` px/s | Horizontal velocity (negative: to the left). |
+Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`, `scaleY`) plus:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `speed` | `float` | `DEFAULT_MISSILE_SPEED` (`-600` px/s) | Horizontal velocity (negative: to the left). |
 
 ## API
 
 ```cpp
-void buildMissile(ecs::Entity e, ecs::Registry& registry, float x, float y, float speed);
-void registerMissilePrefab(PrefabManager& manager,
-                           float speed = DEFAULT_MISSILE_SPEED,
-                           std::string_view name = MISSILE_PREFAB);
+void buildMissile(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params);
 ```
 
-Variants are registered under another name:
+```cpp
+manager.registerPrefab(prefabs::MISSILE_PREFAB, prefabs::buildMissile);
+manager.spawn(prefabs::MISSILE_PREFAB, buffer, {{"x", 800.0F}, {"y", 300.0F}, {"speed", -400.0F}});
+```
+
+Variants are registered under another name with their own defaults:
 
 ```cpp
-prefabs::registerMissilePrefab(manager, -1200.0F, "fast_missile");
+manager.registerPrefab("fast_missile", prefabs::buildMissile, {{"speed", -1200.0F}});
 ```

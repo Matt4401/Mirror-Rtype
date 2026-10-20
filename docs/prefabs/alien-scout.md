@@ -14,7 +14,7 @@ A basic enemy ship flying straight to the left at constant speed.
 
 | Component | Values |
 |-----------|--------|
-| `Transform` | `x`, `y` from the spawn call |
+| `Transform` | built from the spawn parameters (`makeTransform`) |
 | `Renderable` | `layer = 1` |
 | `RigidBody2D` | `Kinematic`, `velocityX = speed` |
 | `Collider2D` | Box, `halfWidth = halfHeight = ALIEN_SCOUT_HALF_SIZE`, sensor |
@@ -29,16 +29,23 @@ The scout hits the player and is hit by player bullets. It ignores other enemies
 
 ## Parameters
 
+Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`, `scaleY`) plus:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `speed` | `float` | `DEFAULT_ALIEN_SCOUT_SPEED` (`-150` px/s) | Horizontal velocity (negative: to the left). |
+
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `DEFAULT_ALIEN_SCOUT_SPEED` | `-150` px/s | Horizontal velocity (negative: to the left). |
 | `ALIEN_SCOUT_HALF_SIZE` | `16` px | Half-size of the square hitbox. |
 
 ## API
 
 ```cpp
-void buildAlienScout(ecs::Entity e, ecs::Registry& registry, float x, float y, float speed);
-void registerAlienScoutPrefab(PrefabManager& manager,
-                              float speed = DEFAULT_ALIEN_SCOUT_SPEED,
-                              std::string_view name = ALIEN_SCOUT_PREFAB);
+void buildAlienScout(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params);
+```
+
+```cpp
+manager.registerPrefab(prefabs::ALIEN_SCOUT_PREFAB, prefabs::buildAlienScout);
+manager.spawn(prefabs::ALIEN_SCOUT_PREFAB, buffer, {{"x", 800.0F}, {"y", 300.0F}, {"speed", -400.0F}});
 ```

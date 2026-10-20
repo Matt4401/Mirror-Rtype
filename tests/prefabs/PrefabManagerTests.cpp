@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <string>
+
 #include "components/Collider2D.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"
@@ -9,6 +11,8 @@
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
 #include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
+#include "prefabs/PrefabRegistry.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/obstacle/Obstacle.hpp"
@@ -22,17 +26,17 @@ TEST(PrefabManager, UnknownPrefabQueuesNothing) {
     ecs::CommandBuffer buffer;
 
     EXPECT_FALSE(manager.has("does_not_exist"));
-    EXPECT_FALSE(manager.spawn("does_not_exist", buffer, 0.0F, 0.0F));
+    EXPECT_FALSE(manager.spawn("does_not_exist", buffer));
     EXPECT_TRUE(buffer.empty());
 }
 
 TEST(PrefabManager, SpawnIsDeferredUntilFlush) {
     prefabs::PrefabManager manager;
-    prefabs::registerMissilePrefab(manager);
+    manager.registerPrefab(prefabs::MISSILE_PREFAB, prefabs::buildMissile);
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
-    ASSERT_TRUE(manager.spawn(prefabs::MISSILE_PREFAB, buffer, 0.0F, 0.0F));
+    ASSERT_TRUE(manager.spawn(prefabs::MISSILE_PREFAB, buffer));
     EXPECT_FALSE(buffer.empty());
     EXPECT_FALSE(registry.isAlive(0));
 
@@ -44,11 +48,11 @@ TEST(PrefabManager, SpawnIsDeferredUntilFlush) {
 
 TEST(PrefabManager, MissileHasAllComponents) {
     prefabs::PrefabManager manager;
-    prefabs::registerMissilePrefab(manager);
+    manager.registerPrefab(prefabs::MISSILE_PREFAB, prefabs::buildMissile);
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
-    manager.spawn(prefabs::MISSILE_PREFAB, buffer, 800.0F, 300.0F);
+    manager.spawn(prefabs::MISSILE_PREFAB, buffer, {{"x", 800.0F}, {"y", 300.0F}});
     buffer.flush(registry);
     ecs::Entity const missile = 0;
 
@@ -68,13 +72,13 @@ TEST(PrefabManager, MissileHasAllComponents) {
 
 TEST(PrefabManager, MissileVariantUsesCustomSpeed) {
     prefabs::PrefabManager manager;
-    prefabs::registerMissilePrefab(manager);
-    prefabs::registerMissilePrefab(manager, -1200.0F, "fast_missile");
+    manager.registerPrefab(prefabs::MISSILE_PREFAB, prefabs::buildMissile);
+    manager.registerPrefab("fast_missile", prefabs::buildMissile, {{"speed", -1200.0F}});
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
-    manager.spawn(prefabs::MISSILE_PREFAB, buffer, 0.0F, 0.0F);
-    manager.spawn("fast_missile", buffer, 0.0F, 0.0F);
+    manager.spawn(prefabs::MISSILE_PREFAB, buffer);
+    manager.spawn("fast_missile", buffer);
     buffer.flush(registry);
 
     auto const& bodies = registry.getComponents<ecs::RigidBody2D>();
@@ -84,7 +88,7 @@ TEST(PrefabManager, MissileVariantUsesCustomSpeed) {
 
 TEST(PrefabManager, SalvoOfFiveMissilesDuringIteration) {
     prefabs::PrefabManager manager;
-    prefabs::registerMissilePrefab(manager);
+    manager.registerPrefab(prefabs::MISSILE_PREFAB, prefabs::buildMissile);
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
@@ -94,7 +98,8 @@ TEST(PrefabManager, SalvoOfFiveMissilesDuringIteration) {
     // Spawning while iterating a sparse array is safe: nothing is created until flush.
     for (auto const& transform : registry.getComponents<ecs::Transform>().getDense()) {
         for (int i = 0; i < 5; ++i) {
-            manager.spawn(prefabs::MISSILE_PREFAB, buffer, transform.x, transform.y + static_cast<float>(i * 20));
+            manager.spawn(prefabs::MISSILE_PREFAB, buffer,
+                          {{"x", transform.x}, {"y", transform.y + static_cast<float>(i * 20)}});
         }
     }
     EXPECT_EQ(registry.getComponents<ecs::Transform>().getDense().size(), 1U);
@@ -107,11 +112,11 @@ TEST(PrefabManager, SalvoOfFiveMissilesDuringIteration) {
 
 TEST(PrefabManager, PowerUpIsDriftingSensor) {
     prefabs::PrefabManager manager;
-    prefabs::registerPowerUpPrefab(manager);
+    manager.registerPrefab(prefabs::POWER_UP_PREFAB, prefabs::buildPowerUp);
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
-    ASSERT_TRUE(manager.spawn(prefabs::POWER_UP_PREFAB, buffer, 500.0F, 200.0F));
+    ASSERT_TRUE(manager.spawn(prefabs::POWER_UP_PREFAB, buffer, {{"x", 500.0F}, {"y", 200.0F}}));
     buffer.flush(registry);
     ecs::Entity const powerUp = 0;
 
@@ -130,13 +135,13 @@ TEST(PrefabManager, PowerUpIsDriftingSensor) {
 
 TEST(PrefabManager, ObstacleIsStaticSolidBox) {
     prefabs::PrefabManager manager;
-    prefabs::registerObstaclePrefab(manager);
-    prefabs::registerObstaclePrefab(manager, 128.0F, 16.0F, "obstacle_wide");
+    manager.registerPrefab(prefabs::OBSTACLE_PREFAB, prefabs::buildObstacle);
+    manager.registerPrefab("obstacle_wide", prefabs::buildObstacle, {{"halfWidth", 128.0F}, {"halfHeight", 16.0F}});
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
-    manager.spawn(prefabs::OBSTACLE_PREFAB, buffer, 300.0F, 400.0F);
-    manager.spawn("obstacle_wide", buffer, 600.0F, 400.0F);
+    manager.spawn(prefabs::OBSTACLE_PREFAB, buffer, {{"x", 300.0F}, {"y", 400.0F}});
+    manager.spawn("obstacle_wide", buffer, {{"x", 600.0F}, {"y", 400.0F}});
     buffer.flush(registry);
 
     auto const& bodies = registry.getComponents<ecs::RigidBody2D>();
@@ -150,11 +155,11 @@ TEST(PrefabManager, ObstacleIsStaticSolidBox) {
 
 TEST(PrefabManager, PlayerBulletFliesTowardsEnemies) {
     prefabs::PrefabManager manager;
-    prefabs::registerPlayerBulletPrefab(manager);
+    manager.registerPrefab(prefabs::PLAYER_BULLET_PREFAB, prefabs::buildPlayerBullet);
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
-    ASSERT_TRUE(manager.spawn(prefabs::PLAYER_BULLET_PREFAB, buffer, 100.0F, 300.0F));
+    ASSERT_TRUE(manager.spawn(prefabs::PLAYER_BULLET_PREFAB, buffer, {{"x", 100.0F}, {"y", 300.0F}}));
     buffer.flush(registry);
 
     auto const& body = registry.getComponents<ecs::RigidBody2D>().get(0);
@@ -166,11 +171,11 @@ TEST(PrefabManager, PlayerBulletFliesTowardsEnemies) {
 
 TEST(PrefabManager, AlienScoutHasNoScriptYet) {
     prefabs::PrefabManager manager;
-    prefabs::registerAlienScoutPrefab(manager);
+    manager.registerPrefab(prefabs::ALIEN_SCOUT_PREFAB, prefabs::buildAlienScout);
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
-    ASSERT_TRUE(manager.spawn(prefabs::ALIEN_SCOUT_PREFAB, buffer, 800.0F, 300.0F));
+    ASSERT_TRUE(manager.spawn(prefabs::ALIEN_SCOUT_PREFAB, buffer, {{"x", 800.0F}, {"y", 300.0F}}));
     buffer.flush(registry);
 
     ASSERT_TRUE(registry.hasComponent<ecs::Transform>(0));
@@ -182,21 +187,69 @@ TEST(PrefabManager, AlienScoutHasNoScriptYet) {
     EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
 }
 
-TEST(PrefabManager, CollisionCategoriesFilterPairs) {
+TEST(PrefabParams, NumbersConvertOtherTypesFallBack) {
+    prefabs::PrefabParams params{{"speed", 10}, {"scale", 2.5F}, {"tag", "boss"}, {"visible", true}};
+
+    EXPECT_FLOAT_EQ(params.get("speed", 0.0F), 10.0F);
+    EXPECT_EQ(params.get("scale", 0), 2);
+    EXPECT_EQ(params.get<std::string>("tag", ""), "boss");
+    EXPECT_TRUE(params.get("visible", false));
+    EXPECT_FLOAT_EQ(params.get("tag", 1.0F), 1.0F);
+    EXPECT_FLOAT_EQ(params.get("missing", 3.0F), 3.0F);
+    EXPECT_FALSE(params.find<bool>("speed").has_value());
+}
+
+TEST(PrefabParams, MergeOverridesExistingKeys) {
+    prefabs::PrefabParams params{{"x", 1.0F}, {"y", 2.0F}};
+    params.merge(prefabs::PrefabParams{}.set("y", 5.0F).set("rotation", 0.5F));
+
+    EXPECT_FLOAT_EQ(params.get("x", 0.0F), 1.0F);
+    EXPECT_FLOAT_EQ(params.get("y", 0.0F), 5.0F);
+    EXPECT_FLOAT_EQ(params.get("rotation", 0.0F), 0.5F);
+}
+
+TEST(PrefabManager, SpawnParamsOverrideRegistrationDefaults) {
     prefabs::PrefabManager manager;
-    prefabs::registerMissilePrefab(manager);
-    prefabs::registerPlayerBulletPrefab(manager);
-    prefabs::registerAlienScoutPrefab(manager);
-    prefabs::registerObstaclePrefab(manager);
-    prefabs::registerPowerUpPrefab(manager);
+    manager.registerPrefab("fast_missile", prefabs::buildMissile, {{"speed", -1200.0F}, {"y", 50.0F}});
     ecs::Registry registry;
     ecs::CommandBuffer buffer;
 
-    manager.spawn(prefabs::MISSILE_PREFAB, buffer, 0.0F, 0.0F);
-    manager.spawn(prefabs::PLAYER_BULLET_PREFAB, buffer, 0.0F, 0.0F);
-    manager.spawn(prefabs::ALIEN_SCOUT_PREFAB, buffer, 0.0F, 0.0F);
-    manager.spawn(prefabs::OBSTACLE_PREFAB, buffer, 0.0F, 0.0F);
-    manager.spawn(prefabs::POWER_UP_PREFAB, buffer, 0.0F, 0.0F);
+    manager.spawn("fast_missile", buffer, {{"x", 10.0F}, {"rotation", 1.5F}, {"scaleX", -1.0F}, {"speed", -300.0F}});
+    buffer.flush(registry);
+
+    auto const& transform = registry.getComponents<ecs::Transform>().get(0);
+    EXPECT_FLOAT_EQ(transform.x, 10.0F);
+    EXPECT_FLOAT_EQ(transform.y, 50.0F);
+    EXPECT_FLOAT_EQ(transform.rotation, 1.5F);
+    EXPECT_FLOAT_EQ(transform.scaleX, -1.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).velocityX, -300.0F);
+}
+
+TEST(PrefabManager, ObstacleSizeCanBeSetPerSpawn) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::OBSTACLE_PREFAB, buffer, {{"halfWidth", 200.0F}, {"halfHeight", 8}});
+    buffer.flush(registry);
+
+    auto const& collider = registry.getComponents<ecs::Collider2D>().get(0);
+    EXPECT_FLOAT_EQ(collider.halfWidth, 200.0F);
+    EXPECT_FLOAT_EQ(collider.halfHeight, 8.0F);
+}
+
+TEST(PrefabManager, CollisionCategoriesFilterPairs) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::MISSILE_PREFAB, buffer);
+    manager.spawn(prefabs::PLAYER_BULLET_PREFAB, buffer);
+    manager.spawn(prefabs::ALIEN_SCOUT_PREFAB, buffer);
+    manager.spawn(prefabs::OBSTACLE_PREFAB, buffer);
+    manager.spawn(prefabs::POWER_UP_PREFAB, buffer);
     buffer.flush(registry);
 
     auto const& colliders = registry.getComponents<ecs::Collider2D>();

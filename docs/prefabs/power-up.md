@@ -11,9 +11,9 @@ A collectible bonus slowly drifting to the left with the scrolling. Its collider
 
 | Component | Values |
 |-----------|--------|
-| `Transform` | `x`, `y` from the spawn call |
+| `Transform` | built from the spawn parameters (`makeTransform`) |
 | `Renderable` | `layer = 1` |
-| `RigidBody2D` | `Kinematic`, `velocityX = driftSpeed` |
+| `RigidBody2D` | `Kinematic`, `velocityX = speed` |
 | `Collider2D` | Circle, `radius = POWER_UP_RADIUS`, sensor |
 
 ## Collision
@@ -26,16 +26,23 @@ Only players can pick it up. Shots, enemies and obstacles go through it. See [Co
 
 ## Parameters
 
+Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`, `scaleY`) plus:
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `speed` | `float` | `DEFAULT_POWER_UP_DRIFT_SPEED` (`-100` px/s) | Horizontal drift (negative: to the left). |
+
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `DEFAULT_POWER_UP_DRIFT_SPEED` | `-100` px/s | Horizontal velocity (negative: to the left). |
 | `POWER_UP_RADIUS` | `12` px | Radius of the pickup area. |
 
 ## API
 
 ```cpp
-void buildPowerUp(ecs::Entity e, ecs::Registry& registry, float x, float y, float driftSpeed);
-void registerPowerUpPrefab(PrefabManager& manager,
-                           float driftSpeed = DEFAULT_POWER_UP_DRIFT_SPEED,
-                           std::string_view name = POWER_UP_PREFAB);
+void buildPowerUp(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params);
+```
+
+```cpp
+manager.registerPrefab(prefabs::POWER_UP_PREFAB, prefabs::buildPowerUp);
+manager.spawn(prefabs::POWER_UP_PREFAB, buffer, {{"x", 800.0F}, {"y", 300.0F}, {"speed", -400.0F}});
 ```
