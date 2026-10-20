@@ -2,7 +2,7 @@
 
 #include <string_view>
 
-#include "Log/LogLevel.hpp"
+#include "LogLevel.hpp"
 
 /**
  * @brief ANSI styles of the colored logs (`--logs-colorful`).

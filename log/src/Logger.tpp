@@ -5,7 +5,7 @@
 #include <sstream>
 #include <string_view>
 
-#include "Log/LogLevel.hpp"
+#include "LogLevel.hpp"
 
 namespace rtype::log {
 

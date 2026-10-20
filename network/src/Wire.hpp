@@ -5,8 +5,8 @@
 #include <cstdint>
 #include <span>
 
-#include "Log/Logger.hpp"
 #include "LogTag.hpp"
+#include "Logger.hpp"
 #include "Network/INetworkManager.hpp"
 
 namespace rtype::net::wire {

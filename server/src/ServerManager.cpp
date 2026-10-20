@@ -8,8 +8,8 @@
 #include <thread>
 #include <utility>
 
-#include "Log/Logger.hpp"
 #include "LogTag.hpp"
+#include "Logger.hpp"
 #include "Network/INetworkManager.hpp"
 #include "Network/INetworkServer.hpp"
 #include "Room.hpp"

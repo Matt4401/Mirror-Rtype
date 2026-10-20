@@ -9,7 +9,7 @@
 #include <iostream>
 #include <span>
 
-#include "Log/Logger.hpp"
+#include "Logger.hpp"
 #include "Network/NetworkFactory.hpp"
 #include "ServerManager.hpp"
 #include "parsing/Parsing.hpp"

@@ -2,10 +2,10 @@
 
 #include <string_view>
 
-#include "Log/LogLevel.hpp"
+#include "LogLevel.hpp"
 
 /**
- * @brief Logger shared by the server, the client and the network module.
+ * @brief Logger library (xmake target `log`), usable by the engine, the network module, the server and the client.
  *
  * Each line looks like `[  12.345] LEVEL [tag] message`: the time since the program start in seconds, the severity
  * and the subsystem that logs. Debug and info go to stdout, warnings and errors to stderr. Thread-safe: the network
@@ -63,4 +63,4 @@ void write(Level level, std::string_view tag, std::string_view message);
 
 }  // namespace rtype::log
 
-#include "Log/Logger.tpp"  // IWYU pragma: export
+#include "Logger.tpp"  // IWYU pragma: export

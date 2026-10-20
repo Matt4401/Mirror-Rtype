@@ -1,10 +1,10 @@
-#include "Log/LogStyle.hpp"
+#include "LogStyle.hpp"
 
 #include <array>
 #include <cstdint>
 #include <string_view>
 
-#include "Log/LogLevel.hpp"
+#include "LogLevel.hpp"
 
 namespace rtype::log::style {
 

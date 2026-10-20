@@ -2,8 +2,8 @@
 
 #include <string>
 
-#include "Log/LogStyle.hpp"
-#include "Log/Logger.hpp"
+#include "LogStyle.hpp"
+#include "Logger.hpp"
 
 namespace {
 

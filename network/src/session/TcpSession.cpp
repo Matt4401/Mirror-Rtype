@@ -14,8 +14,8 @@
 #include <tuple>
 #include <utility>
 
-#include "Log/Logger.hpp"
 #include "LogTag.hpp"
+#include "Logger.hpp"
 #include "Network/INetworkManager.hpp"
 #include "Wire.hpp"
 

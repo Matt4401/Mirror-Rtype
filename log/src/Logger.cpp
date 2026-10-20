@@ -1,4 +1,4 @@
-#include "Log/Logger.hpp"
+#include "Logger.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -9,8 +9,8 @@
 #include <string>
 #include <string_view>
 
-#include "Log/LogLevel.hpp"
-#include "Log/LogStyle.hpp"
+#include "LogLevel.hpp"
+#include "LogStyle.hpp"
 
 namespace rtype::log {
 

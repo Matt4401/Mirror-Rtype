@@ -40,10 +40,10 @@ With `--logs-colorful`, the timestamp is dim, the level is colored by severity (
 bold yellow `WARN`, bold white on red `ERROR`), the tag is bold in a color picked from its name (`server` and `network`
 always get the same one), and the text of warnings and errors is yellow and red.
 
-In code, log through `rtype::log` (`shared/src/Log/Logger.hpp`), never `std::cout`:
+In code, log through `rtype::log` (`log/src/Logger.hpp`, xmake target `log`), never `std::cout`:
 
 ```cpp
-#include "Log/Logger.hpp"
+#include "Logger.hpp"
 
 rtype::log::debug("server", "client ", client, " joined room ", roomId);
 ```
