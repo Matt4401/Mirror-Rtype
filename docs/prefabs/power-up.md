@@ -1,7 +1,7 @@
 # Power-Up
 
 **Name:** `power_up` (`prefabs::POWER_UP_PREFAB`)
-**Source:** `engine/src/prefabs/power_up/`
+**Source:** `server/src/prefabs/power_up/`
 
 ## Purpose
 

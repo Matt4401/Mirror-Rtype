@@ -1,6 +1,6 @@
 # Collision Categories
 
-**Source:** `engine/src/prefabs/CollisionCategories.hpp` (namespace `prefabs::collision`)
+**Source:** `server/src/prefabs/CollisionCategories.hpp` (namespace `prefabs::collision`)
 
 ## Principle
 

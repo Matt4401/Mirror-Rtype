@@ -1,7 +1,7 @@
 # Alien Scout
 
 **Name:** `alien_scout` (`prefabs::ALIEN_SCOUT_PREFAB`)
-**Source:** `engine/src/prefabs/alien_scout/`
+**Source:** `server/src/prefabs/alien_scout/`
 
 ## Purpose
 

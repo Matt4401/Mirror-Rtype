@@ -1,7 +1,7 @@
 # Player Bullet
 
 **Name:** `player_bullet` (`prefabs::PLAYER_BULLET_PREFAB`)
-**Source:** `engine/src/prefabs/player_bullet/`
+**Source:** `server/src/prefabs/player_bullet/`
 
 ## Purpose
 

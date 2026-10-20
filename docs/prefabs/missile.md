@@ -1,7 +1,7 @@
 # Missile
 
 **Name:** `missile` (`prefabs::MISSILE_PREFAB`)
-**Source:** `engine/src/prefabs/missile/`
+**Source:** `server/src/prefabs/missile/`
 
 ## Purpose
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A prefab is a named entity template: a factory that attaches a pre-configured set of components to a freshly spawned entity. Prefabs live in `engine/src/prefabs/` and are stored in a `prefabs::PrefabManager`.
+A prefab is a named entity template: a factory that attaches a pre-configured set of components to a freshly spawned entity. The generic `prefabs::PrefabManager` lives in the engine (`engine/src/prefabs/`, target `engine_prefabs`). Concrete prefabs depend on the game, so they live in the game server (`server/src/prefabs/`, target `rtype_prefabs`): each game ships its own set.
 
 ## `prefabs::PrefabManager`
 

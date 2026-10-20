@@ -1,7 +1,7 @@
 # Obstacle
 
 **Name:** `obstacle` (`prefabs::OBSTACLE_PREFAB`)
-**Source:** `engine/src/prefabs/obstacle/`
+**Source:** `server/src/prefabs/obstacle/`
 
 ## Purpose
 
