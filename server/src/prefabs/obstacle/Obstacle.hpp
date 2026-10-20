@@ -9,7 +9,7 @@
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
-#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
 
@@ -27,26 +27,13 @@ inline constexpr float DEFAULT_OBSTACLE_HALF_HEIGHT = 32.0F;
  *
  * The body is static and the collider is solid: ships and projectiles collide with it.
  *
+ * Parameters: the transform keys (see `makeTransform`, `x`/`y` being the block center), `halfWidth` and
+ * `halfHeight` (collision box half-size in pixels, `DEFAULT_OBSTACLE_HALF_WIDTH`/`HEIGHT` by default).
+ *
  * @param e Freshly spawned entity.
  * @param registry Registry owning the entity.
- * @param x Horizontal position of the obstacle center.
- * @param y Vertical position of the obstacle center.
- * @param halfWidth Half-width of the collision box in pixels.
- * @param halfHeight Half-height of the collision box in pixels.
+ * @param params Spawn parameters.
  */
-void buildObstacle(ecs::Entity e, ecs::Registry& registry, float x, float y, float halfWidth, float halfHeight);
-
-/**
- * @brief Registers an obstacle prefab of the given size.
- *
- * Calling it several times with different names registers size variants (e.g. "obstacle_wide").
- *
- * @param manager Prefab manager receiving the factory.
- * @param halfWidth Half-width of the collision box in pixels.
- * @param halfHeight Half-height of the collision box in pixels.
- * @param name Name under which the prefab is registered.
- */
-void registerObstaclePrefab(PrefabManager& manager, float halfWidth = DEFAULT_OBSTACLE_HALF_WIDTH,
-                            float halfHeight = DEFAULT_OBSTACLE_HALF_HEIGHT, std::string_view name = OBSTACLE_PREFAB);
+void buildObstacle(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params);
 
 }  // namespace prefabs

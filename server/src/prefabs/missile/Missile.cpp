@@ -1,8 +1,5 @@
 #include "prefabs/missile/Missile.hpp"
 
-#include <string>
-#include <string_view>
-
 #include "components/Collider2D.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"
@@ -10,15 +7,16 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
-#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
 
-void buildMissile(ecs::Entity e, ecs::Registry& registry, float x, float y, float speed) {
-    registry.addComponent<ecs::Transform>(e, ecs::Transform{.x = x, .y = y});
+void buildMissile(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params) {
+    registry.addComponent<ecs::Transform>(e, makeTransform(params));
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
-    registry.addComponent<ecs::RigidBody2D>(
-        e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = speed, .bullet = true});
+    registry.addComponent<ecs::RigidBody2D>(e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic,
+                                                                .velocityX = params.get("speed", DEFAULT_MISSILE_SPEED),
+                                                                .bullet = true});
     registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
                                                   .halfWidth = 8.0F,
                                                   .halfHeight = 3.0F,
@@ -26,12 +24,6 @@ void buildMissile(ecs::Entity e, ecs::Registry& registry, float x, float y, floa
                                                   .maskBits = collision::ENEMY_SHOT_MASK,
                                                   .isSensor = true,
                                               });
-}
-
-void registerMissilePrefab(PrefabManager& manager, float speed, std::string_view name) {
-    manager.registerPrefab(std::string{name}, [speed](ecs::Entity e, ecs::Registry& registry, float x, float y) {
-        buildMissile(e, registry, x, y, speed);
-    });
 }
 
 }  // namespace prefabs

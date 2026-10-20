@@ -1,8 +1,5 @@
 #include "prefabs/player_bullet/PlayerBullet.hpp"
 
-#include <string>
-#include <string_view>
-
 #include "components/Collider2D.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"
@@ -10,15 +7,17 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
-#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
 
-void buildPlayerBullet(ecs::Entity e, ecs::Registry& registry, float x, float y, float speed) {
-    registry.addComponent<ecs::Transform>(e, ecs::Transform{.x = x, .y = y});
+void buildPlayerBullet(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params) {
+    registry.addComponent<ecs::Transform>(e, makeTransform(params));
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
     registry.addComponent<ecs::RigidBody2D>(
-        e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = speed, .bullet = true});
+        e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic,
+                            .velocityX = params.get("speed", DEFAULT_PLAYER_BULLET_SPEED),
+                            .bullet = true});
     registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
                                                   .halfWidth = 6.0F,
                                                   .halfHeight = 2.0F,
@@ -26,12 +25,6 @@ void buildPlayerBullet(ecs::Entity e, ecs::Registry& registry, float x, float y,
                                                   .maskBits = collision::PLAYER_SHOT_MASK,
                                                   .isSensor = true,
                                               });
-}
-
-void registerPlayerBulletPrefab(PrefabManager& manager, float speed, std::string_view name) {
-    manager.registerPrefab(std::string{name}, [speed](ecs::Entity e, ecs::Registry& registry, float x, float y) {
-        buildPlayerBullet(e, registry, x, y, speed);
-    });
 }
 
 }  // namespace prefabs

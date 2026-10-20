@@ -11,7 +11,7 @@
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
-#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
 
@@ -29,22 +29,13 @@ inline constexpr float ALIEN_SCOUT_HALF_SIZE = 16.0F;
  *
  * The collider belongs to the `ENEMY` category: it hits the player and is hit by player shots.
  *
+ * Parameters: the transform keys (see `makeTransform`) and `speed` (horizontal velocity in pixels per second,
+ * `DEFAULT_ALIEN_SCOUT_SPEED` by default).
+ *
  * @param e Freshly spawned entity.
  * @param registry Registry owning the entity.
- * @param x Initial horizontal position.
- * @param y Initial vertical position.
- * @param speed Horizontal velocity in pixels per second.
+ * @param params Spawn parameters.
  */
-void buildAlienScout(ecs::Entity e, ecs::Registry& registry, float x, float y, float speed);
-
-/**
- * @brief Registers an alien scout prefab flying at the given speed.
- *
- * @param manager Prefab manager receiving the factory.
- * @param speed Horizontal velocity in pixels per second.
- * @param name Name under which the prefab is registered.
- */
-void registerAlienScoutPrefab(PrefabManager& manager, float speed = DEFAULT_ALIEN_SCOUT_SPEED,
-                              std::string_view name = ALIEN_SCOUT_PREFAB);
+void buildAlienScout(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params);
 
 }  // namespace prefabs

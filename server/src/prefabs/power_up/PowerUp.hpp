@@ -9,7 +9,7 @@
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
-#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
 
@@ -27,22 +27,13 @@ inline constexpr float POWER_UP_RADIUS = 12.0F;
  *
  * The collider is a sensor: it detects the player without physically blocking it.
  *
+ * Parameters: the transform keys (see `makeTransform`) and `speed` (horizontal drift in pixels per second,
+ * `DEFAULT_POWER_UP_DRIFT_SPEED` by default).
+ *
  * @param e Freshly spawned entity.
  * @param registry Registry owning the entity.
- * @param x Initial horizontal position.
- * @param y Initial vertical position.
- * @param driftSpeed Horizontal velocity in pixels per second.
+ * @param params Spawn parameters.
  */
-void buildPowerUp(ecs::Entity e, ecs::Registry& registry, float x, float y, float driftSpeed);
-
-/**
- * @brief Registers a power-up prefab drifting at the given speed.
- *
- * @param manager Prefab manager receiving the factory.
- * @param driftSpeed Horizontal velocity in pixels per second.
- * @param name Name under which the prefab is registered.
- */
-void registerPowerUpPrefab(PrefabManager& manager, float driftSpeed = DEFAULT_POWER_UP_DRIFT_SPEED,
-                           std::string_view name = POWER_UP_PREFAB);
+void buildPowerUp(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params);
 
 }  // namespace prefabs

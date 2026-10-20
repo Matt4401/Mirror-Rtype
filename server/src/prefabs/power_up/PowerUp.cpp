@@ -1,8 +1,5 @@
 #include "prefabs/power_up/PowerUp.hpp"
 
-#include <string>
-#include <string_view>
-
 #include "components/Collider2D.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"
@@ -10,15 +7,16 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
-#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
 
-void buildPowerUp(ecs::Entity e, ecs::Registry& registry, float x, float y, float driftSpeed) {
-    registry.addComponent<ecs::Transform>(e, ecs::Transform{.x = x, .y = y});
+void buildPowerUp(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params) {
+    registry.addComponent<ecs::Transform>(e, makeTransform(params));
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
     registry.addComponent<ecs::RigidBody2D>(
-        e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Kinematic, .velocityX = driftSpeed});
+        e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Kinematic,
+                            .velocityX = params.get("speed", DEFAULT_POWER_UP_DRIFT_SPEED)});
     registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
                                                   .shape = ecs::ColliderShape::Circle,
                                                   .radius = POWER_UP_RADIUS,
@@ -26,12 +24,6 @@ void buildPowerUp(ecs::Entity e, ecs::Registry& registry, float x, float y, floa
                                                   .maskBits = collision::POWER_UP_MASK,
                                                   .isSensor = true,
                                               });
-}
-
-void registerPowerUpPrefab(PrefabManager& manager, float driftSpeed, std::string_view name) {
-    manager.registerPrefab(std::string{name}, [driftSpeed](ecs::Entity e, ecs::Registry& registry, float x, float y) {
-        buildPowerUp(e, registry, x, y, driftSpeed);
-    });
 }
 
 }  // namespace prefabs
