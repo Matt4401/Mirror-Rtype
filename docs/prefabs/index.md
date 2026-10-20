@@ -47,8 +47,8 @@ Every built-in prefab follows the same pattern:
 
 | Name | Role | Body | Collider | Category | Page |
 |------|------|------|----------|----------|------|
-| `missile` | Enemy projectile | Kinematic, bullet | Box 16×6, sensor | `ENEMY_SHOT` | [Missile](missile.md) |
-| `player_bullet` | Player projectile | Kinematic, bullet | Box 12×4, sensor | `PLAYER_SHOT` | [Player Bullet](player-bullet.md) |
+| `missile` | Enemy projectile | Dynamic, bullet | Box 16×6, sensor | `ENEMY_SHOT` | [Missile](missile.md) |
+| `player_bullet` | Player projectile | Dynamic, bullet | Box 12×4, sensor | `PLAYER_SHOT` | [Player Bullet](player-bullet.md) |
 | `alien_scout` | Basic enemy | Kinematic | Box 32×32, sensor | `ENEMY` | [Alien Scout](alien-scout.md) |
 | `obstacle` | Level geometry | Static | Box 64×64, solid | `OBSTACLE` | [Obstacle](obstacle.md) |
 | `power_up` | Collectible bonus | Kinematic | Circle r=12, sensor | `POWER_UP` | [Power-Up](power-up.md) |

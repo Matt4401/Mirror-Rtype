@@ -93,4 +93,15 @@ Pairs that deliberately ignore each other:
 4. Update the table above and the `CollisionCategoriesFilterPairs` test in `tests/prefabs/PrefabManagerTests.cpp`.
 
 !!! warning "Filtering is not detection"
-    Categories and masks only decide which pairs are **allowed** to interact. With Box2D v2.4.2, a contact is only created when at least one of the two bodies is `Dynamic`. All built-in prefabs are `Kinematic` or `Static`, so the player ship (or any other body expected to report contacts) must use a `Dynamic` body. Reacting to a contact (damage, pickup, destruction) is not handled by the prefabs themselves.
+    Categories and masks only decide which pairs are **allowed** to interact. With Box2D v2.4.2, a contact is only created when at least one of the two bodies is `Dynamic`.
+
+    | Category | Body type | Why |
+    |----------|-----------|-----|
+    | `PLAYER` | must be `Dynamic` | Covers every pair involving the player. |
+    | `PLAYER_SHOT` | `Dynamic` | Covers Player shot ↔ Enemy and Player shot ↔ Obstacle. |
+    | `ENEMY_SHOT` | `Dynamic` | Covers Enemy shot ↔ Obstacle. |
+    | `ENEMY` | `Kinematic` | Every pair already contains a `Dynamic` body. |
+    | `POWER_UP` | `Kinematic` | Its only pair (Player) contains a `Dynamic` body. |
+    | `OBSTACLE` | `Static` | Never moves. |
+
+    Sensors are not handled by continuous collision detection, so the `bullet` flag does not prevent a fast projectile from tunnelling through a thin collider. Reacting to a contact (damage, pickup, destruction) is not handled by the prefabs themselves.

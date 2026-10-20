@@ -13,7 +13,7 @@ A fast projectile fired by a player, flying straight to the right towards the en
 |-----------|--------|
 | `Transform` | `x`, `y` from the spawn call |
 | `Renderable` | `layer = 1` |
-| `RigidBody2D` | `Kinematic`, `velocityX = speed`, `bullet = true` (continuous collision detection) |
+| `RigidBody2D` | `Dynamic`, `velocityX = speed`, `bullet = true` |
 | `Collider2D` | Box, `halfWidth = 6`, `halfHeight = 2`, sensor |
 
 ## Collision
@@ -23,6 +23,9 @@ A fast projectile fired by a player, flying straight to the right towards the en
 | `PLAYER_SHOT` | `PLAYER_SHOT_MASK` = `ENEMY \| OBSTACLE` |
 
 The bullet hits enemies and is stopped by obstacles. It never hits a player (no friendly fire), other shots or power-ups. See [Collision Categories](collision-categories.md).
+
+!!! note "Why `Dynamic`"
+    Box2D only creates a contact when at least one of the two bodies is `Dynamic`. The bullet must detect `Kinematic` or `Static` bodies, so it is `Dynamic`. The world has zero gravity and the collider is a sensor: the body keeps its velocity and never pushes anything, like a `Kinematic` body.
 
 ## Parameters
 

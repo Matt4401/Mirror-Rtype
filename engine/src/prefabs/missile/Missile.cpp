@@ -18,7 +18,7 @@ void buildMissile(ecs::Entity e, ecs::Registry& registry, float x, float y, floa
     registry.addComponent<ecs::Transform>(e, ecs::Transform{.x = x, .y = y});
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
     registry.addComponent<ecs::RigidBody2D>(
-        e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Kinematic, .velocityX = speed, .bullet = true});
+        e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = speed, .bullet = true});
     registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
                                                   .halfWidth = 8.0F,
                                                   .halfHeight = 3.0F,

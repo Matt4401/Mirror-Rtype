@@ -61,6 +61,7 @@ TEST(PrefabManager, MissileHasAllComponents) {
     EXPECT_FLOAT_EQ(transform.x, 800.0F);
     EXPECT_FLOAT_EQ(transform.y, 300.0F);
     auto const& body = registry.getComponents<ecs::RigidBody2D>().get(missile);
+    EXPECT_EQ(body.bodyType, ecs::BodyType::Dynamic);
     EXPECT_FLOAT_EQ(body.velocityX, prefabs::DEFAULT_MISSILE_SPEED);
     EXPECT_TRUE(body.bullet);
 }
@@ -157,6 +158,7 @@ TEST(PrefabManager, PlayerBulletFliesTowardsEnemies) {
     buffer.flush(registry);
 
     auto const& body = registry.getComponents<ecs::RigidBody2D>().get(0);
+    EXPECT_EQ(body.bodyType, ecs::BodyType::Dynamic);
     EXPECT_FLOAT_EQ(body.velocityX, prefabs::DEFAULT_PLAYER_BULLET_SPEED);
     EXPECT_TRUE(body.bullet);
     EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::PLAYER_SHOT);
@@ -175,6 +177,7 @@ TEST(PrefabManager, AlienScoutHasNoScriptYet) {
     ASSERT_TRUE(registry.hasComponent<ecs::Renderable>(0));
     ASSERT_TRUE(registry.hasComponent<ecs::RigidBody2D>(0));
     ASSERT_TRUE(registry.hasComponent<ecs::Collider2D>(0));
+    EXPECT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).bodyType, ecs::BodyType::Kinematic);
     EXPECT_FLOAT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).velocityX, prefabs::DEFAULT_ALIEN_SCOUT_SPEED);
     EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
 }
