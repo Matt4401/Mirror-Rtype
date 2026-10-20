@@ -3,9 +3,10 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <span>
 
+#include "Log/Logger.hpp"
+#include "LogTag.hpp"
 #include "Network/INetworkManager.hpp"
 
 namespace rtype::net::wire {
@@ -45,14 +46,13 @@ inline bool isSendable(const Bytes& data, const Channel channel) {
         if (data.size() <= MAX_TCP_PAYLOAD) {
             return true;
         }
-        std::cerr << "[network] reliable payload of " << data.size() << " bytes refused (max " << MAX_TCP_PAYLOAD
-                  << ")\n";
+        log::error(LOG_TAG, "reliable payload of ", data.size(), " bytes refused (max ", MAX_TCP_PAYLOAD, ')');
         return false;
     }
     if (!data.empty() && data.size() <= MAX_UDP_PAYLOAD) {
         return true;
     }
-    std::cerr << "[network] unreliable payload of " << data.size() << " bytes refused (1-" << MAX_UDP_PAYLOAD << ")\n";
+    log::error(LOG_TAG, "unreliable payload of ", data.size(), " bytes refused (1-", MAX_UDP_PAYLOAD, ')');
     return false;
 }
 
