@@ -13,7 +13,8 @@
 namespace prefabs {
 
 void PrefabManager::registerPrefab(std::string_view name, Factory factory, PrefabParams defaults) {
-    _prefabs.insert_or_assign(std::string{name}, Prefab{std::move(factory), std::move(defaults)});
+    _prefabs.insert_or_assign(std::string{name},
+                              Prefab{.factory = std::move(factory), .defaults = std::move(defaults)});
 }
 
 bool PrefabManager::has(std::string_view name) const { return _prefabs.contains(name); }

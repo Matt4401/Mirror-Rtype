@@ -14,10 +14,11 @@ namespace prefabs {
 void buildPlayerBullet(ecs::Entity e, ecs::Registry& registry, PrefabParams const& params) {
     registry.addComponent<ecs::Transform>(e, makeTransform(params));
     registry.addComponent<ecs::Renderable>(e, ecs::Renderable{.layer = 1});
-    registry.addComponent<ecs::RigidBody2D>(
-        e, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic,
-                            .velocityX = params.get("speed", DEFAULT_PLAYER_BULLET_SPEED),
-                            .bullet = true});
+    registry.addComponent<ecs::RigidBody2D>(e, ecs::RigidBody2D{
+                                                   .bodyType = ecs::BodyType::Dynamic,
+                                                   .velocityX = params.get("speed", DEFAULT_PLAYER_BULLET_SPEED),
+                                                   .bullet = true,
+                                               });
     registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
                                                   .halfWidth = 6.0F,
                                                   .halfHeight = 2.0F,
