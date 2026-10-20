@@ -15,8 +15,8 @@ TEST(PhysicsSystem, DynamicBodyAdvancesTransform) {
     systems::PhysicsSystem physicsSystem(registry);
     const ecs::Entity entity = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(entity, ecs::Transform{});
-    registry.addComponent<ecs::RigidBody2D>(
-        entity, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = 300.0F});
+    registry.addComponent<ecs::RigidBody2D>(entity,
+                                            ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = 300.0F});
 
     physicsSystem.update(FIXED_DT);
 
@@ -31,17 +31,15 @@ TEST(PhysicsSystem, DynamicBodyStopsAtStaticWall) {
     const ecs::Entity wall = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(wall, ecs::Transform{.x = 100.0F});
     registry.addComponent<ecs::RigidBody2D>(wall, ecs::RigidBody2D{});
-    registry.addComponent<ecs::Collider2D>(
-        wall, ecs::Collider2D{.halfWidth = 5.0F, .halfHeight = 100.0F});
+    registry.addComponent<ecs::Collider2D>(wall, ecs::Collider2D{.halfWidth = 5.0F, .halfHeight = 100.0F});
 
     const ecs::Entity movingBody = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(movingBody, ecs::Transform{});
-    registry.addComponent<ecs::RigidBody2D>(movingBody,
-                                            ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic,
-                                                              .velocityX = 600.0F,
-                                                              .maxLinearSpeed = 1000.0F});
-    registry.addComponent<ecs::Collider2D>(
-        movingBody, ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 8.0F});
+    registry.addComponent<ecs::RigidBody2D>(
+        movingBody,
+        ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = 600.0F, .maxLinearSpeed = 1000.0F});
+    registry.addComponent<ecs::Collider2D>(movingBody,
+                                           ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 8.0F});
 
     for (int step = 0; step < 60; ++step) {
         physicsSystem.update(FIXED_DT);
@@ -64,12 +62,11 @@ TEST(PhysicsSystem, ColliderScaleChangesCollisionBounds) {
 
     const ecs::Entity movingBody = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(movingBody, ecs::Transform{});
-    registry.addComponent<ecs::RigidBody2D>(movingBody,
-                                            ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic,
-                                                              .velocityX = 600.0F,
-                                                              .maxLinearSpeed = 1000.0F});
-    registry.addComponent<ecs::Collider2D>(
-        movingBody, ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 8.0F});
+    registry.addComponent<ecs::RigidBody2D>(
+        movingBody,
+        ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = 600.0F, .maxLinearSpeed = 1000.0F});
+    registry.addComponent<ecs::Collider2D>(movingBody,
+                                           ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 8.0F});
 
     physicsSystem.update(FIXED_DT);
     registry.getComponents<ecs::Transform>().get(movingBody).scaleX = 2.0F;
@@ -92,13 +89,12 @@ TEST(PhysicsSystem, FastBulletDoesNotPassThroughThinWall) {
 
     const ecs::Entity projectile = registry.spawnEntity();
     registry.addComponent<ecs::Transform>(projectile, ecs::Transform{});
-    registry.addComponent<ecs::RigidBody2D>(projectile,
-                                            ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic,
-                                                              .velocityX = 6000.0F,
-                                                              .maxLinearSpeed = 7000.0F,
-                                                              .bullet = true});
-    registry.addComponent<ecs::Collider2D>(
-        projectile, ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 2.0F});
+    registry.addComponent<ecs::RigidBody2D>(
+        projectile,
+        ecs::RigidBody2D{
+            .bodyType = ecs::BodyType::Dynamic, .velocityX = 6000.0F, .maxLinearSpeed = 7000.0F, .bullet = true});
+    registry.addComponent<ecs::Collider2D>(projectile,
+                                           ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 2.0F});
 
     for (int step = 0; step < 4; ++step) {
         physicsSystem.update(FIXED_DT);
