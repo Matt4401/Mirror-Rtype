@@ -8,9 +8,17 @@
 #include <string_view>
 
 #ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
 #define NOMINMAX
+#endif
 #include <windows.h>
+
+#include <cstdint>
+
+#include "input/InputConstants.hpp"
 #endif
 
 namespace input {
@@ -18,11 +26,8 @@ namespace input {
 namespace detail {
 
 bool isAzertyLocale(std::string_view locale) noexcept {
-    if (locale.starts_with("fr_CA") || locale.starts_with("fr-CA")) {
-        return false;
-    }
-    return locale.starts_with("fr_FR") || locale.starts_with("fr_BE") || locale.starts_with("fr-FR") ||
-           locale.starts_with("fr-BE") || locale.starts_with("fr_") || locale.starts_with("fr-");
+    return locale.starts_with("fr_FR") || locale.starts_with("fr-FR") || locale.starts_with("fr_BE") ||
+           locale.starts_with("fr-BE");
 }
 
 std::optional<KeyboardLayout> detectFromLinuxConfig() noexcept {
@@ -55,7 +60,7 @@ std::optional<KeyboardLayout> detectFromLinuxConfig() noexcept {
 std::optional<KeyboardLayout> detectFromPlatform() noexcept {
 #ifdef _WIN32
     const HKL layout = GetKeyboardLayout(0);
-    const WORD langId = LOWORD(layout);
+    const auto langId = static_cast<std::uint16_t>(reinterpret_cast<std::uintptr_t>(layout) & 0xFFFFU);
     if (langId == WIN_LANGID_FRENCH_FRANCE || langId == WIN_LANGID_FRENCH_BELGIUM) {
         return KeyboardLayout::Azerty;
     }

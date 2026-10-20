@@ -59,7 +59,7 @@ This violated engine modularity:
 ### The Decoupled Solution
 
 - **The Engine** provides a generic dynamic toolkit: `ActionId`, `ActionMapping`, `InputState`, `InputSystem`.
-- **The Client** defines its own semantic actions in [`client/src/input/RTypeBindings.cpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/client/src/input/RTypeBindings.cpp):
+- **The Client** defines its own semantic actions in [`client/src/input/RTypeBindings.cpp`](../../client/src/input/RTypeBindings.cpp):
   - `"move_x"` (1D composite axis: `KEY_A`/`KEY_D`, `KEY_LEFT`/`KEY_RIGHT`, left stick X).
   - `"move_y"` (1D composite axis: `KEY_W`/`KEY_S`, `KEY_UP`/`KEY_DOWN`, left stick Y).
   - `"shoot"` (Digital button: `KEY_SPACE`, `KEY_ENTER`, gamepad button A).
@@ -82,7 +82,7 @@ Using a 32-bit numeric identifier `ActionId` (`uint32_t`) derived from FNV-1a ha
 
 ### The Mathematics of FNV-1a (*Fowler–Noll–Vo*)
 
-Implemented in [`InputConstants.hpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/engine/src/input/InputConstants.hpp) and [`ActionId.hpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/engine/src/input/ActionId.hpp):
+Implemented in [`InputConstants.hpp`](../../engine/src/input/InputConstants.hpp) and [`ActionId.hpp`](../../engine/src/input/ActionId.hpp):
 
 ```cpp
 inline constexpr uint32_t FNV1A_OFFSET_BASIS_32 = 2166136261U; // 0x811C9DC5
@@ -126,7 +126,7 @@ On every simulation frame and for each polled action:
 
 ### Solution: Consolidated `ActionData` Table
 
-Implemented in [`InputState.hpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/engine/src/input/InputState.hpp):
+Implemented in [`InputState.hpp`](../../engine/src/input/InputState.hpp):
 
 ```cpp
 struct ActionData {
@@ -207,7 +207,7 @@ AxisVector2 InputState::getVector2(ActionId axisX, ActionId axisY, bool normaliz
 }
 ```
 
-Consumed cleanly in [`client/src/main.cpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/client/src/main.cpp):
+Consumed cleanly in [`client/src/main.cpp`](../../client/src/main.cpp):
 
 ```cpp
 const auto move = inputState.getVector2("move_x", "move_y", true);
@@ -241,7 +241,7 @@ class PlayerController {
 }
 ```
 
-The C++ glue in [`ScriptSystemBindings.cpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/engine/src/systems/script/ScriptSystemBindings.cpp) locates the target entity's `input::InputState` component matching the requested `playerIndex`.
+The C++ glue in [`ScriptSystemBindings.cpp`](../../engine/src/systems/script/ScriptSystemBindings.cpp) locates the target entity's `input::InputState` component matching the requested `playerIndex`.
 
 ---
 
@@ -263,11 +263,11 @@ Because `KEY_W`, `KEY_A`, `KEY_S`, `KEY_D` represent the physical inverted-T clu
 - On an AZERTY keyboard, they correspond directly to the keys labeled **`Z`**, **`Q`**, **`S`**, **`D`**.
 - On a QWERTY keyboard, they correspond directly to the keys labeled **`W`**, **`A`**, **`S`**, **`D`**.
 
-By solely binding the spatial cluster keys in [`RTypeBindings.cpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/client/src/input/RTypeBindings.cpp) and omitting `KEY_Z` and `KEY_Q`, both keyboard layouts are cleanly supported by a single, unified `setupDefaultBindings()` function without duplicate binding profiles or phantom inputs.
+By solely binding the spatial cluster keys in [`RTypeBindings.cpp`](../../client/src/input/RTypeBindings.cpp) and omitting `KEY_Z` and `KEY_Q`, both keyboard layouts are cleanly supported by a single, unified `setupDefaultBindings()` function without duplicate binding profiles or phantom inputs.
 
 ### Purpose of Engine `KeyboardLayout` Detection
 
-The engine's layout detection utility ([`KeyboardLayout.hpp`](file:///home/tom-gatin/EPITECH/ING/Rtype/engine/src/input/KeyboardLayout.hpp)) is preserved as an informational service for **UI/HUD localization and tutorial prompts**:
+The engine's layout detection utility ([`KeyboardLayout.hpp`](../../engine/src/input/KeyboardLayout.hpp)) is preserved as an informational service for **UI/HUD localization and tutorial prompts**:
 
 - On AZERTY: On-screen tutorial hints display *"Press [Z] to move up"*.
 - On QWERTY: On-screen tutorial hints display *"Press [W] to move up"*.

@@ -4,6 +4,7 @@
  */
 
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -118,6 +119,34 @@ const input::InputState* resolvePlayerInputState(ecs::Registry* registry, int pl
 }
 
 /**
+ * @brief Arguments extracted from an Input query call in Wren VM.
+ */
+struct InputQueryParams {
+    int playerIndex = 0;
+    const char* actionName = nullptr;
+};
+
+/**
+ * @brief Safely parses and validates playerIndex and actionName arguments from Wren slots.
+ * @param rawVm Raw Wren VM pointer.
+ * @return Parsed InputQueryParams or std::nullopt if slot counts or types are invalid.
+ */
+[[nodiscard]] std::optional<InputQueryParams> parseInputQueryParams(::WrenVM* rawVm) {
+    if (wrenGetSlotCount(rawVm) < 3) {
+        return std::nullopt;
+    }
+    if (wrenGetSlotType(rawVm, 1) != WREN_TYPE_NUM || wrenGetSlotType(rawVm, 2) != WREN_TYPE_STRING) {
+        return std::nullopt;
+    }
+    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
+    const char* actionName = wrenGetSlotString(rawVm, 2);
+    if (actionName == nullptr) {
+        return std::nullopt;
+    }
+    return InputQueryParams{.playerIndex = playerIndex, .actionName = actionName};
+}
+
+/**
  * @brief Foreign static method `Input.isDown(playerIndex, action)` callback.
  * @param rawVm Raw Wren VM pointer.
  */
@@ -127,15 +156,14 @@ void inputIsDown(::WrenVM* rawVm) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
-    const char* actionName = wrenGetSlotString(rawVm, 2);
-    if (actionName == nullptr) {
+    const auto params = parseInputQueryParams(rawVm);
+    if (!params.has_value()) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), playerIndex);
-    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isDown(actionName) : false);
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), params->playerIndex);
+    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isDown(params->actionName) : false);
 }
 
 /**
@@ -148,15 +176,14 @@ void inputIsJustPressed(::WrenVM* rawVm) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
-    const char* actionName = wrenGetSlotString(rawVm, 2);
-    if (actionName == nullptr) {
+    const auto params = parseInputQueryParams(rawVm);
+    if (!params.has_value()) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), playerIndex);
-    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isJustPressed(actionName) : false);
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), params->playerIndex);
+    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isJustPressed(params->actionName) : false);
 }
 
 /**
@@ -169,15 +196,14 @@ void inputIsJustReleased(::WrenVM* rawVm) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
-    const char* actionName = wrenGetSlotString(rawVm, 2);
-    if (actionName == nullptr) {
+    const auto params = parseInputQueryParams(rawVm);
+    if (!params.has_value()) {
         wrenSetSlotBool(rawVm, 0, false);
         return;
     }
-    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), playerIndex);
-    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isJustReleased(actionName) : false);
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), params->playerIndex);
+    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isJustReleased(params->actionName) : false);
 }
 
 /**
@@ -190,15 +216,15 @@ void inputGetAxis(::WrenVM* rawVm) {
         wrenSetSlotDouble(rawVm, 0, 0.0);
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
-    const char* actionName = wrenGetSlotString(rawVm, 2);
-    if (actionName == nullptr) {
+    const auto params = parseInputQueryParams(rawVm);
+    if (!params.has_value()) {
         wrenSetSlotDouble(rawVm, 0, 0.0);
         return;
     }
-    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), playerIndex);
-    wrenSetSlotDouble(rawVm, 0, (inputState != nullptr) ? static_cast<double>(inputState->getAxis(actionName)) : 0.0);
+    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), params->playerIndex);
+    wrenSetSlotDouble(rawVm, 0,
+                      (inputState != nullptr) ? static_cast<double>(inputState->getAxis(params->actionName)) : 0.0);
 }
 
 }  // namespace

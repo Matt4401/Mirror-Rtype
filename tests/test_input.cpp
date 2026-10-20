@@ -201,6 +201,8 @@ TEST(KeyboardLayout, DetailIsAzertyLocale) {
     EXPECT_TRUE(input::detail::isAzertyLocale("fr-BE"));
     EXPECT_FALSE(input::detail::isAzertyLocale("fr_CA.UTF-8"));
     EXPECT_FALSE(input::detail::isAzertyLocale("fr-CA"));
+    EXPECT_FALSE(input::detail::isAzertyLocale("fr_CH.UTF-8"));
+    EXPECT_FALSE(input::detail::isAzertyLocale("fr_LU.UTF-8"));
     EXPECT_FALSE(input::detail::isAzertyLocale("en_US.UTF-8"));
     EXPECT_FALSE(input::detail::isAzertyLocale("C"));
     EXPECT_FALSE(input::detail::isAzertyLocale(""));
