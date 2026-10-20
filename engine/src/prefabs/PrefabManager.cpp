@@ -8,23 +8,26 @@
 #include "ecs/CommandBuffer.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
 
-void PrefabManager::registerPrefab(std::string name, Factory factory) {
-    _factories.insert_or_assign(std::move(name), std::move(factory));
+void PrefabManager::registerPrefab(std::string_view name, Factory factory, PrefabParams defaults) {
+    _prefabs.insert_or_assign(std::string{name}, Prefab{std::move(factory), std::move(defaults)});
 }
 
-bool PrefabManager::has(std::string_view name) const { return _factories.contains(name); }
+bool PrefabManager::has(std::string_view name) const { return _prefabs.contains(name); }
 
-bool PrefabManager::spawn(std::string_view name, ecs::CommandBuffer& buffer, float x, float y) const {
-    auto const it = _factories.find(name);
-    if (it == _factories.end()) {
+bool PrefabManager::spawn(std::string_view name, ecs::CommandBuffer& buffer, PrefabParams const& params) const {
+    auto const it = _prefabs.find(name);
+    if (it == _prefabs.end()) {
         std::cerr << "[PrefabManager] Unknown prefab: " << name << "\n";
         return false;
     }
-    buffer.deferSpawn(
-        [factory = it->second, x, y](ecs::Entity e, ecs::Registry& registry) { factory(e, registry, x, y); });
+    PrefabParams merged = it->second.defaults;
+    merged.merge(params);
+    buffer.deferSpawn([factory = it->second.factory, merged = std::move(merged)](
+                          ecs::Entity e, ecs::Registry& registry) { factory(e, registry, merged); });
     return true;
 }
 

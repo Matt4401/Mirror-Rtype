@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include <cstddef>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -14,6 +13,7 @@
 #include "ecs/CommandBuffer.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
 
@@ -22,23 +22,33 @@ namespace prefabs {
  *
  * Spawning never touches the Registry directly: it queues the factory into a `CommandBuffer`,
  * so prefabs can be requested from inside a system loop without invalidating sparse array iterators.
+ *
+ * Factories receive a `PrefabParams` bag instead of a fixed argument list: a prefab reads the keys it needs
+ * (position, rotation, speed, size...) and uses its own defaults for the others.
  */
 class PrefabManager {
   public:
     /**
-     * @brief Callback configuring a freshly allocated entity at position (x, y).
+     * @brief Callback configuring a freshly allocated entity.
      *
      * Invoked at `CommandBuffer::flush` time, once the entity exists in the Registry.
      */
-    using Factory = std::function<void(ecs::Entity, ecs::Registry&, float x, float y)>;
+    using Factory = std::function<void(ecs::Entity, ecs::Registry&, PrefabParams const&)>;
 
     /**
      * @brief Registers (or replaces) a prefab under the given name.
      *
+     * The same factory can be registered several times with different defaults to create variants:
+     * @code
+     * manager.registerPrefab("obstacle", buildObstacle);
+     * manager.registerPrefab("obstacle_wide", buildObstacle, {{"halfWidth", 128.0F}, {"halfHeight", 16.0F}});
+     * @endcode
+     *
      * @param name Identifier used by `spawn` (e.g. "missile").
      * @param factory Callback attaching the prefab components.
+     * @param defaults Parameters applied to every spawn, overridden by the spawn parameters.
      */
-    void registerPrefab(std::string name, Factory factory);
+    void registerPrefab(std::string_view name, Factory factory, PrefabParams defaults = {});
 
     /**
      * @brief Checks whether a prefab is registered under the given name.
@@ -55,23 +65,20 @@ class PrefabManager {
      *
      * @param name Prefab identifier.
      * @param buffer Command buffer receiving the deferred spawn.
-     * @param x Initial horizontal position in world units.
-     * @param y Initial vertical position in world units.
+     * @param params Instance parameters, merged over the registration defaults.
      * @return True if the spawn was queued, false if the prefab is unknown.
      */
-    bool spawn(std::string_view name, ecs::CommandBuffer& buffer, float x, float y) const;
+    bool spawn(std::string_view name, ecs::CommandBuffer& buffer, PrefabParams const& params = {}) const;
 
   private:
-    /** @brief Transparent hash allowing `std::string_view` lookups without allocation. */
-    struct StringHash {
-        using is_transparent = void;
-        [[nodiscard]] std::size_t operator()(std::string_view s) const noexcept {
-            return std::hash<std::string_view>{}(s);
-        }
+    /** @brief A registered factory and its default parameters. */
+    struct Prefab {
+        Factory factory;
+        PrefabParams defaults;
     };
 
-    /** @brief Registered factories indexed by prefab name. */
-    std::unordered_map<std::string, Factory, StringHash, std::equal_to<>> _factories;
+    /** @brief Registered prefabs indexed by name. */
+    std::unordered_map<std::string, Prefab, detail::StringHash, std::equal_to<>> _prefabs;
 };
 
 }  // namespace prefabs
