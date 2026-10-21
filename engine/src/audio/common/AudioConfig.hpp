@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include "audio/AudioConstants.hpp"
+#include "audio/common/AudioConstants.hpp"
 
 namespace audio {
 

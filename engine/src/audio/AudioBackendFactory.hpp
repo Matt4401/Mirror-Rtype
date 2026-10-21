@@ -2,8 +2,8 @@
 
 #include <memory>
 
-#include "audio/AudioConfig.hpp"
 #include "audio/IAudioBackend.hpp"
+#include "audio/common/AudioConfig.hpp"
 
 namespace audio {
 

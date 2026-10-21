@@ -7,11 +7,11 @@
 #include <string>
 #include <vector>
 
-#include "audio/AudioConfig.hpp"
-#include "audio/AudioConstants.hpp"
-#include "audio/AudioTypes.hpp"
 #include "audio/IAudioBackend.hpp"
-#include "audio/SoundParams.hpp"
+#include "audio/common/AudioConfig.hpp"
+#include "audio/common/AudioConstants.hpp"
+#include "audio/common/AudioTypes.hpp"
+#include "audio/common/SoundParams.hpp"
 
 namespace audio::detail {
 

@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include "audio/AudioTypes.hpp"
+#include "audio/common/AudioTypes.hpp"
 
 namespace audio {
 

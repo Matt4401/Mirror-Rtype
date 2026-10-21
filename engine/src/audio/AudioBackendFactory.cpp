@@ -2,9 +2,9 @@
 
 #include <memory>
 
-#include "audio/AudioConfig.hpp"
 #include "audio/IAudioBackend.hpp"
 #include "audio/NullAudioBackend.hpp"
+#include "audio/common/AudioConfig.hpp"
 #include "audio/detail/RaylibAudioBackend.hpp"
 
 namespace audio {
