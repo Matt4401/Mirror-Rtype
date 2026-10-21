@@ -63,4 +63,11 @@ if has_config("graphics") then
         add_packages("gtest")
         add_files("test_audio.cpp")
         add_tests("test_audio")
+
+    target("test_audio_system")
+        set_kind("binary")
+        add_deps("engine_audio")
+        add_packages("gtest")
+        add_files("test_audio_system.cpp")
+        add_tests("test_audio_system")
 end
