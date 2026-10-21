@@ -8,6 +8,7 @@
 #include "systems/render/ParallaxSystem.hpp"
 
 #include "components/ParallaxLayer.hpp"
+#include "ecs/Registry.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 

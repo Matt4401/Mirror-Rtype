@@ -26,7 +26,7 @@ class ParallaxSystem {
      * @param registry Registry containing the scene.
      * @param deltaTime Elapsed time since the last frame in seconds.
      */
-    void update(ecs::Registry& registry, float deltaTime);
+    static void update(ecs::Registry& registry, float deltaTime);
 };
 
 }  // namespace systems

@@ -13,10 +13,8 @@
 
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
-#include "components/Collider2D.hpp"
 #include "components/ParallaxLayer.hpp"
 #include "components/Renderable.hpp"
-#include "components/RigidBody2D.hpp"
 #include "components/ShipInput.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
@@ -57,16 +55,24 @@ struct StarLayer {
 
 void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::TextureId mediumId, ecs::TextureId largeId) {
     const std::array<StarLayer, 3> layers{{
-        {.count = 80, .speed = 25.0F,  .color = {200, 200, 220, 80},  .layer = -3, .texId = smallId},
-        {.count = 40, .speed = 60.0F,  .color = {220, 220, 255, 150}, .layer = -2, .texId = mediumId},
-        {.count = 20, .speed = 120.0F, .color = {255, 255, 255, 220}, .layer = -1, .texId = largeId},
+        {.count = 80, .speed = 25.0F, .color = {.r = 200, .g = 200, .b = 220, .a = 80}, .layer = -3, .texId = smallId},
+        {.count = 40,
+         .speed = 60.0F,
+         .color = {.r = 220, .g = 220, .b = 255, .a = 150},
+         .layer = -2,
+         .texId = mediumId},
+        {.count = 20,
+         .speed = 120.0F,
+         .color = {.r = 255, .g = 255, .b = 255, .a = 220},
+         .layer = -1,
+         .texId = largeId},
     }};
 
     int seed = 0;
     for (const auto& def : layers) {
         for (int i = 0; i < def.count; ++i) {
-            const float x = static_cast<float>(((seed * 137) + 43) % static_cast<int>(SCENE_WIDTH));
-            const float y = static_cast<float>(((seed * 97)  + 17) % static_cast<int>(SCENE_HEIGHT));
+            const auto x = static_cast<float>(((seed * 137) + 43) % static_cast<int>(SCENE_WIDTH));
+            const auto y = static_cast<float>(((seed * 97) + 17) % static_cast<int>(SCENE_HEIGHT));
             ++seed;
 
             const ecs::Entity star = registry.spawnEntity();
@@ -83,42 +89,47 @@ void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId, ecs::Text
     registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
 
     const ecs::Entity player = registry.spawnEntity();
-    registry.addComponent<ecs::Transform>(
-        player, ecs::Transform{.x = 200.0F, .y = 360.0F, .scaleX = 2.0F, .scaleY = 2.0F});
-    registry.addComponent<ecs::Renderable>(
-        player, ecs::Renderable{.textureId = shipTexId,
-                                .sourceRect = {.x = 0, .y = 0, .width = 33, .height = 17},
-                                .origin = {.x = 0.5F, .y = 0.5F},
-                                .tint = {255, 255, 255, 255},
-                                .layer = 3,});
-    registry.addComponent<ecs::AnimationComponent>(
-        player, ecs::AnimationComponent{.frameWidth = 33,
-                                         .frameHeight = 17,
-                                         .frameCount = 5,
-                                         .startX = 0,
-                                         .startY = 0,
-                                         .frameDuration = 0.12F,});
+    registry.addComponent<ecs::Transform>(player,
+                                          ecs::Transform{.x = 200.0F, .y = 360.0F, .scaleX = 2.0F, .scaleY = 2.0F});
+    registry.addComponent<ecs::Renderable>(player, ecs::Renderable{
+                                                       .textureId = shipTexId,
+                                                       .sourceRect = {.x = 0, .y = 0, .width = 33, .height = 17},
+                                                       .origin = {.x = 0.5F, .y = 0.5F},
+                                                       .tint = {.r = 255, .g = 255, .b = 255, .a = 255},
+                                                       .layer = 3,
+                                                   });
+    registry.addComponent<ecs::AnimationComponent>(player, ecs::AnimationComponent{
+                                                               .frameWidth = 33,
+                                                               .frameHeight = 17,
+                                                               .frameCount = 5,
+                                                               .startX = 0,
+                                                               .startY = 0,
+                                                               .frameDuration = 0.12F,
+                                                           });
     registry.addComponent<client::ShipInput>(player, client::ShipInput{.playerIndex = 0, .speed = 350.0F});
     registry.addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
 
     constexpr int BYDOS_FRAME_W = 33;
     constexpr int BYDOS_FRAME_H = 36;
     const ecs::Entity bydos = registry.spawnEntity();
-    registry.addComponent<ecs::Transform>(
-        bydos, ecs::Transform{.x = 900.0F, .y = 300.0F, .scaleX = 2.0F, .scaleY = 2.0F});
+    registry.addComponent<ecs::Transform>(bydos,
+                                          ecs::Transform{.x = 900.0F, .y = 300.0F, .scaleX = 2.0F, .scaleY = 2.0F});
     registry.addComponent<ecs::Renderable>(
-        bydos, ecs::Renderable{.textureId = bydosTexId,
-                               .sourceRect = {.x = 0, .y = 0, .width = BYDOS_FRAME_W, .height = BYDOS_FRAME_H},
-                               .origin = {.x = 0.5F, .y = 0.5F},
-                               .tint = {255, 255, 255, 255},
-                               .layer = 2,});
-    registry.addComponent<ecs::AnimationComponent>(
-        bydos, ecs::AnimationComponent{.frameWidth = BYDOS_FRAME_W,
-                                        .frameHeight = BYDOS_FRAME_H,
-                                        .frameCount = 8,
-                                        .startX = 0,
-                                        .startY = 0,
-                                        .frameDuration = 0.12F,});
+        bydos, ecs::Renderable{
+                   .textureId = bydosTexId,
+                   .sourceRect = {.x = 0, .y = 0, .width = BYDOS_FRAME_W, .height = BYDOS_FRAME_H},
+                   .origin = {.x = 0.5F, .y = 0.5F},
+                   .tint = {.r = 255, .g = 255, .b = 255, .a = 255},
+                   .layer = 2,
+               });
+    registry.addComponent<ecs::AnimationComponent>(bydos, ecs::AnimationComponent{
+                                                              .frameWidth = BYDOS_FRAME_W,
+                                                              .frameHeight = BYDOS_FRAME_H,
+                                                              .frameCount = 8,
+                                                              .startX = 0,
+                                                              .startY = 0,
+                                                              .frameDuration = 0.12F,
+                                                          });
 }
 
 void movePlayer(ecs::Registry& registry, float deltaTime) {
@@ -155,16 +166,15 @@ void handlePlayerShoot(ecs::Registry& registry, ecs::TextureId bulletTexId) {
             bullet, ecs::Renderable{.textureId = bulletTexId,
                                     .sourceRect = {.x = 0, .y = 0, .width = 32, .height = 32},
                                     .origin = {.x = 0.5F, .y = 0.5F},
-                                    .tint = {255, 255, 255, 255},
+                                    .tint = {.r = 255, .g = 255, .b = 255, .a = 255},
                                     .layer = 2});
-        registry.addComponent<ecs::AnimationComponent>(
-            bullet, ecs::AnimationComponent{.frameWidth = 32,
-                                             .frameHeight = 32,
-                                             .frameCount = 4,
-                                             .startX = 0,
-                                             .startY = 0,
-                                             .frameDuration = 0.015F,
-                                             .loop = false});
+        registry.addComponent<ecs::AnimationComponent>(bullet, ecs::AnimationComponent{.frameWidth = 32,
+                                                                                       .frameHeight = 32,
+                                                                                       .frameCount = 4,
+                                                                                       .startX = 0,
+                                                                                       .startY = 0,
+                                                                                       .frameDuration = 0.015F,
+                                                                                       .loop = false});
         registry.addComponent<PlayerBullet>(bullet, PlayerBullet{});
     }
 }
@@ -172,7 +182,8 @@ void handlePlayerShoot(ecs::Registry& registry, ecs::TextureId bulletTexId) {
 void movePlayerBullets(ecs::Registry& registry, float deltaTime) {
     std::vector<ecs::Entity> toDestroy;
     registry.runSystem<ecs::Transform, PlayerBullet, ecs::AnimationComponent>(
-        [&toDestroy, deltaTime](ecs::Entity entity, ecs::Transform& transform, PlayerBullet& /*tag*/, ecs::AnimationComponent& anim) {
+        [&toDestroy, deltaTime](ecs::Entity entity, ecs::Transform& transform, PlayerBullet& /*tag*/,
+                                ecs::AnimationComponent& anim) {
             if (anim.currentFrame < anim.frameCount - 1) {
                 return;
             }
@@ -193,18 +204,16 @@ int main() {
         const render::Window window(render::WindowConfig{});
         render::TextureStore textures;
 
-        const ecs::TextureId shipTexId    = textures.load("sprites/r-typesheet42.gif");
-        const ecs::TextureId bydosTexId   = textures.load("sprites/spritesheet5.png");
-        const ecs::TextureId bulletTexId  = textures.load("sprites/r-typesheet-amo.png");
-        const ecs::TextureId starSmallId  = textures.load("sprites/star_small.png");
+        const ecs::TextureId shipTexId = textures.load("sprites/r-typesheet42.gif");
+        const ecs::TextureId bydosTexId = textures.load("sprites/spritesheet5.png");
+        const ecs::TextureId bulletTexId = textures.load("sprites/r-typesheet-amo.png");
+        const ecs::TextureId starSmallId = textures.load("sprites/star_small.png");
         const ecs::TextureId starMediumId = textures.load("sprites/star_medium.png");
-        const ecs::TextureId starLargeId  = textures.load("sprites/star_large.png");
+        const ecs::TextureId starLargeId = textures.load("sprites/star_large.png");
 
         render::RenderSystem renderSystem(textures);
         systems::InputSystem inputSystem;
         client::input::setupDefaultBindings(inputSystem.mapping());
-        systems::ParallaxSystem parallaxSystem;
-        systems::AnimationSystem animationSystem;
         ecs::EventBus eventBus;
 
         ecs::Registry registry;
@@ -219,8 +228,8 @@ int main() {
             handlePlayerShoot(registry, bulletTexId);
 
             clock.tick(ecs::time::DEFAULT_FIXED_DT, [&](const ecs::time::Time& time) {
-                parallaxSystem.update(registry, time.deltaTime);
-                animationSystem.update(registry, time.deltaTime);
+                systems::ParallaxSystem::update(registry, time.deltaTime);
+                systems::AnimationSystem::update(registry, time.deltaTime);
                 movePlayer(registry, time.deltaTime);
                 movePlayerBullets(registry, time.deltaTime);
                 physicsSystem.update(time.deltaTime);

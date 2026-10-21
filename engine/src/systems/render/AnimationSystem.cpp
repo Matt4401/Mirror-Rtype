@@ -8,6 +8,7 @@
 #include "systems/render/AnimationSystem.hpp"
 
 #include "components/AnimationComponent.hpp"
+#include "ecs/Registry.hpp"
 #include "components/Renderable.hpp"
 #include "ecs/Entity.hpp"
 
