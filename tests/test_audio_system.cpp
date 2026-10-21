@@ -8,11 +8,12 @@
 
 #include "audio/IAudioBackend.hpp"
 #include "audio/NullAudioBackend.hpp"
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioSpatial.hpp"
-#include "audio/common/AudioTypes.hpp"
-#include "audio/common/SoundParams.hpp"
-#include "audio/common/SpatialConfig.hpp"
+#include "audio/settings/AudioSettings.hpp"
+#include "audio/spatial/AudioSpatial.hpp"
+#include "audio/spatial/SpatialConfig.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
+#include "audio/types/SoundParams.hpp"
 #include "components/AudioEmitter.hpp"
 #include "components/AudioListener.hpp"
 #include "components/Transform.hpp"
@@ -384,6 +385,28 @@ TEST_F(AudioSystemTest, InactiveListenerIsIgnored) {
     ASSERT_EQ(backend.sounds().size(), 1U);
     EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, audio::MAX_VOLUME);
     EXPECT_GT(backend.sounds()[0].params.pan, audio::PAN_CENTER);
+}
+
+TEST_F(AudioSystemTest, DisabledSpatializationPlaysPositionedSoundsCentered) {
+    spawnListener(0.0F, 0.0F);
+    audioSystem.setSpatialConfig({.enabled = false});
+
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 5000.0F}});
+    audioSystem.update(registry);
+
+    ASSERT_EQ(backend.sounds().size(), 1U) << "a far sound is not skipped when spatialization is off";
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, audio::MAX_VOLUME);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.pan, audio::PAN_CENTER);
+}
+
+TEST_F(AudioSystemTest, SettingsApplyVolumesAndSpatialization) {
+    audioSystem.applySettings(audio::AudioSettings{
+        .spatial = {.enabled = false}, .masterVolume = 0.2F, .musicVolume = 0.4F, .sfxVolume = 0.6F});
+
+    EXPECT_FLOAT_EQ(backend.masterVolume(), 0.2F);
+    EXPECT_FLOAT_EQ(backend.musicVolume(), 0.4F);
+    EXPECT_FLOAT_EQ(audioSystem.volume(audio::AudioBus::Sfx), 0.6F);
+    EXPECT_FALSE(audioSystem.spatialConfig().enabled);
 }
 
 TEST_F(AudioSystemTest, UnpositionedSoundIgnoresTheListener) {

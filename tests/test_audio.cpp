@@ -10,12 +10,12 @@
 #include <stdexcept>
 #include <string>
 
-#include "audio/AudioBackendFactory.hpp"
 #include "audio/NullAudioBackend.hpp"
-#include "audio/common/AudioConfig.hpp"
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioTypes.hpp"
-#include "audio/detail/raylib/RaylibAudioBackend.hpp"
+#include "audio/factory/AudioBackendFactory.hpp"
+#include "audio/strategy/raylib/RaylibAudioBackend.hpp"
+#include "audio/types/AudioConfig.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
 
 namespace {
 
@@ -189,6 +189,14 @@ TEST(AudioBackendFactory, AlwaysReturnsABackend) {
 
     ASSERT_NE(backend, nullptr);
     EXPECT_EQ(backend->playSound(audio::NO_SOUND, {}), audio::NO_VOICE);
+}
+
+TEST(AudioBackendFactory, NullKindOpensNoDevice) {
+    const std::unique_ptr<audio::IAudioBackend> muted = audio::makeAudioBackend(audio::AudioBackendKind::Null);
+    EXPECT_FALSE(muted->isAvailable());
+
+    // No device was claimed, so a real backend can still be created alongside.
+    EXPECT_NO_THROW(audio::detail::RaylibAudioBackend{});
 }
 
 TEST(AudioBackendFactory, ReleasesTheDeviceWithTheBackend) {

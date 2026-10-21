@@ -40,6 +40,13 @@ target("test_physics")
     add_files("physics/PhysicsSystemTests.cpp")
     add_tests("test_physics")
 
+target("test_config")
+    set_kind("binary")
+    add_deps("engine_config")
+    add_packages("gtest")
+    add_files("test_config.cpp")
+    add_tests("test_config")
+
 target("test_input")
     set_kind("binary")
     add_deps("engine_core", "engine_events", "engine_input")
@@ -70,4 +77,11 @@ if has_config("graphics") then
         add_packages("gtest")
         add_files("test_audio_system.cpp")
         add_tests("test_audio_system")
+
+    target("test_audio_settings")
+        set_kind("binary")
+        add_deps("engine_audio")
+        add_packages("gtest")
+        add_files("test_audio_settings.cpp")
+        add_tests("test_audio_settings")
 end

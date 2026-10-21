@@ -7,10 +7,11 @@
 #include <vector>
 
 #include "audio/IAudioBackend.hpp"
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioTypes.hpp"
-#include "audio/common/SoundParams.hpp"
-#include "audio/common/SpatialConfig.hpp"
+#include "audio/settings/AudioSettings.hpp"
+#include "audio/spatial/SpatialConfig.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
+#include "audio/types/SoundParams.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/AudioEvents.hpp"
@@ -87,6 +88,15 @@ class AudioSystem {
      * @param config Pan and attenuation settings, in world units.
      */
     void setSpatialConfig(const audio::SpatialConfig& config) noexcept { _spatial = config; }
+
+    /**
+     * @brief Applies the volumes and the spatial settings of a configuration.
+     *
+     * The backend and voice limits of `settings` are not used: they only matter when the backend is created.
+     *
+     * @param settings Settings to apply, usually read with `readAudioSettings`.
+     */
+    void applySettings(const audio::AudioSettings& settings);
 
     /** @brief Reads the pan and attenuation settings. */
     [[nodiscard]] const audio::SpatialConfig& spatialConfig() const noexcept { return _spatial; }

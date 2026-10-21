@@ -5,12 +5,13 @@
 #include <utility>
 #include <variant>
 
+#include "audio/AudioMiddleware.hpp"
 #include "audio/IAudioBackend.hpp"
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioMiddleware.hpp"
-#include "audio/common/AudioSpatial.hpp"
-#include "audio/common/AudioTypes.hpp"
-#include "audio/common/SoundParams.hpp"
+#include "audio/settings/AudioSettings.hpp"
+#include "audio/spatial/AudioSpatial.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
+#include "audio/types/SoundParams.hpp"
 #include "components/AudioEmitter.hpp"
 #include "components/AudioListener.hpp"
 #include "components/Transform.hpp"
@@ -101,6 +102,13 @@ void AudioSystem::setVolume(audio::AudioBus bus, float volume) {
     }
 }
 
+void AudioSystem::applySettings(const audio::AudioSettings& settings) {
+    setVolume(audio::AudioBus::Master, settings.masterVolume);
+    setVolume(audio::AudioBus::Music, settings.musicVolume);
+    setVolume(audio::AudioBus::Sfx, settings.sfxVolume);
+    setSpatialConfig(settings.spatial);
+}
+
 float AudioSystem::volume(audio::AudioBus bus) const noexcept {
     switch (bus) {
         case audio::AudioBus::Master:
@@ -127,7 +135,7 @@ audio::SoundParams AudioSystem::resolveParams(float volume, float pitch,
                                               const std::optional<audio::SoundPosition>& position) const {
     const float gain = audio::clampFinite(volume, audio::DEFAULT_VOLUME, audio::MIN_VOLUME, audio::MAX_VOLUME);
     audio::SoundParams params{.volume = gain * _sfxVolume, .pitch = pitch};
-    if (position && _listener) {
+    if (position && _listener && _spatial.enabled) {
         const audio::SpatialGains gains = audio::computeSpatial(*position, *_listener, _spatial);
         params.volume *= gains.volume;
         params.pan = gains.pan;
