@@ -4,9 +4,9 @@
 #include <string>
 
 #include "audio/IAudioBackend.hpp"
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioTypes.hpp"
-#include "audio/common/SoundParams.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
+#include "audio/types/SoundParams.hpp"
 
 namespace audio {
 

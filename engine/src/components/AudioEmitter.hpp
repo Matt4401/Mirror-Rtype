@@ -1,7 +1,7 @@
 #pragma once
 
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioTypes.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
 
 namespace ecs {
 
