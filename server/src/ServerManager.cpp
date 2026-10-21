@@ -114,7 +114,7 @@ void ServerManager::sendSnapshot(const Room& room) const {
 
 std::optional<RoomId> ServerManager::joinRoom(const ClientId client) {
     if (const auto current = roomOf(client)) {
-        return *current;
+        return current;
     }
 
     std::optional<RoomId> open;
@@ -148,6 +148,11 @@ void ServerManager::leaveRoom(const ClientId client) {
         return;
     }
     room->second.removePlayer(client);
+    for (const ClientId other : room->second.players()) {
+        // TODO(protocol): tell the remaining players that `client` left (check the exact wording in the subject, p.10),
+        // on the reliable channel: _network->send(other, protocol::encodePlayerLeft(client), net::Channel::Reliable);
+        static_cast<void>(other);
+    }
     if (room->second.isEmpty()) {
         _rooms.erase(room);
     }
