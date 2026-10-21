@@ -11,6 +11,8 @@
 #include <string>
 
 #include "audio/AudioBackendFactory.hpp"
+#include "audio/AudioConfig.hpp"
+#include "audio/AudioConstants.hpp"
 #include "audio/AudioTypes.hpp"
 #include "audio/NullAudioBackend.hpp"
 #include "audio/detail/RaylibAudioBackend.hpp"
