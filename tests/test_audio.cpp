@@ -15,7 +15,7 @@
 #include "audio/common/AudioConfig.hpp"
 #include "audio/common/AudioConstants.hpp"
 #include "audio/common/AudioTypes.hpp"
-#include "audio/detail/RaylibAudioBackend.hpp"
+#include "audio/detail/raylib/RaylibAudioBackend.hpp"
 
 namespace {
 

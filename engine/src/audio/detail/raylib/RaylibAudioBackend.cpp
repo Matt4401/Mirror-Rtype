@@ -1,4 +1,4 @@
-#include "audio/detail/RaylibAudioBackend.hpp"
+#include "audio/detail/raylib/RaylibAudioBackend.hpp"
 
 #include <raylib.h>
 
@@ -15,18 +15,9 @@
 #include "audio/common/AudioMiddleware.hpp"
 #include "audio/common/AudioTypes.hpp"
 #include "audio/common/SoundParams.hpp"
+#include "audio/detail/raylib/RaylibAudioDevice.hpp"
 
 namespace audio::detail {
-
-namespace {
-
-/** @brief Set while a backend owns raylib's global audio device. */
-std::atomic_bool& deviceClaimed() {
-    static std::atomic_bool claimed{false};
-    return claimed;
-}
-
-}  // namespace
 
 RaylibAudioBackend::RaylibAudioBackend(AudioConfig config) : _config(config) {
     _config.voicesPerSound = std::max<std::size_t>(_config.voicesPerSound, 1);
@@ -34,19 +25,15 @@ RaylibAudioBackend::RaylibAudioBackend(AudioConfig config) : _config(config) {
     if (deviceClaimed().exchange(true)) {
         throw std::logic_error("Only one RaylibAudioBackend may exist at a time");
     }
-    // raylib does not report failures: it logs a warning and leaves the device closed, so check it explicitly.
     InitAudioDevice();
     _available = IsAudioDeviceReady();
 }
 
 RaylibAudioBackend::~RaylibAudioBackend() {
-    // Known raylib 6.0 leaks, bounded and only at teardown: UnloadSoundAlias keeps 64 bytes per alias
-    // (fixed upstream in raysan5/raylib#5857) and UnloadMusicStream keeps the decoder of WAV music (prefer OGG).
     if (_available) {
         for (const Music& music : _musics) {
             UnloadMusicStream(music);
         }
-        // Aliases borrow the source sample data, so they must go before their source.
         for (const SoundSlot& slot : _sounds) {
             for (const Voice& voice : slot.voices) {
                 UnloadSoundAlias(voice.sound);

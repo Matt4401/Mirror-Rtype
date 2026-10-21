@@ -5,7 +5,7 @@
 #include "audio/IAudioBackend.hpp"
 #include "audio/NullAudioBackend.hpp"
 #include "audio/common/AudioConfig.hpp"
-#include "audio/detail/RaylibAudioBackend.hpp"
+#include "audio/detail/raylib/RaylibAudioBackend.hpp"
 
 namespace audio {
 
