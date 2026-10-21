@@ -79,15 +79,6 @@ void Room::step([[maybe_unused]] const ecs::Registry& registry) {
     // _scripts.update(time.deltaTime);   // also flushes its CommandBuffer (spawns / kills requested by scripts)
 }
 
-std::vector<ClientId> Room::players() const {
-    std::vector<ClientId> ids;
-    ids.reserve(_players.size());
-    for (const auto& id : _players | std::views::keys) {
-        ids.push_back(id);
-    }
-    return ids;
-}
-
 std::uint32_t Room::lastProcessedInput(const ClientId player) const {
     const auto it = _players.find(player);
     return it == _players.end() ? 0 : it->second.lastProcessedInput;

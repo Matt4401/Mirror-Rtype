@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ranges>
 #include <unordered_map>
 #include <vector>
 
@@ -101,7 +102,7 @@ class Room {
     /** @brief True when the last player has left: the `ServerManager` then destroys the room. */
     [[nodiscard]] bool isEmpty() const { return _players.empty(); }
     /** @brief Network ids of the players in this room. */
-    [[nodiscard]] std::vector<ClientId> players() const;
+    [[nodiscard]] auto players() const { return _players | std::views::keys; }
 
     /**
      * @brief Sequence number of the last input applied for a player, sent in snapshots for client reconciliation.
