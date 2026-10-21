@@ -55,3 +55,12 @@ if has_config("graphics") then
         add_files("test_render.cpp")
         add_tests("test_render")
 end
+
+if has_config("graphics") then
+    target("test_audio")
+        set_kind("binary")
+        add_deps("engine_audio")
+        add_packages("gtest")
+        add_files("test_audio.cpp")
+        add_tests("test_audio")
+end
