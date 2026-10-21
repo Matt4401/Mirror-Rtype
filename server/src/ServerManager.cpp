@@ -112,7 +112,7 @@ void ServerManager::sendSnapshot(const Room& room) const {
     }
 }
 
-RoomId ServerManager::joinRoom(const ClientId client) {
+std::optional<RoomId> ServerManager::joinRoom(const ClientId client) {
     if (const auto current = roomOf(client)) {
         return *current;
     }
@@ -129,7 +129,9 @@ RoomId ServerManager::joinRoom(const ClientId client) {
         _rooms.try_emplace(_nextRoomId++, MAX_PLAYERS_PER_ROOM);
     }
 
-    _rooms.at(id).addPlayer(client);
+    if (!_rooms.at(id).addPlayer(client)) {
+        return std::nullopt;
+    }
     _roomOf[client] = id;
     return id;
 }
