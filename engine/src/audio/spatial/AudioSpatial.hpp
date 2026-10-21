@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <cmath>
 
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioMiddleware.hpp"
-#include "audio/common/AudioTypes.hpp"
-#include "audio/common/SpatialConfig.hpp"
+#include "audio/AudioMiddleware.hpp"
+#include "audio/spatial/SpatialConfig.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
 
 namespace audio {
 
