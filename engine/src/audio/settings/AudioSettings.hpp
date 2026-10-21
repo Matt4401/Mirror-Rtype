@@ -1,9 +1,9 @@
 #pragma once
 
-#include "audio/common/AudioConfig.hpp"
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioTypes.hpp"
-#include "audio/common/SpatialConfig.hpp"
+#include "audio/spatial/SpatialConfig.hpp"
+#include "audio/types/AudioConfig.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
 
 namespace audio {
 

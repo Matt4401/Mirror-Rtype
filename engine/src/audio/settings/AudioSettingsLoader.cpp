@@ -12,9 +12,9 @@
 #include <utility>
 #include <vector>
 
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioTypes.hpp"
 #include "audio/settings/AudioSettings.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
 #include "config/ConfigFile.hpp"
 
 namespace audio {
