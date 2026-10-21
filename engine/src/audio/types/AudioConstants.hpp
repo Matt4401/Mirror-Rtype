@@ -2,7 +2,7 @@
 
 #include <cstddef>
 
-#include "audio/common/AudioTypes.hpp"
+#include "audio/types/AudioTypes.hpp"
 
 namespace audio {
 
@@ -47,6 +47,12 @@ inline constexpr std::size_t DEFAULT_VOICES_PER_SOUND = 4;
 
 /** @brief Default number of sound instances that can play at the same time across all sounds. */
 inline constexpr std::size_t DEFAULT_MAX_ACTIVE_VOICES = 32;
+
+/** @brief Largest accepted `voicesPerSound`, so a configuration cannot allocate thousands of voices per sound. */
+inline constexpr std::size_t VOICES_PER_SOUND_LIMIT = 16;
+
+/** @brief Largest accepted `maxActiveVoices`. */
+inline constexpr std::size_t ACTIVE_VOICES_LIMIT = 256;
 
 /** @brief Sound requests kept between two audio updates; extra requests are dropped. */
 inline constexpr std::size_t MAX_QUEUED_SOUNDS = 128;

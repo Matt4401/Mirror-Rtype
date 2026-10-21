@@ -1,6 +1,6 @@
 #pragma once
 
-#include "audio/common/AudioConstants.hpp"
+#include "audio/types/AudioConstants.hpp"
 
 namespace audio {
 
@@ -11,6 +11,9 @@ namespace audio {
  * keeps its full volume, and only off-screen sounds fade out.
  */
 struct SpatialConfig {
+    /** @brief Whether positioned sounds are panned and attenuated; when false they all play centered. */
+    bool enabled = true;
+
     /** @brief Horizontal distance at which a sound reaches `maxPan`; closer sounds are panned proportionally. */
     float panRange = DEFAULT_PAN_RANGE;
 

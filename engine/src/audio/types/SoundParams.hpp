@@ -1,6 +1,6 @@
 #pragma once
 
-#include "audio/common/AudioConstants.hpp"
+#include "audio/types/AudioConstants.hpp"
 
 namespace audio {
 

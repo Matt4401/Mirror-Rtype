@@ -22,6 +22,16 @@ struct SoundPosition {
     float y = 0.0F;
 };
 
+/** @brief Audio library used to output sound. */
+enum class AudioBackendKind : std::uint8_t {
+    /** @brief The best library available, falling back to a muted output. */
+    Auto,
+    /** @brief raylib (miniaudio), falling back to a muted output if no audio device can be opened. */
+    Raylib,
+    /** @brief Muted output: no audio device is opened and nothing is played. */
+    Null,
+};
+
 /** @brief Volume channel; the gain of a sound is the product of its own volume and of its buses. */
 enum class AudioBus : std::uint8_t {
     /** @brief Global gain applied to every sound and music. */
