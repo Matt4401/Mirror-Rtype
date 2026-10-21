@@ -10,6 +10,15 @@ using SoundId = std::uint32_t;
 /** @brief Handle of a loaded music stream; `NO_MUSIC` marks an invalid one. */
 using MusicId = std::uint32_t;
 
+/** @brief Point in world space where a sound is emitted or heard. */
+struct SoundPosition {
+    /** @brief Horizontal position in world units. */
+    float x = 0.0F;
+
+    /** @brief Vertical position in world units. */
+    float y = 0.0F;
+};
+
 /** @brief Volume channel; the gain of a sound is the product of its own volume and of its buses. */
 enum class AudioBus : std::uint8_t {
     /** @brief Global gain applied to every sound and music. */

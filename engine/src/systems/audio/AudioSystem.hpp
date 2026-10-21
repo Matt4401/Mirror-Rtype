@@ -1,12 +1,16 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <variant>
 #include <vector>
 
 #include "audio/IAudioBackend.hpp"
 #include "audio/common/AudioConstants.hpp"
 #include "audio/common/AudioTypes.hpp"
+#include "audio/common/SoundParams.hpp"
+#include "audio/common/SpatialConfig.hpp"
+#include "ecs/Registry.hpp"
 #include "events/AudioEvents.hpp"
 #include "events/EventBus.hpp"
 #include "utils/MoveOnlyFunction.hpp"
@@ -20,8 +24,9 @@ namespace systems {
  * library. Listeners only queue the events, so publishing stays cheap and never blocks; `update()` then executes
  * them in arrival order, once per frame. Works the same with a muted backend.
  *
- * Gains are split in three buses: master, music and SFX. A sound plays at `event volume x SFX volume`, and the
- * master volume is applied by the backend on top of everything.
+ * Gains are split in three buses: master, music and SFX. A sound plays at
+ * `event volume x SFX volume x distance attenuation`, and the master volume is applied by the backend on top.
+ * Sounds with a position are panned and attenuated around the first active `AudioListener` entity.
  *
  * The backend and the event bus must outlive the system.
  */
@@ -47,8 +52,15 @@ class AudioSystem {
     /** @brief Deleted move assignment operator. */
     AudioSystem& operator=(AudioSystem&&) = delete;
 
-    /** @brief Executes the queued audio events, then refills the music stream; call it once per frame. */
-    void update();
+    /**
+     * @brief Executes the queued audio events, then refills the music stream; call it once per frame.
+     *
+     * Sounds requested during the frame start after the other events, so a `StopAllSoundsEvent` drops the sounds
+     * requested before it in the same frame.
+     *
+     * @param registry Registry holding the `AudioListener` entity, if any.
+     */
+    void update(ecs::Registry& registry);
 
     /**
      * @brief Sets the gain of a bus immediately.
@@ -65,10 +77,27 @@ class AudioSystem {
      */
     [[nodiscard]] float volume(audio::AudioBus bus) const noexcept;
 
+    /**
+     * @brief Changes how positioned sounds are panned and attenuated.
+     * @param config Pan and attenuation settings, in world units.
+     */
+    void setSpatialConfig(const audio::SpatialConfig& config) noexcept { _spatial = config; }
+
+    /** @brief Reads the pan and attenuation settings. */
+    [[nodiscard]] const audio::SpatialConfig& spatialConfig() const noexcept { return _spatial; }
+
   private:
     /** @brief Any audio event waiting for the next update. */
     using AudioCommand = std::variant<events::PlaySoundEvent, events::PlayMusicEvent, events::StopMusicEvent,
                                       events::StopAllSoundsEvent, events::SetAudioVolumeEvent>;
+
+    /** @brief A sound to start at the end of the current update, with its final settings. */
+    struct PendingSound {
+        /** @brief Sound to play. */
+        audio::SoundId id = audio::NO_SOUND;
+        /** @brief Final volume, pan and pitch. */
+        audio::SoundParams params;
+    };
 
     /** @brief Queues a sound request, unless it is invalid or the queue is full. */
     void enqueue(const events::PlaySoundEvent& event);
@@ -76,13 +105,13 @@ class AudioSystem {
     /** @brief Queues any other audio event; these are never dropped. */
     void enqueue(const AudioCommand& command);
 
-    /** @brief Plays a sound, unless it was already played during this update. */
+    /** @brief Resolves a sound's final settings and keeps it for the end of the update. */
     void execute(const events::PlaySoundEvent& event);
     /** @brief Starts a music stream. */
     void execute(const events::PlayMusicEvent& event);
     /** @brief Stops the music stream. */
     void execute(const events::StopMusicEvent& event);
-    /** @brief Stops every sound effect. */
+    /** @brief Stops every sound effect, including the ones requested earlier in this update. */
     void execute(const events::StopAllSoundsEvent& event);
     /** @brief Changes a bus gain. */
     void execute(const events::SetAudioVolumeEvent& event);
@@ -95,8 +124,12 @@ class AudioSystem {
     std::vector<AudioCommand> _queue;
     /** @brief Number of `PlaySoundEvent` in `_queue`, bounded by `MAX_QUEUED_SOUNDS`. */
     std::size_t _queuedSounds = 0;
-    /** @brief Sounds already played during the current update, to merge duplicates. */
-    std::vector<audio::SoundId> _playedThisUpdate;
+    /** @brief Sounds to start at the end of the current update, at most one per sound. */
+    std::vector<PendingSound> _pendingSounds;
+    /** @brief Where sounds are heard from during the current update, if a listener exists. */
+    std::optional<audio::SoundPosition> _listener;
+    /** @brief Pan and attenuation settings. */
+    audio::SpatialConfig _spatial;
     /** @brief Global gain. */
     float _masterVolume = audio::DEFAULT_VOLUME;
     /** @brief Music gain. */

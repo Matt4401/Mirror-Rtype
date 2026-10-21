@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "audio/common/AudioConstants.hpp"
 #include "audio/common/AudioTypes.hpp"
 
@@ -9,7 +11,7 @@ namespace events {
  * @brief Requests a sound effect.
  *
  * Published by gameplay code, which never touches the audio library: the audio system plays it on its next update.
- * Requesting the same sound several times before that update plays it once.
+ * Requesting the same sound several times before that update plays only the loudest request.
  */
 struct PlaySoundEvent {
     /** @brief Sound to play; `NO_SOUND` is ignored. */
@@ -20,6 +22,13 @@ struct PlaySoundEvent {
 
     /** @brief Playback speed factor (1.0F keeps the original pitch). */
     float pitch = audio::DEFAULT_PITCH;
+
+    /**
+     * @brief World position of the emitter, to pan and attenuate the sound around the `AudioListener`.
+     *
+     * Leave it empty for sounds that have no place in the world (UI, the player's own feedback).
+     */
+    std::optional<audio::SoundPosition> position;
 };
 
 /** @brief Requests a music stream, replacing the current one. */

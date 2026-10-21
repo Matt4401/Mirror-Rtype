@@ -1,13 +1,20 @@
 #include "systems/audio/AudioSystem.hpp"
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 #include <variant>
 
 #include "audio/IAudioBackend.hpp"
 #include "audio/common/AudioConstants.hpp"
 #include "audio/common/AudioMiddleware.hpp"
+#include "audio/common/AudioSpatial.hpp"
 #include "audio/common/AudioTypes.hpp"
+#include "audio/common/SoundParams.hpp"
+#include "components/AudioListener.hpp"
+#include "components/Transform.hpp"
+#include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
 #include "events/AudioEvents.hpp"
 #include "events/EventBus.hpp"
 #include "utils/MoveOnlyFunction.hpp"
@@ -21,6 +28,18 @@ template <typename EventType, typename Callback>
 ecs::MoveOnlyFunction<void()> subscribe(ecs::EventBus& eventBus, Callback callback) {
     const ecs::EventBus::EventToken token = eventBus.subscribe<EventType>(std::move(callback));
     return [&eventBus, token] { eventBus.unsubscribe<EventType>(token); };
+}
+
+/** @brief Returns the position of the first active `AudioListener`, or nothing if there is none. */
+std::optional<audio::SoundPosition> findListener(ecs::Registry& registry) {
+    std::optional<audio::SoundPosition> listener;
+    registry.runSystem<ecs::AudioListener, ecs::Transform>(
+        [&listener](ecs::Entity /*entity*/, const ecs::AudioListener& audioListener, const ecs::Transform& transform) {
+            if (!listener && audioListener.active) {
+                listener = audio::SoundPosition{.x = transform.x, .y = transform.y};
+            }
+        });
+    return listener;
 }
 
 }  // namespace
@@ -44,13 +63,18 @@ AudioSystem::~AudioSystem() {
     }
 }
 
-void AudioSystem::update() {
-    _playedThisUpdate.clear();
+void AudioSystem::update(ecs::Registry& registry) {
+    _listener = findListener(registry);
     for (const AudioCommand& command : _queue) {
         std::visit([this](const auto& event) { execute(event); }, command);
     }
     _queue.clear();
     _queuedSounds = 0;
+
+    for (const PendingSound& sound : _pendingSounds) {
+        _backend->playSound(sound.id, sound.params);
+    }
+    _pendingSounds.clear();
     _backend->update();
 }
 
@@ -94,14 +118,25 @@ void AudioSystem::enqueue(const events::PlaySoundEvent& event) {
 void AudioSystem::enqueue(const AudioCommand& command) { _queue.push_back(command); }
 
 void AudioSystem::execute(const events::PlaySoundEvent& event) {
-    // The same sound started several times in one frame would only sound louder and waste voices.
-    if (std::ranges::contains(_playedThisUpdate, event.sound)) {
+    const float volume = audio::clampFinite(event.volume, audio::DEFAULT_VOLUME, audio::MIN_VOLUME, audio::MAX_VOLUME);
+    audio::SoundParams params{.volume = volume * _sfxVolume, .pitch = event.pitch};
+    if (event.position && _listener) {
+        const audio::SpatialGains gains = audio::computeSpatial(*event.position, *_listener, _spatial);
+        params.volume *= gains.volume;
+        params.pan = gains.pan;
+    }
+    // An inaudible sound (too far, or muted bus) would only take a voice from an audible one.
+    if (params.volume <= audio::MIN_VOLUME) {
         return;
     }
-    _playedThisUpdate.push_back(event.sound);
 
-    const float volume = audio::clampFinite(event.volume, audio::DEFAULT_VOLUME, audio::MIN_VOLUME, audio::MAX_VOLUME);
-    _backend->playSound(event.sound, {.volume = volume * _sfxVolume, .pitch = event.pitch});
+    // The same sound started several times in one frame would only sound louder and waste voices: keep the loudest.
+    const auto same = std::ranges::find(_pendingSounds, event.sound, &PendingSound::id);
+    if (same == _pendingSounds.end()) {
+        _pendingSounds.push_back({.id = event.sound, .params = params});
+    } else if (params.volume > same->params.volume) {
+        same->params = params;
+    }
 }
 
 void AudioSystem::execute(const events::PlayMusicEvent& event) {
@@ -114,7 +149,7 @@ void AudioSystem::execute(const events::StopMusicEvent& /*event*/) { _backend->s
 
 void AudioSystem::execute(const events::StopAllSoundsEvent& /*event*/) {
     _backend->stopAllSounds();
-    _playedThisUpdate.clear();
+    _pendingSounds.clear();
 }
 
 void AudioSystem::execute(const events::SetAudioVolumeEvent& event) { setVolume(event.bus, event.volume); }

@@ -8,8 +8,14 @@
 #include "audio/IAudioBackend.hpp"
 #include "audio/NullAudioBackend.hpp"
 #include "audio/common/AudioConstants.hpp"
+#include "audio/common/AudioSpatial.hpp"
 #include "audio/common/AudioTypes.hpp"
 #include "audio/common/SoundParams.hpp"
+#include "audio/common/SpatialConfig.hpp"
+#include "components/AudioListener.hpp"
+#include "components/Transform.hpp"
+#include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
 #include "events/AudioEvents.hpp"
 #include "events/EventBus.hpp"
 #include "systems/audio/AudioSystem.hpp"
@@ -61,58 +67,130 @@ constexpr audio::SoundId LASER = 1;
 constexpr audio::SoundId EXPLOSION = 2;
 constexpr audio::MusicId THEME = 1;
 
-}  // namespace
+/** @brief Audio system wired to a recording backend, with an empty world. */
+class AudioSystemTest : public ::testing::Test {
+  protected:
+    /** @brief Adds a listener entity at the given world position. */
+    ecs::Entity spawnListener(float x, float y, bool active = true) {
+        const ecs::Entity entity = registry.spawnEntity();
+        registry.addComponent<ecs::Transform>(entity, ecs::Transform{.x = x, .y = y});
+        registry.addComponent<ecs::AudioListener>(entity, ecs::AudioListener{.active = active});
+        return entity;
+    }
 
-TEST(AudioSystem, PublishedSoundIsPlayedOnUpdate) {
     FakeAudioBackend backend;
     ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
+    ecs::Registry registry;
+    systems::AudioSystem audioSystem{backend, bus};
+};
 
+}  // namespace
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Spatial computations
+// ---------------------------------------------------------------------------------------------------------------------
+
+TEST(AudioSpatial, PanFollowsHorizontalOffset) {
+    const audio::SpatialConfig config;
+
+    EXPECT_FLOAT_EQ(audio::computePan(0.0F, config), audio::PAN_CENTER);
+    EXPECT_FLOAT_EQ(audio::computePan(config.panRange / 2.0F, config), config.maxPan / 2.0F);
+    EXPECT_FLOAT_EQ(audio::computePan(-config.panRange, config), -config.maxPan);
+    EXPECT_FLOAT_EQ(audio::computePan(config.panRange * 10.0F, config), config.maxPan) << "pan is capped";
+}
+
+TEST(AudioSpatial, FullStrengthPanReachesTheSpeakers) {
+    const audio::SpatialConfig config{.maxPan = 1.0F};
+
+    EXPECT_FLOAT_EQ(audio::computePan(config.panRange, config), audio::PAN_RIGHT);
+    EXPECT_FLOAT_EQ(audio::computePan(-config.panRange, config), audio::PAN_LEFT);
+}
+
+TEST(AudioSpatial, AttenuationFallsLinearlyBetweenMinAndMaxDistance) {
+    const audio::SpatialConfig config;
+    const float middle = (config.minDistance + config.maxDistance) / 2.0F;
+
+    EXPECT_FLOAT_EQ(audio::computeAttenuation(0.0F, config), audio::MAX_VOLUME);
+    EXPECT_FLOAT_EQ(audio::computeAttenuation(config.minDistance, config), audio::MAX_VOLUME);
+    EXPECT_FLOAT_EQ(audio::computeAttenuation(middle, config), 0.5F);
+    EXPECT_FLOAT_EQ(audio::computeAttenuation(config.maxDistance, config), audio::MIN_VOLUME);
+    EXPECT_FLOAT_EQ(audio::computeAttenuation(config.maxDistance * 2.0F, config), audio::MIN_VOLUME);
+}
+
+TEST(AudioSpatial, VerticalOffsetAttenuatesWithoutPanning) {
+    const audio::SpatialConfig config{.minDistance = 100.0F, .maxDistance = 300.0F};
+
+    const audio::SpatialGains gains = audio::computeSpatial({.x = 0.0F, .y = 200.0F}, {.x = 0.0F, .y = 0.0F}, config);
+
+    EXPECT_FLOAT_EQ(gains.pan, audio::PAN_CENTER);
+    EXPECT_FLOAT_EQ(gains.volume, 0.5F);
+}
+
+TEST(AudioSpatial, InvalidInputsStayFinite) {
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const audio::SpatialConfig config;
+
+    const audio::SpatialGains gains = audio::computeSpatial({.x = nan, .y = 0.0F}, {.x = 0.0F, .y = 0.0F}, config);
+    EXPECT_FLOAT_EQ(gains.volume, audio::MAX_VOLUME) << "a broken position is heard like an unpositioned sound";
+    EXPECT_FLOAT_EQ(gains.pan, audio::PAN_CENTER);
+
+    EXPECT_FLOAT_EQ(audio::computePan(100.0F, audio::SpatialConfig{.panRange = 0.0F}), audio::PAN_CENTER);
+    EXPECT_FLOAT_EQ(audio::computePan(100.0F, audio::SpatialConfig{.maxPan = nan}),
+                    100.0F / audio::DEFAULT_PAN_RANGE * audio::DEFAULT_MAX_PAN);
+    EXPECT_FLOAT_EQ(audio::computeAttenuation(500.0F, audio::SpatialConfig{.minDistance = nan}), audio::MAX_VOLUME);
+
+    const audio::SpatialConfig collapsed{.minDistance = 100.0F, .maxDistance = 100.0F};
+    EXPECT_FLOAT_EQ(audio::computeAttenuation(100.0F, collapsed), audio::MAX_VOLUME);
+    EXPECT_FLOAT_EQ(audio::computeAttenuation(101.0F, collapsed), audio::MIN_VOLUME);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Event handling
+// ---------------------------------------------------------------------------------------------------------------------
+
+TEST_F(AudioSystemTest, PublishedSoundIsPlayedOnUpdate) {
     bus.publish(events::PlaySoundEvent{.sound = LASER, .volume = 0.8F, .pitch = 1.5F});
     EXPECT_TRUE(backend.sounds().empty()) << "publishing must only queue the sound";
 
-    audioSystem.update();
+    audioSystem.update(registry);
     ASSERT_EQ(backend.sounds().size(), 1U);
     EXPECT_EQ(backend.sounds()[0].id, LASER);
     EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, 0.8F);
     EXPECT_FLOAT_EQ(backend.sounds()[0].params.pitch, 1.5F);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.pan, audio::PAN_CENTER);
 }
 
-TEST(AudioSystem, QueueIsEmptiedByUpdate) {
-    FakeAudioBackend backend;
-    ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
-
+TEST_F(AudioSystemTest, QueueIsEmptiedByUpdate) {
     bus.publish(events::PlaySoundEvent{.sound = LASER});
-    audioSystem.update();
-    audioSystem.update();
+    audioSystem.update(registry);
+    audioSystem.update(registry);
 
     EXPECT_EQ(backend.sounds().size(), 1U);
     EXPECT_EQ(backend.updates(), 2);
 }
 
-TEST(AudioSystem, SfxVolumeScalesSounds) {
-    FakeAudioBackend backend;
-    ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
-
+TEST_F(AudioSystemTest, SfxVolumeScalesSounds) {
     audioSystem.setVolume(audio::AudioBus::Sfx, 0.5F);
     bus.publish(events::PlaySoundEvent{.sound = LASER, .volume = 0.8F});
-    audioSystem.update();
+    audioSystem.update(registry);
 
     ASSERT_EQ(backend.sounds().size(), 1U);
     EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, 0.4F);
 }
 
-TEST(AudioSystem, VolumeEventsReachTheBackend) {
-    FakeAudioBackend backend;
-    ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
+TEST_F(AudioSystemTest, MutedSfxBusPlaysNothing) {
+    audioSystem.setVolume(audio::AudioBus::Sfx, 0.0F);
+    bus.publish(events::PlaySoundEvent{.sound = LASER});
+    audioSystem.update(registry);
 
+    EXPECT_TRUE(backend.sounds().empty());
+}
+
+TEST_F(AudioSystemTest, VolumeEventsReachTheBackend) {
     bus.publish(events::SetAudioVolumeEvent{.bus = audio::AudioBus::Master, .volume = 0.3F});
     bus.publish(events::SetAudioVolumeEvent{.bus = audio::AudioBus::Music, .volume = 0.6F});
     bus.publish(events::SetAudioVolumeEvent{.bus = audio::AudioBus::Sfx, .volume = 0.9F});
-    audioSystem.update();
+    audioSystem.update(registry);
 
     EXPECT_FLOAT_EQ(backend.masterVolume(), 0.3F);
     EXPECT_FLOAT_EQ(backend.musicVolume(), 0.6F);
@@ -121,11 +199,7 @@ TEST(AudioSystem, VolumeEventsReachTheBackend) {
     EXPECT_FLOAT_EQ(audioSystem.volume(audio::AudioBus::Sfx), 0.9F);
 }
 
-TEST(AudioSystem, InvalidVolumesAreClamped) {
-    FakeAudioBackend backend;
-    ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
-
+TEST_F(AudioSystemTest, InvalidVolumesAreClamped) {
     audioSystem.setVolume(audio::AudioBus::Master, std::numeric_limits<float>::quiet_NaN());
     audioSystem.setVolume(audio::AudioBus::Music, -1.0F);
     audioSystem.setVolume(audio::AudioBus::Sfx, 3.0F);
@@ -135,63 +209,58 @@ TEST(AudioSystem, InvalidVolumesAreClamped) {
     EXPECT_FLOAT_EQ(audioSystem.volume(audio::AudioBus::Sfx), audio::MAX_VOLUME);
 }
 
-TEST(AudioSystem, EventsAreExecutedInArrivalOrder) {
-    FakeAudioBackend backend;
-    ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
-
+TEST_F(AudioSystemTest, EventsAreExecutedInArrivalOrderAndSoundsLast) {
     bus.publish(events::PlayMusicEvent{.music = THEME, .loop = false});
-    bus.publish(events::PlaySoundEvent{.sound = LASER});
-    bus.publish(events::StopAllSoundsEvent{});
+    bus.publish(events::PlaySoundEvent{.sound = EXPLOSION});
     bus.publish(events::StopMusicEvent{});
-    audioSystem.update();
+    audioSystem.update(registry);
 
-    const std::vector<std::string> expected{"playMusic 1 once", "playSound", "stopAllSounds", "stopMusic"};
+    const std::vector<std::string> expected{"playMusic 1 once", "stopMusic", "playSound"};
     EXPECT_EQ(backend.calls(), expected);
 }
 
-TEST(AudioSystem, SameSoundInOneUpdatePlaysOnce) {
-    FakeAudioBackend backend;
-    ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
+TEST_F(AudioSystemTest, StopAllSoundsDropsEarlierRequestsOfTheSameUpdate) {
+    bus.publish(events::PlaySoundEvent{.sound = LASER});
+    bus.publish(events::StopAllSoundsEvent{});
+    bus.publish(events::PlaySoundEvent{.sound = EXPLOSION});
+    audioSystem.update(registry);
 
+    const std::vector<std::string> expected{"stopAllSounds", "playSound"};
+    EXPECT_EQ(backend.calls(), expected);
+    ASSERT_EQ(backend.sounds().size(), 1U);
+    EXPECT_EQ(backend.sounds()[0].id, EXPLOSION);
+}
+
+TEST_F(AudioSystemTest, SameSoundInOneUpdatePlaysOnce) {
     bus.publish(events::PlaySoundEvent{.sound = LASER});
     bus.publish(events::PlaySoundEvent{.sound = LASER});
     bus.publish(events::PlaySoundEvent{.sound = EXPLOSION});
     bus.publish(events::PlaySoundEvent{.sound = LASER});
-    audioSystem.update();
+    audioSystem.update(registry);
     EXPECT_EQ(backend.sounds().size(), 2U);
 
     bus.publish(events::PlaySoundEvent{.sound = LASER});
-    audioSystem.update();
+    audioSystem.update(registry);
     EXPECT_EQ(backend.sounds().size(), 3U);
 }
 
-TEST(AudioSystem, InvalidHandlesAreIgnored) {
-    FakeAudioBackend backend;
-    ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
-
+TEST_F(AudioSystemTest, InvalidHandlesAreIgnored) {
     bus.publish(events::PlaySoundEvent{});
     bus.publish(events::PlayMusicEvent{});
-    audioSystem.update();
+    audioSystem.update(registry);
 
     EXPECT_TRUE(backend.calls().empty());
 }
 
-TEST(AudioSystem, SoundQueueIsBounded) {
-    FakeAudioBackend backend;
-    ecs::EventBus bus;
-    systems::AudioSystem audioSystem(backend, bus);
-
+TEST_F(AudioSystemTest, SoundQueueIsBounded) {
     for (std::size_t i = 1; i <= audio::MAX_QUEUED_SOUNDS + 50; ++i) {
         bus.publish(events::PlaySoundEvent{.sound = static_cast<audio::SoundId>(i)});
     }
     bus.publish(events::PlayMusicEvent{.music = THEME});
-    audioSystem.update();
+    audioSystem.update(registry);
 
     EXPECT_EQ(backend.sounds().size(), audio::MAX_QUEUED_SOUNDS);
-    EXPECT_EQ(backend.calls().back(), "playMusic 1 loop") << "non-sound events are never dropped";
+    EXPECT_EQ(backend.calls().front(), "playMusic 1 loop") << "non-sound events are never dropped";
 }
 
 TEST(AudioSystem, StopsListeningWhenDestroyed) {
@@ -209,12 +278,89 @@ TEST(AudioSystem, StopsListeningWhenDestroyed) {
 TEST(AudioSystem, WorksWithAMutedBackend) {
     audio::NullAudioBackend backend;
     ecs::EventBus bus;
+    ecs::Registry registry;
     systems::AudioSystem audioSystem(backend, bus);
 
-    bus.publish(events::PlaySoundEvent{.sound = LASER});
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 10.0F, .y = 0.0F}});
     bus.publish(events::PlayMusicEvent{.music = THEME});
     bus.publish(events::SetAudioVolumeEvent{.bus = audio::AudioBus::Sfx, .volume = 0.5F});
-    EXPECT_NO_THROW(audioSystem.update());
+    EXPECT_NO_THROW(audioSystem.update(registry));
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Positioned sounds
+// ---------------------------------------------------------------------------------------------------------------------
+
+TEST_F(AudioSystemTest, PositionedSoundIsPannedTowardsItsSide) {
+    spawnListener(640.0F, 360.0F);
+    const audio::SpatialConfig& config = audioSystem.spatialConfig();
+
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 960.0F, .y = 360.0F}});
+    bus.publish(events::PlaySoundEvent{.sound = EXPLOSION, .position = audio::SoundPosition{.x = 0.0F, .y = 360.0F}});
+    audioSystem.update(registry);
+
+    ASSERT_EQ(backend.sounds().size(), 2U);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.pan, 320.0F / config.panRange * config.maxPan);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, audio::MAX_VOLUME) << "visible sounds keep their volume";
+    EXPECT_FLOAT_EQ(backend.sounds()[1].params.pan, -config.maxPan);
+}
+
+TEST_F(AudioSystemTest, DistantSoundsFadeAndSilentOnesAreSkipped) {
+    spawnListener(0.0F, 0.0F);
+    audioSystem.setSpatialConfig({.minDistance = 100.0F, .maxDistance = 300.0F});
+
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .volume = 0.8F, .position = audio::SoundPosition{.x = 200.0F}});
+    bus.publish(events::PlaySoundEvent{.sound = EXPLOSION, .position = audio::SoundPosition{.x = 400.0F}});
+    audioSystem.update(registry);
+
+    ASSERT_EQ(backend.sounds().size(), 1U) << "a silent sound must not take a voice";
+    EXPECT_EQ(backend.sounds()[0].id, LASER);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, 0.4F);
+}
+
+TEST_F(AudioSystemTest, LoudestRequestOfTheSameSoundWins) {
+    spawnListener(0.0F, 0.0F);
+    audioSystem.setSpatialConfig({.minDistance = 100.0F, .maxDistance = 300.0F});
+
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 250.0F}});
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = -150.0F}});
+    audioSystem.update(registry);
+
+    ASSERT_EQ(backend.sounds().size(), 1U);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, 0.75F);
+    EXPECT_LT(backend.sounds()[0].params.pan, audio::PAN_CENTER) << "the closer emitter, on the left, is kept";
+}
+
+TEST_F(AudioSystemTest, SoundsAreNotSpatializedWithoutListener) {
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 5000.0F}});
+    audioSystem.update(registry);
+
+    ASSERT_EQ(backend.sounds().size(), 1U);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, audio::MAX_VOLUME);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.pan, audio::PAN_CENTER);
+}
+
+TEST_F(AudioSystemTest, InactiveListenerIsIgnored) {
+    spawnListener(5000.0F, 0.0F, false);
+    spawnListener(0.0F, 0.0F);
+
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 100.0F}});
+    audioSystem.update(registry);
+
+    ASSERT_EQ(backend.sounds().size(), 1U);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, audio::MAX_VOLUME);
+    EXPECT_GT(backend.sounds()[0].params.pan, audio::PAN_CENTER);
+}
+
+TEST_F(AudioSystemTest, UnpositionedSoundIgnoresTheListener) {
+    spawnListener(5000.0F, 0.0F);
+
+    bus.publish(events::PlaySoundEvent{.sound = LASER});
+    audioSystem.update(registry);
+
+    ASSERT_EQ(backend.sounds().size(), 1U);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, audio::MAX_VOLUME);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.pan, audio::PAN_CENTER);
 }
 
 int main(int argc, char** argv) {

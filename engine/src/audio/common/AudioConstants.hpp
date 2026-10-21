@@ -48,4 +48,16 @@ inline constexpr std::size_t DEFAULT_MAX_ACTIVE_VOICES = 32;
 /** @brief Sound requests kept between two audio updates; extra requests are dropped. */
 inline constexpr std::size_t MAX_QUEUED_SOUNDS = 128;
 
+/** @brief Default horizontal distance to the listener, in world units, at which a sound reaches its widest pan. */
+inline constexpr float DEFAULT_PAN_RANGE = 640.0F;
+
+/** @brief Default widest pan of positioned sounds; fully one-sided sounds tire the ear on headphones. */
+inline constexpr float DEFAULT_MAX_PAN = 0.6F;
+
+/** @brief Default distance to the listener, in world units, under which positioned sounds keep their full volume. */
+inline constexpr float DEFAULT_MIN_DISTANCE = 750.0F;
+
+/** @brief Default distance to the listener, in world units, from which positioned sounds are silent. */
+inline constexpr float DEFAULT_MAX_DISTANCE = 1500.0F;
+
 }  // namespace audio
