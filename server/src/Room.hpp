@@ -131,9 +131,9 @@ class Room {
 
     /**
      * @brief One fixed simulation step: applies the pending inputs, then the systems.
-     * @param time Time of this step; systems use `time.deltaTime`.
+     * @param registry
      */
-    void step(const ecs::time::Time& time);
+    void step(const ecs::Registry& registry);
 
     /** @brief Maximum number of players. */
     std::uint8_t _maxPlayers;

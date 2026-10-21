@@ -8,8 +8,8 @@
 #include <vector>
 
 #include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
-#include "ecs/time/Time.hpp"
 
 namespace rtype::server {
 
@@ -59,10 +59,10 @@ std::size_t Room::advance() {
     if (!_playing) {
         return 0;
     }
-    return _clock.tick(_fixedDt, [this](const ecs::time::Time& time) { step(time); });
+    return _clock.tick(_fixedDt, _registry, [this](const ecs::Registry& registry) { step(registry); });
 }
 
-void Room::step([[maybe_unused]] const ecs::time::Time& time) {
+void Room::step([[maybe_unused]] const ecs::Registry& registry) {
     for (auto& data : _players | std::views::values) {
         if (!data.pendingInput) {
             continue;
