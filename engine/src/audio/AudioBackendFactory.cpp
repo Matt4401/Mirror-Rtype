@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "audio/AudioTypes.hpp"
+#include "audio/AudioConfig.hpp"
 #include "audio/IAudioBackend.hpp"
 #include "audio/NullAudioBackend.hpp"
 #include "audio/detail/RaylibAudioBackend.hpp"

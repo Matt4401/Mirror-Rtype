@@ -4,6 +4,7 @@
 #include <string>
 
 #include "audio/AudioTypes.hpp"
+#include "audio/SoundParams.hpp"
 
 namespace audio {
 
@@ -78,13 +79,13 @@ class IAudioBackend {
 
     /**
      * @brief Sets the gain of music streams.
-     * @param volume Linear gain in [0.0F, 1.0F].
+     * @param volume Linear gain in [`MIN_VOLUME`, `MAX_VOLUME`].
      */
     virtual void setMusicVolume(float volume) = 0;
 
     /**
      * @brief Sets the global output gain applied to every sound and music.
-     * @param volume Linear gain in [0.0F, 1.0F].
+     * @param volume Linear gain in [`MIN_VOLUME`, `MAX_VOLUME`].
      */
     virtual void setMasterVolume(float volume) = 0;
 

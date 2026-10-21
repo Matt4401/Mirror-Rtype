@@ -7,8 +7,11 @@
 #include <string>
 #include <vector>
 
+#include "audio/AudioConfig.hpp"
+#include "audio/AudioConstants.hpp"
 #include "audio/AudioTypes.hpp"
 #include "audio/IAudioBackend.hpp"
+#include "audio/SoundParams.hpp"
 
 namespace audio::detail {
 
@@ -121,7 +124,7 @@ class RaylibAudioBackend final : public IAudioBackend {
     /** @brief Music currently played, or `NO_MUSIC`. */
     MusicId _currentMusic = NO_MUSIC;
     /** @brief Gain applied to music streams. */
-    float _musicVolume = 1.0F;
+    float _musicVolume = DEFAULT_VOLUME;
     /** @brief Incremented on every play to stamp `Voice::startedAt`. */
     std::uint64_t _playCounter = 0;
 };

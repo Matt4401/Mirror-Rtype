@@ -11,14 +11,14 @@
 #include <utility>
 #include <vector>
 
+#include "audio/AudioConfig.hpp"
+#include "audio/AudioConstants.hpp"
 #include "audio/AudioTypes.hpp"
+#include "audio/SoundParams.hpp"
 
 namespace audio::detail {
 
 namespace {
-
-constexpr float MIN_PITCH = 0.1F;
-constexpr float MAX_PITCH = 4.0F;
 
 /** @brief Set while a backend owns raylib's global audio device. */
 std::atomic_bool& deviceClaimed() {
@@ -115,9 +115,9 @@ bool RaylibAudioBackend::playSound(SoundId id, const SoundParams& params) {
 
     Voice& voice = acquireVoice(*slot);
     StopSound(voice.sound);
-    SetSoundVolume(voice.sound, sanitize(params.volume, 1.0F, 0.0F, 1.0F));
-    SetSoundPan(voice.sound, sanitize(params.pan, 0.0F, -1.0F, 1.0F));
-    SetSoundPitch(voice.sound, sanitize(params.pitch, 1.0F, MIN_PITCH, MAX_PITCH));
+    SetSoundVolume(voice.sound, sanitize(params.volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME));
+    SetSoundPan(voice.sound, sanitize(params.pan, PAN_CENTER, PAN_LEFT, PAN_RIGHT));
+    SetSoundPitch(voice.sound, sanitize(params.pitch, DEFAULT_PITCH, MIN_PITCH, MAX_PITCH));
     PlaySound(voice.sound);
     voice.startedAt = ++_playCounter;
     return true;
@@ -156,7 +156,7 @@ void RaylibAudioBackend::stopMusic() {
 }
 
 void RaylibAudioBackend::setMusicVolume(float volume) {
-    _musicVolume = sanitize(volume, 1.0F, 0.0F, 1.0F);
+    _musicVolume = sanitize(volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME);
     if (const Music* music = findMusic(_currentMusic); music != nullptr) {
         SetMusicVolume(*music, _musicVolume);
     }
@@ -164,7 +164,7 @@ void RaylibAudioBackend::setMusicVolume(float volume) {
 
 void RaylibAudioBackend::setMasterVolume(float volume) {
     if (_available) {
-        SetMasterVolume(sanitize(volume, 1.0F, 0.0F, 1.0F));
+        SetMasterVolume(sanitize(volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME));
     }
 }
 

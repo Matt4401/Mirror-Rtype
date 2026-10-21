@@ -2,7 +2,7 @@
 
 #include <memory>
 
-#include "audio/AudioTypes.hpp"
+#include "audio/AudioConfig.hpp"
 #include "audio/IAudioBackend.hpp"
 
 namespace audio {
@@ -21,6 +21,5 @@ namespace audio {
 [[nodiscard]] std::unique_ptr<IAudioBackend> makeAudioBackend(AudioConfig config = AudioConfig{});
 
 }  // namespace audio
-
 
 // faudra add les autres icic

@@ -3,8 +3,10 @@
 #include <cstddef>
 #include <string>
 
+#include "audio/AudioConstants.hpp"
 #include "audio/AudioTypes.hpp"
 #include "audio/IAudioBackend.hpp"
+#include "audio/SoundParams.hpp"
 
 namespace audio {
 
