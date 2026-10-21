@@ -31,11 +31,12 @@ target("engine_all")
     set_kind("phony")
     add_deps("engine_core", "engine_time", "engine_events", "engine_scripting", "engine_physics")
     if has_config("graphics") then
-        add_deps("engine_render")
+        add_deps("engine_render", "engine_audio")
     end
 
 if has_config("graphics") then
     includes("render")
+    includes("audio")
     includes("input")
 end
 

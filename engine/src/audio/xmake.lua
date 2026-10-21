@@ -1,0 +1,5 @@
+target("engine_audio")
+    set_kind("static")
+    add_files("**.cpp")
+    add_deps("engine_core", {public = true})
+    add_packages("raylib")
