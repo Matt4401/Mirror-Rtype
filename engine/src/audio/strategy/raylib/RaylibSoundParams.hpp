@@ -2,9 +2,9 @@
 
 #include <raylib.h>
 
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioMiddleware.hpp"
-#include "audio/common/SoundParams.hpp"
+#include "audio/AudioMiddleware.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/SoundParams.hpp"
 
 namespace audio::detail {
 

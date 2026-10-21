@@ -1,4 +1,4 @@
-#include "audio/detail/raylib/RaylibAudioBackend.hpp"
+#include "audio/strategy/raylib/RaylibAudioBackend.hpp"
 
 #include <raylib.h>
 
@@ -10,13 +10,13 @@
 #include <utility>
 #include <vector>
 
-#include "audio/common/AudioConfig.hpp"
-#include "audio/common/AudioConstants.hpp"
-#include "audio/common/AudioMiddleware.hpp"
-#include "audio/common/AudioTypes.hpp"
-#include "audio/common/SoundParams.hpp"
-#include "audio/detail/raylib/RaylibAudioDevice.hpp"
-#include "audio/detail/raylib/RaylibSoundParams.hpp"
+#include "audio/AudioMiddleware.hpp"
+#include "audio/strategy/raylib/RaylibAudioDevice.hpp"
+#include "audio/strategy/raylib/RaylibSoundParams.hpp"
+#include "audio/types/AudioConfig.hpp"
+#include "audio/types/AudioConstants.hpp"
+#include "audio/types/AudioTypes.hpp"
+#include "audio/types/SoundParams.hpp"
 
 namespace audio::detail {
 
@@ -220,7 +220,7 @@ RaylibAudioBackend::Voice* RaylibAudioBackend::findPlayingVoice(VoiceId voice) {
 RaylibAudioBackend::Voice& RaylibAudioBackend::acquireVoice(SoundSlot& slot) {
     const auto idle =
         std::ranges::find_if(slot.voices, [](const Voice& voice) { return !IsSoundPlaying(voice.sound); });
-    
+
     if (idle == slot.voices.end()) {
         return *std::ranges::min_element(slot.voices, {}, &Voice::startedAt);
     }
