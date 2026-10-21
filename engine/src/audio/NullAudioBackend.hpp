@@ -42,7 +42,13 @@ class NullAudioBackend final : public IAudioBackend {
     [[nodiscard]] MusicId loadMusic(const std::string& /*path*/) override { return NO_MUSIC; }
 
     /** @copydoc IAudioBackend::playSound */
-    bool playSound(SoundId /*id*/, const SoundParams& /*params*/) override { return false; }
+    VoiceId playSound(SoundId /*id*/, const SoundParams& /*params*/) override { return NO_VOICE; }
+
+    /** @copydoc IAudioBackend::updateVoice */
+    bool updateVoice(VoiceId /*voice*/, const SoundParams& /*params*/) override { return false; }
+
+    /** @copydoc IAudioBackend::stopVoice */
+    void stopVoice(VoiceId /*voice*/) override {}
 
     /** @copydoc IAudioBackend::stopAllSounds */
     void stopAllSounds() override {}

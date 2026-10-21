@@ -11,6 +11,7 @@
 #include "audio/common/AudioSpatial.hpp"
 #include "audio/common/AudioTypes.hpp"
 #include "audio/common/SoundParams.hpp"
+#include "components/AudioEmitter.hpp"
 #include "components/AudioListener.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
@@ -61,6 +62,9 @@ AudioSystem::~AudioSystem() {
     for (auto& unsubscribe : _unsubscribers) {
         unsubscribe();
     }
+    for (const auto& [entity, state] : _emitters) {
+        _backend->stopVoice(state.voice);
+    }
 }
 
 void AudioSystem::update(ecs::Registry& registry) {
@@ -75,6 +79,8 @@ void AudioSystem::update(ecs::Registry& registry) {
         _backend->playSound(sound.id, sound.params);
     }
     _pendingSounds.clear();
+
+    updateEmitters(registry);
     _backend->update();
 }
 
@@ -117,14 +123,62 @@ void AudioSystem::enqueue(const events::PlaySoundEvent& event) {
 
 void AudioSystem::enqueue(const AudioCommand& command) { _queue.push_back(command); }
 
-void AudioSystem::execute(const events::PlaySoundEvent& event) {
-    const float volume = audio::clampFinite(event.volume, audio::DEFAULT_VOLUME, audio::MIN_VOLUME, audio::MAX_VOLUME);
-    audio::SoundParams params{.volume = volume * _sfxVolume, .pitch = event.pitch};
-    if (event.position && _listener) {
-        const audio::SpatialGains gains = audio::computeSpatial(*event.position, *_listener, _spatial);
+audio::SoundParams AudioSystem::resolveParams(float volume, float pitch,
+                                              const std::optional<audio::SoundPosition>& position) const {
+    const float gain = audio::clampFinite(volume, audio::DEFAULT_VOLUME, audio::MIN_VOLUME, audio::MAX_VOLUME);
+    audio::SoundParams params{.volume = gain * _sfxVolume, .pitch = pitch};
+    if (position && _listener) {
+        const audio::SpatialGains gains = audio::computeSpatial(*position, *_listener, _spatial);
         params.volume *= gains.volume;
         params.pan = gains.pan;
     }
+    return params;
+}
+
+void AudioSystem::updateEmitters(ecs::Registry& registry) {
+    for (auto& [entity, state] : _emitters) {
+        state.seen = false;
+    }
+
+    registry.runSystem<ecs::AudioEmitter, ecs::Transform>(
+        [this](ecs::Entity entity, const ecs::AudioEmitter& emitter, const ecs::Transform& transform) {
+            EmitterState& state = _emitters[entity];
+            state.seen = true;
+            const bool active = emitter.playing && emitter.sound != audio::NO_SOUND;
+            if (!active || emitter.sound != state.sound) {
+                _backend->stopVoice(state.voice);
+                state = EmitterState{.sound = emitter.sound, .seen = true};
+                if (!active) {
+                    return;
+                }
+            }
+
+            const audio::SoundParams params =
+                resolveParams(emitter.volume, emitter.pitch, audio::SoundPosition{.x = transform.x, .y = transform.y});
+            // Still playing: move it with the entity.
+            if (_backend->updateVoice(state.voice, params)) {
+                return;
+            }
+            // Ended, stolen by another sound, or not started yet. An inaudible emitter waits to come closer.
+            if ((state.started && !emitter.loop) || params.volume <= audio::MIN_VOLUME) {
+                return;
+            }
+            state.voice = _backend->playSound(emitter.sound, params);
+            state.started = true;
+        });
+
+    // The entity was destroyed or lost its emitter: silence it.
+    std::erase_if(_emitters, [this](const auto& entry) {
+        if (entry.second.seen) {
+            return false;
+        }
+        _backend->stopVoice(entry.second.voice);
+        return true;
+    });
+}
+
+void AudioSystem::execute(const events::PlaySoundEvent& event) {
+    const audio::SoundParams params = resolveParams(event.volume, event.pitch, event.position);
     // An inaudible sound (too far, or muted bus) would only take a voice from an audible one.
     if (params.volume <= audio::MIN_VOLUME) {
         return;

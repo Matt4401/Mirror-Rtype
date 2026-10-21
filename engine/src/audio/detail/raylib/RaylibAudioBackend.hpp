@@ -61,7 +61,13 @@ class RaylibAudioBackend final : public IAudioBackend {
     [[nodiscard]] MusicId loadMusic(const std::string& path) override;
 
     /** @copydoc IAudioBackend::playSound */
-    bool playSound(SoundId id, const SoundParams& params) override;
+    VoiceId playSound(SoundId id, const SoundParams& params) override;
+
+    /** @copydoc IAudioBackend::updateVoice */
+    bool updateVoice(VoiceId voice, const SoundParams& params) override;
+
+    /** @copydoc IAudioBackend::stopVoice */
+    void stopVoice(VoiceId voice) override;
 
     /** @copydoc IAudioBackend::stopAllSounds */
     void stopAllSounds() override;
@@ -90,7 +96,7 @@ class RaylibAudioBackend final : public IAudioBackend {
         /** @brief raylib alias of the source sound. */
         Sound sound{};
         /** @brief Play order stamp; the oldest voice has the smallest value. */
-        std::uint64_t startedAt = 0;
+        VoiceId startedAt = NO_VOICE;
     };
 
     /** @brief A loaded sound effect and its voices. */
@@ -110,6 +116,9 @@ class RaylibAudioBackend final : public IAudioBackend {
     /** @brief Returns the playing voice started first across all sounds, or nullptr if none plays. */
     [[nodiscard]] Voice* oldestPlayingVoice();
 
+    /** @brief Returns the voice still playing the instance `voice`, or nullptr if it ended or was reused. */
+    [[nodiscard]] Voice* findPlayingVoice(VoiceId voice);
+
     /** @brief Picks the voice to use for a new instance of `slot`, stopping another one if a limit is reached. */
     [[nodiscard]] Voice& acquireVoice(SoundSlot& slot);
 
@@ -125,7 +134,7 @@ class RaylibAudioBackend final : public IAudioBackend {
     MusicId _currentMusic = NO_MUSIC;
     /** @brief Gain applied to music streams. */
     float _musicVolume = DEFAULT_VOLUME;
-    /** @brief Incremented on every play to stamp `Voice::startedAt`. */
+    /** @brief Incremented on every play to stamp `Voice::startedAt`, which doubles as the `VoiceId`. */
     std::uint64_t _playCounter = 0;
 };
 

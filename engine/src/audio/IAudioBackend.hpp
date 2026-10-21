@@ -57,9 +57,24 @@ class IAudioBackend {
      *
      * @param id Handle returned by `loadSound`.
      * @param params Volume, panning and pitch of this instance.
-     * @return True if the sound started, false if the handle is unknown or the backend is muted.
+     * @return A handle to control this instance, or `NO_VOICE` if the sound is unknown or the backend is muted.
      */
-    virtual bool playSound(SoundId id, const SoundParams& params) = 0;
+    virtual VoiceId playSound(SoundId id, const SoundParams& params) = 0;
+
+    /**
+     * @brief Changes the volume, panning and pitch of a playing instance, e.g. to follow a moving emitter.
+     *
+     * @param voice Handle returned by `playSound`.
+     * @param params New settings.
+     * @return True if the instance is still playing, false if it ended or was stopped to make room.
+     */
+    virtual bool updateVoice(VoiceId voice, const SoundParams& params) = 0;
+
+    /**
+     * @brief Stops a playing instance; does nothing if it already ended.
+     * @param voice Handle returned by `playSound`.
+     */
+    virtual void stopVoice(VoiceId voice) = 0;
 
     /** @brief Stops every playing sound effect instance. */
     virtual void stopAllSounds() = 0;

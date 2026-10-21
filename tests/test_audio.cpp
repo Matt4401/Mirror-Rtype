@@ -62,8 +62,8 @@ std::filesystem::path writeSineWav(const std::string& name, float seconds) {
 TEST(RaylibAudioBackend, UnknownHandlesAreIgnored) {
     audio::detail::RaylibAudioBackend backend;
 
-    EXPECT_FALSE(backend.playSound(audio::NO_SOUND, {}));
-    EXPECT_FALSE(backend.playSound(42, {}));
+    EXPECT_EQ(backend.playSound(audio::NO_SOUND, {}), audio::NO_VOICE);
+    EXPECT_EQ(backend.playSound(42, {}), audio::NO_VOICE);
     backend.playMusic(audio::NO_MUSIC, true);
     backend.playMusic(42, true);
     backend.stopMusic();
@@ -105,7 +105,7 @@ TEST(RaylibAudioBackend, VoicesPerSoundAreBounded) {
     ASSERT_NE(sound, audio::NO_SOUND);
 
     for (int i = 0; i < 5; ++i) {
-        EXPECT_TRUE(backend.playSound(sound, {.volume = 0.0F}));
+        EXPECT_NE(backend.playSound(sound, {.volume = 0.0F}), audio::NO_VOICE);
     }
     EXPECT_EQ(backend.activeVoiceCount(), 2U);
 
@@ -125,8 +125,8 @@ TEST(RaylibAudioBackend, ActiveVoicesAreBoundedAcrossSounds) {
     ASSERT_NE(second, audio::NO_SOUND);
 
     for (int i = 0; i < 3; ++i) {
-        EXPECT_TRUE(backend.playSound(first, {.volume = 0.0F}));
-        EXPECT_TRUE(backend.playSound(second, {.volume = 0.0F}));
+        EXPECT_NE(backend.playSound(first, {.volume = 0.0F}), audio::NO_VOICE);
+        EXPECT_NE(backend.playSound(second, {.volume = 0.0F}), audio::NO_VOICE);
     }
     EXPECT_EQ(backend.activeVoiceCount(), 3U);
 }
@@ -147,16 +147,40 @@ TEST(RaylibAudioBackend, MusicCanBePlayedAndStopped) {
     backend.update();
 }
 
+TEST(RaylibAudioBackend, VoicesCanBeUpdatedAndStopped) {
+    audio::detail::RaylibAudioBackend backend(audio::AudioConfig{.voicesPerSound = 1});
+    if (!backend.isAvailable()) {
+        GTEST_SKIP() << "No audio device available";
+    }
+    const audio::SoundId sound = backend.loadSound(writeSineWav("mirror_rtype_voice.wav", 1.0F).string());
+    ASSERT_NE(sound, audio::NO_SOUND);
+
+    const audio::VoiceId first = backend.playSound(sound, {.volume = 0.0F});
+    ASSERT_NE(first, audio::NO_VOICE);
+    EXPECT_TRUE(backend.updateVoice(first, {.volume = 0.0F, .pan = audio::PAN_LEFT}));
+
+    const audio::VoiceId second = backend.playSound(sound, {.volume = 0.0F});
+    EXPECT_NE(second, first);
+    EXPECT_FALSE(backend.updateVoice(first, {.volume = 0.0F})) << "the only voice now plays the second instance";
+    EXPECT_TRUE(backend.updateVoice(second, {.volume = 0.0F}));
+
+    backend.stopVoice(second);
+    EXPECT_FALSE(backend.updateVoice(second, {.volume = 0.0F}));
+    EXPECT_EQ(backend.activeVoiceCount(), 0U);
+}
+
 TEST(NullAudioBackend, IsMutedAndIgnoresEverything) {
     audio::NullAudioBackend backend;
 
     EXPECT_FALSE(backend.isAvailable());
     EXPECT_EQ(backend.loadSound("laser.wav"), audio::NO_SOUND);
     EXPECT_EQ(backend.loadMusic("theme.ogg"), audio::NO_MUSIC);
-    EXPECT_FALSE(backend.playSound(1, {}));
+    EXPECT_EQ(backend.playSound(1, {}), audio::NO_VOICE);
     backend.playMusic(1, true);
     backend.setMasterVolume(0.5F);
     backend.update();
+    EXPECT_FALSE(backend.updateVoice(1, {}));
+    backend.stopVoice(1);
     EXPECT_EQ(backend.activeVoiceCount(), 0U);
 }
 
@@ -164,7 +188,7 @@ TEST(AudioBackendFactory, AlwaysReturnsABackend) {
     const std::unique_ptr<audio::IAudioBackend> backend = audio::makeAudioBackend();
 
     ASSERT_NE(backend, nullptr);
-    EXPECT_EQ(backend->playSound(audio::NO_SOUND, {}), false);
+    EXPECT_EQ(backend->playSound(audio::NO_SOUND, {}), audio::NO_VOICE);
 }
 
 TEST(AudioBackendFactory, ReleasesTheDeviceWithTheBackend) {

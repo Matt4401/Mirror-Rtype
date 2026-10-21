@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <limits>
 #include <string>
@@ -12,6 +13,7 @@
 #include "audio/common/AudioTypes.hpp"
 #include "audio/common/SoundParams.hpp"
 #include "audio/common/SpatialConfig.hpp"
+#include "components/AudioEmitter.hpp"
 #include "components/AudioListener.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
@@ -34,12 +36,28 @@ class FakeAudioBackend final : public audio::IAudioBackend {
     [[nodiscard]] audio::SoundId loadSound(const std::string& /*path*/) override { return audio::NO_SOUND; }
     [[nodiscard]] audio::MusicId loadMusic(const std::string& /*path*/) override { return audio::NO_MUSIC; }
 
-    bool playSound(audio::SoundId id, const audio::SoundParams& params) override {
+    audio::VoiceId playSound(audio::SoundId id, const audio::SoundParams& params) override {
         _sounds.push_back({.id = id, .params = params});
         _calls.emplace_back("playSound");
+        _playing.push_back(++_lastVoice);
+        return _lastVoice;
+    }
+    bool updateVoice(audio::VoiceId voice, const audio::SoundParams& params) override {
+        if (!std::ranges::contains(_playing, voice)) {
+            return false;
+        }
+        _lastUpdate = params;
         return true;
     }
-    void stopAllSounds() override { _calls.emplace_back("stopAllSounds"); }
+    void stopVoice(audio::VoiceId voice) override {
+        if (std::erase(_playing, voice) > 0) {
+            _calls.emplace_back("stopVoice");
+        }
+    }
+    void stopAllSounds() override {
+        _calls.emplace_back("stopAllSounds");
+        _playing.clear();
+    }
     void playMusic(audio::MusicId id, bool loop) override {
         _calls.push_back("playMusic " + std::to_string(id) + (loop ? " loop" : " once"));
     }
@@ -54,6 +72,11 @@ class FakeAudioBackend final : public audio::IAudioBackend {
     [[nodiscard]] float masterVolume() const { return _masterVolume; }
     [[nodiscard]] float musicVolume() const { return _musicVolume; }
     [[nodiscard]] int updates() const { return _updates; }
+    [[nodiscard]] std::size_t playingCount() const { return _playing.size(); }
+    [[nodiscard]] const audio::SoundParams& lastUpdate() const { return _lastUpdate; }
+
+    /** @brief Simulates every playing instance reaching its end. */
+    void endAllVoices() { _playing.clear(); }
 
   private:
     std::vector<PlayedSound> _sounds;
@@ -61,6 +84,9 @@ class FakeAudioBackend final : public audio::IAudioBackend {
     float _masterVolume = -1.0F;
     float _musicVolume = -1.0F;
     int _updates = 0;
+    std::vector<audio::VoiceId> _playing;
+    audio::VoiceId _lastVoice = audio::NO_VOICE;
+    audio::SoundParams _lastUpdate;
 };
 
 constexpr audio::SoundId LASER = 1;
@@ -75,6 +101,14 @@ class AudioSystemTest : public ::testing::Test {
         const ecs::Entity entity = registry.spawnEntity();
         registry.addComponent<ecs::Transform>(entity, ecs::Transform{.x = x, .y = y});
         registry.addComponent<ecs::AudioListener>(entity, ecs::AudioListener{.active = active});
+        return entity;
+    }
+
+    /** @brief Adds an entity emitting `sound` at the given world position. */
+    ecs::Entity spawnEmitter(float x, float y, audio::SoundId sound, bool loop = true) {
+        const ecs::Entity entity = registry.spawnEntity();
+        registry.addComponent<ecs::Transform>(entity, ecs::Transform{.x = x, .y = y});
+        registry.addComponent<ecs::AudioEmitter>(entity, ecs::AudioEmitter{.sound = sound, .loop = loop});
         return entity;
     }
 
@@ -361,6 +395,99 @@ TEST_F(AudioSystemTest, UnpositionedSoundIgnoresTheListener) {
     ASSERT_EQ(backend.sounds().size(), 1U);
     EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, audio::MAX_VOLUME);
     EXPECT_FLOAT_EQ(backend.sounds()[0].params.pan, audio::PAN_CENTER);
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Emitters
+// ---------------------------------------------------------------------------------------------------------------------
+
+TEST_F(AudioSystemTest, EmitterSoundFollowsItsEntity) {
+    spawnListener(640.0F, 360.0F);
+    const ecs::Entity ship = spawnEmitter(0.0F, 360.0F, LASER);
+    const audio::SpatialConfig& config = audioSystem.spatialConfig();
+
+    audioSystem.update(registry);
+    ASSERT_EQ(backend.sounds().size(), 1U);
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.pan, -config.maxPan);
+
+    registry.getComponents<ecs::Transform>().get(ship).x = 1280.0F;
+    audioSystem.update(registry);
+    EXPECT_EQ(backend.sounds().size(), 1U) << "the playing instance is moved, not restarted";
+    EXPECT_FLOAT_EQ(backend.lastUpdate().pan, config.maxPan);
+}
+
+TEST_F(AudioSystemTest, LoopingEmitterRestartsWhenItsSoundEnds) {
+    spawnEmitter(0.0F, 0.0F, LASER);
+
+    audioSystem.update(registry);
+    backend.endAllVoices();
+    audioSystem.update(registry);
+
+    EXPECT_EQ(backend.sounds().size(), 2U);
+}
+
+TEST_F(AudioSystemTest, NonLoopingEmitterPlaysOnce) {
+    spawnEmitter(0.0F, 0.0F, LASER, false);
+
+    audioSystem.update(registry);
+    backend.endAllVoices();
+    audioSystem.update(registry);
+
+    EXPECT_EQ(backend.sounds().size(), 1U);
+}
+
+TEST_F(AudioSystemTest, EmitterStopsWithItsEntity) {
+    const ecs::Entity ship = spawnEmitter(0.0F, 0.0F, LASER);
+    audioSystem.update(registry);
+    ASSERT_EQ(backend.playingCount(), 1U);
+
+    registry.killEntity(ship);
+    audioSystem.update(registry);
+
+    EXPECT_EQ(backend.playingCount(), 0U);
+    EXPECT_EQ(backend.calls().back(), "stopVoice");
+}
+
+TEST_F(AudioSystemTest, EmitterCanBePausedAndResumed) {
+    const ecs::Entity ship = spawnEmitter(0.0F, 0.0F, LASER, false);
+    audioSystem.update(registry);
+
+    registry.getComponents<ecs::AudioEmitter>().get(ship).playing = false;
+    audioSystem.update(registry);
+    EXPECT_EQ(backend.playingCount(), 0U);
+
+    registry.getComponents<ecs::AudioEmitter>().get(ship).playing = true;
+    audioSystem.update(registry);
+    EXPECT_EQ(backend.playingCount(), 1U);
+    EXPECT_EQ(backend.sounds().size(), 2U);
+}
+
+TEST_F(AudioSystemTest, InaudibleEmitterStartsWhenItComesCloser) {
+    spawnListener(0.0F, 0.0F);
+    audioSystem.setSpatialConfig({.minDistance = 100.0F, .maxDistance = 300.0F});
+    const ecs::Entity ship = spawnEmitter(1000.0F, 0.0F, LASER);
+
+    audioSystem.update(registry);
+    EXPECT_TRUE(backend.sounds().empty());
+
+    registry.getComponents<ecs::Transform>().get(ship).x = 50.0F;
+    audioSystem.update(registry);
+    EXPECT_EQ(backend.sounds().size(), 1U);
+}
+
+TEST(AudioSystem, StopsEmittersWhenDestroyed) {
+    FakeAudioBackend backend;
+    ecs::EventBus bus;
+    ecs::Registry registry;
+    const ecs::Entity ship = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(ship, ecs::Transform{});
+    registry.addComponent<ecs::AudioEmitter>(ship, ecs::AudioEmitter{.sound = LASER});
+    {
+        systems::AudioSystem audioSystem(backend, bus);
+        audioSystem.update(registry);
+        ASSERT_EQ(backend.playingCount(), 1U);
+    }
+    EXPECT_EQ(backend.playingCount(), 0U);
 }
 
 int main(int argc, char** argv) {

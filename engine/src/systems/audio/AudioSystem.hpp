@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <unordered_map>
 #include <variant>
 #include <vector>
 
@@ -10,6 +11,7 @@
 #include "audio/common/AudioTypes.hpp"
 #include "audio/common/SoundParams.hpp"
 #include "audio/common/SpatialConfig.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/AudioEvents.hpp"
 #include "events/EventBus.hpp"
@@ -26,7 +28,8 @@ namespace systems {
  *
  * Gains are split in three buses: master, music and SFX. A sound plays at
  * `event volume x SFX volume x distance attenuation`, and the master volume is applied by the backend on top.
- * Sounds with a position are panned and attenuated around the first active `AudioListener` entity.
+ * Sounds with a position are panned and attenuated around the first active `AudioListener` entity, and entities
+ * with an `AudioEmitter` emit a sound that follows them while it plays.
  *
  * The backend and the event bus must outlive the system.
  */
@@ -40,7 +43,7 @@ class AudioSystem {
      */
     AudioSystem(audio::IAudioBackend& backend, ecs::EventBus& eventBus);
 
-    /** @brief Unsubscribes from the audio events. */
+    /** @brief Unsubscribes from the audio events and stops the sounds of the emitters. */
     ~AudioSystem();
 
     /** @brief Deleted copy constructor: the event listeners point to this instance. */
@@ -53,12 +56,14 @@ class AudioSystem {
     AudioSystem& operator=(AudioSystem&&) = delete;
 
     /**
-     * @brief Executes the queued audio events, then refills the music stream; call it once per frame.
+     * @brief Executes the queued audio events, updates the emitters, then refills the music stream.
+     *
+     * Call it once per frame, after the entities have moved.
      *
      * Sounds requested during the frame start after the other events, so a `StopAllSoundsEvent` drops the sounds
      * requested before it in the same frame.
      *
-     * @param registry Registry holding the `AudioListener` entity, if any.
+     * @param registry Registry holding the `AudioListener` and `AudioEmitter` entities.
      */
     void update(ecs::Registry& registry);
 
@@ -99,6 +104,25 @@ class AudioSystem {
         audio::SoundParams params;
     };
 
+    /** @brief Playback state of an `AudioEmitter` entity. */
+    struct EmitterState {
+        /** @brief Instance currently or last played, or `NO_VOICE`. */
+        audio::VoiceId voice = audio::NO_VOICE;
+        /** @brief Sound of that instance, to restart it if the component changes sound. */
+        audio::SoundId sound = audio::NO_SOUND;
+        /** @brief Whether the sound was started once, so a non-looping emitter plays only once. */
+        bool started = false;
+        /** @brief Whether the entity was still an emitter during the current update. */
+        bool seen = false;
+    };
+
+    /** @brief Combines a sound volume with the SFX bus and, when positioned, the listener's pan and attenuation. */
+    [[nodiscard]] audio::SoundParams resolveParams(float volume, float pitch,
+                                                   const std::optional<audio::SoundPosition>& position) const;
+
+    /** @brief Starts, follows and stops the sounds of the `AudioEmitter` entities. */
+    void updateEmitters(ecs::Registry& registry);
+
     /** @brief Queues a sound request, unless it is invalid or the queue is full. */
     void enqueue(const events::PlaySoundEvent& event);
 
@@ -126,6 +150,8 @@ class AudioSystem {
     std::size_t _queuedSounds = 0;
     /** @brief Sounds to start at the end of the current update, at most one per sound. */
     std::vector<PendingSound> _pendingSounds;
+    /** @brief Playback state of each emitter entity. */
+    std::unordered_map<ecs::Entity, EmitterState> _emitters;
     /** @brief Where sounds are heard from during the current update, if a listener exists. */
     std::optional<audio::SoundPosition> _listener;
     /** @brief Pan and attenuation settings. */

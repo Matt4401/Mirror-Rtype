@@ -16,6 +16,7 @@
 #include "audio/common/AudioTypes.hpp"
 #include "audio/common/SoundParams.hpp"
 #include "audio/detail/raylib/RaylibAudioDevice.hpp"
+#include "audio/detail/raylib/RaylibSoundParams.hpp"
 
 namespace audio::detail {
 
@@ -86,20 +87,33 @@ MusicId RaylibAudioBackend::loadMusic(const std::string& path) {
     return static_cast<MusicId>(_musics.size());
 }
 
-bool RaylibAudioBackend::playSound(SoundId id, const SoundParams& params) {
+VoiceId RaylibAudioBackend::playSound(SoundId id, const SoundParams& params) {
     SoundSlot* slot = findSound(id);
     if (!_available || slot == nullptr) {
-        return false;
+        return NO_VOICE;
     }
 
     Voice& voice = acquireVoice(*slot);
     StopSound(voice.sound);
-    SetSoundVolume(voice.sound, clampFinite(params.volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME));
-    SetSoundPan(voice.sound, clampFinite(params.pan, PAN_CENTER, PAN_LEFT, PAN_RIGHT));
-    SetSoundPitch(voice.sound, clampFinite(params.pitch, DEFAULT_PITCH, MIN_PITCH, MAX_PITCH));
+    applyParams(voice.sound, params);
     PlaySound(voice.sound);
     voice.startedAt = ++_playCounter;
+    return voice.startedAt;
+}
+
+bool RaylibAudioBackend::updateVoice(VoiceId voice, const SoundParams& params) {
+    const Voice* playing = findPlayingVoice(voice);
+    if (playing == nullptr) {
+        return false;
+    }
+    applyParams(playing->sound, params);
     return true;
+}
+
+void RaylibAudioBackend::stopVoice(VoiceId voice) {
+    if (const Voice* playing = findPlayingVoice(voice); playing != nullptr) {
+        StopSound(playing->sound);
+    }
 }
 
 void RaylibAudioBackend::stopAllSounds() {
@@ -188,11 +202,26 @@ RaylibAudioBackend::Voice* RaylibAudioBackend::oldestPlayingVoice() {
     return oldest;
 }
 
+RaylibAudioBackend::Voice* RaylibAudioBackend::findPlayingVoice(VoiceId voice) {
+    if (voice == NO_VOICE) {
+        return nullptr;
+    }
+
+    for (SoundSlot& slot : _sounds) {
+        for (Voice& candidate : slot.voices) {
+            if (candidate.startedAt == voice) {
+                return IsSoundPlaying(candidate.sound) ? &candidate : nullptr;
+            }
+        }
+    }
+    return nullptr;
+}
+
 RaylibAudioBackend::Voice& RaylibAudioBackend::acquireVoice(SoundSlot& slot) {
     const auto idle =
         std::ranges::find_if(slot.voices, [](const Voice& voice) { return !IsSoundPlaying(voice.sound); });
+    
     if (idle == slot.voices.end()) {
-        // Every voice of this sound is busy: restart the oldest one, the active count does not change.
         return *std::ranges::min_element(slot.voices, {}, &Voice::startedAt);
     }
     if (activeVoiceCount() >= _config.maxActiveVoices) {
