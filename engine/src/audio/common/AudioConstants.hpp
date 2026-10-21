@@ -45,4 +45,7 @@ inline constexpr std::size_t DEFAULT_VOICES_PER_SOUND = 4;
 /** @brief Default number of sound instances that can play at the same time across all sounds. */
 inline constexpr std::size_t DEFAULT_MAX_ACTIVE_VOICES = 32;
 
+/** @brief Sound requests kept between two audio updates; extra requests are dropped. */
+inline constexpr std::size_t MAX_QUEUED_SOUNDS = 128;
+
 }  // namespace audio

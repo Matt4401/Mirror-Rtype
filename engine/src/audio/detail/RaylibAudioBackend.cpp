@@ -4,7 +4,6 @@
 
 #include <algorithm>
 #include <atomic>
-#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 #include <string>
@@ -13,6 +12,7 @@
 
 #include "audio/common/AudioConfig.hpp"
 #include "audio/common/AudioConstants.hpp"
+#include "audio/common/AudioMiddleware.hpp"
 #include "audio/common/AudioTypes.hpp"
 #include "audio/common/SoundParams.hpp"
 
@@ -24,14 +24,6 @@ namespace {
 std::atomic_bool& deviceClaimed() {
     static std::atomic_bool claimed{false};
     return claimed;
-}
-
-/** @brief Clamps `value` to [min, max], replacing NaN and infinities by `fallback`. */
-float sanitize(float value, float fallback, float min, float max) {
-    if (!std::isfinite(value)) {
-        return fallback;
-    }
-    return std::clamp(value, min, max);
 }
 
 }  // namespace
@@ -115,9 +107,9 @@ bool RaylibAudioBackend::playSound(SoundId id, const SoundParams& params) {
 
     Voice& voice = acquireVoice(*slot);
     StopSound(voice.sound);
-    SetSoundVolume(voice.sound, sanitize(params.volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME));
-    SetSoundPan(voice.sound, sanitize(params.pan, PAN_CENTER, PAN_LEFT, PAN_RIGHT));
-    SetSoundPitch(voice.sound, sanitize(params.pitch, DEFAULT_PITCH, MIN_PITCH, MAX_PITCH));
+    SetSoundVolume(voice.sound, clampFinite(params.volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME));
+    SetSoundPan(voice.sound, clampFinite(params.pan, PAN_CENTER, PAN_LEFT, PAN_RIGHT));
+    SetSoundPitch(voice.sound, clampFinite(params.pitch, DEFAULT_PITCH, MIN_PITCH, MAX_PITCH));
     PlaySound(voice.sound);
     voice.startedAt = ++_playCounter;
     return true;
@@ -156,7 +148,7 @@ void RaylibAudioBackend::stopMusic() {
 }
 
 void RaylibAudioBackend::setMusicVolume(float volume) {
-    _musicVolume = sanitize(volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME);
+    _musicVolume = clampFinite(volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME);
     if (const Music* music = findMusic(_currentMusic); music != nullptr) {
         SetMusicVolume(*music, _musicVolume);
     }
@@ -164,7 +156,7 @@ void RaylibAudioBackend::setMusicVolume(float volume) {
 
 void RaylibAudioBackend::setMasterVolume(float volume) {
     if (_available) {
-        SetMasterVolume(sanitize(volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME));
+        SetMasterVolume(clampFinite(volume, DEFAULT_VOLUME, MIN_VOLUME, MAX_VOLUME));
     }
 }
 
