@@ -1,5 +1,11 @@
+target("rtype_prefabs")
+    set_kind("static")
+    add_files("prefabs/**.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core", "engine_prefabs", {public = true})
+
 target("r-type_server")
     set_kind("binary")
     set_targetdir("$(projectdir)")
-    add_files("**.cpp")
-    add_deps("shared", "network", "engine_core", "engine_time", "engine_events", "engine_scripting")
+    add_files("**.cpp|prefabs/**.cpp")
+    add_deps("shared", "rtype_prefabs", "network", "engine_core", "engine_time", "engine_events", "engine_scripting")

@@ -1,43 +1,60 @@
 #include "input/InputState.hpp"
 
-#include <cstddef>
+#include <cmath>
 
-#include "input/InputAction.hpp"
+#include "input/ActionId.hpp"
 
 namespace input {
 
-bool InputState::isDown(Action action) const noexcept { return _held.test(static_cast<std::size_t>(action)); }
-
-bool InputState::isJustPressed(Action action) const noexcept {
-    return _justPressed.test(static_cast<std::size_t>(action));
+bool InputState::isDown(ActionId action) const noexcept {
+    const auto it = actions.find(action);
+    return (it != actions.end()) ? it->second.held : false;
 }
 
-bool InputState::isJustReleased(Action action) const noexcept {
-    return _justReleased.test(static_cast<std::size_t>(action));
+bool InputState::isJustPressed(ActionId action) const noexcept {
+    const auto it = actions.find(action);
+    return (it != actions.end()) ? it->second.justPressed : false;
 }
 
-float InputState::axisX() const noexcept { return _axisX; }
-
-float InputState::axisY() const noexcept { return _axisY; }
-
-void InputState::setDown(Action action, bool down) noexcept { _held.set(static_cast<std::size_t>(action), down); }
-
-void InputState::setJustPressed(Action action, bool pressed) noexcept {
-    _justPressed.set(static_cast<std::size_t>(action), pressed);
+bool InputState::isJustReleased(ActionId action) const noexcept {
+    const auto it = actions.find(action);
+    return (it != actions.end()) ? it->second.justReleased : false;
 }
 
-void InputState::setJustReleased(Action action, bool released) noexcept {
-    _justReleased.set(static_cast<std::size_t>(action), released);
+float InputState::getAxis(ActionId action) const noexcept {
+    const auto it = actions.find(action);
+    return (it != actions.end()) ? it->second.axis : 0.0F;
 }
 
-void InputState::setAxes(float x, float y) noexcept {
-    _axisX = x;
-    _axisY = y;
+AxisVector2 InputState::getVector2(ActionId axisX, ActionId axisY, bool normalize) const noexcept {
+    float x = getAxis(axisX);
+    float y = getAxis(axisY);
+    if (normalize) {
+        const float lenSq = (x * x) + (y * y);
+        if (lenSq > 1.0F) {
+            const float invLen = 1.0F / std::sqrt(lenSq);
+            x *= invLen;
+            y *= invLen;
+        }
+    }
+    return AxisVector2{.x = x, .y = y};
 }
+
+void InputState::setDown(ActionId action, bool down) { actions[action].held = down; }
+
+void InputState::setJustPressed(ActionId action, bool pressed) { actions[action].justPressed = pressed; }
+
+void InputState::setJustReleased(ActionId action, bool released) { actions[action].justReleased = released; }
+
+void InputState::setAxis(ActionId action, float value) { actions[action].axis = value; }
 
 void InputState::resetFrameTransitions() noexcept {
-    _justPressed.reset();
-    _justReleased.reset();
+    for (auto& [id, actionData] : actions) {
+        actionData.justPressed = false;
+        actionData.justReleased = false;
+    }
 }
+
+void InputState::clear() noexcept { actions.clear(); }
 
 }  // namespace input

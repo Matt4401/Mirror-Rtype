@@ -1,6 +1,6 @@
 #pragma once
 
-#include "input/InputAction.hpp"
+#include "input/ActionId.hpp"
 
 namespace events {
 
@@ -10,8 +10,8 @@ namespace events {
  * Designed to be serialized over UDP to the server or consumed locally.
  */
 struct InputActionEvent {
-    /** @brief The logical input action triggered. */
-    input::Action action = input::Action::MoveUp;
+    /** @brief The logical input action identifier triggered. */
+    input::ActionId action = 0;
 
     /** @brief Transition state of the action. */
     input::ActionState state = input::ActionState::Pressed;

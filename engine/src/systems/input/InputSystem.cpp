@@ -1,91 +1,65 @@
 #include "systems/input/InputSystem.hpp"
 
-#include <cmath>
-#include <cstddef>
+#include <utility>
 
-#include "components/InputReceiver.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/InputActionEvent.hpp"
+#include "input/ActionId.hpp"
 #include "input/ActionMapping.hpp"
-#include "input/InputAction.hpp"
 #include "input/InputState.hpp"
 
 namespace systems {
 
 InputSystem::InputSystem(input::ActionMapping mapping, int playerIndex, int gamepadIndex)
-    : _mapping(mapping), _playerIndex(playerIndex), _gamepadIndex(gamepadIndex) {}
+    : _mapping(std::move(mapping)), _playerIndex(playerIndex), _gamepadIndex(gamepadIndex) {}
 
 void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
-    if (!registry.hasResource<input::InputState>()) {
-        registry.emplaceResource<input::InputState>();
-    }
-    auto& state = registry.getResource<input::InputState>();
+    registry.runSystem<input::InputState>([this, eventBus](ecs::Entity /*entity*/, input::InputState& state) {
+        if (state.playerIndex == _playerIndex) {
+            updateState(state, eventBus);
+        }
+    });
+}
+
+void InputSystem::updateState(input::InputState& state, ecs::EventBus* eventBus) {
     state.resetFrameTransitions();
 
-    for (std::size_t i = 0; i < input::ACTION_COUNT; ++i) {
-        const auto action = static_cast<input::Action>(i);
-        const bool isDown = _mapping.isActionDown(action, _gamepadIndex);
-        const bool wasDown = state.isDown(action);
+    for (const auto& [actionId, binding] : _mapping.bindings()) {
+        if (binding.type == input::ActionType::Button) {
+            const bool isDown = _mapping.isActionDown(actionId, _gamepadIndex);
+            auto& actionData = state.actions[actionId];
+            const bool wasDown = actionData.held;
 
-        state.setDown(action, isDown);
+            actionData.held = isDown;
 
-        if (!wasDown && isDown) {
-            state.setJustPressed(action, true);
-            if (eventBus != nullptr) {
-                eventBus->publish(events::InputActionEvent{
-                    .action = action,
-                    .state = input::ActionState::Pressed,
-                    .value = 1.0F,
-                    .playerIndex = _playerIndex,
-                });
+            if (!wasDown && isDown) {
+                actionData.justPressed = true;
+                if (eventBus != nullptr) {
+                    eventBus->publish(events::InputActionEvent{
+                        .action = actionId,
+                        .state = input::ActionState::Pressed,
+                        .value = 1.0F,
+                        .playerIndex = _playerIndex,
+                    });
+                }
+            } else if (wasDown && !isDown) {
+                actionData.justReleased = true;
+                if (eventBus != nullptr) {
+                    eventBus->publish(events::InputActionEvent{
+                        .action = actionId,
+                        .state = input::ActionState::Released,
+                        .value = 0.0F,
+                        .playerIndex = _playerIndex,
+                    });
+                }
             }
-        } else if (wasDown && !isDown) {
-            state.setJustReleased(action, true);
-            if (eventBus != nullptr) {
-                eventBus->publish(events::InputActionEvent{
-                    .action = action,
-                    .state = input::ActionState::Released,
-                    .value = 0.0F,
-                    .playerIndex = _playerIndex,
-                });
-            }
+        } else if (binding.type == input::ActionType::Axis) {
+            const float axisValue = _mapping.getAxis(actionId, _gamepadIndex);
+            state.actions[actionId].axis = axisValue;
         }
     }
-
-    float moveX = 0.0F;
-    float moveY = 0.0F;
-    if (state.isDown(input::Action::MoveRight)) {
-        moveX += 1.0F;
-    }
-    if (state.isDown(input::Action::MoveLeft)) {
-        moveX -= 1.0F;
-    }
-    if (state.isDown(input::Action::MoveDown)) {
-        moveY += 1.0F;
-    }
-    if (state.isDown(input::Action::MoveUp)) {
-        moveY -= 1.0F;
-    }
-
-    const float lenSq = (moveX * moveX) + (moveY * moveY);
-    if (lenSq > 1.0F) {
-        const float invLen = 1.0F / std::sqrt(lenSq);
-        moveX *= invLen;
-        moveY *= invLen;
-    }
-    state.setAxes(moveX, moveY);
-
-    registry.runSystem<ecs::InputReceiver>([&state, this](ecs::Entity /*entity*/, ecs::InputReceiver& receiver) {
-        if (!receiver.enabled || receiver.playerIndex != _playerIndex) {
-            return;
-        }
-        receiver.moveX = state.axisX();
-        receiver.moveY = state.axisY();
-        receiver.shooting = state.isDown(input::Action::Shoot);
-        receiver.charging = state.isDown(input::Action::ChargeWeapon);
-    });
 }
 
 }  // namespace systems
