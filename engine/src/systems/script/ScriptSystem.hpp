@@ -127,6 +127,11 @@ class ScriptSystem {
     [[nodiscard]] ecs::CommandBuffer& getCommandBuffer() noexcept;
 
     /**
+     * @brief Returns a non-owning pointer to the active ECS Registry.
+     */
+    [[nodiscard]] ecs::Registry* getRegistry() noexcept { return _registry; }
+
+    /**
      * @brief Registers a suspended Wren Fiber to resume after `seconds` have elapsed.
      *
      * @param fiber Raw pointer to the suspended Wren Fiber handle.

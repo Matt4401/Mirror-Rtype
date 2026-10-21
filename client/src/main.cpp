@@ -13,17 +13,19 @@
 
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
-#include "components/InputReceiver.hpp"
+#include "components/Collider2D.hpp"
 #include "components/ParallaxLayer.hpp"
 #include "components/Renderable.hpp"
+#include "components/RigidBody2D.hpp"
+#include "components/ShipInput.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
-#include "input/InputAction.hpp"
 #include "input/InputState.hpp"
+#include "input/RTypeBindings.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
@@ -96,7 +98,8 @@ void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId, ecs::Text
                                          .startX = 0,
                                          .startY = 0,
                                          .frameDuration = 0.12F,});
-    registry.addComponent<ecs::InputReceiver>(player, ecs::InputReceiver{.playerIndex = 0, .speed = 350.0F});
+    registry.addComponent<client::ShipInput>(player, client::ShipInput{.playerIndex = 0, .speed = 350.0F});
+    registry.addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
 
     constexpr int BYDOS_FRAME_W = 33;
     constexpr int BYDOS_FRAME_H = 36;
@@ -119,31 +122,27 @@ void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId, ecs::Text
 }
 
 void movePlayer(ecs::Registry& registry, float deltaTime) {
-    registry.runSystem<ecs::Transform, ecs::InputReceiver>(
-        [deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, ecs::InputReceiver& receiver) {
-            if (!receiver.enabled) {
+    registry.runSystem<ecs::Transform, client::ShipInput, input::InputState>(
+        [deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
+                    const input::InputState& inputState) {
+            if (!ship.enabled) {
                 return;
             }
-            transform.x += receiver.moveX * receiver.speed * deltaTime;
-            transform.y += receiver.moveY * receiver.speed * deltaTime;
+            const auto move = inputState.getVector2("move_x", "move_y", true);
+            transform.x += move.x * ship.speed * deltaTime;
+            transform.y += move.y * ship.speed * deltaTime;
+
             transform.x = std::clamp(transform.x, MIN_X, MAX_X);
             transform.y = std::clamp(transform.y, MIN_Y, MAX_Y);
         });
 }
 
 void handlePlayerShoot(ecs::Registry& registry, ecs::TextureId bulletTexId) {
-    if (!registry.hasResource<input::InputState>()) {
-        return;
-    }
-    const auto& inputState = registry.getResource<input::InputState>();
-    if (!inputState.isJustPressed(input::Action::Shoot)) {
-        return;
-    }
-
     std::vector<ecs::Transform> spawnPositions;
-    registry.runSystem<ecs::Transform, ecs::InputReceiver>(
-        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, ecs::InputReceiver& receiver) {
-            if (receiver.enabled) {
+    registry.runSystem<ecs::Transform, client::ShipInput, input::InputState>(
+        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
+                          const input::InputState& inputState) {
+            if (ship.enabled && inputState.isJustPressed("shoot")) {
                 spawnPositions.push_back(transform);
             }
         });
@@ -201,8 +200,9 @@ int main() {
         const ecs::TextureId starMediumId = textures.load("sprites/star_medium.png");
         const ecs::TextureId starLargeId  = textures.load("sprites/star_large.png");
 
-        render::RenderSystem  renderSystem(textures);
-        systems::InputSystem  inputSystem;
+        render::RenderSystem renderSystem(textures);
+        systems::InputSystem inputSystem;
+        client::input::setupDefaultBindings(inputSystem.mapping());
         systems::ParallaxSystem parallaxSystem;
         systems::AnimationSystem animationSystem;
         ecs::EventBus eventBus;
