@@ -201,12 +201,21 @@ int main() {
         const render::Window window(render::WindowConfig{});
         render::TextureStore textures;
 
-        const ecs::TextureId shipTexId = textures.load("sprites/r-typesheet42.gif");
-        const ecs::TextureId bydosTexId = textures.load("sprites/spritesheet5.png");
-        const ecs::TextureId bulletTexId = textures.load("sprites/r-typesheet-amo.png");
-        const ecs::TextureId starSmallId = textures.load("sprites/star_small.png");
-        const ecs::TextureId starMediumId = textures.load("sprites/star_medium.png");
-        const ecs::TextureId starLargeId = textures.load("sprites/star_large.png");
+        const auto loadTexture = [&textures](const std::string& path) {
+            const ecs::TextureId id = textures.load(path);
+            if (id == ecs::NO_TEXTURE) {
+                throw std::runtime_error("failed to load texture '" + path +
+                                         "' — run the client from the project root directory");
+            }
+            return id;
+        };
+
+        const ecs::TextureId shipTexId = loadTexture("sprites/r-typesheet42.gif");
+        const ecs::TextureId bydosTexId = loadTexture("sprites/spritesheet5.png");
+        const ecs::TextureId bulletTexId = loadTexture("sprites/r-typesheet-amo.png");
+        const ecs::TextureId starSmallId = loadTexture("sprites/star_small.png");
+        const ecs::TextureId starMediumId = loadTexture("sprites/star_medium.png");
+        const ecs::TextureId starLargeId = loadTexture("sprites/star_large.png");
 
         render::RenderSystem renderSystem(textures);
         systems::InputSystem inputSystem;
