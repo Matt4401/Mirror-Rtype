@@ -16,6 +16,7 @@
 #include "components/ParallaxLayer.hpp"
 #include "components/Renderable.hpp"
 #include "components/ShipInput.hpp"
+#include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -67,21 +68,23 @@ void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::Textur
 
     int seed = 0;
     for (const auto& def : layers) {
+        ecs::SpriteInstances pool;
+        pool.instances.reserve(static_cast<std::size_t>(def.count));
         for (int i = 0; i < def.count; ++i) {
             const auto x = static_cast<float>(((seed * 137) + 43) % static_cast<int>(SCENE_WIDTH));
             const auto y = static_cast<float>(((seed * 97) + 17) % static_cast<int>(SCENE_HEIGHT));
             ++seed;
-
-            const ecs::Entity star = registry.spawnEntity();
-            registry.addComponent<ecs::Transform>(star, ecs::Transform{.x = x, .y = y});
-            registry.addComponent<ecs::Renderable>(
-                star, ecs::Renderable{.textureId = def.texId, .tint = def.color, .layer = def.layer});
-            registry.addComponent<ecs::ParallaxLayer>(star, ecs::ParallaxLayer{
-                                                                .scrollSpeedX = -def.speed,
-                                                                .wrapMinX = -8.0F,
-                                                                .wrapMaxX = SCENE_WIDTH,
-                                                            });
+            pool.instances.push_back({.x = x, .y = y});
         }
+        const ecs::Entity star = registry.spawnEntity();
+        registry.addComponent<ecs::SpriteInstances>(star, std::move(pool));
+        registry.addComponent<ecs::Renderable>(
+            star, ecs::Renderable{.textureId = def.texId, .tint = def.color, .layer = def.layer});
+        registry.addComponent<ecs::ParallaxLayer>(star, ecs::ParallaxLayer{
+                                                            .scrollSpeedX = -def.speed,
+                                                            .wrapMinX = -8.0F,
+                                                            .wrapMaxX = SCENE_WIDTH,
+                                                        });
     }
 }
 
