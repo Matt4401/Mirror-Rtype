@@ -18,6 +18,7 @@
 #include "components/ShipInput.hpp"
 #include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
+#include "ecs/CommandBuffer.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
@@ -25,6 +26,8 @@
 #include "events/EventBus.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
+#include "prefabs/ClientBullet.hpp"
+#include "prefabs/PrefabManager.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
@@ -36,7 +39,6 @@
 
 namespace {
 
-constexpr float PLAYER_BULLET_SPEED = 700.0F;
 constexpr float SCENE_WIDTH = 1280.0F;
 constexpr float SCENE_HEIGHT = 720.0F;
 constexpr float MIN_X = 32.0F;
@@ -48,8 +50,6 @@ constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
 constexpr ecs::Rgba COLOR_STAR_LARGE = {.r = 255, .g = 255, .b = 255, .a = 220};
-
-struct PlayerBullet {};
 
 struct StarLayer {
     int count = 0;
@@ -151,53 +151,26 @@ void movePlayer(ecs::Registry& registry, float deltaTime) {
         });
 }
 
-void handlePlayerShoot(ecs::Registry& registry, ecs::TextureId bulletTexId) {
-    std::vector<ecs::Transform> spawnPositions;
+void handlePlayerShoot(ecs::Registry& registry, prefabs::PrefabManager& prefabManager, ecs::CommandBuffer& cmdBuffer) {
     registry.runSystem<ecs::Transform, client::ShipInput, input::InputState>(
-        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
-                          const input::InputState& inputState) {
+        [&prefabManager, &cmdBuffer](ecs::Entity /*entity*/, const ecs::Transform& transform,
+                                     const client::ShipInput& ship, const input::InputState& inputState) {
             if (ship.enabled && inputState.isJustPressed("shoot")) {
-                spawnPositions.push_back(transform);
+                prefabManager.spawn(
+                    client::prefabs::CLIENT_BULLET_PREFAB, cmdBuffer,
+                    {{"x", transform.x + 40.0F}, {"y", transform.y}, {"scaleX", 1.5F}, {"scaleY", 1.5F}});
             }
         });
-
-    for (const auto& pos : spawnPositions) {
-        const ecs::Entity bullet = registry.spawnEntity();
-        registry.addComponent<ecs::Transform>(
-            bullet, ecs::Transform{.x = pos.x + 40.0F, .y = pos.y, .scaleX = 1.5F, .scaleY = 1.5F});
-        registry.addComponent<ecs::Renderable>(
-            bullet, ecs::Renderable{.textureId = bulletTexId,
-                                    .sourceRect = {.x = 0, .y = 0, .width = 32, .height = 32},
-                                    .origin = {.x = 0.5F, .y = 0.5F},
-                                    .tint = COLOR_WHITE,
-                                    .layer = 2});
-        registry.addComponent<ecs::AnimationComponent>(bullet, ecs::AnimationComponent{.frameWidth = 32,
-                                                                                       .frameHeight = 32,
-                                                                                       .frameCount = 4,
-                                                                                       .startX = 0,
-                                                                                       .startY = 0,
-                                                                                       .frameDuration = 0.015F,
-                                                                                       .loop = false});
-        registry.addComponent<PlayerBullet>(bullet, PlayerBullet{});
-    }
 }
 
-void movePlayerBullets(ecs::Registry& registry, float deltaTime) {
-    std::vector<ecs::Entity> toDestroy;
-    registry.runSystem<ecs::Transform, PlayerBullet, ecs::AnimationComponent>(
-        [&toDestroy, deltaTime](ecs::Entity entity, ecs::Transform& transform, PlayerBullet& /*tag*/,
-                                ecs::AnimationComponent& anim) {
-            if (anim.currentFrame < anim.frameCount - 1) {
-                return;
-            }
-            transform.x += PLAYER_BULLET_SPEED * deltaTime;
+void killOffscreenBullets(ecs::Registry& registry, ecs::CommandBuffer& cmdBuffer) {
+    registry.runSystem<ecs::Transform, client::prefabs::ClientBullet>(
+        [&cmdBuffer](ecs::Entity entity, const ecs::Transform& transform,
+                     const client::prefabs::ClientBullet& /*tag*/) {
             if (transform.x > SCENE_WIDTH + 64.0F) {
-                toDestroy.push_back(entity);
+                cmdBuffer.deferDestroy(entity);
             }
         });
-    for (const ecs::Entity entity : toDestroy) {
-        registry.killEntity(entity);
-    }
 }
 
 }  // namespace
@@ -229,6 +202,11 @@ int main() {
         systems::ParallaxSystem parallaxSystem;
         ecs::EventBus eventBus;
 
+        prefabs::PrefabManager prefabManager;
+        prefabManager.registerPrefab(client::prefabs::CLIENT_BULLET_PREFAB, client::prefabs::buildClientBullet,
+                                     {{"textureId", static_cast<std::int64_t>(bulletTexId)}});
+        ecs::CommandBuffer cmdBuffer;
+
         ecs::Registry registry;
         systems::PhysicsSystem physicsSystem(registry);
 
@@ -238,14 +216,16 @@ int main() {
         ecs::time::Clock clock;
         while (!render::Window::shouldClose()) {
             inputSystem.update(registry, &eventBus);
-            handlePlayerShoot(registry, bulletTexId);
+            handlePlayerShoot(registry, prefabManager, cmdBuffer);
+            cmdBuffer.flush(registry);
 
             clock.tick(ecs::time::DEFAULT_FIXED_DT, [&](const ecs::time::Time& time) {
                 parallaxSystem.update(registry, time.deltaTime);
                 systems::AnimationSystem::update(registry, time.deltaTime);
                 movePlayer(registry, time.deltaTime);
-                movePlayerBullets(registry, time.deltaTime);
+                killOffscreenBullets(registry, cmdBuffer);
                 physicsSystem.update(time.deltaTime);
+                cmdBuffer.flush(registry);
             });
 
             render::Window::beginFrame();
