@@ -34,11 +34,20 @@ std::mutex& outputMutex() noexcept {
     return mutex;
 }
 
-/** @brief Reference point of the timestamps, set during static initialization (program start). */
-const std::chrono::steady_clock::time_point START_TIME = std::chrono::steady_clock::now();
+/**
+ * @brief Reference point of the timestamps, set on the first call (first log).
+ *
+ * A function-local static avoids the static initialization order fiasco: a static object of another translation unit
+ * that logs during its own initialization would otherwise read an uninitialized time point.
+ */
+std::chrono::steady_clock::time_point startTime() noexcept {
+    static const std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    return start;
+}
 
 std::string formatLine(const Level level, const std::string_view tag, const std::string_view message) {
-    const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - START_TIME;
+    const std::chrono::steady_clock::time_point start = startTime();
+    const std::chrono::duration<double> elapsed = std::chrono::steady_clock::now() - start;
     if (!isColored()) {
         return std::format("[{:9.3f}] {} [{}] {}\n", elapsed.count(), levelName(level), tag, message);
     }
