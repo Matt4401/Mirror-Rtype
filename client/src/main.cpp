@@ -43,6 +43,11 @@ constexpr float MAX_X = 1248.0F;
 constexpr float MIN_Y = 32.0F;
 constexpr float MAX_Y = 688.0F;
 
+constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
+constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
+constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
+constexpr ecs::Rgba COLOR_STAR_LARGE = {.r = 255, .g = 255, .b = 255, .a = 220};
+
 struct PlayerBullet {};
 
 struct StarLayer {
@@ -55,17 +60,9 @@ struct StarLayer {
 
 void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::TextureId mediumId, ecs::TextureId largeId) {
     const std::array<StarLayer, 3> layers{{
-        {.count = 80, .speed = 25.0F, .color = {.r = 200, .g = 200, .b = 220, .a = 80}, .layer = -3, .texId = smallId},
-        {.count = 40,
-         .speed = 60.0F,
-         .color = {.r = 220, .g = 220, .b = 255, .a = 150},
-         .layer = -2,
-         .texId = mediumId},
-        {.count = 20,
-         .speed = 120.0F,
-         .color = {.r = 255, .g = 255, .b = 255, .a = 220},
-         .layer = -1,
-         .texId = largeId},
+        {.count = 80, .speed = 25.0F, .color = COLOR_STAR_SMALL, .layer = -3, .texId = smallId},
+        {.count = 40, .speed = 60.0F, .color = COLOR_STAR_MEDIUM, .layer = -2, .texId = mediumId},
+        {.count = 20, .speed = 120.0F, .color = COLOR_STAR_LARGE, .layer = -1, .texId = largeId},
     }};
 
     int seed = 0;
@@ -95,7 +92,7 @@ void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId, ecs::Text
                                                        .textureId = shipTexId,
                                                        .sourceRect = {.x = 0, .y = 0, .width = 33, .height = 17},
                                                        .origin = {.x = 0.5F, .y = 0.5F},
-                                                       .tint = {.r = 255, .g = 255, .b = 255, .a = 255},
+                                                       .tint = COLOR_WHITE,
                                                        .layer = 3,
                                                    });
     registry.addComponent<ecs::AnimationComponent>(player, ecs::AnimationComponent{
@@ -119,7 +116,7 @@ void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId, ecs::Text
                    .textureId = bydosTexId,
                    .sourceRect = {.x = 0, .y = 0, .width = BYDOS_FRAME_W, .height = BYDOS_FRAME_H},
                    .origin = {.x = 0.5F, .y = 0.5F},
-                   .tint = {.r = 255, .g = 255, .b = 255, .a = 255},
+                   .tint = COLOR_WHITE,
                    .layer = 2,
                });
     registry.addComponent<ecs::AnimationComponent>(bydos, ecs::AnimationComponent{
@@ -166,7 +163,7 @@ void handlePlayerShoot(ecs::Registry& registry, ecs::TextureId bulletTexId) {
             bullet, ecs::Renderable{.textureId = bulletTexId,
                                     .sourceRect = {.x = 0, .y = 0, .width = 32, .height = 32},
                                     .origin = {.x = 0.5F, .y = 0.5F},
-                                    .tint = {.r = 255, .g = 255, .b = 255, .a = 255},
+                                    .tint = COLOR_WHITE,
                                     .layer = 2});
         registry.addComponent<ecs::AnimationComponent>(bullet, ecs::AnimationComponent{.frameWidth = 32,
                                                                                        .frameHeight = 32,
