@@ -10,20 +10,36 @@
 namespace ecs {
 
 /**
- * @brief Scrolls the entity's Transform along X each frame and wraps it around the screen width.
+ * @brief Controls the scrolling behaviour of a background entity.
  *
- * Entities tagged with this component are moved by ParallaxSystem. Stars (or any background
- * sprite) should have this component alongside Transform and Renderable.
+ * Each frame ParallaxSystem moves the entity by the autonomous scroll speed and by a fraction
+ * of the camera's displacement (parallax factor). Both axes are supported independently, and
+ * wrapping is enabled per-axis when wrapMin != wrapMax.
  */
 struct ParallaxLayer {
-    /** @brief Pixels per second the entity scrolls toward negative X (left). */
-    float scrollSpeedX = 50.0F;
+    /** @brief Autonomous scroll velocity on X in pixels/sec (positive = rightward). */
+    float scrollSpeedX = 0.0F;
 
-    /** @brief X coordinate at which the entity wraps back to the right edge. */
-    float wrapMinX = -8.0F;
+    /** @brief Autonomous scroll velocity on Y in pixels/sec (positive = downward). */
+    float scrollSpeedY = 0.0F;
 
-    /** @brief X coordinate used when re-spawning the entity after a wrap. */
-    float wrapMaxX = 1280.0F;
+    /** @brief Fraction of camera X displacement applied to this layer (0 = ignore camera, 1 = locked). */
+    float cameraFactorX = 0.0F;
+
+    /** @brief Fraction of camera Y displacement applied to this layer (0 = ignore camera, 1 = locked). */
+    float cameraFactorY = 0.0F;
+
+    /** @brief X position below which the entity wraps to wrapMaxX. No wrap when equal to wrapMaxX. */
+    float wrapMinX = 0.0F;
+
+    /** @brief X position the entity is teleported to after an X wrap. */
+    float wrapMaxX = 0.0F;
+
+    /** @brief Y position below which the entity wraps to wrapMaxY. No wrap when equal to wrapMaxY. */
+    float wrapMinY = 0.0F;
+
+    /** @brief Y position the entity is teleported to after a Y wrap. */
+    float wrapMaxY = 0.0F;
 };
 
 }  // namespace ecs

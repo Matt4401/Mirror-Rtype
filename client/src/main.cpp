@@ -76,8 +76,11 @@ void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::Textur
             registry.addComponent<ecs::Transform>(star, ecs::Transform{.x = x, .y = y});
             registry.addComponent<ecs::Renderable>(
                 star, ecs::Renderable{.textureId = def.texId, .tint = def.color, .layer = def.layer});
-            registry.addComponent<ecs::ParallaxLayer>(
-                star, ecs::ParallaxLayer{.scrollSpeedX = def.speed, .wrapMinX = -8.0F, .wrapMaxX = SCENE_WIDTH});
+            registry.addComponent<ecs::ParallaxLayer>(star, ecs::ParallaxLayer{
+                                                                .scrollSpeedX = -def.speed,
+                                                                .wrapMinX = -8.0F,
+                                                                .wrapMaxX = SCENE_WIDTH,
+                                                            });
         }
     }
 }
@@ -220,6 +223,7 @@ int main() {
         render::RenderSystem renderSystem(textures);
         systems::InputSystem inputSystem;
         client::input::setupDefaultBindings(inputSystem.mapping());
+        systems::ParallaxSystem parallaxSystem;
         ecs::EventBus eventBus;
 
         ecs::Registry registry;
@@ -234,7 +238,7 @@ int main() {
             handlePlayerShoot(registry, bulletTexId);
 
             clock.tick(ecs::time::DEFAULT_FIXED_DT, [&](const ecs::time::Time& time) {
-                systems::ParallaxSystem::update(registry, time.deltaTime);
+                parallaxSystem.update(registry, time.deltaTime);
                 systems::AnimationSystem::update(registry, time.deltaTime);
                 movePlayer(registry, time.deltaTime);
                 movePlayerBullets(registry, time.deltaTime);

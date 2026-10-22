@@ -14,9 +14,9 @@ namespace systems {
 /**
  * @brief Moves every entity that has both Transform and ParallaxLayer.
  *
- * Each update, the entity's X position is decremented by scrollSpeedX * deltaTime.
- * When it falls below wrapMinX the entity is repositioned at wrapMaxX, creating
- * seamless infinite scrolling without any special background texture.
+ * Each update, the entity position is advanced by its autonomous scroll speed and by a fraction
+ * of the active camera's displacement (parallax factor). Wrapping is applied per-axis when
+ * the wrap bounds are not equal. Both X and Y axes are supported independently.
  */
 class ParallaxSystem {
   public:
@@ -26,7 +26,11 @@ class ParallaxSystem {
      * @param registry Registry containing the scene.
      * @param deltaTime Elapsed time since the last frame in seconds.
      */
-    static void update(ecs::Registry& registry, float deltaTime);
+    void update(ecs::Registry& registry, float deltaTime);
+
+  private:
+    float _prevCameraX = 0.0F;
+    float _prevCameraY = 0.0F;
 };
 
 }  // namespace systems
