@@ -17,6 +17,9 @@ namespace systems {
 void AnimationSystem::update(ecs::Registry& registry, float deltaTime) {
     registry.runSystem<ecs::AnimationComponent, ecs::Renderable>(
         [deltaTime](ecs::Entity /*entity*/, ecs::AnimationComponent& anim, ecs::Renderable& renderable) {
+            if (anim.frameCount == 0) {
+                return;
+            }
             anim.elapsed += deltaTime;
             if (anim.elapsed >= anim.frameDuration) {
                 anim.elapsed -= anim.frameDuration;
