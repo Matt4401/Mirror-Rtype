@@ -1,7 +1,5 @@
 #pragma once
 
-// Template definitions of Logger.hpp: included at its end only, never on its own.
-
 #include <sstream>
 #include <string_view>
 
