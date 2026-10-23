@@ -5,6 +5,8 @@
 ** Server entry point
 */
 
+#include <atomic>
+#include <csignal>
 #include <cstddef>
 #include <iostream>
 #include <span>
@@ -16,6 +18,16 @@
 
 namespace {
 constexpr int EXIT_ERROR = 84;
+
+// The signal handler cannot take arguments, so it reaches the server through a global.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+std::atomic<rtype::server::ServerManager*> g_server{nullptr};
+
+void onSignal(int /*signal*/) {
+    if (auto* server = g_server.load()) {
+        server->stop();  // only sets an atomic flag: signal-safe
+    }
+}
 }  // namespace
 
 int main(int ac, char** av) {
@@ -30,6 +42,10 @@ int main(int ac, char** av) {
 
     rtype::server::ServerManager server(rtype::net::createServer());
 
+    g_server = &server;
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
     const bool ok = server.run(options->port);
+    g_server = nullptr;
     return ok ? 0 : EXIT_ERROR;
 }

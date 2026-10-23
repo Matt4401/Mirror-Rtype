@@ -2,9 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
+#include <deque>
+#include <ranges>
 #include <unordered_map>
-#include <vector>
 
 #include "Network/INetworkManager.hpp"
 #include "ecs/Entity.hpp"
@@ -14,6 +14,9 @@
 #include "events/EventBus.hpp"
 
 namespace rtype::server {
+
+/** @brief Maximum number of inputs queued per player; when exceeded, the oldest one is dropped. */
+inline constexpr std::size_t MAX_PENDING_INPUTS = 8;
 
 using net::ClientId;
 
@@ -67,10 +70,11 @@ class Room {
     void removePlayer(ClientId player);
 
     /**
-     * @brief Stores an input, applied at the next simulation step.
+     * @brief Queues an input; one input per player is applied at each simulation step, oldest first.
      *
-     * Inputs come over UDP: they can arrive late, duplicated or out of order. Only an input newer than everything
-     * seen so far for this player is kept.
+     * Inputs come over UDP: they can arrive late, duplicated or out of order. An input already applied
+     * (sequence <= last processed) or already queued is ignored; the others are queued sorted by sequence. At most
+     * `MAX_PENDING_INPUTS` are kept: when the queue overflows, the oldest input is dropped.
      *
      * @param player Network id of the player.
      * @param input Decoded input.
@@ -100,8 +104,12 @@ class Room {
     [[nodiscard]] bool isFull() const { return _players.size() >= _maxPlayers; }
     /** @brief True when the last player has left: the `ServerManager` then destroys the room. */
     [[nodiscard]] bool isEmpty() const { return _players.empty(); }
-    /** @brief Network ids of the players in this room. */
-    [[nodiscard]] std::vector<ClientId> players() const;
+    /**
+     * @brief Network ids of the players in this room (lazy view, no allocation).
+     *
+     * The view is invalidated if a player is added or removed while iterating over it.
+     */
+    [[nodiscard]] auto players() const { return _players | std::views::keys; }
 
     /**
      * @brief Sequence number of the last input applied for a player, sent in snapshots for client reconciliation.
@@ -123,17 +131,17 @@ class Room {
     struct Player {
         /** @brief Entity controlled by the player. */
         ecs::Entity entity = 0;
-        /** @brief Newest input received since the last step, if any. */
-        std::optional<PlayerInput> pendingInput;
+        /** @brief Inputs not applied yet, sorted by sequence (oldest first). */
+        std::deque<PlayerInput> pendingInputs;
         /** @brief Sequence number of the last applied input. */
         std::uint32_t lastProcessedInput = 0;
     };
 
     /**
-     * @brief One fixed simulation step: applies the pending inputs, then the systems.
-     * @param time Time of this step; systems use `time.deltaTime`.
+     * @brief One fixed simulation step: applies one pending input per player, then the systems.
+     * @param registry ECS world of the room; holds the `ecs::time::Time` resource of this step.
      */
-    void step(const ecs::time::Time& time);
+    void step(ecs::Registry& registry);
 
     /** @brief Maximum number of players. */
     std::uint8_t _maxPlayers;

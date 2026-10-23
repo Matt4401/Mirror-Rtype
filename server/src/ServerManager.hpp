@@ -86,7 +86,7 @@ class ServerManager {
      * @brief Puts a client in an open room, or in a new one.
      * @return Id of the client's room.
      */
-    RoomId joinRoom(ClientId client);
+    std::optional<RoomId> joinRoom(ClientId client);
     /** @brief Removes a client from its room, and destroys the room if it becomes empty. */
     void leaveRoom(ClientId client);
     /** @brief Id of a client's room, or nothing if the client is in the lobby. */

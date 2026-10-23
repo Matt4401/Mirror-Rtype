@@ -117,9 +117,9 @@ void ServerManager::sendSnapshot(const Room& room) const {
     }
 }
 
-RoomId ServerManager::joinRoom(const ClientId client) {
+std::optional<RoomId> ServerManager::joinRoom(const ClientId client) {
     if (const auto current = roomOf(client)) {
-        return *current;
+        return current;
     }
 
     std::optional<RoomId> open;
@@ -136,7 +136,9 @@ RoomId ServerManager::joinRoom(const ClientId client) {
     }
 
     Room& room = _rooms.at(id);
-    room.addPlayer(client);
+    if (!room.addPlayer(client)) {
+        return std::nullopt;
+    }
     _roomOf[client] = id;
     log::debug(LOG_TAG, "client ", client, " joined room ", id, " (", room.players().size(), '/',
                static_cast<int>(MAX_PLAYERS_PER_ROOM), " players)");
@@ -156,6 +158,11 @@ void ServerManager::leaveRoom(const ClientId client) {
     }
     room->second.removePlayer(client);
     log::debug(LOG_TAG, "client ", client, " left room ", *id);
+    for (const ClientId other : room->second.players()) {
+        // TODO(protocol): tell the remaining players that `client` left (check the exact wording in the subject, p.10),
+        // on the reliable channel: _network->send(other, protocol::encodePlayerLeft(client), net::Channel::Reliable);
+        static_cast<void>(other);
+    }
     if (room->second.isEmpty()) {
         _rooms.erase(room);
         log::debug(LOG_TAG, "room ", *id, " destroyed (empty)");
