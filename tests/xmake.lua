@@ -12,6 +12,13 @@ target("test_scripting")
     add_files("test_scripting.cpp")
     add_tests("test_scripting")
 
+target("test_log")
+    set_kind("binary")
+    add_deps("log")
+    add_packages("gtest")
+    add_files("test_log.cpp")
+    add_tests("test_log")
+
 target("test_clock")
     set_kind("binary")
     add_deps("engine_core", "engine_time")

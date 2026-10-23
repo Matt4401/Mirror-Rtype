@@ -38,7 +38,7 @@ plugins:
   - mkdoxy:
       projects:
         rtype:
-          src-dirs: "engine/src client/src server/src network/src shared/src common/include"
+          src-dirs: "engine/src client/src server/src network/src shared/src log/src common/include"
           full-doc: True
           doxy-cfg:
             FILE_PATTERNS: "*.cpp *.hpp *.h"
