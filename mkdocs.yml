@@ -72,6 +72,14 @@ nav:
       - Server: architecture/server.md
       - Client: architecture/client.md
       - Network: architecture/network.md
+  - Prefabs:
+      - Overview: prefabs/index.md
+      - Collision Categories: prefabs/collision-categories.md
+      - Missile: prefabs/missile.md
+      - Player Bullet: prefabs/player-bullet.md
+      - Alien Scout: prefabs/alien-scout.md
+      - Obstacle: prefabs/obstacle.md
+      - Power-Up: prefabs/power-up.md
   - Protocol:
       - Packets: protocol/packets.md
       - Transport & Connection: protocol/transport.md

@@ -41,7 +41,7 @@
 # Build directories
 build/
 Build/
-build-*/
+/build-*/
 
 # CMake generated files
 CMakeFiles/
@@ -86,6 +86,3 @@ B-CPP-500_rtype.pdf
 site/
 .venv/
 .clangd
-
-# Claude
-.claude
