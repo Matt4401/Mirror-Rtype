@@ -5,12 +5,14 @@
 
 #include "input/InputPlugin.hpp"
 
+#include <memory>
 #include <utility>
 
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "core/services/IInputService.hpp"
+#include "ecs/time/Time.hpp"
 #include "render/RenderPlugin.hpp"
 #include "systems/input/InputSystem.hpp"
 
