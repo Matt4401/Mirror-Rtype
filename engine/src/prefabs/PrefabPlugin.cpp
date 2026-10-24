@@ -5,9 +5,12 @@
 
 #include "prefabs/PrefabPlugin.hpp"
 
+#include <memory>
+
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
+#include "prefabs/PrefabManager.hpp"
 
 namespace prefabs {
 

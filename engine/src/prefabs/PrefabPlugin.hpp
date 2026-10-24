@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "core/IPlugin.hpp"
+#include "core/PluginBuilder.hpp"
 #include "prefabs/PrefabManager.hpp"
 
 namespace prefabs {
