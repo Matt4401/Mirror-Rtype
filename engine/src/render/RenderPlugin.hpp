@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "core/IPlugin.hpp"
+#include "core/PluginBuilder.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
