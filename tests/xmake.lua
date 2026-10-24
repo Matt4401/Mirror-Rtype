@@ -5,6 +5,13 @@ target("test_ecs")
     add_files("test_ecs.cpp")
     add_tests("test_ecs")
 
+target("test_plugin_graph")
+    set_kind("binary")
+    add_deps("engine_core")
+    add_packages("gtest")
+    add_files("test_plugin_graph.cpp")
+    add_tests("test_plugin_graph")
+
 target("test_mediator")
     set_kind("binary")
     add_deps("engine_core")
