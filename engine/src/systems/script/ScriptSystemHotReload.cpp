@@ -13,17 +13,12 @@
 #include <utility>
 #include <vector>
 
-#include "systems/script/ScriptSystem.hpp"
-
-extern "C" {
-#include <wren.h>
-}
-
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "scripting/CoreModules.hpp"
 #include "scripting/WrenVM.hpp"
+#include "systems/script/ScriptSystem.hpp"
 
 namespace systems {
 
@@ -82,20 +77,13 @@ std::vector<std::pair<std::string, std::string>> ScriptSystem::collectModifiedMo
 
 void ScriptSystem::releaseActiveHandles() {
     _entitiesToReinstantiate.clear();
-    if (_registry == nullptr || _registry->getComponents<ecs::ScriptComponent>().getDense().empty()) {
-        return;
-    }
-    for (ecs::Entity const e : _registry->getComponents<ecs::ScriptComponent>().getDenseEntities()) {
-        auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
-        if (script.instanceHandle != nullptr) {
-            _entitiesToReinstantiate.push_back(e);
-            if (_vm.raw() != nullptr) {
-                wrenReleaseHandle(_vm.raw(), static_cast<WrenHandle*>(script.instanceHandle));
-            }
-            script.instanceHandle = nullptr;
-            script.initialized = false;
+    for (auto const& [e, _] : _instanceHandles) {
+        _entitiesToReinstantiate.push_back(e);
+        if (_registry != nullptr && _registry->getComponents<ecs::ScriptComponent>().contains(e)) {
+            _registry->getComponents<ecs::ScriptComponent>().get(e).initialized = false;
         }
     }
+    _instanceHandles.clear();
 }
 
 void ScriptSystem::recreateVmAndModules(const std::vector<std::pair<std::string, std::string>>& /*modifiedModules*/) {
@@ -156,13 +144,16 @@ void ScriptSystem::reinstantiateActiveScripts() {
         auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
         instantiateScript(e, script, true);
 
-        if (script.instanceHandle != nullptr && _vm.hasVariable("_internal", "Dispatcher")) {
-            ::WrenVM* raw = _vm.raw();
-            wrenEnsureSlots(raw, 2);
-            _vm.getVariable("_internal", "Dispatcher", 0);
-            wrenSetSlotHandle(raw, 1, static_cast<WrenHandle*>(script.instanceHandle));
+        auto it = _instanceHandles.find(e);
+        if (it != _instanceHandles.end() && _vm.hasVariable("_internal", "Dispatcher")) {
             auto tryReloadHandle = _vm.makeCallHandle("tryCallReload(_)");
-            wrenCall(raw, tryReloadHandle.get());
+            _vm.ensureSlots(2);
+            _vm.getVariable("_internal", "Dispatcher", 0);
+            _vm.setSlot(1, it->second.get());
+            auto const res = _vm.call(tryReloadHandle.get());
+            if (res != WREN_RESULT_SUCCESS) {
+                std::cerr << "[ScriptSystem] Warning: tryCallReload failed for entity " << e << "\n";
+            }
         }
     }
     _entitiesToReinstantiate.clear();
@@ -178,11 +169,9 @@ bool ScriptSystem::reloadModifiedScripts() {
         return false;
     }
 
-    std::cout << "[ScriptSystem] Hot-reloading " << modifiedModules.size() << " script module(s)...\n";
     releaseActiveHandles();
     recreateVmAndModules(modifiedModules);
     reinstantiateActiveScripts();
-    std::cout << "[ScriptSystem] Hot-reload complete.\n";
     return true;
 }
 

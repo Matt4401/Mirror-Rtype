@@ -5,15 +5,13 @@
 
 #include "scripting/ComponentBinder.hpp"
 
+#include <exception>
 #include <sstream>
 #include <string>
 #include <utility>
 
-extern "C" {
-#include <wren.h>
-}
-
 #include "ecs/Entity.hpp"
+#include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
 
 namespace scripting {
@@ -23,10 +21,25 @@ ComponentBinderBase::ComponentBinderBase(WrenVM& vm, std::string moduleName, std
     _vm->registerForeignClass(
         _module, _className,
         WrenForeignClassMethods{.allocate =
-                                    [](::WrenVM* rawVm) {
-                                        auto* ptr = static_cast<ecs::Entity*>(
-                                            wrenSetSlotNewForeign(rawVm, 0, 0, sizeof(ecs::Entity)));
-                                        *ptr = static_cast<ecs::Entity>(wrenGetSlotDouble(rawVm, 1));
+                                    [](::WrenVM* rawVm) noexcept {
+                                        try {
+                                            ForeignCall const call(rawVm);
+                                            auto entityId = call.arg<ecs::Entity>(1);
+                                            if (!entityId.has_value()) {
+                                                return;
+                                            }
+                                            auto* ptr = call.retNewForeign<ecs::Entity>(0);
+                                            if (ptr != nullptr) {
+                                                *ptr = *entityId;
+                                            }
+                                        } catch (const std::exception& e) {
+                                            ForeignCall const call(rawVm);
+                                            call.abort(std::string("Exception in foreign class allocation: ") +
+                                                       e.what());
+                                        } catch (...) {
+                                            ForeignCall const call(rawVm);
+                                            call.abort("Unknown exception in foreign class allocation");
+                                        }
                                     },
                                 .finalize = nullptr});
 }
