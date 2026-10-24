@@ -175,6 +175,27 @@ TEST(ECS, RunSystemView) {
     EXPECT_EQ(positions.get(e2).y, 10.0F);
 }
 
+TEST(ECS, RunSystemOptimizesIterationOnSmallestArray) {
+    ecs::Registry registry;
+    for (int i = 0; i < 100; ++i) {
+        ecs::Entity const e = registry.spawnEntity();
+        registry.addComponent<Position>(e, Position{.x = static_cast<float>(i), .y = 0.0F});
+    }
+
+    ecs::Entity const rareEntity = 42;
+    registry.addComponent<Velocity>(rareEntity, Velocity{.dx = 100.0F, .dy = 200.0F});
+
+    int matchCount = 0;
+    registry.runSystem<Position, Velocity>([&](ecs::Entity e, Position& pos, Velocity& vel) {
+        EXPECT_EQ(e, rareEntity);
+        EXPECT_FLOAT_EQ(pos.x, 42.0F);
+        EXPECT_FLOAT_EQ(vel.dx, 100.0F);
+        ++matchCount;
+    });
+
+    EXPECT_EQ(matchCount, 1);
+}
+
 TEST(ECS, AutoRegistration) {
     ecs::Registry registry;
     // Notice: no registerComponent call!
