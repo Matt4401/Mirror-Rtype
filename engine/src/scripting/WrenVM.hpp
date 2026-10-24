@@ -4,6 +4,7 @@
  */
 
 #pragma once
+#include <cstddef>
 #include <expected>
 #include <functional>
 #include <optional>
@@ -11,8 +12,8 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "scripting/detail/WrenApi.hpp"
-#include "scripting/detail/WrenTypes.hpp"
+#include "scripting/detail/WrenApi.hpp"    // IWYU pragma: export
+#include "scripting/detail/WrenTypes.hpp"  // IWYU pragma: export
 
 namespace scripting {
 

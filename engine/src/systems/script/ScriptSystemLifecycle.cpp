@@ -78,7 +78,7 @@ scripting::detail::UniqueWrenHandle ScriptSystem::createScriptInstance(ecs::Enti
                                                                        const ecs::ScriptComponent& script) {
     if (!_vm.hasVariable(script.moduleName, script.className)) {
         std::cerr << "[ScriptSystem] Class " << script.className << " not found in " << script.moduleName << "\n";
-        return scripting::detail::UniqueWrenHandle(nullptr, scripting::detail::WrenHandleDeleter{.vm = _vm.raw()});
+        return {};
     }
 
     scripting::detail::UniqueWrenHandle entityArg;
