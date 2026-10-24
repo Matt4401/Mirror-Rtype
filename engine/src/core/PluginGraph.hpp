@@ -110,21 +110,45 @@ class PluginGraph {
     void clear();
 
   private:
+    /**
+     * @brief Internal node representation for plugin dependency graph resolution.
+     */
     struct PluginNode {
+        /** @brief Type index identifier of the plugin. */
         std::type_index typeId = std::type_index(typeid(void));
+        /** @brief Owned unique pointer to the plugin instance. */
         std::unique_ptr<IPlugin> plugin = nullptr;
+        /** @brief List of mandatory dependency type indices. */
         std::vector<std::type_index> requiredDeps;
+        /** @brief List of optional dependency type indices. */
         std::vector<std::type_index> optionalDeps;
     };
 
+    /**
+     * @brief Constructs the directed adjacency list and in-degree counts from plugin requirements.
+     * @param adj Adjacency list mapping node index to dependent node indices.
+     * @param inDegree Array tracking incoming edge count for each node.
+     * @param typeToIndex Map translating type_index to internal vector indices.
+     */
     void buildAdjacency(std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree,
                         const std::unordered_map<std::type_index, std::size_t>& typeToIndex);
+
+    /**
+     * @brief Performs Kahn's topological sort algorithm to order plugins sequentially.
+     * @param adj Adjacency list of the graph.
+     * @param inDegree In-degree counts per node.
+     * @param sortedIndices Output vector populated with topologically sorted node indices.
+     */
     void topologicalSort(const std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree,
                          std::vector<std::size_t>& sortedIndices) const;
 
+    /** @brief Registered plugin nodes in insertion order. */
     std::vector<PluginNode> _nodes;
+    /** @brief Resolved execution sequence for init, update, and render. */
     std::vector<IPlugin*> _executionOrder;
+    /** @brief Reversed execution sequence for safe plugin shutdown. */
     std::vector<IPlugin*> _shutdownOrder;
+    /** @brief Flag indicating whether the graph has been topologically sorted. */
     bool _resolved = false;
 };
 
