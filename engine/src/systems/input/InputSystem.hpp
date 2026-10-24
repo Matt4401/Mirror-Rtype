@@ -4,16 +4,17 @@
 #include "events/EventBus.hpp"
 #include "input/ActionMapping.hpp"
 
+namespace input {
+class InputState;
+}
+
 namespace systems {
 
 /**
- * @brief System that samples hardware inputs, updates the InputState resource, and propagates intent to InputReceiver
- * entities.
+ * @brief System that samples hardware inputs, updates matching InputState components, and publishes input action
+ * events.
  *
- * @note TODO(architecture): Decouple input actions from the engine core. Move game-specific actions (e.g. Shoot,
- * ChargeWeapon, MoveUp/Down/Left/Right) and default key bindings to the game layer (client). The engine should
- * provide a generic dynamic action mapping system (e.g. string/hash-based ActionId with discrete buttons and continuous
- * 1D/2D axes) and a device-to-player abstraction.
+ * Polling is driven by dynamic action bindings (discrete buttons and continuous 1D axes) configured via ActionMapping.
  */
 class InputSystem {
   public:
@@ -27,7 +28,7 @@ class InputSystem {
                          int gamepadIndex = 0);
 
     /**
-     * @brief Polls inputs, updates the registry resource and entities with InputReceiver.
+     * @brief Polls inputs, updates matching InputState components, and publishes transition events.
      *
      * @param registry ECS registry containing entities and resources.
      * @param eventBus Optional event bus to publish InputActionEvent on state transitions.
@@ -53,6 +54,9 @@ class InputSystem {
     void setGamepadIndex(int gamepadIndex) noexcept { _gamepadIndex = gamepadIndex; }
 
   private:
+    /** @brief Updates an individual InputState instance against hardware bindings and publishes events. */
+    void updateState(input::InputState& state, ecs::EventBus* eventBus);
+
     /** @brief Active input action mapping configuration. */
     input::ActionMapping _mapping;
 

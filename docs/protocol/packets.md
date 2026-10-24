@@ -1,7 +1,7 @@
 # Packet Reference
 
-This page provides the byte-by-byte binary layout of every game-layer packet.  
-For the transport framing that wraps these payloads, see [transport.md](transport.md).  
+This page provides the byte-by-byte binary layout of every game-layer packet.
+For the transport framing that wraps these payloads, see [transport.md](transport.md).
 For the protocol overview and connection lifecycle, see [rfc.md](rfc.md).
 
 ---
@@ -25,7 +25,7 @@ For the protocol overview and connection lifecycle, see [rfc.md](rfc.md).
 
 Every game-layer packet starts with a 4-byte header:
 
-```
+```txt
  Byte 0    Byte 1    Byte 2     Byte 3
 +--------+--------+---------+----------+
 |  0x52  |  0x54  | version |  opcode  |
@@ -37,7 +37,7 @@ Every game-layer packet starts with a 4-byte header:
 |-----------|-------|--------|--------------------------------|
 | `magic`   | u8[2] | `RT`   | `0x52 0x54` — protocol magic   |
 | `version` | u8    | `0x01` | Protocol version               |
-| `opcode`  | u8    | varies | Message type — see opcode table |
+| `opcode`  | u8    | varies | Message type — see opcode table|
 
 A packet whose `magic` is not `0x52 0x54`, whose `version` does not match, or whose `opcode`
 is unknown **MUST** be silently dropped.
@@ -64,15 +64,15 @@ is unknown **MUST** be silently dropped.
 
 ### 0x01 — HELLO
 
-**Direction:** Client → Server  
-**Channel:** Reliable (TCP)  
-**Phase:** Handshake  
+**Direction:** Client → Server
+**Channel:** Reliable (TCP)
+**Phase:** Handshake
 **Size:** 5 bytes
 
 Sent immediately after the transport layer delivers the internal `Welcome` message (i.e. after
 `ClientId` and `token` are received). Starts version negotiation.
 
-```
+```txt
 Offset  Size  Type  Field            Description
 ------  ----  ----  ---------------  --------------------------------------------------
 0       2     u8[2] magic            0x52 0x54
@@ -88,14 +88,14 @@ without sending `WELCOME`.
 
 ### 0x02 — WELCOME
 
-**Direction:** Server → Client  
-**Channel:** Reliable (TCP)  
-**Phase:** Handshake  
+**Direction:** Server → Client
+**Channel:** Reliable (TCP)
+**Phase:** Handshake
 **Size:** 6 bytes
 
 Reply to `HELLO`. Confirms the handshake and provides the UDP port the client must use.
 
-```
+```txt
 Offset  Size  Type  Field         Description
 ------  ----  ----  ------------  --------------------------------------------------
 0       2     u8[2] magic         0x52 0x54
@@ -112,14 +112,14 @@ After receiving `WELCOME`, the client calls `openUdp(udp_port)` on the transport
 
 ### 0x10 — LOBBY_LIST_REQ
 
-**Direction:** Client → Server  
-**Channel:** Reliable (TCP)  
-**Phase:** Lobby  
+**Direction:** Client → Server
+**Channel:** Reliable (TCP)
+**Phase:** Lobby
 **Size:** 4 bytes
 
 Requests the current list of available rooms.
 
-```
+```txt
 Offset  Size  Type  Field    Description
 ------  ----  ----  -------  --------------------------------------------------
 0       2     u8[2] magic    0x52 0x54
@@ -131,15 +131,15 @@ Offset  Size  Type  Field    Description
 
 ### 0x11 — LOBBY_LIST
 
-**Direction:** Server → Client  
-**Channel:** Reliable (TCP)  
-**Phase:** Lobby  
+**Direction:** Server → Client
+**Channel:** Reliable (TCP)
+**Phase:** Lobby
 **Size:** 5 + count × 8 bytes
 
 Delivers the list of rooms. Sent in response to `LOBBY_LIST_REQ` and also pushed proactively
 whenever a room is created, modified, or destroyed.
 
-```
+```txt
 Offset  Size          Type      Field    Description
 ------  ------------  --------  -------  --------------------------------------------------
 0       2             u8[2]     magic    0x52 0x54
@@ -151,7 +151,7 @@ Offset  Size          Type      Field    Description
 
 **RoomEntry (8 bytes):**
 
-```
+```txt
 Offset  Size  Type  Field           Description
 ------  ----  ----  --------------  --------------------------------------------------
 0       4     u32   room_id         Unique room identifier, assigned by the server
@@ -165,15 +165,15 @@ Offset  Size  Type  Field           Description
 
 ### 0x12 — LOBBY_CREATE
 
-**Direction:** Client → Server  
-**Channel:** Reliable (TCP)  
-**Phase:** Lobby  
+**Direction:** Client → Server
+**Channel:** Reliable (TCP)
+**Phase:** Lobby
 **Size:** 4 bytes
 
 Requests the creation of a new room. The server assigns a `room_id` and broadcasts an updated
 `LOBBY_LIST` to all clients.
 
-```
+```txt
 Offset  Size  Type  Field    Description
 ------  ----  ----  -------  --------------------------------------------------
 0       2     u8[2] magic    0x52 0x54
@@ -185,15 +185,15 @@ Offset  Size  Type  Field    Description
 
 ### 0x13 — LOBBY_JOIN
 
-**Direction:** Client → Server  
-**Channel:** Reliable (TCP)  
-**Phase:** Lobby  
+**Direction:** Client → Server
+**Channel:** Reliable (TCP)
+**Phase:** Lobby
 **Size:** 8 bytes
 
 Requests to join an existing room. Ignored if the room is full (`player_count == 4`) or in
 state `InGame`.
 
-```
+```txt
 Offset  Size  Type  Field    Description
 ------  ----  ----  -------  --------------------------------------------------
 0       2     u8[2] magic    0x52 0x54
@@ -206,15 +206,15 @@ Offset  Size  Type  Field    Description
 
 ### 0x14 — LOBBY_READY
 
-**Direction:** Client → Server  
-**Channel:** Reliable (TCP)  
-**Phase:** Lobby  
+**Direction:** Client → Server
+**Channel:** Reliable (TCP)
+**Phase:** Lobby
 **Size:** 5 bytes
 
 Toggles the client's ready state. The server starts the game when **all players** in the room
 have `ready = 1` and `player_count >= 1`.
 
-```
+```txt
 Offset  Size  Type  Field    Description
 ------  ----  ----  -------  --------------------------------------------------
 0       2     u8[2] magic    0x52 0x54
@@ -227,14 +227,14 @@ Offset  Size  Type  Field    Description
 
 ### 0x15 — LOBBY_UPDATE
 
-**Direction:** Server → Client  
-**Channel:** Reliable (TCP)  
-**Phase:** Lobby  
+**Direction:** Server → Client
+**Channel:** Reliable (TCP)
+**Phase:** Lobby
 **Size:** 9 + 4 × 5 = 29 bytes
 
 Pushed whenever a player joins, leaves, or changes their ready state in a room.
 
-```
+```txt
 Offset  Size       Type        Field          Description
 ------  ---------  ----------  -------------  --------------------------------------------------
 0       2          u8[2]       magic          0x52 0x54
@@ -247,7 +247,7 @@ Offset  Size       Type        Field          Description
 
 **PlayerSlot (5 bytes):**
 
-```
+```txt
 Offset  Size  Type  Field      Description
 ------  ----  ----  ---------  --------------------------------------------------
 0       4     u32   client_id  0 = empty slot; otherwise the client's ClientId
@@ -262,15 +262,15 @@ Slots are ordered by join order. Empty slots have `client_id = 0` and `ready = 0
 
 ### 0x20 — GAME_START
 
-**Direction:** Server → Client  
-**Channel:** Reliable (TCP)  
-**Phase:** Lobby → In-game  
+**Direction:** Server → Client
+**Channel:** Reliable (TCP)
+**Phase:** Lobby → In-game
 **Size:** 10 bytes
 
 Sent to every client in the room when all players are ready. After receiving this message, the
 client opens the UDP channel and switches to the In-game phase.
 
-```
+```txt
 Offset  Size  Type  Field          Description
 ------  ----  ----  -------------  --------------------------------------------------
 0       2     u8[2] magic          0x52 0x54
@@ -288,15 +288,15 @@ of the game.
 
 ### 0x30 — GAME_OVER
 
-**Direction:** Server → Client  
-**Channel:** Reliable (TCP)  
-**Phase:** In-game → Lobby  
+**Direction:** Server → Client
+**Channel:** Reliable (TCP)
+**Phase:** In-game → Lobby
 **Size:** 25 bytes
 
 Sent to all clients when the game ends. After receiving this message, the client closes the UDP
 channel and returns to the Lobby phase.
 
-```
+```txt
 Offset  Size   Type    Field           Description
 ------  -----  ------  --------------  --------------------------------------------------
 0       2      u8[2]   magic           0x52 0x54
@@ -313,16 +313,16 @@ Offset  Size   Type    Field           Description
 
 ### 0x40 — LEAVE
 
-**Direction:** Client → Server  
-**Channel:** Reliable (TCP)  
-**Phase:** Any  
+**Direction:** Client → Server
+**Channel:** Reliable (TCP)
+**Phase:** Any
 **Size:** 4 bytes
 
 Graceful disconnect. The client sends this before closing the TCP connection. The server
 removes the client from its room (if any) and pushes an updated `LOBBY_LIST` to all remaining
 clients.
 
-```
+```txt
 Offset  Size  Type  Field    Description
 ------  ----  ----  -------  --------------------------------------------------
 0       2     u8[2] magic    0x52 0x54
@@ -334,15 +334,15 @@ Offset  Size  Type  Field    Description
 
 ### 0x50 — CHAT
 
-**Direction:** Client → Server and Server → Client  
-**Channel:** Reliable (TCP)  
-**Phase:** Lobby + In-game  
+**Direction:** Client → Server and Server → Client
+**Channel:** Reliable (TCP)
+**Phase:** Lobby + In-game
 **Size:** 10 + message_length bytes (max 266 bytes)
 
 Chat message. When the server receives a `CHAT` from a client, it broadcasts it to all other
 clients in the same room with the sender's `client_id` filled in.
 
-```
+```txt
 Offset  Size  Type   Field          Description
 ------  ----  -----  -------------  --------------------------------------------------
 0       2     u8[2]  magic          0x52 0x54
@@ -368,16 +368,16 @@ The common 4-byte header still applies.
 
 ### 0x60 — PLAYER_INPUT
 
-**Direction:** Client → Server  
-**Channel:** Unreliable (UDP)  
-**Phase:** In-game  
+**Direction:** Client → Server
+**Channel:** Unreliable (UDP)
+**Phase:** In-game
 **Size:** 9 bytes
 
 Sent every game tick (~60 Hz) to report the current state of the player's controls. Because
 inputs are sent continuously, a lost datagram is simply replaced by the next one. The server
 applies the input from the most recent `seq` it has received for each client.
 
-```
+```txt
 Offset  Size  Type  Field    Description
 ------  ----  ----  -------  --------------------------------------------------
 0       2     u8[2] magic    0x52 0x54
@@ -393,16 +393,16 @@ Stale inputs (seq <= last received seq, accounting for wrapping) MUST be discard
 
 ### 0x70 — WORLD_STATE
 
-**Direction:** Server → Client  
-**Channel:** Unreliable (UDP)  
-**Phase:** In-game  
+**Direction:** Server → Client
+**Channel:** Unreliable (UDP)
+**Phase:** In-game
 **Size:** 9 + entity_count × 12 bytes (max: 9 + 98 × 12 = 1185 bytes)
 
 Sent every game tick (~60 Hz). Contains the authoritative snapshot of all entities in the
 world. Clients should render the most recent snapshot they have received; older snapshots
 MUST be discarded (`tick` comparison with wrapping).
 
-```
+```txt
 Offset              Size   Type         Field          Description
 ------              -----  -----------  -------------  --------------------------------------------------
 0                   2      u8[2]        magic          0x52 0x54
@@ -415,7 +415,7 @@ Offset              Size   Type         Field          Description
 
 **EntityState (12 bytes):**
 
-```
+```txt
 Offset  Size  Type  Field      Description
 ------  ----  ----  ---------  --------------------------------------------------
 0       4     u32   entity_id  Unique entity identifier, stable for the entity's lifetime
@@ -435,13 +435,13 @@ to allow clients to play a death animation. It MUST NOT appear in subsequent sna
 
 ## Appendix A — Entity Types
 
-| Value | Name            | Description                                      |
-|-------|-----------------|--------------------------------------------------|
+| Value | Name            | Description                                                 |
+|-------|-----------------|-------------------------------------------------------------|
 | `0`   | `Player`        | Player-controlled spaceship. `subtype` = player index (0–3) |
-| `1`   | `Enemy`         | Bydos enemy unit. `subtype` = enemy model ID     |
-| `2`   | `PlayerMissile` | Missile fired by a player. `subtype` = player index |
-| `3`   | `EnemyMissile`  | Missile fired by an enemy. `subtype` = 0         |
-| `4`   | `Powerup`       | Powerup collectible. `subtype` = powerup type    |
+| `1`   | `Enemy`         | Bydos enemy unit. `subtype` = enemy model ID                |
+| `2`   | `PlayerMissile` | Missile fired by a player. `subtype` = player index         |
+| `3`   | `EnemyMissile`  | Missile fired by an enemy. `subtype` = 0                    |
+| `4`   | `Powerup`       | Powerup collectible. `subtype` = powerup type               |
 
 ---
 
@@ -464,7 +464,7 @@ Multiple bits can be set simultaneously (e.g. `0x09` = UP + RIGHT).
 
 ## Appendix C — Complete Opcode Summary
 
-| Opcode | Name             | Dir   | Chan       | Size (bytes)                   |
+| Opcode | Name             | Dir   | Chan       | Size (bytes)                  |
 |--------|------------------|-------|------------|-------------------------------|
 | `0x01` | `HELLO`          | C → S | Reliable   | 5                             |
 | `0x02` | `WELCOME`        | S → C | Reliable   | 6                             |

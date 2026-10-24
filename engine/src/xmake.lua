@@ -19,6 +19,12 @@ target("engine_config")
     add_includedirs(".", {public = true})
     add_packages("toml++")
 
+target("engine_prefabs")
+    set_kind("static")
+    add_files("prefabs/**.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core")
+
 target("engine_scripting")
     set_kind("static")
     add_files("scripting/**.cpp", "systems/script/**.cpp")
@@ -35,7 +41,7 @@ target("engine_physics")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_scripting", "engine_physics")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_physics")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end
@@ -45,7 +51,3 @@ if has_config("graphics") then
     includes("audio")
     includes("input")
 end
-
-target("engine_all")
-    set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting")

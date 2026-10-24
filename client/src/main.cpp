@@ -12,17 +12,17 @@
 
 #include "components/CameraComponent.hpp"
 #include "components/Collider2D.hpp"
-#include "components/InputReceiver.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"
+#include "components/ShipInput.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
-#include "input/InputAction.hpp"
 #include "input/InputState.hpp"
+#include "input/RTypeBindings.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
@@ -82,17 +82,20 @@ void spawnDemoScene(ecs::Registry& registry) {
                                           ecs::Transform{.x = 200.0F, .y = 360.0F, .scaleX = 2.0F, .scaleY = 2.0F});
     registry.addComponent<ecs::Renderable>(player,
                                            ecs::Renderable{.tint = {.r = 50, .g = 220, .b = 90, .a = 255}, .layer = 3});
-    registry.addComponent<ecs::InputReceiver>(player, ecs::InputReceiver{.playerIndex = 0, .speed = 350.0F});
+    registry.addComponent<client::ShipInput>(player, client::ShipInput{.playerIndex = 0, .speed = 350.0F});
+    registry.addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
 }
 
 void movePlayer(ecs::Registry& registry, float deltaTime) {
-    registry.runSystem<ecs::Transform, ecs::InputReceiver>(
-        [deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, ecs::InputReceiver& receiver) {
-            if (!receiver.enabled) {
+    registry.runSystem<ecs::Transform, client::ShipInput, input::InputState>(
+        [deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
+                    const input::InputState& inputState) {
+            if (!ship.enabled) {
                 return;
             }
-            transform.x += receiver.moveX * receiver.speed * deltaTime;
-            transform.y += receiver.moveY * receiver.speed * deltaTime;
+            const auto move = inputState.getVector2("move_x", "move_y", true);
+            transform.x += move.x * ship.speed * deltaTime;
+            transform.y += move.y * ship.speed * deltaTime;
 
             transform.x = std::clamp(transform.x, MIN_X, MAX_X);
             transform.y = std::clamp(transform.y, MIN_Y, MAX_Y);
@@ -100,18 +103,11 @@ void movePlayer(ecs::Registry& registry, float deltaTime) {
 }
 
 void handlePlayerShoot(ecs::Registry& registry) {
-    if (!registry.hasResource<input::InputState>()) {
-        return;
-    }
-    const auto& inputState = registry.getResource<input::InputState>();
-    if (!inputState.isJustPressed(input::Action::Shoot)) {
-        return;
-    }
-
     std::vector<ecs::Transform> spawnPositions;
-    registry.runSystem<ecs::Transform, ecs::InputReceiver>(
-        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, ecs::InputReceiver& receiver) {
-            if (receiver.enabled) {
+    registry.runSystem<ecs::Transform, client::ShipInput, input::InputState>(
+        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
+                          const input::InputState& inputState) {
+            if (ship.enabled && inputState.isJustPressed("shoot")) {
                 spawnPositions.push_back(transform);
             }
         });
@@ -158,6 +154,7 @@ int main() {
         const render::TextureStore textures;
         render::RenderSystem renderSystem(textures);
         systems::InputSystem inputSystem;
+        client::input::setupDefaultBindings(inputSystem.mapping());
         ecs::EventBus eventBus;
 
         ecs::Registry registry;
