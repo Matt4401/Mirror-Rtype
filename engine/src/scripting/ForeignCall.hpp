@@ -4,17 +4,10 @@
  */
 
 #pragma once
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <limits>
 #include <optional>
-#include <string>
 #include <string_view>
-#include <type_traits>
 
-#include "scripting/detail/WrenApi.hpp"
-#include "scripting/detail/WrenTypes.hpp"
+#include "scripting/detail/WrenApi.hpp"  // IWYU pragma: export
 
 namespace scripting {
 

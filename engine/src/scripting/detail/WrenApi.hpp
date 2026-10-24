@@ -5,6 +5,8 @@
 
 #pragma once
 
+// IWYU pragma: begin_exports
 extern "C" {
 #include <wren.h>
 }
+// IWYU pragma: end_exports
