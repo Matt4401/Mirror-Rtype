@@ -1,0 +1,180 @@
+/**
+ * @file RTypeGamePlugin.cpp
+ * @brief Implementation of RTypeGamePlugin demonstration game logic.
+ */
+
+#include "RTypeGamePlugin.hpp"
+
+#include <algorithm>
+#include <vector>
+
+#include "components/CameraComponent.hpp"
+#include "components/Collider2D.hpp"
+#include "components/Renderable.hpp"
+#include "components/RigidBody2D.hpp"
+#include "components/ShipInput.hpp"
+#include "components/Transform.hpp"
+#include "core/Engine.hpp"
+#include "core/services/IInputService.hpp"
+#include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
+#include "ecs/time/Time.hpp"
+#include "input/InputPlugin.hpp"
+#include "input/InputState.hpp"
+#include "input/RTypeBindings.hpp"
+#include "render/RenderPlugin.hpp"
+#include "scripting/ScriptPlugin.hpp"
+#include "systems/physics/PhysicsPlugin.hpp"
+
+namespace client {
+
+using ::input::InputState;
+
+namespace {
+
+constexpr float PROJECTILE_SPEED = 200.0F;
+constexpr float PLAYER_BULLET_SPEED = 700.0F;
+constexpr float SCENE_WIDTH = 1280.0F;
+constexpr float MIN_X = 32.0F;
+constexpr float MAX_X = 1248.0F;
+constexpr float MIN_Y = 32.0F;
+constexpr float MAX_Y = 688.0F;
+
+/** @brief Tag component marking scene obstacle projectiles. */
+struct Projectile {};
+
+/** @brief Tag component marking projectiles fired by the player. */
+struct PlayerBullet {};
+
+void spawnDemoScene(ecs::Registry& registry) {
+    registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
+
+    // Static obstacle
+    const ecs::Entity obstacle = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(
+        obstacle,
+        ecs::Transform{.x = 640.0F, .y = 360.0F, .z = 0.0F, .rotation = 0.0F, .scaleX = 3.0F, .scaleY = 8.0F});
+    registry.addComponent<ecs::Renderable>(
+        obstacle, ecs::Renderable{.tint = {.r = 120, .g = 120, .b = 120, .a = 255}, .layer = 1});
+    registry.addComponent<ecs::RigidBody2D>(obstacle, ecs::RigidBody2D{});
+    registry.addComponent<ecs::Collider2D>(obstacle, ecs::Collider2D{.halfWidth = 48.0F, .halfHeight = 128.0F});
+
+    // Projectile behind the obstacle
+    const ecs::Entity behind = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(
+        behind, ecs::Transform{.x = 0.0F, .y = 330.0F, .z = 0.0F, .rotation = 0.0F, .scaleX = 2.0F, .scaleY = 1.0F});
+    registry.addComponent<ecs::Renderable>(
+        behind, ecs::Renderable{.tint = {.r = 80, .g = 160, .b = 255, .a = 255}, .layer = 0});
+    registry.addComponent<ecs::RigidBody2D>(
+        behind, ecs::RigidBody2D{.bodyType = ecs::BodyType::Dynamic, .velocityX = PROJECTILE_SPEED, .bullet = true});
+    registry.addComponent<ecs::Collider2D>(behind,
+                                           ecs::Collider2D{.shape = ecs::ColliderShape::Circle, .radius = 16.0F});
+
+    // Projectile in front of the obstacle
+    const ecs::Entity front = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(
+        front, ecs::Transform{.x = 0.0F, .y = 390.0F, .z = 0.0F, .rotation = 0.0F, .scaleX = 2.0F, .scaleY = 1.0F});
+    registry.addComponent<ecs::Renderable>(
+        front, ecs::Renderable{.tint = {.r = 255, .g = 100, .b = 80, .a = 255}, .layer = 2});
+    registry.addComponent<Projectile>(front, Projectile{});
+
+    // Controllable player block (green)
+    const ecs::Entity player = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(
+        player, ecs::Transform{.x = 200.0F, .y = 360.0F, .z = 0.0F, .rotation = 0.0F, .scaleX = 2.0F, .scaleY = 2.0F});
+    registry.addComponent<ecs::Renderable>(player,
+                                           ecs::Renderable{.tint = {.r = 50, .g = 220, .b = 90, .a = 255}, .layer = 3});
+    registry.addComponent<client::ShipInput>(player, client::ShipInput{.playerIndex = 0, .speed = 350.0F});
+    registry.addComponent<::input::InputState>(player, ::input::InputState{.playerIndex = 0, .actions = {}});
+}
+
+void movePlayer(ecs::Registry& registry, float deltaTime) {
+    registry.runSystem<ecs::Transform, client::ShipInput, ::input::InputState>(
+        [deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
+                    const ::input::InputState& inputState) {
+            if (!ship.enabled) {
+                return;
+            }
+            const auto move = inputState.getVector2("move_x", "move_y", true);
+            transform.x += move.x * ship.speed * deltaTime;
+            transform.y += move.y * ship.speed * deltaTime;
+
+            transform.x = std::clamp(transform.x, MIN_X, MAX_X);
+            transform.y = std::clamp(transform.y, MIN_Y, MAX_Y);
+        });
+}
+
+void handlePlayerShoot(ecs::Registry& registry) {
+    std::vector<ecs::Transform> spawnPositions;
+    registry.runSystem<ecs::Transform, client::ShipInput, ::input::InputState>(
+        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
+                          const ::input::InputState& inputState) {
+            if (ship.enabled && inputState.isJustPressed("shoot")) {
+                spawnPositions.push_back(transform);
+            }
+        });
+
+    for (const auto& pos : spawnPositions) {
+        const ecs::Entity bullet = registry.spawnEntity();
+        registry.addComponent<ecs::Transform>(
+            bullet, ecs::Transform{
+                        .x = pos.x + 40.0F, .y = pos.y, .z = 0.0F, .rotation = 0.0F, .scaleX = 1.0F, .scaleY = 0.4F});
+        registry.addComponent<ecs::Renderable>(
+            bullet, ecs::Renderable{.tint = {.r = 80, .g = 255, .b = 140, .a = 255}, .layer = 2});
+        registry.addComponent<PlayerBullet>(bullet, PlayerBullet{});
+    }
+}
+
+void movePlayerBullets(ecs::Registry& registry, float deltaTime) {
+    std::vector<ecs::Entity> toDestroy;
+    registry.runSystem<ecs::Transform, PlayerBullet>(
+        [&toDestroy, deltaTime](ecs::Entity entity, ecs::Transform& transform, PlayerBullet& /*tag*/) {
+            transform.x += PLAYER_BULLET_SPEED * deltaTime;
+            if (transform.x > SCENE_WIDTH + 64.0F) {
+                toDestroy.push_back(entity);
+            }
+        });
+    for (const ecs::Entity entity : toDestroy) {
+        registry.killEntity(entity);
+    }
+}
+
+void moveProjectiles(ecs::Registry& registry, float deltaTime) {
+    registry.runSystem<ecs::Transform, Projectile>(
+        [deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, Projectile& /*tag*/) {
+            transform.x += PROJECTILE_SPEED * deltaTime;
+            if (transform.x > SCENE_WIDTH) {
+                transform.x = 0.0F;
+            }
+        });
+}
+
+}  // namespace
+
+void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
+    builder.require<render::RenderPlugin>();
+    builder.require<::input::InputPlugin>();
+    builder.require<systems::PhysicsPlugin>();
+    builder.optionally<scripting::ScriptPlugin>();
+}
+
+void RTypeGamePlugin::init(engine::Engine& engine) {
+    if (engine.mediator().hasService<engine::IInputService>()) {
+        auto& inputService = engine.service<engine::IInputService>();
+        client::input::setupDefaultBindings(inputService.mapping());
+    }
+
+    spawnDemoScene(engine.registry());
+}
+
+void RTypeGamePlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) {
+    movePlayer(engine.registry(), time.deltaTime);
+    movePlayerBullets(engine.registry(), time.deltaTime);
+    moveProjectiles(engine.registry(), time.deltaTime);
+}
+
+void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
+    handlePlayerShoot(engine.registry());
+}
+
+}  // namespace client
