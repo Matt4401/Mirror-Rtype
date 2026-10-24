@@ -74,7 +74,9 @@ class PhysicsPlugin final : public engine::IPlugin {
   private:
     class PhysicsServiceImpl;
 
+    /** @brief Owned pointer to the active Box2D PhysicsSystem. */
     std::unique_ptr<PhysicsSystem> _physicsSystem = nullptr;
+    /** @brief Shared pointer to abstract physics service adapter registered in Mediator. */
     std::shared_ptr<PhysicsServiceImpl> _physicsService = nullptr;
 };
 
