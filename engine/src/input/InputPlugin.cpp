@@ -18,8 +18,15 @@
 
 namespace input {
 
+/**
+ * @brief Concrete adapter implementing IInputService via InputSystem.
+ */
 class InputPlugin::InputServiceImpl final : public engine::IInputService {
   public:
+    /**
+     * @brief Constructs InputServiceImpl wrapping an InputSystem reference.
+     * @param system Reference to the active InputSystem.
+     */
     explicit InputServiceImpl(systems::InputSystem& system) : _system(&system) {}
 
     [[nodiscard]] ActionMapping& mapping() noexcept override { return _system->mapping(); }
@@ -31,6 +38,7 @@ class InputPlugin::InputServiceImpl final : public engine::IInputService {
     [[nodiscard]] int gamepadIndex() const noexcept override { return _system->gamepadIndex(); }
 
   private:
+    /** @brief Pointer to wrapped InputSystem. */
     systems::InputSystem* _system;
 };
 

@@ -86,7 +86,9 @@ class InputPlugin final : public engine::IPlugin {
   private:
     class InputServiceImpl;
 
+    /** @brief Underlying input system monitoring hardware device states. */
     systems::InputSystem _inputSystem;
+    /** @brief Shared pointer to abstract input service adapter registered in Mediator. */
     std::shared_ptr<InputServiceImpl> _inputService = nullptr;
 };
 
