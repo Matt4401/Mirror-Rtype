@@ -98,9 +98,14 @@ void Engine::run() {
             }
         });
 
-        const ecs::time::Time& currentTime = _clock.time();
+        const ecs::time::Time frameTime{
+            .deltaTime = _clock.lastFrameDelta(),
+            .totalElapsedTime = _clock.time().totalElapsedTime,
+            .tickCount = _clock.time().tickCount,
+        };
+
         for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-            plugin->update(*this, currentTime);
+            plugin->update(*this, frameTime);
         }
 
         for (IPlugin* plugin : _pluginGraph.executionOrder()) {

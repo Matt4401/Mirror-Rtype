@@ -44,7 +44,7 @@ class Clock {
      * @return Number of steps executed.
      */
     template <typename Step>
-    std::size_t tick(float fixedDt, Step&& step);
+    std::size_t tick(float fixedDt, Step step);
 
     /**
      * @brief Advances the simulation by elapsed time, automatically updating the Time resource in the Registry.
@@ -58,12 +58,30 @@ class Clock {
      * @return Number of steps executed.
      */
     template <typename Step>
-    std::size_t tick(float fixedDt, Registry& registry, Step&& step);
+    std::size_t tick(float fixedDt, Registry& registry, Step step);
 
     /**
      * @brief Time data of the latest executed step.
      */
     [[nodiscard]] const Time& time() const noexcept { return _time; }
+
+    /**
+     * @brief Real elapsed time in seconds between the two most recent tick calls.
+     * @return Real frame delta time in seconds.
+     */
+    [[nodiscard]] float lastFrameDelta() const noexcept { return static_cast<float>(_lastElapsed); }
+
+    /**
+     * @brief Current frame timing data with variable real-time deltaTime.
+     * @return Frame Time structure containing real-time deltaTime and current simulation progress.
+     */
+    [[nodiscard]] Time frameTime() const noexcept {
+        return Time{
+            .deltaTime = static_cast<float>(_lastElapsed),
+            .totalElapsedTime = _time.totalElapsedTime,
+            .tickCount = _time.tickCount,
+        };
+    }
 
     /**
      * @brief Restarts the clock: clears the accumulator and counters.
@@ -85,6 +103,9 @@ class Clock {
 
     /** @brief Accumulated real time awaiting consumption in fixedDt steps. */
     double _accumulator = 0.0;
+
+    /** @brief Real elapsed time in seconds measured during the most recent tick. */
+    double _lastElapsed = 0.0;
 
     /** @brief Total accumulated elapsed simulation time. */
     double _totalElapsed = 0.0;

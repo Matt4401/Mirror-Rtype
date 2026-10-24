@@ -9,13 +9,15 @@
 namespace ecs::time {
 
 template <typename Step>
-std::size_t Clock::tick(float fixedDt, Step&& step) {
+std::size_t Clock::tick(float fixedDt, Step step) {
     if (!(fixedDt > 0.0F)) {
         return 0;
     }
 
     const auto stepSeconds = static_cast<double>(fixedDt);
-    _accumulator += pollElapsed();
+    const double elapsed = pollElapsed();
+    _lastElapsed = elapsed;
+    _accumulator += elapsed;
 
     std::size_t steps = 0;
     while (_accumulator >= stepSeconds && steps < _maxStepsPerTick) {
@@ -35,8 +37,8 @@ std::size_t Clock::tick(float fixedDt, Step&& step) {
 }
 
 template <typename Step>
-std::size_t Clock::tick(float fixedDt, Registry& registry, Step&& step) {
-    return tick(fixedDt, [&](const Time& timeData) {
+std::size_t Clock::tick(float fixedDt, Registry& registry, Step step) {
+    return tick(fixedDt, [&registry, &step](const Time& timeData) {
         if (!registry.hasResource<Time>()) {
             registry.emplaceResource<Time>(timeData);
         } else {
