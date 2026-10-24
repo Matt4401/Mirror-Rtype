@@ -281,6 +281,22 @@ TEST(PrefabManager, CollisionCategoriesFilterPairs) {
     EXPECT_TRUE(canCollide(powerUp, player));
 }
 
+TEST(PrefabManager, SpawningSurvivesManagerDestructionBeforeFlush) {
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    {
+        prefabs::PrefabManager localManager;
+        localManager.registerPrefab(prefabs::MISSILE_PREFAB, prefabs::buildMissile);
+        ASSERT_TRUE(localManager.spawn(prefabs::MISSILE_PREFAB, buffer, {{"x", 123.0F}}));
+    }
+
+    buffer.flush(registry);
+
+    ASSERT_TRUE(registry.hasComponent<ecs::Transform>(0));
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Transform>().get(0).x, 123.0F);
+}
+
 }  // namespace
 
 TEST(PrefabPlugin, InitFailsAndKeepsExistingManagerOnDuplicate) {

@@ -27,10 +27,8 @@ bool PrefabManager::spawn(std::string_view name, ecs::CommandBuffer& buffer, Pre
     }
     PrefabParams merged = it->second.defaults;
     merged.merge(params);
-    Factory const* factory = &it->second.factory;
-    buffer.deferSpawn([factory, merged = std::move(merged)](ecs::Entity e, ecs::Registry& registry) {
-        (*factory)(e, registry, merged);
-    });
+    buffer.deferSpawn([factory = it->second.factory, merged = std::move(merged)](
+                          ecs::Entity e, ecs::Registry& registry) { factory(e, registry, merged); });
     return true;
 }
 
