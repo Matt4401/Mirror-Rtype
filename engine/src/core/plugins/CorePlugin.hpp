@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "core/IPlugin.hpp"
+#include "core/PluginBuilder.hpp"
 
 namespace engine {
 

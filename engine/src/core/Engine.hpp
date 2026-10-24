@@ -10,9 +10,11 @@
 
 #include "core/IPlugin.hpp"
 #include "core/Mediator.hpp"
+#include "core/MediatorError.hpp"
 #include "core/PluginGraph.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
+#include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
 
 namespace engine {
