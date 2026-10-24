@@ -7,10 +7,6 @@
 #include <string>
 #include <vector>
 
-extern "C" {
-#include <wren.h>
-}
-
 #include "scripting/WrenVM.hpp"
 
 namespace scripting {
