@@ -74,6 +74,7 @@ class ScriptPlugin final : public engine::IPlugin {
     [[nodiscard]] const systems::ScriptSystem& scriptSystem() const noexcept { return _scriptSystem; }
 
   private:
+    /** @brief Internal ScriptSystem instance driving Wren VM execution. */
     systems::ScriptSystem _scriptSystem;
 };
 
