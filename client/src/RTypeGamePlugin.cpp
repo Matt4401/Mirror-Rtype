@@ -15,6 +15,7 @@
 #include "components/ShipInput.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
+#include "core/PluginBuilder.hpp"
 #include "core/services/IInputService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"

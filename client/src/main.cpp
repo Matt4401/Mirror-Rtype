@@ -17,7 +17,7 @@
 int main() {
     try {
         engine::Engine engine;
-        engine.addPlugin<render::RenderPlugin>(render::WindowConfig{})
+        engine.addPlugin<render::RenderPlugin>()
             .addPlugin<input::InputPlugin>()
             .addPlugin<systems::PhysicsPlugin>()
             .addPlugin<client::RTypeGamePlugin>();
