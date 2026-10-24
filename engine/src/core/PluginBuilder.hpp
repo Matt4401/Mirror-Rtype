@@ -80,7 +80,9 @@ class PluginBuilder {
     [[nodiscard]] const std::vector<PluginDependency>& optionalDependencies() const noexcept { return _optional; }
 
   private:
+    /** @brief List of mandatory plugin dependencies. */
     std::vector<PluginDependency> _required;
+    /** @brief List of optional plugin dependencies. */
     std::vector<PluginDependency> _optional;
 };
 
