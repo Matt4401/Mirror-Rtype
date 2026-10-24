@@ -120,7 +120,7 @@ class ForeignCall {
      * @return Pointer to newly allocated foreign memory.
      */
     template <typename T>
-    T* retNewForeign(int classSlot = 0) const noexcept {
+    [[nodiscard]] T* retNewForeign(int classSlot = 0) const noexcept {
         return static_cast<T*>(wrenSetSlotNewForeign(_vm, 0, classSlot, sizeof(T)));
     }
 

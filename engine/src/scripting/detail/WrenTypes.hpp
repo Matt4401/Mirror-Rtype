@@ -9,8 +9,7 @@
 #include <memory>
 #include <string>
 
-struct WrenVM;
-struct WrenHandle;
+#include "scripting/detail/WrenApi.hpp"  // IWYU pragma: export
 
 namespace scripting::detail {
 

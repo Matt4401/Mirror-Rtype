@@ -17,8 +17,8 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
-#include "scripting/WrenVM.hpp"
-#include "scripting/detail/WrenTypes.hpp"
+#include "scripting/WrenVM.hpp"            // IWYU pragma: export
+#include "scripting/detail/WrenTypes.hpp"  // IWYU pragma: export
 
 namespace systems {
 

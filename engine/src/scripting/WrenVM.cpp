@@ -5,6 +5,7 @@
 
 #include "scripting/WrenVM.hpp"
 
+#include <exception>
 #include <expected>
 #include <iostream>
 #include <string>
@@ -267,7 +268,10 @@ void WrenVM::onWrite(::WrenVM* vm, const char* text) noexcept {
         } else {
             std::cout << text;
         }
+    } catch (const std::exception& e) {
+        std::cerr << "[WrenVM] Exception in onWrite: " << e.what() << "\n";
     } catch (...) {
+        std::cerr << "[WrenVM] Unknown exception in onWrite\n";
     }
 }
 
@@ -300,7 +304,10 @@ void WrenVM::onError(::WrenVM* vm, WrenErrorType type, const char* module, int l
                 std::cerr << "  in " << modStr << " line " << line << " in " << msgStr << "\n";
             }
         }
+    } catch (const std::exception& e) {
+        std::cerr << "[WrenVM] Exception in onError: " << e.what() << "\n";
     } catch (...) {
+        std::cerr << "[WrenVM] Unknown exception in onError\n";
     }
 }
 
