@@ -76,7 +76,9 @@ class PrefabManager {
   private:
     /** @brief A registered factory and its default parameters. */
     struct Prefab {
+        /** @brief Factory callback instantiating the entity with configured parameters. */
         Factory factory;
+        /** @brief Default fallback parameters defined at registration. */
         PrefabParams defaults;
     };
 
