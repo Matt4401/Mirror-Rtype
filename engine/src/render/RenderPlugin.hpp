@@ -86,11 +86,17 @@ class RenderPlugin final : public engine::IPlugin {
     class WindowServiceImpl;
     class RenderServiceImpl;
 
+    /** @brief Active window configuration settings. */
     WindowConfig _config = {};
+    /** @brief Owned pointer to the Raylib Window instance. */
     std::unique_ptr<Window> _window = nullptr;
+    /** @brief Owned pointer to the 2D texture storage cache. */
     std::unique_ptr<TextureStore> _textures = nullptr;
+    /** @brief Owned pointer to the 2D ECS rendering system. */
     std::unique_ptr<RenderSystem> _renderSystem = nullptr;
+    /** @brief Shared pointer to abstract window service adapter. */
     std::shared_ptr<WindowServiceImpl> _windowService = nullptr;
+    /** @brief Shared pointer to abstract render service adapter. */
     std::shared_ptr<RenderServiceImpl> _renderService = nullptr;
 };
 
