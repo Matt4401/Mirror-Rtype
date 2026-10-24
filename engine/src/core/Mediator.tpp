@@ -18,21 +18,28 @@
 namespace engine {
 
 template <typename Service>
-void Mediator::registerService(const std::shared_ptr<Service>& service) {
+std::expected<void, MediatorError> Mediator::registerService(const std::shared_ptr<Service>& service) {
     if (!service) {
         throw std::invalid_argument("Cannot register a null service in Mediator");
     }
+    if (hasService<Service>()) {
+        return std::unexpected(MediatorError::AlreadyRegistered);
+    }
     const std::type_index key(typeid(Service));
     _services[key] = std::static_pointer_cast<void>(service);
+    return {};
 }
 
 template <typename Service, typename Impl, typename... Args>
-Service& Mediator::emplaceService(Args&&... args) {
+std::expected<std::reference_wrapper<Service>, MediatorError> Mediator::emplaceService(Args&&... args) {
+    if (hasService<Service>()) {
+        return std::unexpected(MediatorError::AlreadyRegistered);
+    }
     auto instance = std::make_shared<Impl>(std::forward<Args>(args)...);
     std::shared_ptr<Service> servicePtr = instance;
     const std::type_index key(typeid(Service));
     _services[key] = std::static_pointer_cast<void>(servicePtr);
-    return *instance;
+    return std::ref(*instance);
 }
 
 template <typename Service>
