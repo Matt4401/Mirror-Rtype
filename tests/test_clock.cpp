@@ -152,6 +152,23 @@ TEST(Clock, SyncsTimeResourceInRegistry) {
     EXPECT_EQ(registry.getResource<ecs::time::Time>().tickCount, 1U);
 }
 
+TEST(Clock, LastFrameDeltaTracksRealElapsed) {
+    FakeTime fake;
+    ecs::time::Clock clock(fake.source());
+
+    // Frame 1: 5 ms elapsed (less than FIXED_DT, 0 steps run)
+    fake.now = 0.005;
+    EXPECT_EQ(clock.tick(FIXED_DT, [](const ecs::time::Time&) {}), 0U);
+    EXPECT_FLOAT_EQ(clock.lastFrameDelta(), 0.005F);
+    EXPECT_FLOAT_EQ(clock.frameTime().deltaTime, 0.005F);
+
+    // Frame 2: 30 ms elapsed (more than FIXED_DT, 2 steps run)
+    fake.now = 0.035;
+    EXPECT_EQ(clock.tick(FIXED_DT, [](const ecs::time::Time&) {}), 2U);
+    EXPECT_FLOAT_EQ(clock.lastFrameDelta(), 0.030F);
+    EXPECT_FLOAT_EQ(clock.frameTime().deltaTime, 0.030F);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
