@@ -68,6 +68,7 @@ class PrefabPlugin final : public engine::IPlugin {
     [[nodiscard]] const PrefabManager& manager() const noexcept { return *_manager; }
 
   private:
+    /** @brief Shared pointer to internal PrefabManager registered into Mediator. */
     std::shared_ptr<PrefabManager> _manager;
 };
 
