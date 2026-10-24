@@ -107,13 +107,13 @@ const input::InputState* resolvePlayerInputState(ecs::Registry* registry, int pl
     if (registry == nullptr) {
         return nullptr;
     }
-    const input::InputState* matched = nullptr;
-    registry->runSystem<input::InputState>([&matched, playerIndex](ecs::Entity /*e*/, const input::InputState& state) {
-        if (state.playerIndex == playerIndex && matched == nullptr) {
-            matched = &state;
+    const auto& denseStates = registry->getComponents<input::InputState>().getDense();
+    for (const auto& state : denseStates) {
+        if (state.playerIndex == playerIndex) {
+            return &state;
         }
-    });
-    return matched;
+    }
+    return nullptr;
 }
 
 /**

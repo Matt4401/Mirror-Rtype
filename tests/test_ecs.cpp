@@ -175,6 +175,27 @@ TEST(ECS, RunSystemView) {
     EXPECT_EQ(positions.get(e2).y, 10.0F);
 }
 
+TEST(ECS, RunSystemOptimizesIterationOnSmallestArray) {
+    ecs::Registry registry;
+    for (int i = 0; i < 100; ++i) {
+        ecs::Entity const e = registry.spawnEntity();
+        registry.addComponent<Position>(e, Position{.x = static_cast<float>(i), .y = 0.0F});
+    }
+
+    ecs::Entity const rareEntity = 42;
+    registry.addComponent<Velocity>(rareEntity, Velocity{.dx = 100.0F, .dy = 200.0F});
+
+    int matchCount = 0;
+    registry.runSystem<Position, Velocity>([&](ecs::Entity e, Position& pos, Velocity& vel) {
+        EXPECT_EQ(e, rareEntity);
+        EXPECT_FLOAT_EQ(pos.x, 42.0F);
+        EXPECT_FLOAT_EQ(vel.dx, 100.0F);
+        ++matchCount;
+    });
+
+    EXPECT_EQ(matchCount, 1);
+}
+
 TEST(ECS, AutoRegistration) {
     ecs::Registry registry;
     // Notice: no registerComponent call!
@@ -241,6 +262,50 @@ TEST(Events, EventBusPubSub) {
 
     // Should still be 10 because we unsubscribed
     EXPECT_EQ(totalDamage, 10);
+}
+
+TEST(Events, UnsubscribeInsideCallbackIsSafe) {
+    ecs::EventBus bus;
+    ecs::EventBus::EventToken token1 = 0;
+    ecs::EventBus::EventToken token2 = 0;
+    int calledCount1 = 0;
+    int calledCount2 = 0;
+
+    token1 = bus.subscribe<PlayerDamagedEvent>([&](const PlayerDamagedEvent&) {
+        ++calledCount1;
+        bus.unsubscribe<PlayerDamagedEvent>(token1);
+        bus.unsubscribe<PlayerDamagedEvent>(token2);
+    });
+
+    token2 = bus.subscribe<PlayerDamagedEvent>([&](const PlayerDamagedEvent&) { ++calledCount2; });
+
+    bus.publish(PlayerDamagedEvent{.player = 0, .damage = 5});
+    EXPECT_EQ(calledCount1, 1);
+    EXPECT_EQ(calledCount2, 0);  // Unsubscribed before it ran in the same dispatch
+
+    // Second publish: both should be unsubscribed
+    bus.publish(PlayerDamagedEvent{.player = 0, .damage = 5});
+    EXPECT_EQ(calledCount1, 1);
+    EXPECT_EQ(calledCount2, 0);
+}
+
+TEST(Events, SubscribeInsideCallbackDoesNotAffectCurrentDispatch) {
+    ecs::EventBus bus;
+    int callCountA = 0;
+    int callCountB = 0;
+
+    bus.subscribe<PlayerDamagedEvent>([&](const PlayerDamagedEvent&) {
+        ++callCountA;
+        bus.subscribe<PlayerDamagedEvent>([&](const PlayerDamagedEvent&) { ++callCountB; });
+    });
+
+    bus.publish(PlayerDamagedEvent{.player = 0, .damage = 5});
+    EXPECT_EQ(callCountA, 1);
+    EXPECT_EQ(callCountB, 0);  // Newly subscribed listener shouldn't run in the current dispatch
+
+    bus.publish(PlayerDamagedEvent{.player = 0, .damage = 5});
+    EXPECT_EQ(callCountA, 2);
+    EXPECT_EQ(callCountB, 1);  // Now it runs on the subsequent publish
 }
 
 #include "ecs/CommandBuffer.hpp"

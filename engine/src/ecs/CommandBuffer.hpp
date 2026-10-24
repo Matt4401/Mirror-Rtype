@@ -8,10 +8,11 @@
 namespace ecs {
 
 /**
- * @brief Thread-safe deferred command buffer for recording structural ECS mutations.
+ * @brief Deferred command buffer for recording structural ECS mutations during iteration loops.
  *
  * Allows scripts and systems executing within iteration loops to safely schedule
  * entity destruction and creation without invalidating sparse arrays or iterating views.
+ * Designed for single-threaded mutation recording per buffer before being flushed to the Registry.
  */
 class CommandBuffer {
   public:
