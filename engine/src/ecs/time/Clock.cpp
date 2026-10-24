@@ -18,6 +18,7 @@ void Clock::reset() {
     _lastInstant = _source();
     _accumulator = 0.0;
     _totalElapsed = 0.0;
+    _lastElapsed = 0.0;
     _time = Time{};
 }
 

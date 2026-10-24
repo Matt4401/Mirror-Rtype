@@ -37,6 +37,23 @@ class LifecycleRecorderPlugin final : public engine::IPlugin {
     std::vector<std::string>& _log;
 };
 
+class FrameTimeRecorderPlugin final : public engine::IPlugin {
+  public:
+    explicit FrameTimeRecorderPlugin(float& recordedDt) : _recordedDt(recordedDt) {}
+
+    [[nodiscard]] std::string_view name() const noexcept override { return "FrameTimeRecorderPlugin"; }
+
+    void build(engine::PluginBuilder& /*builder*/) override {}
+
+    void update(engine::Engine& engine, const ecs::time::Time& time) override {
+        _recordedDt = time.deltaTime;
+        engine.stop();
+    }
+
+  private:
+    float& _recordedDt;
+};
+
 }  // namespace
 
 TEST(Engine, AutomaticallyLoadsImplicitPlugins) {
@@ -71,6 +88,22 @@ TEST(Engine, ExecutesPhasesInSequence) {
         engineInstance.shutdown();
         EXPECT_EQ(log.back(), "shutdown");
     }
+}
+
+TEST(Engine, RunPassesRealDeltaTimeToUpdate) {
+    double now = 0.0;
+    auto fakeSource = [&now]() -> double { return now; };
+
+    float recordedDt = 0.0F;
+    engine::Engine engineInstance(fakeSource);
+    engineInstance.addPlugin<FrameTimeRecorderPlugin>(recordedDt);
+
+    // Simulate a 144 Hz frame (approx 0.006944s) where dt < fixedDt
+    now = 0.006944;
+
+    engineInstance.run();
+
+    EXPECT_NEAR(recordedDt, 0.006944F, 0.0001F);
 }
 
 int main(int argc, char** argv) {
