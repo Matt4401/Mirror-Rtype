@@ -4,7 +4,6 @@
  */
 
 #pragma once
-#include <cstddef>
 #include <exception>
 #include <string>
 #include <string_view>
@@ -52,7 +51,7 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
      */
     static void getter(::WrenVM* rawVm) noexcept {
         try {
-            ForeignCall call(rawVm);
+            ForeignCall const call(rawVm);
             auto* vmWrapper = call.vm();
             if (vmWrapper == nullptr || vmWrapper->getRegistry() == nullptr) {
                 call.retNull();
@@ -73,10 +72,10 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
             auto const& comp = registry.template getComponents<ComponentType>().get(e);
             call.ret(comp.*MemberPtr);
         } catch (const std::exception& e) {
-            ForeignCall call(rawVm);
+            ForeignCall const call(rawVm);
             call.abort(std::string("Exception in getter: ") + e.what());
         } catch (...) {
-            ForeignCall call(rawVm);
+            ForeignCall const call(rawVm);
             call.abort("Unknown exception in getter");
         }
     }
@@ -91,7 +90,7 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
      */
     static void setter(::WrenVM* rawVm) noexcept {
         try {
-            ForeignCall call(rawVm);
+            ForeignCall const call(rawVm);
             auto* vmWrapper = call.vm();
             if (vmWrapper == nullptr || vmWrapper->getRegistry() == nullptr) {
                 return;
@@ -122,10 +121,10 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
                 comp.*MemberPtr = *val;
             }
         } catch (const std::exception& e) {
-            ForeignCall call(rawVm);
+            ForeignCall const call(rawVm);
             call.abort(std::string("Exception in setter: ") + e.what());
         } catch (...) {
-            ForeignCall call(rawVm);
+            ForeignCall const call(rawVm);
             call.abort("Unknown exception in setter");
         }
     }
