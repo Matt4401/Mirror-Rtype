@@ -42,3 +42,6 @@ CheckOptions:
   # Allow all public members classes
   - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
     value: 1
+  # toml++ is used through its single umbrella header, but declares its symbols in internal headers
+  - key: misc-include-cleaner.IgnoreHeaders
+    value: 'toml\+\+/.*'
