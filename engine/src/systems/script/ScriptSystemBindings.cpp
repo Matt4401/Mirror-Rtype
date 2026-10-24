@@ -4,22 +4,18 @@
  */
 
 #include <fstream>
-#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
-
-#include "systems/script/ScriptSystem.hpp"
-
-extern "C" {
-#include <wren.h>
-}
+#include <utility>
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "input/InputState.hpp"
 #include "scripting/CoreModules.hpp"
+#include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
+#include "systems/script/ScriptSystem.hpp"
 
 namespace systems {
 
@@ -27,77 +23,79 @@ namespace {
 
 /**
  * @brief Foreign static method `Engine.registerWait(fiber, seconds)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void engineRegisterWait(::WrenVM* rawVm) {
-    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
+void engineRegisterWait(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    if (scriptSystem == nullptr) {
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    WrenHandle* fiber = wrenGetSlotHandle(rawVm, 1);
-    double const seconds = wrenGetSlotDouble(rawVm, 2);
-    scriptSystem->addSleepingFiber(fiber, static_cast<float>(seconds));
+    auto fiber = call.arg<scripting::detail::UniqueWrenHandle>(1);
+    auto seconds = call.arg<float>(2);
+    if (!fiber.has_value() || !seconds.has_value()) {
+        return;
+    }
+    scriptSystem->addSleepingFiber(std::move(*fiber), *seconds);
 }
 
 /**
  * @brief Foreign static method `Engine.spawnPrefab(name, x, y)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void engineSpawnPrefab(::WrenVM* rawVm) {
-    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
+void engineSpawnPrefab(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    if (scriptSystem == nullptr) {
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const char* prefabName = wrenGetSlotString(rawVm, 1);
-    double const x = wrenGetSlotDouble(rawVm, 2);
-    double const y = wrenGetSlotDouble(rawVm, 3);
+    auto const prefabName = call.arg<std::string_view>(1);
+    auto const x = call.arg<double>(2);
+    auto const y = call.arg<double>(3);
+    if (!prefabName.has_value() || !x.has_value() || !y.has_value()) {
+        return;
+    }
 
-    std::string const name = (prefabName != nullptr ? prefabName : "");
+    std::string const name(*prefabName);
+    double const posX = *x;
+    double const posY = *y;
     scriptSystem->getCommandBuffer().deferSpawn(
-        [name, x, y]([[maybe_unused]] ecs::Entity e, [[maybe_unused]] ecs::Registry& reg) {
+        [name, posX, posY]([[maybe_unused]] ecs::Entity e, [[maybe_unused]] ecs::Registry& reg) {
             // Placeholder prefab spawner
         });
 }
 
 /**
  * @brief Foreign static method `Entity.destroyEntity(id)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void entityDestroy(::WrenVM* rawVm) {
-    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
+void entityDestroy(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    if (scriptSystem == nullptr) {
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    auto const e = static_cast<ecs::Entity>(wrenGetSlotDouble(rawVm, 1));
-    scriptSystem->queueDestroyEntity(e);
+    auto const e = call.arg<ecs::Entity>(1);
+    if (!e.has_value()) {
+        return;
+    }
+    scriptSystem->queueDestroyEntity(*e);
 }
 
 /**
  * @brief Foreign static method `World.getEntitiesWithTag(tag)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void worldGetEntitiesWithTag(::WrenVM* rawVm) {
-    wrenEnsureSlots(rawVm, 1);
-    wrenSetSlotNewList(rawVm, 0);
-}
+void worldGetEntitiesWithTag(scripting::ForeignCall& call) { call.retList(); }
 
 /**
  * @brief Foreign static method `World.getNearestWithTag(x, y, tag)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void worldGetNearestWithTag(::WrenVM* rawVm) { wrenSetSlotNull(rawVm, 0); }
+void worldGetNearestWithTag(scripting::ForeignCall& call) { call.retNull(); }
 
 /**
  * @brief Foreign static method `World.getEntitiesInRadius(x, y, radius)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void worldGetEntitiesInRadius(::WrenVM* rawVm) {
-    wrenEnsureSlots(rawVm, 1);
-    wrenSetSlotNewList(rawVm, 0);
-}
+void worldGetEntitiesInRadius(scripting::ForeignCall& call) { call.retList(); }
 
 /**
  * @brief Resolves the InputState component matching playerIndex.
@@ -119,127 +117,98 @@ const input::InputState* resolvePlayerInputState(ecs::Registry* registry, int pl
 }
 
 /**
- * @brief Arguments extracted from an Input query call in Wren VM.
- */
-struct InputQueryParams {
-    int playerIndex = 0;
-    const char* actionName = nullptr;
-};
-
-/**
- * @brief Safely parses and validates playerIndex and actionName arguments from Wren slots.
- * @param rawVm Raw Wren VM pointer.
- * @return Parsed InputQueryParams or std::nullopt if slot counts or types are invalid.
- */
-[[nodiscard]] std::optional<InputQueryParams> parseInputQueryParams(::WrenVM* rawVm) {
-    if (wrenGetSlotCount(rawVm) < 3) {
-        return std::nullopt;
-    }
-    if (wrenGetSlotType(rawVm, 1) != WREN_TYPE_NUM || wrenGetSlotType(rawVm, 2) != WREN_TYPE_STRING) {
-        return std::nullopt;
-    }
-    const auto playerIndex = static_cast<int>(wrenGetSlotDouble(rawVm, 1));
-    const char* actionName = wrenGetSlotString(rawVm, 2);
-    if (actionName == nullptr) {
-        return std::nullopt;
-    }
-    return InputQueryParams{.playerIndex = playerIndex, .actionName = actionName};
-}
-
-/**
  * @brief Foreign static method `Input.isDown(playerIndex, action)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void inputIsDown(::WrenVM* rawVm) {
-    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
-        wrenSetSlotBool(rawVm, 0, false);
+void inputIsDown(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    if (scriptSystem == nullptr) {
+        call.ret(false);
         return;
     }
-    const auto params = parseInputQueryParams(rawVm);
-    if (!params.has_value()) {
-        wrenSetSlotBool(rawVm, 0, false);
+    auto const playerIndex = call.arg<int>(1);
+    auto const actionName = call.arg<std::string_view>(2);
+    if (!playerIndex.has_value() || !actionName.has_value()) {
+        call.ret(false);
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), params->playerIndex);
-    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isDown(params->actionName) : false);
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), *playerIndex);
+    call.ret(inputState != nullptr && inputState->isDown(*actionName));
 }
 
 /**
  * @brief Foreign static method `Input.isJustPressed(playerIndex, action)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void inputIsJustPressed(::WrenVM* rawVm) {
-    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
-        wrenSetSlotBool(rawVm, 0, false);
+void inputIsJustPressed(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    if (scriptSystem == nullptr) {
+        call.ret(false);
         return;
     }
-    const auto params = parseInputQueryParams(rawVm);
-    if (!params.has_value()) {
-        wrenSetSlotBool(rawVm, 0, false);
+    auto const playerIndex = call.arg<int>(1);
+    auto const actionName = call.arg<std::string_view>(2);
+    if (!playerIndex.has_value() || !actionName.has_value()) {
+        call.ret(false);
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), params->playerIndex);
-    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isJustPressed(params->actionName) : false);
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), *playerIndex);
+    call.ret(inputState != nullptr && inputState->isJustPressed(*actionName));
 }
 
 /**
  * @brief Foreign static method `Input.isJustReleased(playerIndex, action)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void inputIsJustReleased(::WrenVM* rawVm) {
-    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
-        wrenSetSlotBool(rawVm, 0, false);
+void inputIsJustReleased(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    if (scriptSystem == nullptr) {
+        call.ret(false);
         return;
     }
-    const auto params = parseInputQueryParams(rawVm);
-    if (!params.has_value()) {
-        wrenSetSlotBool(rawVm, 0, false);
+    auto const playerIndex = call.arg<int>(1);
+    auto const actionName = call.arg<std::string_view>(2);
+    if (!playerIndex.has_value() || !actionName.has_value()) {
+        call.ret(false);
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), params->playerIndex);
-    wrenSetSlotBool(rawVm, 0, (inputState != nullptr) ? inputState->isJustReleased(params->actionName) : false);
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), *playerIndex);
+    call.ret(inputState != nullptr && inputState->isJustReleased(*actionName));
 }
 
 /**
  * @brief Foreign static method `Input.getAxis(playerIndex, action)` callback.
- * @param rawVm Raw Wren VM pointer.
+ * @param call ForeignCall execution context.
  */
-void inputGetAxis(::WrenVM* rawVm) {
-    auto* vmWrapper = static_cast<scripting::WrenVM*>(wrenGetUserData(rawVm));
-    if (vmWrapper == nullptr || vmWrapper->getUserContext() == nullptr) {
-        wrenSetSlotDouble(rawVm, 0, 0.0);
+void inputGetAxis(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    if (scriptSystem == nullptr) {
+        call.ret(0.0F);
         return;
     }
-    const auto params = parseInputQueryParams(rawVm);
-    if (!params.has_value()) {
-        wrenSetSlotDouble(rawVm, 0, 0.0);
+    auto const playerIndex = call.arg<int>(1);
+    auto const actionName = call.arg<std::string_view>(2);
+    if (!playerIndex.has_value() || !actionName.has_value()) {
+        call.ret(0.0F);
         return;
     }
-    auto* scriptSystem = static_cast<ScriptSystem*>(vmWrapper->getUserContext());
-    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), params->playerIndex);
-    wrenSetSlotDouble(rawVm, 0,
-                      (inputState != nullptr) ? static_cast<double>(inputState->getAxis(params->actionName)) : 0.0);
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), *playerIndex);
+    call.ret(inputState != nullptr ? inputState->getAxis(*actionName) : 0.0F);
 }
 
 }  // namespace
 
 void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
-    vm.registerForeignMethod("core/Engine", "Engine", true, "registerWait(_,_)", &engineRegisterWait);
-    vm.registerForeignMethod("core/Engine", "Engine", true, "spawnPrefab(_,_,_)", &engineSpawnPrefab);
-    vm.registerForeignMethod("core/Entity", "Entity", true, "destroyEntity(_)", &entityDestroy);
-    vm.registerForeignMethod("core/World", "World", true, "getEntitiesWithTag(_)", &worldGetEntitiesWithTag);
-    vm.registerForeignMethod("core/World", "World", true, "getNearestWithTag(_,_,_)", &worldGetNearestWithTag);
-    vm.registerForeignMethod("core/World", "World", true, "getEntitiesInRadius(_,_,_)", &worldGetEntitiesInRadius);
-    vm.registerForeignMethod("core/Input", "Input", true, "isDown(_,_)", &inputIsDown);
-    vm.registerForeignMethod("core/Input", "Input", true, "isJustPressed(_,_)", &inputIsJustPressed);
-    vm.registerForeignMethod("core/Input", "Input", true, "isJustReleased(_,_)", &inputIsJustReleased);
-    vm.registerForeignMethod("core/Input", "Input", true, "getAxis(_,_)", &inputGetAxis);
+    vm.registerForeignMethod<&engineRegisterWait>("core/Engine", "Engine", true, "registerWait(_,_)");
+    vm.registerForeignMethod<&engineSpawnPrefab>("core/Engine", "Engine", true, "spawnPrefab(_,_,_)");
+    vm.registerForeignMethod<&entityDestroy>("core/Entity", "Entity", true, "destroyEntity(_)");
+    vm.registerForeignMethod<&worldGetEntitiesWithTag>("core/World", "World", true, "getEntitiesWithTag(_)");
+    vm.registerForeignMethod<&worldGetNearestWithTag>("core/World", "World", true, "getNearestWithTag(_,_,_)");
+    vm.registerForeignMethod<&worldGetEntitiesInRadius>("core/World", "World", true, "getEntitiesInRadius(_,_,_)");
+    vm.registerForeignMethod<&inputIsDown>("core/Input", "Input", true, "isDown(_,_)");
+    vm.registerForeignMethod<&inputIsJustPressed>("core/Input", "Input", true, "isJustPressed(_,_)");
+    vm.registerForeignMethod<&inputIsJustReleased>("core/Input", "Input", true, "isJustReleased(_,_)");
+    vm.registerForeignMethod<&inputGetAxis>("core/Input", "Input", true, "getAxis(_,_)");
 }
 
 void ScriptSystem::loadCoreModules() {

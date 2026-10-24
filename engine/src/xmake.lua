@@ -1,13 +1,13 @@
-target("engine_core")
-    set_kind("static")
-    add_files("ecs/*.cpp")
-    add_includedirs(".", {public = true})
-
 target("engine_time")
     set_kind("static")
     add_files("ecs/time/*.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core")
+
+target("engine_core")
+    set_kind("static")
+    add_files("ecs/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_time")
 
 target("engine_events")
     set_kind("headeronly")

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <string>
 
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
@@ -10,6 +11,7 @@
 #include "events/EventBus.hpp"
 #include "input/InputState.hpp"
 #include "scripting/ComponentBinder.hpp"
+#include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
 #include "systems/script/ScriptSystem.hpp"
 
@@ -36,7 +38,7 @@ TEST(Scripting, ComponentBinderDirectAccess) {
     binder.property<&Position::x>("x");
     binder.property<&Position::y>("y");
 
-    std::string wrenPositionClass = binder.generateWrenClass();
+    std::string const wrenPositionClass = binder.generateWrenClass();
     EXPECT_TRUE(scriptSystem.getVm().interpret("core/Position", wrenPositionClass));
 
     ecs::Entity const e1 = registry.spawnEntity();
@@ -58,22 +60,18 @@ TEST(Scripting, ComponentBinderDirectAccess) {
 
     EXPECT_TRUE(scriptSystem.getVm().interpret("game", scriptCode));
 
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "game",
-                                                                         .className = "TestScript",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1, ecs::ScriptComponent{
+                .moduleName = "game", .className = "TestScript", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
 
     auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
     EXPECT_TRUE(script.initialized);
-    EXPECT_NE(script.instanceHandle, nullptr);
+    EXPECT_NE(scriptSystem.getScriptInstance(e1), nullptr);
 
     auto modifyHandle = scriptSystem.getVm().makeCallHandle("modifyPosition()");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-    EXPECT_EQ(scriptSystem.getVm().call(modifyHandle), WREN_RESULT_SUCCESS);
+    EXPECT_EQ(scriptSystem.getVm().call(modifyHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
 
     auto& pos = registry.getComponents<Position>().get(e1);
     EXPECT_EQ(pos.x, 42.0F);
@@ -103,19 +101,14 @@ TEST(Scripting, DeferredCommandBufferDestruction) {
 
     EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay", scriptCode));
 
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
-                                                                         .className = "SuicidalScript",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1, ecs::ScriptComponent{
+                .moduleName = "gameplay", .className = "SuicidalScript", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
 
-    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
     auto dieHandle = scriptSystem.getVm().makeCallHandle("die()");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-    EXPECT_EQ(scriptSystem.getVm().call(dieHandle), WREN_RESULT_SUCCESS);
+    EXPECT_EQ(scriptSystem.getVm().call(dieHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
 
     // Entity is NOT destroyed immediately (deferred safely)
     EXPECT_FALSE(scriptSystem.getCommandBuffer().empty());
@@ -157,22 +150,17 @@ TEST(Scripting, EventForwardingMagicMethod) {
     ecs::Entity const e1 = registry.spawnEntity();
     ecs::Entity const e2 = registry.spawnEntity();
 
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
-                                                                         .className = "BumperScript",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1, ecs::ScriptComponent{
+                .moduleName = "gameplay", .className = "BumperScript", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
 
     bus.publish(CollisionEvent{.entityA = e1, .entityB = e2});
 
-    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
     auto getHitOther = scriptSystem.getVm().makeCallHandle("hitOther");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-    EXPECT_EQ(scriptSystem.getVm().call(getHitOther), WREN_RESULT_SUCCESS);
-    double const hit = wrenGetSlotDouble(scriptSystem.getVm().raw(), 0);
+    EXPECT_EQ(scriptSystem.getVm().call(getHitOther, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
+    double const hit = scriptSystem.getVm().getSlot<double>(0);
 
     EXPECT_EQ(hit, static_cast<double>(e2));
 }
@@ -204,26 +192,19 @@ TEST(Scripting, CoroutineFiberWait) {
     EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay", scriptCode));
 
     ecs::Entity const e1 = registry.spawnEntity();
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
-                                                                         .className = "BossScript",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1, ecs::ScriptComponent{
+                .moduleName = "gameplay", .className = "BossScript", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
 
-    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
     auto startHandle = scriptSystem.getVm().makeCallHandle("startSequence()");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-    EXPECT_EQ(scriptSystem.getVm().call(startHandle), WREN_RESULT_SUCCESS);
+    EXPECT_EQ(scriptSystem.getVm().call(startHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
 
     auto stateHandle = scriptSystem.getVm().makeCallHandle("state");
     auto checkState = [&](double expected) {
-        wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-        wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-        EXPECT_EQ(scriptSystem.getVm().call(stateHandle), WREN_RESULT_SUCCESS);
-        EXPECT_EQ(wrenGetSlotDouble(scriptSystem.getVm().raw(), 0), expected);
+        EXPECT_EQ(scriptSystem.getVm().call(stateHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
+        EXPECT_EQ(scriptSystem.getVm().getSlot<double>(0), expected);
     };
 
     checkState(1.0);
@@ -261,20 +242,16 @@ TEST(Scripting, HybridOptionalUpdateLoop) {
     ecs::Entity const e1 = registry.spawnEntity();
     registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
                                                                          .className = "ContinuousMover",
-                                                                         .instanceHandle = nullptr,
                                                                          .hasUpdate = true,  // Opt-in to update loop
                                                                          .initialized = false});
 
     scriptSystem.update(0.016F);  // 1st frame: initializes & calls update once
 
-    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
     auto ticksHandle = scriptSystem.getVm().makeCallHandle("ticks");
 
     auto getTicks = [&]() -> double {
-        wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-        wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-        EXPECT_EQ(scriptSystem.getVm().call(ticksHandle), WREN_RESULT_SUCCESS);
-        return wrenGetSlotDouble(scriptSystem.getVm().raw(), 0);
+        EXPECT_EQ(scriptSystem.getVm().call(ticksHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
+        return scriptSystem.getVm().getSlot<double>(0);
     };
 
     EXPECT_EQ(getTicks(), 1.0);
@@ -300,7 +277,7 @@ TEST(Scripting, HotReloadValidCode) {
         scripting::ComponentBinder<Position> binder(vm, "core/Position", "Position");
         binder.property<&Position::x>("x");
         binder.property<&Position::y>("y");
-        std::string wrenPositionClass = binder.generateWrenClass();
+        std::string const wrenPositionClass = binder.generateWrenClass();
         EXPECT_TRUE(vm.interpret("core/Position", wrenPositionClass));
     };
     registerPosition(scriptSystem.getVm());
@@ -326,7 +303,6 @@ TEST(Scripting, HotReloadValidCode) {
     registry.addComponent<Position>(e1, Position{.x = 10.0F, .y = 20.0F});
     registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "TestReloadEntity",
                                                                          .className = "TestReloadEntity",
-                                                                         .instanceHandle = nullptr,
                                                                          .hasUpdate = false,
                                                                          .initialized = false});
 
@@ -336,9 +312,7 @@ TEST(Scripting, HotReloadValidCode) {
 
     auto callApplyMove = [&]() {
         auto applyHandle = scriptSystem.getVm().makeCallHandle("applyMove()");
-        wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-        wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-        EXPECT_EQ(scriptSystem.getVm().call(applyHandle), WREN_RESULT_SUCCESS);
+        EXPECT_EQ(scriptSystem.getVm().call(applyHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
     };
 
     callApplyMove();
@@ -386,7 +360,7 @@ TEST(Scripting, HotReloadSyntaxErrorResilience) {
         scripting::ComponentBinder<Position> binder(vm, "core/Position", "Position");
         binder.property<&Position::x>("x");
         binder.property<&Position::y>("y");
-        std::string wrenPositionClass = binder.generateWrenClass();
+        std::string const wrenPositionClass = binder.generateWrenClass();
         EXPECT_TRUE(vm.interpret("core/Position", wrenPositionClass));
     };
     registerPosition(scriptSystem.getVm());
@@ -402,11 +376,10 @@ TEST(Scripting, HotReloadSyntaxErrorResilience) {
     }
 
     ecs::Entity const e1 = registry.spawnEntity();
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "TestSyntaxError",
-                                                                         .className = "TestSyntaxError",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1,
+        ecs::ScriptComponent{
+            .moduleName = "TestSyntaxError", .className = "TestSyntaxError", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
     auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
@@ -414,10 +387,8 @@ TEST(Scripting, HotReloadSyntaxErrorResilience) {
 
     auto getValue = [&]() -> double {
         auto valHandle = scriptSystem.getVm().makeCallHandle("value");
-        wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-        wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-        EXPECT_EQ(scriptSystem.getVm().call(valHandle), WREN_RESULT_SUCCESS);
-        return wrenGetSlotDouble(scriptSystem.getVm().raw(), 0);
+        EXPECT_EQ(scriptSystem.getVm().call(valHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
+        return scriptSystem.getVm().getSlot<double>(0);
     };
 
     EXPECT_EQ(getValue(), 42.0);
@@ -441,10 +412,10 @@ TEST(Scripting, HotReloadSyntaxErrorResilience) {
 
 namespace {
 int g_destroyHookCallCount = 0;
-void recordDestroyHook(::WrenVM* /*rawVm*/) { ++g_destroyHookCallCount; }
+void recordDestroyHook(scripting::ForeignCall& /*call*/) { ++g_destroyHookCallCount; }
 
 int g_reloadHookCallCount = 0;
-void recordReloadHook(::WrenVM* /*rawVm*/) { ++g_reloadHookCallCount; }
+void recordReloadHook(scripting::ForeignCall& /*call*/) { ++g_reloadHookCallCount; }
 }  // namespace
 
 TEST(Scripting, LifecycleOnDestroy) {
@@ -456,8 +427,8 @@ TEST(Scripting, LifecycleOnDestroy) {
     systems::ScriptSystem scriptSystem;
     scriptSystem.init(registry, bus);
 
-    scriptSystem.getVm().registerForeignMethod("gameplay", "LifecycleDestroyScript", true, "recordDestroyed()",
-                                               &recordDestroyHook);
+    scriptSystem.getVm().registerForeignMethod<&recordDestroyHook>("gameplay", "LifecycleDestroyScript", true,
+                                                                   "recordDestroyed()");
 
     const char* scriptCode =
         "import \"core/Entity\" for Entity\n"
@@ -477,19 +448,15 @@ TEST(Scripting, LifecycleOnDestroy) {
     EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay", scriptCode));
 
     ecs::Entity const e1 = registry.spawnEntity();
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
-                                                                         .className = "LifecycleDestroyScript",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1,
+        ecs::ScriptComponent{
+            .moduleName = "gameplay", .className = "LifecycleDestroyScript", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
 
-    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
     auto dieHandle = scriptSystem.getVm().makeCallHandle("die()");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-    EXPECT_EQ(scriptSystem.getVm().call(dieHandle), WREN_RESULT_SUCCESS);
+    EXPECT_EQ(scriptSystem.getVm().call(dieHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
 
     // Destruction is deferred, onDestroy has NOT run yet
     EXPECT_EQ(g_destroyHookCallCount, 0);
@@ -513,7 +480,7 @@ TEST(Scripting, LifecycleOnReload) {
     scriptSystem.enableHotReload(true);
 
     auto registerForeigns = [](scripting::WrenVM& vm) {
-        vm.registerForeignMethod("TestReloadHook", "ReloadHookScript", true, "recordReloaded()", &recordReloadHook);
+        vm.registerForeignMethod<&recordReloadHook>("TestReloadHook", "ReloadHookScript", true, "recordReloaded()");
     };
     registerForeigns(scriptSystem.getVm());
     scriptSystem.addBinderReplay(registerForeigns);
@@ -533,11 +500,10 @@ TEST(Scripting, LifecycleOnReload) {
     }
 
     ecs::Entity const e1 = registry.spawnEntity();
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "TestReloadHook",
-                                                                         .className = "ReloadHookScript",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1,
+        ecs::ScriptComponent{
+            .moduleName = "TestReloadHook", .className = "ReloadHookScript", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
     // Initial spawn should NOT trigger onReload()
@@ -585,26 +551,19 @@ TEST(Scripting, CoroutineChainedWait) {
     EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay", scriptCode));
 
     ecs::Entity const e1 = registry.spawnEntity();
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
-                                                                         .className = "ChainedBossScript",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1, ecs::ScriptComponent{
+                .moduleName = "gameplay", .className = "ChainedBossScript", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
 
-    auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
     auto startHandle = scriptSystem.getVm().makeCallHandle("start()");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-    EXPECT_EQ(scriptSystem.getVm().call(startHandle), WREN_RESULT_SUCCESS);
+    EXPECT_EQ(scriptSystem.getVm().call(startHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
 
     auto stepHandle = scriptSystem.getVm().makeCallHandle("step");
     auto checkStep = [&](double expected) {
-        wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-        wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-        EXPECT_EQ(scriptSystem.getVm().call(stepHandle), WREN_RESULT_SUCCESS);
-        EXPECT_EQ(wrenGetSlotDouble(scriptSystem.getVm().raw(), 0), expected);
+        EXPECT_EQ(scriptSystem.getVm().call(stepHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
+        EXPECT_EQ(scriptSystem.getVm().getSlot<double>(0), expected);
     };
 
     checkStep(1.0);
@@ -634,19 +593,17 @@ TEST(Scripting, TeardownHandleRelease) {
         EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay", scriptCode));
 
         ecs::Entity const e1 = registry.spawnEntity();
-        registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay",
-                                                                             .className = "TeardownScript",
-                                                                             .instanceHandle = nullptr,
-                                                                             .hasUpdate = false,
-                                                                             .initialized = false});
+        registry.addComponent<ecs::ScriptComponent>(
+            e1, ecs::ScriptComponent{
+                    .moduleName = "gameplay", .className = "TeardownScript", .hasUpdate = false, .initialized = false});
 
         scriptSystem.update(0.016F);
-        EXPECT_NE(registry.getComponents<ecs::ScriptComponent>().get(e1).instanceHandle, nullptr);
-        // scriptSystem goes out of scope here: destructor must release handles cleanly
+        EXPECT_TRUE(scriptSystem.hasScriptInstance(e1));
+        EXPECT_NE(scriptSystem.getScriptInstance(e1), nullptr);
+        // scriptSystem goes out of scope here: destructor releases handles cleanly
     }
 
-    // Handles must have been reset to nullptr upon teardown
-    EXPECT_EQ(registry.getComponents<ecs::ScriptComponent>().get(0).instanceHandle, nullptr);
+    // Entity is still in registry but uninitialized
     EXPECT_FALSE(registry.getComponents<ecs::ScriptComponent>().get(0).initialized);
 }
 
@@ -669,7 +626,7 @@ TEST(Scripting, InputModuleBindings) {
     scripting::ComponentBinder<Position> binder(scriptSystem.getVm(), "core/Position", "Position");
     binder.property<&Position::x>("x");
     binder.property<&Position::y>("y");
-    std::string wrenPositionClass = binder.generateWrenClass();
+    std::string const wrenPositionClass = binder.generateWrenClass();
     EXPECT_TRUE(scriptSystem.getVm().interpret("core/Position", wrenPositionClass));
 
     const char* scriptCode =
@@ -693,22 +650,18 @@ TEST(Scripting, InputModuleBindings) {
 
     ecs::Entity const e1 = registry.spawnEntity();
     registry.addComponent<Position>(e1, Position{.x = 0.0F, .y = 0.0F});
-    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "game",
-                                                                         .className = "InputTestScript",
-                                                                         .instanceHandle = nullptr,
-                                                                         .hasUpdate = false,
-                                                                         .initialized = false});
+    registry.addComponent<ecs::ScriptComponent>(
+        e1, ecs::ScriptComponent{
+                .moduleName = "game", .className = "InputTestScript", .hasUpdate = false, .initialized = false});
 
     scriptSystem.update(0.016F);
 
     auto& script = registry.getComponents<ecs::ScriptComponent>().get(e1);
     EXPECT_TRUE(script.initialized);
-    EXPECT_NE(script.instanceHandle, nullptr);
+    EXPECT_NE(scriptSystem.getScriptInstance(e1), nullptr);
 
     auto pollHandle = scriptSystem.getVm().makeCallHandle("pollInput()");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 1);
-    wrenSetSlotHandle(scriptSystem.getVm().raw(), 0, static_cast<WrenHandle*>(script.instanceHandle));
-    EXPECT_EQ(scriptSystem.getVm().call(pollHandle), WREN_RESULT_SUCCESS);
+    EXPECT_EQ(scriptSystem.getVm().call(pollHandle, scriptSystem.getScriptInstance(e1)), WREN_RESULT_SUCCESS);
 
     auto& pos = registry.getComponents<Position>().get(e1);
     EXPECT_FLOAT_EQ(pos.x, 100.0F);
@@ -716,28 +669,104 @@ TEST(Scripting, InputModuleBindings) {
 
     // Direct static method query with player index
     auto isJustPressedHandle = scriptSystem.getVm().makeCallHandle("isJustPressed(_,_)");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 3);
-    wrenGetVariable(scriptSystem.getVm().raw(), "core/Input", "Input", 0);
-    wrenSetSlotDouble(scriptSystem.getVm().raw(), 1, 0.0);
-    wrenSetSlotString(scriptSystem.getVm().raw(), 2, "shoot");
+    scriptSystem.getVm().ensureSlots(3);
+    scriptSystem.getVm().getVariable("core/Input", "Input", 0);
+    scriptSystem.getVm().setSlot(1, 0.0);
+    scriptSystem.getVm().setSlot(2, "shoot");
     EXPECT_EQ(scriptSystem.getVm().call(isJustPressedHandle), WREN_RESULT_SUCCESS);
-    EXPECT_TRUE(wrenGetSlotBool(scriptSystem.getVm().raw(), 0));
+    EXPECT_TRUE(scriptSystem.getVm().getSlot<bool>(0));
 
     // Default wrapper query without player index
     auto defaultIsJustPressedHandle = scriptSystem.getVm().makeCallHandle("isJustPressed(_)");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 2);
-    wrenGetVariable(scriptSystem.getVm().raw(), "core/Input", "Input", 0);
-    wrenSetSlotString(scriptSystem.getVm().raw(), 1, "shoot");
+    scriptSystem.getVm().ensureSlots(2);
+    scriptSystem.getVm().getVariable("core/Input", "Input", 0);
+    scriptSystem.getVm().setSlot(1, "shoot");
     EXPECT_EQ(scriptSystem.getVm().call(defaultIsJustPressedHandle), WREN_RESULT_SUCCESS);
-    EXPECT_TRUE(wrenGetSlotBool(scriptSystem.getVm().raw(), 0));
+    EXPECT_TRUE(scriptSystem.getVm().getSlot<bool>(0));
 
     auto isJustReleasedHandle = scriptSystem.getVm().makeCallHandle("isJustReleased(_,_)");
-    wrenEnsureSlots(scriptSystem.getVm().raw(), 3);
-    wrenGetVariable(scriptSystem.getVm().raw(), "core/Input", "Input", 0);
-    wrenSetSlotDouble(scriptSystem.getVm().raw(), 1, 0.0);
-    wrenSetSlotString(scriptSystem.getVm().raw(), 2, "shoot");
+    scriptSystem.getVm().ensureSlots(3);
+    scriptSystem.getVm().getVariable("core/Input", "Input", 0);
+    scriptSystem.getVm().setSlot(1, 0.0);
+    scriptSystem.getVm().setSlot(2, "shoot");
     EXPECT_EQ(scriptSystem.getVm().call(isJustReleasedHandle), WREN_RESULT_SUCCESS);
-    EXPECT_FALSE(wrenGetSlotBool(scriptSystem.getVm().raw(), 0));
+    EXPECT_FALSE(scriptSystem.getVm().getSlot<bool>(0));
+}
+
+TEST(Scripting, RobustnessForeignCallTypeValidation) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<Position>();
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    scripting::ComponentBinder<Position> binder(scriptSystem.getVm(), "core/Position", "Position");
+    binder.property<&Position::x>("x");
+    binder.property<&Position::y>("y");
+    std::string const wrenPositionClass = binder.generateWrenClass();
+    EXPECT_TRUE(scriptSystem.getVm().interpret("core/Position", wrenPositionClass));
+
+    // Test 1: Engine.spawnPrefab(null, 0, 0) -> WREN_RESULT_RUNTIME_ERROR (not SIGSEGV)
+    const char* badSpawnScript =
+        "import \"core/Engine\" for Engine\n"
+        "class BadSpawn {\n"
+        "    static test() {\n"
+        "        Engine.spawnPrefab(null, 0, 0)\n"
+        "    }\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret("test_spawn", badSpawnScript));
+    auto badSpawnHandle = scriptSystem.getVm().makeCallHandle("test()");
+    scriptSystem.getVm().ensureSlots(1);
+    scriptSystem.getVm().getVariable("test_spawn", "BadSpawn", 0);
+    EXPECT_EQ(scriptSystem.getVm().call(badSpawnHandle), WREN_RESULT_RUNTIME_ERROR);
+
+    // Test 2: Input.isDown(0, 5) -> WREN_RESULT_RUNTIME_ERROR (not SIGSEGV)
+    const char* badInputScript =
+        "import \"core/Input\" for Input\n"
+        "class BadInput {\n"
+        "    static test() {\n"
+        "        Input.isDown(0, 5)\n"
+        "    }\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret("test_input", badInputScript));
+    auto badInputHandle = scriptSystem.getVm().makeCallHandle("test()");
+    scriptSystem.getVm().ensureSlots(1);
+    scriptSystem.getVm().getVariable("test_input", "BadInput", 0);
+    EXPECT_EQ(scriptSystem.getVm().call(badInputHandle), WREN_RESULT_RUNTIME_ERROR);
+
+    // Test 3: pos.x = "abc" -> WREN_RESULT_RUNTIME_ERROR (not SIGSEGV)
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<Position>(e1, Position{.x = 10.0F, .y = 20.0F});
+    const char* badSetterScript =
+        "import \"core/Position\" for Position\n"
+        "class BadSetter {\n"
+        "    static test(entityId) {\n"
+        "        var pos = Position.new(entityId)\n"
+        "        pos.x = \"abc\"\n"
+        "    }\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret("test_setter", badSetterScript));
+    auto badSetterHandle = scriptSystem.getVm().makeCallHandle("test(_)");
+    scriptSystem.getVm().ensureSlots(2);
+    scriptSystem.getVm().getVariable("test_setter", "BadSetter", 0);
+    scriptSystem.getVm().setSlot(1, static_cast<double>(e1));
+    EXPECT_EQ(scriptSystem.getVm().call(badSetterHandle), WREN_RESULT_RUNTIME_ERROR);
+
+    // Test 4: Position.new("abc") -> WREN_RESULT_RUNTIME_ERROR (not SIGSEGV)
+    const char* badConstructorScript =
+        "import \"core/Position\" for Position\n"
+        "class BadConstructor {\n"
+        "    static test() {\n"
+        "        Position.new(\"abc\")\n"
+        "    }\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret("test_ctor", badConstructorScript));
+    auto badConstructorHandle = scriptSystem.getVm().makeCallHandle("test()");
+    scriptSystem.getVm().ensureSlots(1);
+    scriptSystem.getVm().getVariable("test_ctor", "BadConstructor", 0);
+    EXPECT_EQ(scriptSystem.getVm().call(badConstructorHandle), WREN_RESULT_RUNTIME_ERROR);
 }
 
 int main(int argc, char** argv) {
