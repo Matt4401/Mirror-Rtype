@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "core/IPlugin.hpp"
+#include "core/PluginBuilder.hpp"
 #include "input/ActionMapping.hpp"
 #include "systems/input/InputSystem.hpp"
 
