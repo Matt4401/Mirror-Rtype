@@ -6,7 +6,6 @@
 #include "systems/physics/PhysicsPlugin.hpp"
 
 #include <cstddef>
-#include <utility>
 
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
