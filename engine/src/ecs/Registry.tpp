@@ -109,18 +109,16 @@ void Registry::removeComponent(Entity from) {
         return;
     }
     components.erase(from);
-    const auto componentRemoveListeners = _componentRemoveListeners;
-    for (const auto& listenerEntry : componentRemoveListeners) {
-        ComponentRemoveListener listener;
-        for (const auto& registeredListener : _componentRemoveListeners) {
-            if (registeredListener.first == listenerEntry.first) {
-                listener = registeredListener.second;
-                break;
-            }
+    ++_componentRemoveDispatchDepth;
+    const std::size_t count = _componentRemoveListeners.size();
+    for (std::size_t i = 0; i < count; ++i) {
+        if (_componentRemoveListeners[i].active && _componentRemoveListeners[i].callback) {
+            _componentRemoveListeners[i].callback(from, id);
         }
-        if (listener) {
-            listener(from, id);
-        }
+    }
+    --_componentRemoveDispatchDepth;
+    if (_componentRemoveDispatchDepth == 0) {
+        std::erase_if(_componentRemoveListeners, [](const auto& entry) { return !entry.active; });
     }
 }
 
