@@ -17,8 +17,15 @@
 
 namespace systems {
 
+/**
+ * @brief Concrete adapter implementing IPhysicsService via PhysicsSystem.
+ */
 class PhysicsPlugin::PhysicsServiceImpl final : public engine::IPhysicsService {
   public:
+    /**
+     * @brief Constructs PhysicsServiceImpl wrapping a PhysicsSystem reference.
+     * @param system Reference to the active PhysicsSystem.
+     */
     explicit PhysicsServiceImpl(PhysicsSystem& system) : _system(&system) {}
 
     void step(float fixedDt) override {
@@ -31,9 +38,14 @@ class PhysicsPlugin::PhysicsServiceImpl final : public engine::IPhysicsService {
         return (_system != nullptr) ? _system->bodyCount() : 0;
     }
 
+    /**
+     * @brief Sets or updates the wrapped PhysicsSystem pointer.
+     * @param system Pointer to PhysicsSystem instance.
+     */
     void setSystem(PhysicsSystem* system) noexcept { _system = system; }
 
   private:
+    /** @brief Non-owning pointer to the underlying PhysicsSystem. */
     PhysicsSystem* _system = nullptr;
 };
 
