@@ -125,6 +125,7 @@ class ForeignCall {
     }
 
   private:
+    /** @brief Pointer to the raw Wren VM instance. */
     ::WrenVM* _vm = nullptr;
 };
 

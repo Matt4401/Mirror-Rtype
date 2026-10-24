@@ -25,7 +25,14 @@ namespace detail {
 
 /** @brief Transparent hash allowing `std::string_view` lookups without allocation. */
 struct StringHash {
+    /** @brief Transparent lookup tag for std::unordered_map string view hashing. */
     using is_transparent = void;
+
+    /**
+     * @brief Hashes a string view without heap allocation.
+     * @param s String view to hash.
+     * @return Computed hash value.
+     */
     [[nodiscard]] std::size_t operator()(std::string_view s) const noexcept { return std::hash<std::string_view>{}(s); }
 };
 
@@ -48,6 +55,7 @@ class PrefabParams {
     /** @brief Storage type of a single parameter. */
     using Value = std::variant<bool, std::int64_t, double, std::string>;
 
+    /** @brief Constructs an empty parameter bag. */
     PrefabParams() = default;
 
     /**
