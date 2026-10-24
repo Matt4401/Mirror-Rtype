@@ -45,9 +45,10 @@ class Mediator {
      * @brief Registers an existing service instance for a specific interface.
      * @tparam Service Interface or class type to register under.
      * @param service Shared pointer holding the service implementation.
+     * @return Empty expected on success, or MediatorError::AlreadyRegistered if already present.
      */
     template <typename Service>
-    void registerService(const std::shared_ptr<Service>& service);
+    std::expected<void, MediatorError> registerService(const std::shared_ptr<Service>& service);
 
     /**
      * @brief Constructs and registers a service implementation in-place.
@@ -55,10 +56,11 @@ class Mediator {
      * @tparam Impl Concrete implementation type inheriting from Service.
      * @tparam Args Constructor argument types for Impl.
      * @param args Arguments forwarded to Impl's constructor.
-     * @return Reference to the newly constructed service.
+     * @return Reference wrapper to the newly constructed service, or MediatorError::AlreadyRegistered if already
+     * present.
      */
     template <typename Service, typename Impl = Service, typename... Args>
-    Service& emplaceService(Args&&... args);
+    std::expected<std::reference_wrapper<Service>, MediatorError> emplaceService(Args&&... args);
 
     /**
      * @brief Attempts to retrieve a registered service interface.

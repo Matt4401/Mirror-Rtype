@@ -72,6 +72,35 @@ TEST(Mediator, MissingServiceReturnsErrorOrThrows) {
     EXPECT_THROW(static_cast<void>(mediator.service<ITestGreetingService>()), std::runtime_error);
 }
 
+TEST(Mediator, DuplicateRegistrationRejectsWithAlreadyRegistered) {
+    engine::Mediator mediator;
+    auto servicePtr1 = std::make_shared<GreetingService>();
+    auto servicePtr2 = std::make_shared<GreetingService>();
+
+    auto result1 = mediator.registerService<ITestGreetingService>(servicePtr1);
+    EXPECT_TRUE(result1.has_value());
+
+    auto result2 = mediator.registerService<ITestGreetingService>(servicePtr2);
+    EXPECT_FALSE(result2.has_value());
+    EXPECT_EQ(result2.error(), engine::MediatorError::AlreadyRegistered);
+
+    // Stored service must not be replaced
+    EXPECT_EQ(mediator.service<ITestGreetingService>().greet("Alice"), "Hello, Alice!");
+}
+
+TEST(Mediator, DuplicateEmplaceRejectsWithAlreadyRegistered) {
+    engine::Mediator mediator;
+    auto result1 = mediator.emplaceService<ITestCounterService, CounterService>(10);
+    ASSERT_TRUE(result1.has_value());
+
+    auto result2 = mediator.emplaceService<ITestCounterService, CounterService>(20);
+    EXPECT_FALSE(result2.has_value());
+    EXPECT_EQ(result2.error(), engine::MediatorError::AlreadyRegistered);
+
+    // Stored service must not be replaced
+    EXPECT_EQ(mediator.service<ITestCounterService>().value(), 10);
+}
+
 TEST(Mediator, RemoveService) {
     engine::Mediator mediator;
     mediator.emplaceService<ITestCounterService, CounterService>(0);
