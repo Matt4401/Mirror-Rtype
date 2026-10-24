@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "core/IPlugin.hpp"
+#include "core/PluginBuilder.hpp"
 #include "systems/physics/PhysicsSystem.hpp"
 
 namespace systems {
