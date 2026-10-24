@@ -1,0 +1,89 @@
+/**
+ * @file PluginBuilder.hpp
+ * @brief Configuration builder used to declare type-safe plugin dependencies.
+ */
+
+#pragma once
+
+#include <string>
+#include <typeindex>
+#include <vector>
+
+namespace engine {
+
+/**
+ * @brief Dependency metadata registered for a single required or optional dependency.
+ */
+struct PluginDependency {
+    /** @brief Type index identifying the target plugin. */
+    std::type_index typeId;
+    /** @brief Human-readable name of the target plugin type for error diagnostics. */
+    std::string name;
+};
+
+/**
+ * @brief Fluent configuration builder passed to IPlugin::build.
+ */
+class PluginBuilder {
+  public:
+    /** @brief Default constructor. */
+    PluginBuilder() = default;
+
+    /** @brief Default destructor. */
+    ~PluginBuilder() = default;
+
+    /** @brief Default copy constructor. */
+    PluginBuilder(const PluginBuilder&) = default;
+
+    /** @brief Default copy assignment operator. */
+    PluginBuilder& operator=(const PluginBuilder&) = default;
+
+    /** @brief Default move constructor. */
+    PluginBuilder(PluginBuilder&&) noexcept = default;
+
+    /** @brief Default move assignment operator. */
+    PluginBuilder& operator=(PluginBuilder&&) noexcept = default;
+
+    /**
+     * @brief Declares a mandatory dependency on another plugin type.
+     *
+     * If the dependency is missing at engine initialization, initialization fails.
+     *
+     * @tparam PluginType The dependency plugin class.
+     * @return Reference to this builder for method chaining.
+     */
+    template <typename PluginType>
+    PluginBuilder& require();
+
+    /**
+     * @brief Declares an optional dependency on another plugin type.
+     *
+     * If present, the engine guarantees this dependency is initialized before this plugin.
+     * If absent, no error occurs.
+     *
+     * @tparam PluginType The dependency plugin class.
+     * @return Reference to this builder for method chaining.
+     */
+    template <typename PluginType>
+    PluginBuilder& optionally();
+
+    /**
+     * @brief Retrieves the list of required plugin dependencies.
+     * @return Const reference to required dependencies list.
+     */
+    [[nodiscard]] const std::vector<PluginDependency>& requiredDependencies() const noexcept { return _required; }
+
+    /**
+     * @brief Retrieves the list of optional plugin dependencies.
+     * @return Const reference to optional dependencies list.
+     */
+    [[nodiscard]] const std::vector<PluginDependency>& optionalDependencies() const noexcept { return _optional; }
+
+  private:
+    std::vector<PluginDependency> _required;
+    std::vector<PluginDependency> _optional;
+};
+
+}  // namespace engine
+
+#include "core/PluginBuilder.tpp"  // IWYU pragma: export
