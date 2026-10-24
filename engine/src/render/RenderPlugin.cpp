@@ -20,8 +20,15 @@
 
 namespace render {
 
+/**
+ * @brief Concrete adapter implementing IWindowService via Raylib Window.
+ */
 class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
   public:
+    /**
+     * @brief Constructs WindowServiceImpl with specified window configuration.
+     * @param config Window dimension and display configuration.
+     */
     explicit WindowServiceImpl(WindowConfig config) : _config(std::move(config)) {}
 
     [[nodiscard]] bool shouldClose() const noexcept override { return Window::shouldClose(); }
@@ -35,11 +42,19 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
     [[nodiscard]] int height() const noexcept override { return _config.height; }
 
   private:
+    /** @brief Stored window configuration. */
     WindowConfig _config;
 };
 
+/**
+ * @brief Concrete adapter implementing IRenderService via RenderSystem.
+ */
 class RenderPlugin::RenderServiceImpl final : public engine::IRenderService {
   public:
+    /**
+     * @brief Constructs RenderServiceImpl wrapping a RenderSystem reference.
+     * @param system Reference to the active RenderSystem.
+     */
     explicit RenderServiceImpl(RenderSystem& system) : _system(&system) {}
 
     void collect(ecs::Registry& registry) override {
@@ -60,9 +75,14 @@ class RenderPlugin::RenderServiceImpl final : public engine::IRenderService {
         }
     }
 
+    /**
+     * @brief Sets or updates the wrapped RenderSystem pointer.
+     * @param system Pointer to RenderSystem instance.
+     */
     void setSystem(RenderSystem* system) noexcept { _system = system; }
 
   private:
+    /** @brief Non-owning pointer to the underlying RenderSystem. */
     RenderSystem* _system = nullptr;
 };
 
