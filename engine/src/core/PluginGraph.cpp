@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <memory>
 #include <queue>
 #include <ranges>
 #include <sstream>
