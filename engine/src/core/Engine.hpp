@@ -155,13 +155,21 @@ class Engine {
     void shutdown();
 
   private:
+    /** @brief Central ECS registry holding all components and resources. */
     ecs::Registry _registry;
+    /** @brief Event dispatch bus coordinating intra-engine and game events. */
     ecs::EventBus _eventBus;
+    /** @brief Mediator service locator decoupling plugin service interactions. */
     Mediator _mediator;
+    /** @brief Dependency resolution graph determining plugin execution sequence. */
     PluginGraph _pluginGraph;
+    /** @brief High-precision monotonic simulation clock. */
     ecs::time::Clock _clock;
+    /** @brief Fixed timestep duration in seconds for physics and fixed update. */
     float _fixedDt = ecs::time::DEFAULT_FIXED_DT;
+    /** @brief Flag indicating whether plugins have completed the init phase. */
     bool _initialized = false;
+    /** @brief Flag controlling the active game loop execution state. */
     bool _running = false;
 };
 
