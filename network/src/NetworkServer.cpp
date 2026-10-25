@@ -70,8 +70,6 @@ void NetworkServer::stop() {
         std::ignore = _udpSocket.close(ignored);
         _udpTimer.cancel();
 
-        // Moved out first so that onTcpClosed() finds nothing: no Disconnected events when the server itself stops.
-        // The deferred closes are pending work: run() executes them before returning.
         auto clients = std::move(_clients);
         _clients.clear();
         for (const auto& info : clients | std::views::values) {
@@ -112,7 +110,6 @@ void NetworkServer::accept() {
                                       .lastSent = {}};
             _events.push({.type = EventType::Connected, .client = id, .data = {}, .channel = Channel::Reliable});
 
-            // Internal message: the client library needs its ClientId and token to send UDP datagrams.
             Bytes welcome(wire::UDP_HEADER_SIZE);
             wire::writeU32(std::span(welcome).first<4>(), id);
             wire::writeU32(std::span(welcome).subspan<4, 4>(), token);
@@ -138,14 +135,13 @@ void NetworkServer::onTcpMessage(const ClientId client, const MessageKind kind, 
         case MessageKind::UdpOpen:
             info.udpOpen = true;
             info.udp.reset();
-            info.lastSeen = std::chrono::steady_clock::now();  // the 5 s timeout starts here
+            info.lastSeen = std::chrono::steady_clock::now();
             break;
         case MessageKind::UdpClose:
             info.udpOpen = false;
             info.udp.reset();
             break;
         default:
-            // Welcome only goes server -> client, and any other value is not a known kind: protocol violation.
             info.tcp->close();
             break;
     }
@@ -175,7 +171,7 @@ void NetworkServer::receiveUdp() {
             if (!ec) {
                 handleDatagram(size);
             } else if (ec != asio::error::connection_reset && ec != asio::error::connection_refused &&
-                       ec != asio::error::message_size) {  // Windows: datagram bigger than the buffer
+                       ec != asio::error::message_size) {
                 std::cerr << "[network] udp receive error: " << ec.message() << '\n';
             }
             receiveUdp();
@@ -191,16 +187,15 @@ void NetworkServer::handleDatagram(const std::size_t size) {
     const std::uint32_t token = wire::readU32(datagram.subspan<4, 4>());
 
     const auto it = _clients.find(id);
-    // Unknown client, wrong token (spoofed), or UDP closed (late datagram sent before UdpClose): drop it.
     if (it == _clients.end() || it->second.token != token || !it->second.udpOpen) {
         return;
     }
     ClientInfo& info = it->second;
     const bool firstBinding = !info.udp;
-    info.udp = _udpFrom;  // first datagram, or the NAT changed the client's port
+    info.udp = _udpFrom;
     info.lastSeen = std::chrono::steady_clock::now();
     if (firstBinding) {
-        sendDatagram(info, {});  // acts as an ack: the client stops resending its bind datagram
+        sendDatagram(info, {});
     }
 
     if (size > wire::UDP_HEADER_SIZE) {
@@ -218,8 +213,6 @@ void NetworkServer::sendDatagram(ClientInfo& client, Bytes datagram) {
     }
     const auto buffer = std::make_shared<Bytes>(std::move(datagram));
     client.lastSent = std::chrono::steady_clock::now();
-    // [buffer] is NOT an unused capture: asio::buffer() does not copy, so this shared_ptr is what keeps the bytes
-    // alive until the send completes. Without it, the bytes are freed when this function returns: use-after-free.
     _udpSocket.async_send_to(asio::buffer(*buffer), client.udp.value(), [buffer](std::error_code, std::size_t) {});
 }
 
