@@ -109,8 +109,8 @@ void RenderPlugin::init(engine::Engine& engine) {
     _windowService = std::make_shared<WindowServiceImpl>(_config);
     _renderService = std::make_shared<RenderServiceImpl>(*_renderSystem);
 
-    engine.mediator().registerService<engine::IWindowService>(_windowService);
-    engine.mediator().registerService<engine::IRenderService>(_renderService);
+    [[maybe_unused]] const auto resWindow = engine.mediator().registerService<engine::IWindowService>(_windowService);
+    [[maybe_unused]] const auto resRender = engine.mediator().registerService<engine::IRenderService>(_renderService);
 }
 
 void RenderPlugin::render(engine::Engine& engine) {
