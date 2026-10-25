@@ -7,5 +7,5 @@ target("network")
     -- add_tests("starts")
 
     if is_plat("windows", "mingw") then
-        add_syslinks("ws2_32", "mswsock")
+        add_syslinks("ws2_32", "mswsock", {public = true})
     end

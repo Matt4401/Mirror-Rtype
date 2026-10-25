@@ -10,28 +10,25 @@
 
 namespace rtype::net::wire {
 
-// TCP frame: [payload length u32 LE][kind u8][payload]. The length counts the payload only, it can be 0.
 enum class MessageKind : std::uint8_t {
-    Data = 0,      // game payload, handed to the game
-    Welcome = 1,   // server -> client: [ClientId u32 LE][token u32 LE]
-    UdpOpen = 2,   // client -> server: the client opened UDP, the server starts its timeout
-    UdpClose = 3,  // client -> server: the client closed UDP, the server stops its timeout
+    Data = 0,
+    Welcome = 1,
+    UdpOpen = 2,
+    UdpClose = 3,
 };
 
 inline constexpr std::size_t TCP_HEADER_SIZE = 5;
 inline constexpr std::uint32_t MAX_TCP_PAYLOAD = 64 * 1024;
 
-// Client -> server datagram: [ClientId u32 LE][token u32 LE][payload]. Server -> client datagram: [payload].
 inline constexpr std::size_t UDP_HEADER_SIZE = 8;
 inline constexpr std::size_t MAX_DATAGRAM = 1200;
 inline constexpr std::size_t MAX_UDP_PAYLOAD = MAX_DATAGRAM - UDP_HEADER_SIZE;
+inline constexpr std::uint16_t DEFAULT_PORT = 4242;
 
 inline constexpr auto UDP_TICK = std::chrono::milliseconds(250);
 inline constexpr auto KEEPALIVE_INTERVAL = std::chrono::seconds(1);
 inline constexpr auto UDP_TIMEOUT = std::chrono::seconds(5);
 
-// Little-endian u32. The fixed extent makes the compiler check that exactly 4 bytes are passed:
-// call with std::span(buffer).first<4>() or .subspan<4, 4>().
 inline void writeU32(const std::span<std::uint8_t, 4> out, const std::uint32_t value) {
     out[0] = value & 0xFF;
     out[1] = (value >> 8) & 0xFF;

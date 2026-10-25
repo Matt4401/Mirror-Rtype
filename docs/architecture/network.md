@@ -374,7 +374,7 @@ private:
 
 int main() {
     auto network = net::createServer();
-    if (!network->start(4242, 4243))
+    if (!network->start(4242))
         return 1;
     GameServer server(*network);
     // fixed-timestep loop calling server.tick()

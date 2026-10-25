@@ -93,3 +93,11 @@ if has_config("graphics") then
         add_files("test_audio_settings.cpp")
         add_tests("test_audio_settings")
 end
+
+target("test_server_room")
+    set_kind("binary")
+    add_deps("shared", "engine_core", "engine_time", "engine_events")
+    add_packages("gtest")
+    add_files("server/RoomInputTests.cpp", "../server/src/Room.cpp")
+    add_includedirs("../server/src")
+    add_tests("test_server_room")
