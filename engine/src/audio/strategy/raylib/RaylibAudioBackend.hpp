@@ -63,8 +63,11 @@ class RaylibAudioBackend final : public IAudioBackend {
     /** @copydoc IAudioBackend::playSound */
     VoiceId playSound(SoundId id, const SoundParams& params) override;
 
+    /** @copydoc IAudioBackend::playSoundWithoutStealing */
+    VoiceId playSoundWithoutStealing(SoundId id, const SoundParams& params) override;
+
     /** @copydoc IAudioBackend::updateVoice */
-    bool updateVoice(VoiceId voice, const SoundParams& params) override;
+    VoiceState updateVoice(VoiceId voice, const SoundParams& params) override;
 
     /** @copydoc IAudioBackend::stopVoice */
     void stopVoice(VoiceId voice) override;
@@ -118,6 +121,12 @@ class RaylibAudioBackend final : public IAudioBackend {
 
     /** @brief Returns the voice still playing the instance `voice`, or nullptr if it ended or was reused. */
     [[nodiscard]] Voice* findPlayingVoice(VoiceId voice);
+
+    /** @brief Returns the voice stamped with `voice`, playing or not, or nullptr if it was reused by another play. */
+    [[nodiscard]] Voice* findVoice(VoiceId voice);
+
+    /** @brief Plays `params` on `voice` and stamps it with a new `VoiceId`. */
+    VoiceId startVoice(Voice& voice, const SoundParams& params);
 
     /** @brief Picks the voice to use for a new instance of `slot`, stopping another one if a limit is reached. */
     [[nodiscard]] Voice& acquireVoice(SoundSlot& slot);

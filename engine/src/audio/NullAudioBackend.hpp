@@ -44,8 +44,11 @@ class NullAudioBackend final : public IAudioBackend {
     /** @copydoc IAudioBackend::playSound */
     VoiceId playSound(SoundId /*id*/, const SoundParams& /*params*/) override { return NO_VOICE; }
 
+    /** @copydoc IAudioBackend::playSoundWithoutStealing */
+    VoiceId playSoundWithoutStealing(SoundId /*id*/, const SoundParams& /*params*/) override { return NO_VOICE; }
+
     /** @copydoc IAudioBackend::updateVoice */
-    bool updateVoice(VoiceId /*voice*/, const SoundParams& /*params*/) override { return false; }
+    VoiceState updateVoice(VoiceId /*voice*/, const SoundParams& /*params*/) override { return VoiceState::Ended; }
 
     /** @copydoc IAudioBackend::stopVoice */
     void stopVoice(VoiceId /*voice*/) override {}

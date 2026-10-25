@@ -38,17 +38,28 @@ class FakeAudioBackend final : public audio::IAudioBackend {
     [[nodiscard]] audio::MusicId loadMusic(const std::string& /*path*/) override { return audio::NO_MUSIC; }
 
     audio::VoiceId playSound(audio::SoundId id, const audio::SoundParams& params) override {
+        if (_playing.size() >= _voiceLimit) {
+            // Like the real backend: the oldest instance loses its voice.
+            _stolen.push_back(_playing.front());
+            _playing.erase(_playing.begin());
+        }
         _sounds.push_back({.id = id, .params = params});
         _calls.emplace_back("playSound");
         _playing.push_back(++_lastVoice);
         return _lastVoice;
     }
-    bool updateVoice(audio::VoiceId voice, const audio::SoundParams& params) override {
-        if (!std::ranges::contains(_playing, voice)) {
-            return false;
+    audio::VoiceId playSoundWithoutStealing(audio::SoundId id, const audio::SoundParams& params) override {
+        return _playing.size() < _voiceLimit ? playSound(id, params) : audio::NO_VOICE;
+    }
+    audio::VoiceState updateVoice(audio::VoiceId voice, const audio::SoundParams& params) override {
+        if (std::ranges::find(_stolen, voice) != _stolen.end()) {
+            return audio::VoiceState::Stolen;
+        }
+        if (std::ranges::find(_playing, voice) == _playing.end()) {
+            return audio::VoiceState::Ended;
         }
         _lastUpdate = params;
-        return true;
+        return audio::VoiceState::Playing;
     }
     void stopVoice(audio::VoiceId voice) override {
         if (std::erase(_playing, voice) > 0) {
@@ -76,6 +87,9 @@ class FakeAudioBackend final : public audio::IAudioBackend {
     [[nodiscard]] std::size_t playingCount() const { return _playing.size(); }
     [[nodiscard]] const audio::SoundParams& lastUpdate() const { return _lastUpdate; }
 
+    /** @brief Limits how many instances can play at once; beyond it, the oldest one is stolen. */
+    void setVoiceLimit(std::size_t limit) { _voiceLimit = limit; }
+
     /** @brief Simulates every playing instance reaching its end. */
     void endAllVoices() { _playing.clear(); }
 
@@ -86,6 +100,8 @@ class FakeAudioBackend final : public audio::IAudioBackend {
     float _musicVolume = -1.0F;
     int _updates = 0;
     std::vector<audio::VoiceId> _playing;
+    std::vector<audio::VoiceId> _stolen;
+    std::size_t _voiceLimit = std::numeric_limits<std::size_t>::max();
     audio::VoiceId _lastVoice = audio::NO_VOICE;
     audio::SoundParams _lastUpdate;
 };
@@ -496,6 +512,30 @@ TEST_F(AudioSystemTest, InaudibleEmitterStartsWhenItComesCloser) {
     registry.getComponents<ecs::Transform>().get(ship).x = 50.0F;
     audioSystem.update(registry);
     EXPECT_EQ(backend.sounds().size(), 1U);
+}
+
+TEST_F(AudioSystemTest, LoopingEmittersDoNotStealEachOtherBack) {
+    backend.setVoiceLimit(4);
+    std::vector<ecs::Entity> ships;
+    for (int i = 0; i < 5; ++i) {
+        ships.push_back(spawnEmitter(0.0F, 0.0F, LASER));
+    }
+
+    audioSystem.update(registry);
+    ASSERT_EQ(backend.sounds().size(), 5U) << "the fifth emitter took the voice of the first";
+
+    for (int frame = 0; frame < 10; ++frame) {
+        audioSystem.update(registry);
+    }
+    EXPECT_EQ(backend.sounds().size(), 5U) << "no emitter may restart while every voice is in use";
+    EXPECT_EQ(backend.playingCount(), 4U);
+
+    // The destroyed emitter frees its voice at the end of this update; the stolen one takes it on the next.
+    registry.killEntity(ships.back());
+    audioSystem.update(registry);
+    audioSystem.update(registry);
+    EXPECT_EQ(backend.sounds().size(), 6U) << "the stolen emitter resumes once a voice is free";
+    EXPECT_EQ(backend.playingCount(), 4U);
 }
 
 TEST(AudioSystem, StopsEmittersWhenDestroyed) {

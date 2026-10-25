@@ -13,6 +13,16 @@ using MusicId = std::uint32_t;
 /** @brief Handle of one playing instance of a sound; never reused, `NO_VOICE` marks an invalid one. */
 using VoiceId = std::uint64_t;
 
+/** @brief What became of a playing instance of a sound. */
+enum class VoiceState : std::uint8_t {
+    /** @brief Still playing. */
+    Playing,
+    /** @brief Reached its end, was stopped, or was never started. */
+    Ended,
+    /** @brief Cut short because its voice was taken by another instance when a voice limit was reached. */
+    Stolen,
+};
+
 /** @brief Point in world space where a sound is emitted or heard. */
 struct SoundPosition {
     /** @brief Horizontal position in world units. */

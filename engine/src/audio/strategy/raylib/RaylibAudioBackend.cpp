@@ -93,7 +93,23 @@ VoiceId RaylibAudioBackend::playSound(SoundId id, const SoundParams& params) {
         return NO_VOICE;
     }
 
-    Voice& voice = acquireVoice(*slot);
+    return startVoice(acquireVoice(*slot), params);
+}
+
+VoiceId RaylibAudioBackend::playSoundWithoutStealing(SoundId id, const SoundParams& params) {
+    SoundSlot* slot = findSound(id);
+    if (!_available || slot == nullptr || activeVoiceCount() >= _config.maxActiveVoices) {
+        return NO_VOICE;
+    }
+    const auto idle =
+        std::ranges::find_if(slot->voices, [](const Voice& voice) { return !IsSoundPlaying(voice.sound); });
+    if (idle == slot->voices.end()) {
+        return NO_VOICE;
+    }
+    return startVoice(*idle, params);
+}
+
+VoiceId RaylibAudioBackend::startVoice(Voice& voice, const SoundParams& params) {
     StopSound(voice.sound);
     applyParams(voice.sound, params);
     PlaySound(voice.sound);
@@ -101,13 +117,17 @@ VoiceId RaylibAudioBackend::playSound(SoundId id, const SoundParams& params) {
     return voice.startedAt;
 }
 
-bool RaylibAudioBackend::updateVoice(VoiceId voice, const SoundParams& params) {
-    const Voice* playing = findPlayingVoice(voice);
-    if (playing == nullptr) {
-        return false;
+VoiceState RaylibAudioBackend::updateVoice(VoiceId voice, const SoundParams& params) {
+    const Voice* instance = findVoice(voice);
+    if (instance == nullptr) {
+        // No voice carries this stamp any more: another play reused it, unless the handle was never valid.
+        return voice == NO_VOICE || voice > _playCounter ? VoiceState::Ended : VoiceState::Stolen;
     }
-    applyParams(playing->sound, params);
-    return true;
+    if (!IsSoundPlaying(instance->sound)) {
+        return VoiceState::Ended;
+    }
+    applyParams(instance->sound, params);
+    return VoiceState::Playing;
 }
 
 void RaylibAudioBackend::stopVoice(VoiceId voice) {
@@ -202,19 +222,24 @@ RaylibAudioBackend::Voice* RaylibAudioBackend::oldestPlayingVoice() {
     return oldest;
 }
 
-RaylibAudioBackend::Voice* RaylibAudioBackend::findPlayingVoice(VoiceId voice) {
+RaylibAudioBackend::Voice* RaylibAudioBackend::findVoice(VoiceId voice) {
     if (voice == NO_VOICE) {
         return nullptr;
     }
-
+    // A reused voice gets a new stamp, so an old handle can never control the instance that replaced it.
     for (SoundSlot& slot : _sounds) {
         for (Voice& candidate : slot.voices) {
             if (candidate.startedAt == voice) {
-                return IsSoundPlaying(candidate.sound) ? &candidate : nullptr;
+                return &candidate;
             }
         }
     }
     return nullptr;
+}
+
+RaylibAudioBackend::Voice* RaylibAudioBackend::findPlayingVoice(VoiceId voice) {
+    Voice* candidate = findVoice(voice);
+    return candidate != nullptr && IsSoundPlaying(candidate->sound) ? candidate : nullptr;
 }
 
 RaylibAudioBackend::Voice& RaylibAudioBackend::acquireVoice(SoundSlot& slot) {

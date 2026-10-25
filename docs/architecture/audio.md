@@ -120,6 +120,8 @@ registry.addComponent<ecs::AudioEmitter>(ship, ecs::AudioEmitter{.sound = engine
 
 Every update, the system starts the sound if needed, moves its pan and volume with the entity, restarts it when it
 loops, and stops it when the entity is destroyed, the component is removed or `playing` becomes `false`.
+An emitter whose voice was stolen by another sound resumes only when a voice is free, without stealing one back:
+emitters competing for too few voices therefore never keep restarting each other.
 
 | Use | For |
 |-----|-----|
@@ -200,7 +202,8 @@ available.
 |--------|-------------|
 | `loadSound(path)` / `loadMusic(path)` | Return a handle, or `NO_SOUND` / `NO_MUSIC` on failure. |
 | `playSound(id, params)` | Starts an instance and returns its `VoiceId`, or `NO_VOICE`. |
-| `updateVoice(voice, params)` | Changes the volume, pan and pitch of a playing instance; `false` once it has ended. |
+| `playSoundWithoutStealing(id, params)` | Starts an instance only if a voice is free; never stops another one. |
+| `updateVoice(voice, params)` | Changes the volume, pan and pitch of a playing instance and returns its `VoiceState`: `Playing`, `Ended` (finished or stopped) or `Stolen` (its voice was taken). |
 | `stopVoice(voice)` / `stopAllSounds()` | Stop one or every instance. |
 | `playMusic(id, loop)` / `stopMusic()` | Control the music stream. |
 | `setMasterVolume(v)` / `setMusicVolume(v)` | Set the backend-side gains. |

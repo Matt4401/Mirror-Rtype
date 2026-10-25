@@ -122,6 +122,8 @@ class AudioSystem {
         audio::SoundId sound = audio::NO_SOUND;
         /** @brief Whether the sound was started once, so a non-looping emitter plays only once. */
         bool started = false;
+        /** @brief Whether its voice was taken by another sound; it then resumes only on a free voice. */
+        bool stolen = false;
         /** @brief Whether the entity was still an emitter during the current update. */
         bool seen = false;
     };

@@ -164,14 +164,25 @@ void AudioSystem::updateEmitters(ecs::Registry& registry) {
             const audio::SoundParams params =
                 resolveParams(emitter.volume, emitter.pitch, audio::SoundPosition{.x = transform.x, .y = transform.y});
             // Still playing: move it with the entity.
-            if (_backend->updateVoice(state.voice, params)) {
+            const audio::VoiceState voice = _backend->updateVoice(state.voice, params);
+            if (voice == audio::VoiceState::Playing) {
                 return;
+            }
+            if (voice == audio::VoiceState::Stolen) {
+                state.stolen = true;
             }
             // Ended, stolen by another sound, or not started yet. An inaudible emitter waits to come closer.
             if ((state.started && !emitter.loop) || params.volume <= audio::MIN_VOLUME) {
                 return;
             }
-            state.voice = _backend->playSound(emitter.sound, params);
+            // A stolen emitter must not steal back, or emitters competing for too few voices would restart each
+            // other on every update. It waits for a free voice instead.
+            if (state.stolen) {
+                state.voice = _backend->playSoundWithoutStealing(emitter.sound, params);
+                state.stolen = state.voice == audio::NO_VOICE;
+            } else {
+                state.voice = _backend->playSound(emitter.sound, params);
+            }
             state.started = true;
         });
 

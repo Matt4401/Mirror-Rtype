@@ -62,13 +62,27 @@ class IAudioBackend {
     virtual VoiceId playSound(SoundId id, const SoundParams& params) = 0;
 
     /**
+     * @brief Starts a new instance of a sound only if a voice is free, without stopping any other instance.
+     *
+     * Used to resume a looping sound whose voice was stolen, so that sounds competing for too few voices do not
+     * keep cutting each other.
+     *
+     * @param id Handle returned by `loadSound`.
+     * @param params Volume, panning and pitch of this instance.
+     * @return A handle to control this instance, or `NO_VOICE` if no voice is free, the sound is unknown or the
+     * backend is muted.
+     */
+    virtual VoiceId playSoundWithoutStealing(SoundId id, const SoundParams& params) = 0;
+
+    /**
      * @brief Changes the volume, panning and pitch of a playing instance, e.g. to follow a moving emitter.
      *
      * @param voice Handle returned by `playSound`.
-     * @param params New settings.
-     * @return True if the instance is still playing, false if it ended or was stopped to make room.
+     * @param params New settings, applied only if the instance is still playing.
+     * @return `Playing` if the settings were applied, `Ended` if the instance finished or was stopped, `Stolen` if
+     * its voice was taken by another instance.
      */
-    virtual bool updateVoice(VoiceId voice, const SoundParams& params) = 0;
+    virtual VoiceState updateVoice(VoiceId voice, const SoundParams& params) = 0;
 
     /**
      * @brief Stops a playing instance; does nothing if it already ended.

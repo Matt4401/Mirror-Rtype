@@ -157,15 +157,20 @@ TEST(RaylibAudioBackend, VoicesCanBeUpdatedAndStopped) {
 
     const audio::VoiceId first = backend.playSound(sound, {.volume = 0.0F});
     ASSERT_NE(first, audio::NO_VOICE);
-    EXPECT_TRUE(backend.updateVoice(first, {.volume = 0.0F, .pan = audio::PAN_LEFT}));
+    EXPECT_EQ(backend.updateVoice(first, {.volume = 0.0F, .pan = audio::PAN_LEFT}), audio::VoiceState::Playing);
 
     const audio::VoiceId second = backend.playSound(sound, {.volume = 0.0F});
     EXPECT_NE(second, first);
-    EXPECT_FALSE(backend.updateVoice(first, {.volume = 0.0F})) << "the only voice now plays the second instance";
-    EXPECT_TRUE(backend.updateVoice(second, {.volume = 0.0F}));
+    EXPECT_EQ(backend.updateVoice(first, {.volume = 0.0F}), audio::VoiceState::Stolen)
+        << "the only voice now plays the second instance";
+    EXPECT_EQ(backend.updateVoice(second, {.volume = 0.0F}), audio::VoiceState::Playing);
+    EXPECT_EQ(backend.playSoundWithoutStealing(sound, {.volume = 0.0F}), audio::NO_VOICE)
+        << "the only voice is busy and must not be taken";
 
     backend.stopVoice(second);
-    EXPECT_FALSE(backend.updateVoice(second, {.volume = 0.0F}));
+    EXPECT_EQ(backend.updateVoice(second, {.volume = 0.0F}), audio::VoiceState::Ended);
+    EXPECT_NE(backend.playSoundWithoutStealing(sound, {.volume = 0.0F}), audio::NO_VOICE);
+    backend.stopAllSounds();
     EXPECT_EQ(backend.activeVoiceCount(), 0U);
 }
 
@@ -179,7 +184,8 @@ TEST(NullAudioBackend, IsMutedAndIgnoresEverything) {
     backend.playMusic(1, true);
     backend.setMasterVolume(0.5F);
     backend.update();
-    EXPECT_FALSE(backend.updateVoice(1, {}));
+    EXPECT_EQ(backend.updateVoice(1, {}), audio::VoiceState::Ended);
+    EXPECT_EQ(backend.playSoundWithoutStealing(1, {}), audio::NO_VOICE);
     backend.stopVoice(1);
     EXPECT_EQ(backend.activeVoiceCount(), 0U);
 }
