@@ -1,7 +1,7 @@
 target("network")
     set_kind("static")
     add_files("**.cpp")
-    add_deps("shared")
+    add_deps("shared", "log")
     add_includedirs(".", {public = true})
     add_packages("asio")
     -- add_tests("starts")

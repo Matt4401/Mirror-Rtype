@@ -14,7 +14,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <future>
-#include <iostream>
 #include <memory>
 #include <span>
 #include <string>
@@ -23,6 +22,8 @@
 #include <tuple>
 #include <utility>
 
+#include "LogTag.hpp"
+#include "Logger.hpp"
 #include "Network/INetworkManager.hpp"
 #include "Wire.hpp"
 #include "session/TcpSession.hpp"
@@ -48,7 +49,7 @@ bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
         asio::connect(socket, resolver.resolve(host, std::to_string(port)));
         _serverAddress = socket.remote_endpoint().address();
     } catch (asio::system_error& e) {
-        std::cerr << "[network] cannot connect to " << host << ':' << port << ": " << e.what() << '\n';
+        log::error(LOG_TAG, "cannot connect to ", host, ':', port, ": ", e.what());
         _state = State::Idle;
         return false;
     }
@@ -95,14 +96,14 @@ bool NetworkClient::openUdp(const std::uint16_t port) {
     }
     auto open = [this, port] {
         if (!_welcomed) {
-            std::cerr << "[network] cannot open UDP: no Welcome received from the server yet\n";
+            log::error(LOG_TAG, "cannot open UDP: no Welcome received from the server yet");
             return false;
         }
         try {
             _serverUdp = {_serverAddress, port};
             _udpSocket = asio::ip::udp::socket(_io, {_serverUdp.protocol(), 0});
         } catch (const asio::system_error& e) {
-            std::cerr << "[network] cannot open UDP to port " << port << ": " << e.what() << '\n';
+            log::error(LOG_TAG, "cannot open UDP to port ", port, ": ", e.what());
             return false;
         }
         _tcp->send(MessageKind::UdpOpen);

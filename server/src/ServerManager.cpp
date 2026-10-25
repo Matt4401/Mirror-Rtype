@@ -2,13 +2,14 @@
 
 #include <chrono>
 #include <cstdint>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <ranges>
 #include <thread>
 #include <utility>
 
+#include "LogTag.hpp"
+#include "Logger.hpp"
 #include "Network/INetworkManager.hpp"
 #include "Network/INetworkServer.hpp"
 #include "Room.hpp"
@@ -28,7 +29,8 @@ bool ServerManager::run(const std::uint16_t port) {
     if (!_network->start(port)) {
         return false;
     }
-    std::cout << "[server] listening on port " << port << '\n';
+    log::info(LOG_TAG, "listening on port ", port);
+    log::debug(LOG_TAG, "debug logs enabled");
     _running = true;
 
     while (_running.load()) {
@@ -38,7 +40,7 @@ bool ServerManager::run(const std::uint16_t port) {
     }
 
     _network->stop();
-    std::cout << "[server] stopped\n";
+    log::info(LOG_TAG, "stopped");
     return true;
 }
 
@@ -64,17 +66,19 @@ void ServerManager::handleEvents() {
 // NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 void ServerManager::onConnected(const ClientId client) {
     // The client is in the lobby: it joins a room through a lobby message (see onData).
-    std::cout << "[server] client " << client << " connected\n";
+    log::info(LOG_TAG, "client ", client, " connected");
 }
 
 void ServerManager::onDisconnected(const ClientId client) {
     // Can arrive without onConnected (connection lost before being ready): leaveRoom() then does nothing.
     leaveRoom(client);
-    std::cout << "[server] client " << client << " disconnected\n";
+    log::info(LOG_TAG, "client ", client, " disconnected");
 }
 
 void ServerManager::onData(const ClientId client, const net::Channel channel,
                            [[maybe_unused]] const net::Bytes& data) const {
+    log::debug(LOG_TAG, "client ", client, " sent ", data.size(), " bytes over ",
+               channel == net::Channel::Reliable ? "TCP" : "UDP");
     if (channel == net::Channel::Reliable) {
         // TODO(protocol): decode the lobby message (join, ready, chat, leave...), e.g.:
         // JOIN  -> joinRoom(client)
@@ -84,7 +88,8 @@ void ServerManager::onData(const ClientId client, const net::Channel channel,
     }
 
     if (!roomOf(client)) {
-        return;  // UDP from a client that is not in a room yet: ignored
+        log::debug(LOG_TAG, "client ", client, " is not in a room: UDP data ignored");
+        return;
     }
     // TODO(protocol): if (const auto room = _rooms.find(*roomOf(client)); room != _rooms.end()) {
     //                     room->second.onInput(client, protocol::decodeInput(data));
@@ -127,12 +132,16 @@ std::optional<RoomId> ServerManager::joinRoom(const ClientId client) {
     const RoomId id = open.value_or(_nextRoomId);
     if (!open) {
         _rooms.try_emplace(_nextRoomId++, MAX_PLAYERS_PER_ROOM);
+        log::debug(LOG_TAG, "room ", id, " created");
     }
 
-    if (!_rooms.at(id).addPlayer(client)) {
+    Room& room = _rooms.at(id);
+    if (!room.addPlayer(client)) {
         return std::nullopt;
     }
     _roomOf[client] = id;
+    log::debug(LOG_TAG, "client ", client, " joined room ", id, " (", room.players().size(), '/',
+               static_cast<int>(MAX_PLAYERS_PER_ROOM), " players)");
     return id;
 }
 
@@ -148,6 +157,7 @@ void ServerManager::leaveRoom(const ClientId client) {
         return;
     }
     room->second.removePlayer(client);
+    log::debug(LOG_TAG, "client ", client, " left room ", *id);
     for (const ClientId other : room->second.players()) {
         // TODO(protocol): tell the remaining players that `client` left (check the exact wording in the subject, p.10),
         // on the reliable channel: _network->send(other, protocol::encodePlayerLeft(client), net::Channel::Reliable);
@@ -155,6 +165,7 @@ void ServerManager::leaveRoom(const ClientId client) {
     }
     if (room->second.isEmpty()) {
         _rooms.erase(room);
+        log::debug(LOG_TAG, "room ", *id, " destroyed (empty)");
     }
 }
 

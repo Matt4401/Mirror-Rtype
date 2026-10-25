@@ -10,7 +10,6 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <random>
@@ -21,6 +20,8 @@
 #include <tuple>
 #include <utility>
 
+#include "LogTag.hpp"
+#include "Logger.hpp"
 #include "Network/INetworkManager.hpp"
 #include "Wire.hpp"
 #include "session/TcpSession.hpp"
@@ -43,7 +44,7 @@ bool NetworkServer::start(const std::uint16_t port) {
         _acceptor = asio::ip::tcp::acceptor(_io, {asio::ip::tcp::v4(), port});
         _udpSocket = asio::ip::udp::socket(_io, {asio::ip::udp::v4(), port});
     } catch (const asio::system_error& e) {
-        std::cerr << "[network] cannot start server on port " << port << ": " << e.what() << '\n';
+        log::error(LOG_TAG, "cannot start server on port ", port, ": ", e.what());
         std::error_code ignored;
         std::ignore = _acceptor.close(ignored);
         std::ignore = _udpSocket.close(ignored);
@@ -89,11 +90,16 @@ void NetworkServer::accept() {
             return;
         }
         if (!ec && _clients.size() >= MAX_CLIENTS) {
-            std::cerr << "[network] server full (" << MAX_CLIENTS << " clients): connection refused\n";
+            log::warning(LOG_TAG, "server full (", MAX_CLIENTS, " clients): connection refused");
             std::error_code ignored;
             std::ignore = socket.close(ignored);
         } else if (!ec) {
             const ClientId id = _nextId++;
+            std::error_code endpointError;
+            const auto remote = socket.remote_endpoint(endpointError);
+            if (!endpointError) {
+                log::debug(LOG_TAG, "TCP connection from ", remote, " accepted as client ", id);
+            }
             const std::uint32_t token = std::uniform_int_distribution<std::uint32_t>{}(_random);
             const auto tcp = std::make_shared<session::TcpSession>(
                 std::move(socket), id,
@@ -133,15 +139,19 @@ void NetworkServer::onTcpMessage(const ClientId client, const MessageKind kind, 
                 {.type = EventType::Data, .client = client, .data = std::move(payload), .channel = Channel::Reliable});
             break;
         case MessageKind::UdpOpen:
+            log::debug(LOG_TAG, "client ", client, " opens UDP");
             info.udpOpen = true;
             info.udp.reset();
             info.lastSeen = std::chrono::steady_clock::now();
             break;
         case MessageKind::UdpClose:
+            log::debug(LOG_TAG, "client ", client, " closes UDP");
             info.udpOpen = false;
             info.udp.reset();
             break;
         default:
+            log::warning(LOG_TAG, "client ", client, " sent an unknown message kind (", static_cast<int>(kind),
+                         "): disconnected");
             info.tcp->close();
             break;
     }
@@ -172,7 +182,7 @@ void NetworkServer::receiveUdp() {
                 handleDatagram(size);
             } else if (ec != asio::error::connection_reset && ec != asio::error::connection_refused &&
                        ec != asio::error::message_size) {
-                std::cerr << "[network] udp receive error: " << ec.message() << '\n';
+                log::warning(LOG_TAG, "udp receive error: ", ec.message());
             }
             receiveUdp();
         });
@@ -180,6 +190,7 @@ void NetworkServer::receiveUdp() {
 
 void NetworkServer::handleDatagram(const std::size_t size) {
     if (size < wire::UDP_HEADER_SIZE || size > wire::MAX_DATAGRAM) {
+        log::debug(LOG_TAG, "datagram of ", size, " bytes from ", _udpFrom, " dropped: invalid size");
         return;
     }
     const std::span<const std::uint8_t> datagram(_udpBuffer.data(), size);
@@ -188,6 +199,7 @@ void NetworkServer::handleDatagram(const std::size_t size) {
 
     const auto it = _clients.find(id);
     if (it == _clients.end() || it->second.token != token || !it->second.udpOpen) {
+        log::debug(LOG_TAG, "datagram from ", _udpFrom, " dropped: unknown client ", id, ", bad token or UDP not open");
         return;
     }
     ClientInfo& info = it->second;
@@ -195,6 +207,7 @@ void NetworkServer::handleDatagram(const std::size_t size) {
     info.udp = _udpFrom;
     info.lastSeen = std::chrono::steady_clock::now();
     if (firstBinding) {
+        log::debug(LOG_TAG, "client ", id, " UDP bound to ", _udpFrom);
         sendDatagram(info, {});
     }
 
@@ -235,6 +248,7 @@ void NetworkServer::onUdpTick() {
             continue;
         }
         if (now - info.lastSeen > wire::UDP_TIMEOUT) {
+            log::warning(LOG_TAG, "client ", info.id, " timed out on UDP: disconnected");
             info.tcp->close();
         } else if (info.udp && now - info.lastSent >= wire::KEEPALIVE_INTERVAL) {
             sendDatagram(info, {});

@@ -9,12 +9,13 @@
 #include <asio/write.hpp>
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <span>
 #include <system_error>
 #include <tuple>
 #include <utility>
 
+#include "LogTag.hpp"
+#include "Logger.hpp"
 #include "Network/INetworkManager.hpp"
 #include "Wire.hpp"
 
@@ -77,8 +78,7 @@ void TcpSession::send(const wire::MessageKind kind, const Bytes& payload) {
         return;
     }
     if (payload.size() > wire::MAX_TCP_PAYLOAD) {
-        std::cerr << "[network] reliable payload of " << payload.size() << " bytes refused (max "
-                  << wire::MAX_TCP_PAYLOAD << ")\n";
+        log::error(LOG_TAG, "reliable payload of ", payload.size(), " bytes refused (max ", wire::MAX_TCP_PAYLOAD, ')');
         return;
     }
 
@@ -88,7 +88,7 @@ void TcpSession::send(const wire::MessageKind kind, const Bytes& payload) {
     std::ranges::copy(payload, frame.begin() + wire::TCP_HEADER_SIZE);
 
     if (_queuedBytes + frame.size() > MAX_TCP_QUEUE_BYTES) {
-        std::cerr << "[network] client " << _id << " does not read its TCP socket anymore: disconnected\n";
+        log::warning(LOG_TAG, "client ", _id, " does not read its TCP socket anymore: disconnected");
         close();
         return;
     }
