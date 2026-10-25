@@ -57,7 +57,7 @@ void InputPlugin::build(engine::PluginBuilder& builder) {
 
 void InputPlugin::init(engine::Engine& engine) {
     _inputService = std::make_shared<InputServiceImpl>(_inputSystem);
-    engine.mediator().registerService<engine::IInputService>(_inputService);
+    [[maybe_unused]] const auto res = engine.mediator().registerService<engine::IInputService>(_inputService);
 }
 
 void InputPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
