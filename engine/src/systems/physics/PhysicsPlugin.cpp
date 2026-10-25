@@ -63,7 +63,7 @@ void PhysicsPlugin::build(engine::PluginBuilder& builder) { builder.require<engi
 void PhysicsPlugin::init(engine::Engine& engine) {
     _physicsSystem = std::make_unique<PhysicsSystem>(engine.registry());
     _physicsService = std::make_shared<PhysicsServiceImpl>(*_physicsSystem);
-    engine.mediator().registerService<engine::IPhysicsService>(_physicsService);
+    [[maybe_unused]] const auto res = engine.mediator().registerService<engine::IPhysicsService>(_physicsService);
 }
 
 void PhysicsPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time& time) {
