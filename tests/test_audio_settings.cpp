@@ -57,6 +57,7 @@ TEST(AudioSettings, ReadsEverySetting) {
         max_pan = 1.0
         min_distance = 100
         max_distance = 400
+        merge_distance = 64
     )",
                                                warnings);
 
@@ -72,6 +73,7 @@ TEST(AudioSettings, ReadsEverySetting) {
     EXPECT_FLOAT_EQ(settings.spatial.maxPan, 1.0F);
     EXPECT_FLOAT_EQ(settings.spatial.minDistance, 100.0F);
     EXPECT_FLOAT_EQ(settings.spatial.maxDistance, 400.0F);
+    EXPECT_FLOAT_EQ(settings.spatial.mergeDistance, 64.0F);
 }
 
 TEST(AudioSettings, OutOfRangeValuesAreClampedAndReported) {

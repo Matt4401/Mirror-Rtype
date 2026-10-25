@@ -25,6 +25,13 @@ struct SpatialConfig {
 
     /** @brief Distance from which a sound is silent; the volume falls linearly in between. */
     float maxDistance = DEFAULT_MAX_DISTANCE;
+
+    /**
+     * @brief Requests of the same sound in one update closer than this are played once, at the loudest request.
+     *
+     * Farther requests are all played, each from its own position (two players firing on the same frame).
+     */
+    float mergeDistance = DEFAULT_MERGE_DISTANCE;
 };
 
 }  // namespace audio

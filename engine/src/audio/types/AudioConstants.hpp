@@ -69,4 +69,7 @@ inline constexpr float DEFAULT_MIN_DISTANCE = 750.0F;
 /** @brief Default distance to the listener, in world units, from which positioned sounds are silent. */
 inline constexpr float DEFAULT_MAX_DISTANCE = 1500.0F;
 
+/** @brief Default distance, in world units, under which requests of the same sound in one update are merged. */
+inline constexpr float DEFAULT_MERGE_DISTANCE = 32.0F;
+
 }  // namespace audio

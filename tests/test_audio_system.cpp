@@ -284,7 +284,7 @@ TEST_F(AudioSystemTest, StopAllSoundsDropsEarlierRequestsOfTheSameUpdate) {
     EXPECT_EQ(backend.sounds()[0].id, EXPLOSION);
 }
 
-TEST_F(AudioSystemTest, SameSoundInOneUpdatePlaysOnce) {
+TEST_F(AudioSystemTest, UnpositionedRequestsOfTheSameSoundPlayOnce) {
     bus.publish(events::PlaySoundEvent{.sound = LASER});
     bus.publish(events::PlaySoundEvent{.sound = LASER});
     bus.publish(events::PlaySoundEvent{.sound = EXPLOSION});
@@ -371,17 +371,63 @@ TEST_F(AudioSystemTest, DistantSoundsFadeAndSilentOnesAreSkipped) {
     EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, 0.4F);
 }
 
-TEST_F(AudioSystemTest, LoudestRequestOfTheSameSoundWins) {
+TEST_F(AudioSystemTest, CloseRequestsOfTheSameSoundPlayOnceAtTheLoudest) {
     spawnListener(0.0F, 0.0F);
-    audioSystem.setSpatialConfig({.minDistance = 100.0F, .maxDistance = 300.0F});
+    const float close = audioSystem.spatialConfig().mergeDistance / 2.0F;
 
-    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 250.0F}});
-    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = -150.0F}});
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .volume = 0.4F, .position = audio::SoundPosition{.x = 100.0F}});
+    bus.publish(
+        events::PlaySoundEvent{.sound = LASER, .volume = 0.8F, .position = audio::SoundPosition{.x = 100.0F + close}});
     audioSystem.update(registry);
 
     ASSERT_EQ(backend.sounds().size(), 1U);
-    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, 0.75F);
-    EXPECT_LT(backend.sounds()[0].params.pan, audio::PAN_CENTER) << "the closer emitter, on the left, is kept";
+    EXPECT_FLOAT_EQ(backend.sounds()[0].params.volume, 0.8F);
+}
+
+TEST_F(AudioSystemTest, DistantRequestsOfTheSameSoundAreAllHeard) {
+    spawnListener(640.0F, 360.0F);
+
+    // Two players firing on the same frame, one on each side of the screen.
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 100.0F, .y = 360.0F}});
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 1180.0F, .y = 360.0F}});
+    audioSystem.update(registry);
+
+    ASSERT_EQ(backend.sounds().size(), 2U);
+    EXPECT_LT(backend.sounds()[0].params.pan, audio::PAN_CENTER);
+    EXPECT_GT(backend.sounds()[1].params.pan, audio::PAN_CENTER);
+}
+
+TEST_F(AudioSystemTest, PositionedAndUnpositionedRequestsAreNotMerged) {
+    spawnListener(0.0F, 0.0F);
+
+    bus.publish(events::PlaySoundEvent{.sound = LASER});
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .position = audio::SoundPosition{.x = 0.0F}});
+    audioSystem.update(registry);
+
+    EXPECT_EQ(backend.sounds().size(), 2U);
+}
+
+TEST_F(AudioSystemTest, SfxVolumeChangeAppliesToPlayingSounds) {
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .volume = 0.8F});
+    audioSystem.update(registry);
+    ASSERT_EQ(backend.sounds().size(), 1U);
+
+    audioSystem.setVolume(audio::AudioBus::Sfx, 0.5F);
+    EXPECT_FLOAT_EQ(backend.lastUpdate().volume, 0.4F) << "the shot already playing is turned down at once";
+
+    bus.publish(events::SetAudioVolumeEvent{.bus = audio::AudioBus::Sfx, .volume = 0.25F});
+    audioSystem.update(registry);
+    EXPECT_FLOAT_EQ(backend.lastUpdate().volume, 0.2F);
+}
+
+TEST_F(AudioSystemTest, FinishedSoundsAreNoLongerUpdated) {
+    bus.publish(events::PlaySoundEvent{.sound = LASER, .volume = 0.8F});
+    audioSystem.update(registry);
+    audioSystem.setVolume(audio::AudioBus::Sfx, 0.5F);
+    backend.endAllVoices();
+
+    audioSystem.setVolume(audio::AudioBus::Sfx, 0.25F);
+    EXPECT_FLOAT_EQ(backend.lastUpdate().volume, 0.4F) << "the finished shot was forgotten";
 }
 
 TEST_F(AudioSystemTest, SoundsAreNotSpatializedWithoutListener) {

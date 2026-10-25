@@ -1,6 +1,7 @@
 #include "systems/audio/AudioSystem.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -76,8 +77,12 @@ void AudioSystem::update(ecs::Registry& registry) {
     _queue.clear();
     _queuedSounds = 0;
 
+    refreshPlayingSounds();
     for (const PendingSound& sound : _pendingSounds) {
-        _backend->playSound(sound.id, sound.params);
+        const audio::VoiceId voice = _backend->playSound(sound.id, applySfxBus(sound.base));
+        if (voice != audio::NO_VOICE) {
+            _playingSounds.push_back({.voice = voice, .base = sound.base});
+        }
     }
     _pendingSounds.clear();
 
@@ -97,7 +102,9 @@ void AudioSystem::setVolume(audio::AudioBus bus, float volume) {
             _backend->setMusicVolume(gain);
             break;
         case audio::AudioBus::Sfx:
+            // Emitters pick the new gain up on the next update; one-shot sounds already playing are updated now.
             _sfxVolume = gain;
+            refreshPlayingSounds();
             break;
     }
 }
@@ -134,13 +141,28 @@ void AudioSystem::enqueue(const AudioCommand& command) { _queue.push_back(comman
 audio::SoundParams AudioSystem::resolveParams(float volume, float pitch,
                                               const std::optional<audio::SoundPosition>& position) const {
     const float gain = audio::clampFinite(volume, audio::DEFAULT_VOLUME, audio::MIN_VOLUME, audio::MAX_VOLUME);
-    audio::SoundParams params{.volume = gain * _sfxVolume, .pitch = pitch};
-    if (position && _listener && _spatial.enabled) {
-        const audio::SpatialGains gains = audio::computeSpatial(*position, *_listener, _spatial);
+    audio::SoundParams params{.volume = gain, .pitch = pitch};
+    if (const std::optional<audio::SoundPosition> where = heardFrom(position); where && _listener) {
+        const audio::SpatialGains gains = audio::computeSpatial(*where, *_listener, _spatial);
         params.volume *= gains.volume;
         params.pan = gains.pan;
     }
     return params;
+}
+
+audio::SoundParams AudioSystem::applySfxBus(audio::SoundParams base) const noexcept {
+    base.volume *= _sfxVolume;
+    return base;
+}
+
+std::optional<audio::SoundPosition> AudioSystem::heardFrom(const std::optional<audio::SoundPosition>& position) const {
+    return position && _listener && _spatial.enabled ? position : std::nullopt;
+}
+
+void AudioSystem::refreshPlayingSounds() {
+    std::erase_if(_playingSounds, [this](const PlayingSound& sound) {
+        return _backend->updateVoice(sound.voice, applySfxBus(sound.base)) != audio::VoiceState::Playing;
+    });
 }
 
 void AudioSystem::updateEmitters(ecs::Registry& registry) {
@@ -161,8 +183,8 @@ void AudioSystem::updateEmitters(ecs::Registry& registry) {
                 }
             }
 
-            const audio::SoundParams params =
-                resolveParams(emitter.volume, emitter.pitch, audio::SoundPosition{.x = transform.x, .y = transform.y});
+            const audio::SoundParams params = applySfxBus(
+                resolveParams(emitter.volume, emitter.pitch, audio::SoundPosition{.x = transform.x, .y = transform.y}));
             // Still playing: move it with the entity.
             const audio::VoiceState voice = _backend->updateVoice(state.voice, params);
             if (voice == audio::VoiceState::Playing) {
@@ -197,18 +219,27 @@ void AudioSystem::updateEmitters(ecs::Registry& registry) {
 }
 
 void AudioSystem::execute(const events::PlaySoundEvent& event) {
-    const audio::SoundParams params = resolveParams(event.volume, event.pitch, event.position);
+    const audio::SoundParams base = resolveParams(event.volume, event.pitch, event.position);
     // An inaudible sound (too far, or muted bus) would only take a voice from an audible one.
-    if (params.volume <= audio::MIN_VOLUME) {
+    if (applySfxBus(base).volume <= audio::MIN_VOLUME) {
         return;
     }
 
-    // The same sound started several times in one frame would only sound louder and waste voices: keep the loudest.
-    const auto same = std::ranges::find(_pendingSounds, event.sound, &PendingSound::id);
+    // The same sound started at the same place in one frame would only sound louder and waste a voice: keep the
+    // loudest. Requests from different places (two players firing) are all played, each from its own side.
+    const std::optional<audio::SoundPosition> where = heardFrom(event.position);
+    const auto same = std::ranges::find_if(_pendingSounds, [&](const PendingSound& pending) {
+        if (pending.id != event.sound || pending.position.has_value() != where.has_value()) {
+            return false;
+        }
+        return !where ||
+               std::hypot(pending.position->x - where->x, pending.position->y - where->y) <= _spatial.mergeDistance;
+    });
     if (same == _pendingSounds.end()) {
-        _pendingSounds.push_back({.id = event.sound, .params = params});
-    } else if (params.volume > same->params.volume) {
-        same->params = params;
+        _pendingSounds.push_back({.id = event.sound, .base = base, .position = where});
+    } else if (base.volume > same->base.volume) {
+        same->base = base;
+        same->position = where;
     }
 }
 
@@ -223,6 +254,7 @@ void AudioSystem::execute(const events::StopMusicEvent& /*event*/) { _backend->s
 void AudioSystem::execute(const events::StopAllSoundsEvent& /*event*/) {
     _backend->stopAllSounds();
     _pendingSounds.clear();
+    _playingSounds.clear();
 }
 
 void AudioSystem::execute(const events::SetAudioVolumeEvent& event) { setVolume(event.bus, event.volume); }

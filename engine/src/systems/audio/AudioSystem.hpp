@@ -106,12 +106,22 @@ class AudioSystem {
     using AudioCommand = std::variant<events::PlaySoundEvent, events::PlayMusicEvent, events::StopMusicEvent,
                                       events::StopAllSoundsEvent, events::SetAudioVolumeEvent>;
 
-    /** @brief A sound to start at the end of the current update, with its final settings. */
+    /** @brief A sound to start at the end of the current update. */
     struct PendingSound {
         /** @brief Sound to play. */
         audio::SoundId id = audio::NO_SOUND;
-        /** @brief Final volume, pan and pitch. */
-        audio::SoundParams params;
+        /** @brief Volume before the SFX bus, pan and pitch. */
+        audio::SoundParams base;
+        /** @brief Where it is heard from, if it is spatialized; used to merge requests that are close. */
+        std::optional<audio::SoundPosition> position;
+    };
+
+    /** @brief A one-shot sound started by a `PlaySoundEvent`, kept to apply SFX volume changes while it plays. */
+    struct PlayingSound {
+        /** @brief Instance in the backend. */
+        audio::VoiceId voice = audio::NO_VOICE;
+        /** @brief Volume before the SFX bus, pan and pitch. */
+        audio::SoundParams base;
     };
 
     /** @brief Playback state of an `AudioEmitter` entity. */
@@ -128,9 +138,19 @@ class AudioSystem {
         bool seen = false;
     };
 
-    /** @brief Combines a sound volume with the SFX bus and, when positioned, the listener's pan and attenuation. */
+    /** @brief Computes a sound's volume (before the SFX bus), pan and pitch from where it is emitted. */
     [[nodiscard]] audio::SoundParams resolveParams(float volume, float pitch,
                                                    const std::optional<audio::SoundPosition>& position) const;
+
+    /** @brief Applies the SFX bus to settings returned by `resolveParams`. */
+    [[nodiscard]] audio::SoundParams applySfxBus(audio::SoundParams base) const noexcept;
+
+    /** @brief Returns `position` if the sound is spatialized (position, listener and spatialization enabled). */
+    [[nodiscard]] std::optional<audio::SoundPosition> heardFrom(
+        const std::optional<audio::SoundPosition>& position) const;
+
+    /** @brief Applies the current SFX volume to the playing one-shot sounds and forgets the finished ones. */
+    void refreshPlayingSounds();
 
     /** @brief Starts, follows and stops the sounds of the `AudioEmitter` entities. */
     void updateEmitters(ecs::Registry& registry);
@@ -160,8 +180,10 @@ class AudioSystem {
     std::vector<AudioCommand> _queue;
     /** @brief Number of `PlaySoundEvent` in `_queue`, bounded by `MAX_QUEUED_SOUNDS`. */
     std::size_t _queuedSounds = 0;
-    /** @brief Sounds to start at the end of the current update, at most one per sound. */
+    /** @brief Sounds to start at the end of the current update; requests close to each other are merged. */
     std::vector<PendingSound> _pendingSounds;
+    /** @brief One-shot sounds started by events that may still be playing. */
+    std::vector<PlayingSound> _playingSounds;
     /** @brief Playback state of each emitter entity. */
     std::unordered_map<ecs::Entity, EmitterState> _emitters;
     /** @brief Where sounds are heard from during the current update, if a listener exists. */

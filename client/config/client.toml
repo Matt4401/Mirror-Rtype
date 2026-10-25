@@ -27,3 +27,6 @@ max_pan = 0.6
 min_distance = 750.0
 # ...and fade out linearly until they are silent at this distance.
 max_distance = 1500.0
+# The same sound requested several times in one frame closer than this (pixels) is played once, at the loudest
+# request; requests farther apart (two players firing) are all played.
+merge_distance = 32.0

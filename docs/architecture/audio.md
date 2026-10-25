@@ -138,7 +138,8 @@ emitters competing for too few voices therefore never keep restarting each other
 
 The gain of a sound effect is `sound volume × SFX volume × distance attenuation`, then the master gain is applied on
 the output. Volumes are clamped to `[0, 1]`; NaN or infinite values are replaced by the default. Use
-`AudioSystem::setVolume(bus, volume)` or publish a `SetAudioVolumeEvent`.
+`AudioSystem::setVolume(bus, volume)` or publish a `SetAudioVolumeEvent`. A new SFX volume also applies to the
+sounds already playing: one-shot sounds at once, emitters on the next update.
 
 ## Positional Audio
 
@@ -168,6 +169,7 @@ These computations are pure functions in `audio/spatial/AudioSpatial.hpp` (`comp
 | `maxPan` | `0.6F` | Widest pan, in `[0, 1]`. Below 1 so no sound is heard in one ear only, which is tiring on headphones. |
 | `minDistance` | `750.0F` | Sounds closer than this keep their full volume. |
 | `maxDistance` | `1500.0F` | Sounds farther than this are silent and are not started at all. |
+| `mergeDistance` | `32.0F` | Requests of the same sound in one frame closer than this are played once (see below). |
 
 The defaults suit a 1280×720 view centered on the listener: every visible sound keeps its volume and only off-screen
 sounds fade. Change them with `AudioSystem::setSpatialConfig()`.
@@ -186,8 +188,10 @@ Event listeners only queue the events, so publishing is cheap and never blocks g
 This order gives the following guarantees:
 
 - a `StopAllSoundsEvent` also cancels the sounds requested before it in the same frame;
-- the same sound requested several times in one frame plays once, at its loudest request, so twenty simultaneous
-  lasers do not saturate the output or take twenty voices;
+- requests of the same sound in one frame that come from the same place (closer than `mergeDistance`, or all
+  without position) play once, at the loudest request, so a burst of identical shots does not saturate the output or
+  take a voice each; requests from different places (two players firing on the same frame) are all played, each from
+  its own side;
 - an inaudible sound (too far, or SFX bus at 0) is not started and takes no voice;
 - at most `MAX_QUEUED_SOUNDS` (128) sound requests are kept per frame; music and volume events are never dropped.
 
@@ -236,9 +240,10 @@ loaded sound.
 
 ## Configuration File
 
-`engine_config` reads TOML files into dotted keys (`config::ConfigFile`). `audio::readAudioSettings()` turns the
-`[audio]` table into an `audio::AudioSettings`, used to create the backend and passed to
-`AudioSystem::applySettings()`:
+`engine_config` reads TOML files into dotted keys (`config::ConfigFile`) and provides `config::ConfigReader`, which
+reads typed and bounded values and reports every correction; any module can use it for its own table.
+`audio::readAudioSettings()` uses it to turn the `[audio]` table into an `audio::AudioSettings`, used to create the
+backend and passed to `AudioSystem::applySettings()`:
 
 ```cpp
 const config::ConfigFile file = config::ConfigFile::load("client/config/client.toml");
@@ -263,6 +268,7 @@ audioSystem.applySettings(settings);  // volumes and spatial settings
 | `audio.spatial.max_pan` | `0.6` | 0 to 1 | `applySettings` |
 | `audio.spatial.min_distance` | `750.0` | ≥ 0 | `applySettings` |
 | `audio.spatial.max_distance` | `1500.0` | ≥ `min_distance` | `applySettings` |
+| `audio.spatial.merge_distance` | `32.0` | ≥ 0 | `applySettings` |
 
 The file is treated as untrusted input and never stops the game:
 

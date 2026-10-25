@@ -8,6 +8,7 @@
 
 #include "config/ConfigConstants.hpp"
 #include "config/ConfigFile.hpp"
+#include "config/ConfigReader.hpp"
 
 namespace {
 
@@ -112,6 +113,57 @@ TEST(ConfigFile, OversizedFileIsRejected) {
 
     ASSERT_TRUE(file.error().has_value());
     EXPECT_NE(file.error()->find("too large"), std::string::npos) << *file.error();
+}
+
+TEST(ConfigReader, MissingKeysGiveTheFallbackSilently) {
+    const config::ConfigFile file = config::ConfigFile::parse("");
+    std::vector<std::string> warnings;
+    config::ConfigReader reader(file, warnings);
+
+    EXPECT_FLOAT_EQ(reader.number("game.speed", 2.0F, 0.0F, 10.0F), 2.0F);
+    EXPECT_EQ(reader.count("game.lives", 3, 1, 9), 3U);
+    EXPECT_TRUE(reader.flag("game.vsync", true));
+    EXPECT_EQ(reader.text("game.name", "R-Type"), "R-Type");
+    EXPECT_TRUE(warnings.empty());
+}
+
+TEST(ConfigReader, ReadsValidValues) {
+    const config::ConfigFile file =
+        config::ConfigFile::parse("[game]\nspeed = 4\nlives = 5\nvsync = false\nname = \"Demo\"\n");
+    std::vector<std::string> warnings;
+    config::ConfigReader reader(file, warnings);
+
+    EXPECT_FLOAT_EQ(reader.number("game.speed", 2.0F, 0.0F, 10.0F), 4.0F);
+    EXPECT_EQ(reader.count("game.lives", 3, 1, 9), 5U);
+    EXPECT_FALSE(reader.flag("game.vsync", true));
+    EXPECT_EQ(reader.text("game.name", "R-Type"), "Demo");
+    EXPECT_TRUE(warnings.empty());
+}
+
+TEST(ConfigReader, InvalidValuesAreCorrectedAndReported) {
+    const config::ConfigFile file =
+        config::ConfigFile::parse("[game]\nspeed = 99.0\nlives = -4\nvsync = \"yes\"\nname = 7\ngain = nan\n");
+    std::vector<std::string> warnings;
+    config::ConfigReader reader(file, warnings);
+
+    EXPECT_FLOAT_EQ(reader.number("game.speed", 2.0F, 0.0F, 10.0F), 10.0F);
+    EXPECT_EQ(reader.count("game.lives", 3, 1, 9), 1U);
+    EXPECT_TRUE(reader.flag("game.vsync", true));
+    EXPECT_EQ(reader.text("game.name", "R-Type"), "R-Type");
+    EXPECT_FLOAT_EQ(reader.number("game.gain", 1.0F, 0.0F, 1.0F), 1.0F);
+    EXPECT_EQ(warnings.size(), 5U);
+}
+
+TEST(ConfigReader, ReportsKeysThatWereNeverRead) {
+    const config::ConfigFile file = config::ConfigFile::parse("[game]\nspeed = 4\nsped = 5\n[other]\nkey = 1\n");
+    std::vector<std::string> warnings;
+    config::ConfigReader reader(file, warnings);
+
+    (void)reader.number("game.speed", 2.0F, 0.0F, 10.0F);
+    reader.reportUnknownKeys("game");
+
+    ASSERT_EQ(warnings.size(), 1U);
+    EXPECT_NE(warnings[0].find("game.sped"), std::string::npos) << warnings[0];
 }
 
 int main(int argc, char** argv) {
