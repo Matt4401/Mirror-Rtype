@@ -47,6 +47,13 @@ target("test_physics")
     add_files("physics/PhysicsSystemTests.cpp")
     add_tests("test_physics")
 
+target("test_config")
+    set_kind("binary")
+    add_deps("engine_config")
+    add_packages("gtest")
+    add_files("test_config.cpp")
+    add_tests("test_config")
+
 target("test_prefabs")
     set_kind("binary")
     add_deps("engine_core", "rtype_prefabs")
@@ -69,6 +76,29 @@ if has_config("graphics") then
         add_packages("gtest")
         add_files("test_render.cpp")
         add_tests("test_render")
+end
+
+if has_config("graphics") then
+    target("test_audio")
+        set_kind("binary")
+        add_deps("engine_audio")
+        add_packages("gtest", "raylib")
+        add_files("test_audio.cpp")
+        add_tests("test_audio")
+
+    target("test_audio_system")
+        set_kind("binary")
+        add_deps("engine_audio")
+        add_packages("gtest")
+        add_files("test_audio_system.cpp")
+        add_tests("test_audio_system")
+
+    target("test_audio_settings")
+        set_kind("binary")
+        add_deps("engine_audio")
+        add_packages("gtest")
+        add_files("test_audio_settings.cpp")
+        add_tests("test_audio_settings")
 end
 
 target("test_server_room")
