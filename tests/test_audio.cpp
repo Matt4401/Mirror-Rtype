@@ -174,6 +174,86 @@ TEST(RaylibAudioBackend, VoicesCanBeUpdatedAndStopped) {
     EXPECT_EQ(backend.activeVoiceCount(), 0U);
 }
 
+TEST(RaylibAudioBackend, EveryReplacedInstanceReportsItWasStolen) {
+    audio::detail::RaylibAudioBackend backend(audio::AudioConfig{.voicesPerSound = 1});
+    if (!backend.isAvailable()) {
+        GTEST_SKIP() << "No audio device available";
+    }
+    const audio::SoundId sound = backend.loadSound(writeSineWav("mirror_rtype_steals.wav", 1.0F).string());
+    ASSERT_NE(sound, audio::NO_SOUND);
+
+    const audio::VoiceId first = backend.playSound(sound, {.volume = 0.0F});
+    const audio::VoiceId second = backend.playSound(sound, {.volume = 0.0F});
+    const audio::VoiceId third = backend.playSound(sound, {.volume = 0.0F});
+
+    EXPECT_EQ(backend.updateVoice(first, {.volume = 0.0F}), audio::VoiceState::Stolen);
+    EXPECT_EQ(backend.updateVoice(second, {.volume = 0.0F}), audio::VoiceState::Stolen);
+    EXPECT_EQ(backend.updateVoice(third, {.volume = 0.0F}), audio::VoiceState::Playing);
+}
+
+TEST(RaylibAudioBackend, GlobalLimitStealsTheOldestInstance) {
+    audio::detail::RaylibAudioBackend backend(audio::AudioConfig{.voicesPerSound = 2, .maxActiveVoices = 2});
+    if (!backend.isAvailable()) {
+        GTEST_SKIP() << "No audio device available";
+    }
+    const std::string path = writeSineWav("mirror_rtype_global.wav", 1.0F).string();
+    const audio::SoundId first = backend.loadSound(path);
+    const audio::SoundId second = backend.loadSound(path);
+
+    const audio::VoiceId oldest = backend.playSound(first, {.volume = 0.0F});
+    const audio::VoiceId middle = backend.playSound(first, {.volume = 0.0F});
+    const audio::VoiceId newest = backend.playSound(second, {.volume = 0.0F});
+
+    EXPECT_EQ(backend.updateVoice(oldest, {.volume = 0.0F}), audio::VoiceState::Stolen);
+    EXPECT_EQ(backend.updateVoice(middle, {.volume = 0.0F}), audio::VoiceState::Playing);
+    EXPECT_EQ(backend.updateVoice(newest, {.volume = 0.0F}), audio::VoiceState::Playing);
+    EXPECT_EQ(backend.activeVoiceCount(), 2U);
+    EXPECT_EQ(backend.playSoundWithoutStealing(first, {.volume = 0.0F}), audio::NO_VOICE)
+        << "the global limit is reached";
+}
+
+TEST(RaylibAudioBackend, UnloadedSoundStopsAndCannotPlay) {
+    audio::detail::RaylibAudioBackend backend;
+    if (!backend.isAvailable()) {
+        GTEST_SKIP() << "No audio device available";
+    }
+    const std::string path = writeSineWav("mirror_rtype_unload.wav", 1.0F).string();
+    const audio::SoundId sound = backend.loadSound(path);
+    const audio::VoiceId voice = backend.playSound(sound, {.volume = 0.0F});
+    ASSERT_NE(voice, audio::NO_VOICE);
+
+    backend.unloadSound(sound);
+    EXPECT_EQ(backend.activeVoiceCount(), 0U);
+    EXPECT_EQ(backend.updateVoice(voice, {.volume = 0.0F}), audio::VoiceState::Ended);
+    EXPECT_EQ(backend.playSound(sound, {.volume = 0.0F}), audio::NO_VOICE);
+    backend.unloadSound(sound);
+
+    // The freed voices are reused, but neither the old sound handle nor the old voice handle reaches them.
+    const audio::SoundId reloaded = backend.loadSound(path);
+    EXPECT_NE(reloaded, sound);
+    const audio::VoiceId fresh = backend.playSound(reloaded, {.volume = 0.0F});
+    EXPECT_NE(fresh, voice);
+    EXPECT_EQ(backend.updateVoice(voice, {.volume = 0.0F}), audio::VoiceState::Ended);
+    backend.stopVoice(voice);
+    EXPECT_EQ(backend.updateVoice(fresh, {.volume = 0.0F}), audio::VoiceState::Playing);
+}
+
+TEST(RaylibAudioBackend, UnloadedMusicStopsAndCannotPlay) {
+    audio::detail::RaylibAudioBackend backend;
+    if (!backend.isAvailable()) {
+        GTEST_SKIP() << "No audio device available";
+    }
+    const audio::MusicId music = backend.loadMusic(writeSineWav("mirror_rtype_music_unload.wav", 1.0F).string());
+    ASSERT_NE(music, audio::NO_MUSIC);
+    backend.setMusicVolume(0.0F);
+    backend.playMusic(music, true);
+
+    backend.unloadMusic(music);
+    backend.playMusic(music, true);
+    backend.update();
+    backend.unloadMusic(music);
+}
+
 TEST(NullAudioBackend, IsMutedAndIgnoresEverything) {
     audio::NullAudioBackend backend;
 
@@ -187,6 +267,8 @@ TEST(NullAudioBackend, IsMutedAndIgnoresEverything) {
     EXPECT_EQ(backend.updateVoice(1, {}), audio::VoiceState::Ended);
     EXPECT_EQ(backend.playSoundWithoutStealing(1, {}), audio::NO_VOICE);
     backend.stopVoice(1);
+    backend.unloadSound(1);
+    backend.unloadMusic(1);
     EXPECT_EQ(backend.activeVoiceCount(), 0U);
 }
 

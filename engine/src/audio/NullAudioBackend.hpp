@@ -41,6 +41,12 @@ class NullAudioBackend final : public IAudioBackend {
     /** @copydoc IAudioBackend::loadMusic */
     [[nodiscard]] MusicId loadMusic(const std::string& /*path*/) override { return NO_MUSIC; }
 
+    /** @copydoc IAudioBackend::unloadSound */
+    void unloadSound(SoundId /*id*/) override {}
+
+    /** @copydoc IAudioBackend::unloadMusic */
+    void unloadMusic(MusicId /*id*/) override {}
+
     /** @copydoc IAudioBackend::playSound */
     VoiceId playSound(SoundId /*id*/, const SoundParams& /*params*/) override { return NO_VOICE; }
 

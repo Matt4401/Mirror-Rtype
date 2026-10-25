@@ -51,6 +51,25 @@ class IAudioBackend {
     [[nodiscard]] virtual MusicId loadMusic(const std::string& path) = 0;
 
     /**
+     * @brief Releases a sound effect, e.g. when leaving the level that used it.
+     *
+     * Its playing instances stop and the handle becomes invalid. Handles are never reused, so a stale `SoundId`
+     * can never play another sound. Unknown or already unloaded handles are ignored.
+     *
+     * @param id Handle returned by `loadSound`.
+     */
+    virtual void unloadSound(SoundId id) = 0;
+
+    /**
+     * @brief Releases a music stream; stops it first if it is the current music.
+     *
+     * Handles are never reused. Unknown or already unloaded handles are ignored.
+     *
+     * @param id Handle returned by `loadMusic`.
+     */
+    virtual void unloadMusic(MusicId id) = 0;
+
+    /**
      * @brief Starts a new instance of a sound effect.
      *
      * When the voice limits are reached, the oldest playing instance is stopped to make room.

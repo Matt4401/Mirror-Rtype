@@ -36,6 +36,8 @@ class FakeAudioBackend final : public audio::IAudioBackend {
     [[nodiscard]] bool isAvailable() const noexcept override { return true; }
     [[nodiscard]] audio::SoundId loadSound(const std::string& /*path*/) override { return audio::NO_SOUND; }
     [[nodiscard]] audio::MusicId loadMusic(const std::string& /*path*/) override { return audio::NO_MUSIC; }
+    void unloadSound(audio::SoundId /*id*/) override {}
+    void unloadMusic(audio::MusicId /*id*/) override {}
 
     audio::VoiceId playSound(audio::SoundId id, const audio::SoundParams& params) override {
         if (_playing.size() >= _voiceLimit) {

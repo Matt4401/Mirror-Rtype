@@ -201,6 +201,7 @@ available.
 | Method | Description |
 |--------|-------------|
 | `loadSound(path)` / `loadMusic(path)` | Return a handle, or `NO_SOUND` / `NO_MUSIC` on failure. |
+| `unloadSound(id)` / `unloadMusic(id)` | Release a sound or music (e.g. when leaving a level); its playing instances stop. Handles are never reused. |
 | `playSound(id, params)` | Starts an instance and returns its `VoiceId`, or `NO_VOICE`. |
 | `playSoundWithoutStealing(id, params)` | Starts an instance only if a voice is free; never stops another one. |
 | `updateVoice(voice, params)` | Changes the volume, pan and pitch of a playing instance and returns its `VoiceState`: `Playing`, `Ended` (finished or stopped) or `Stolen` (its voice was taken). |
@@ -211,7 +212,9 @@ available.
 | `activeVoiceCount()` | Number of playing instances, for metrics and tests. |
 
 A `VoiceId` identifies one playback and is never reused: once the instance ends or its voice is taken by another
-sound, the old handle simply stops working.
+sound, the old handle simply stops working. In the raylib backend it packs the voice index and a generation counter,
+so controlling an instance is O(1), and starting one costs O(active voices + voices per sound), never a walk over every
+loaded sound.
 
 ### Implementations
 
