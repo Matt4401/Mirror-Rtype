@@ -75,7 +75,7 @@ if has_config("graphics") then
     target("test_audio")
         set_kind("binary")
         add_deps("engine_audio")
-        add_packages("gtest")
+        add_packages("gtest", "raylib")
         add_files("test_audio.cpp")
         add_tests("test_audio")
 
