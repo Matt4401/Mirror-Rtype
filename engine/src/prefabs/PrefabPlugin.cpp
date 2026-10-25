@@ -25,7 +25,7 @@ void PrefabPlugin::build(engine::PluginBuilder& builder) { builder.require<engin
 
 void PrefabPlugin::init(engine::Engine& engine) {
     if (_manager != nullptr) {
-        engine.mediator().registerService<PrefabManager>(_manager);
+        [[maybe_unused]] const auto res = engine.mediator().registerService<PrefabManager>(_manager);
     }
 }
 
