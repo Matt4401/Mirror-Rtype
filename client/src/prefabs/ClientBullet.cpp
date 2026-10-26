@@ -7,6 +7,8 @@
 
 #include "prefabs/ClientBullet.hpp"
 
+#include <cstdint>
+
 #include "components/AnimationComponent.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"

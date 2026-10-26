@@ -7,8 +7,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <exception>
 #include <iostream>
+#include <stdexcept>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "components/AnimationComponent.hpp"
