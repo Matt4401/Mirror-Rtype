@@ -38,7 +38,7 @@ void buildClientBullet(ecs::Entity e, ecs::Registry& registry, ::prefabs::Prefab
                                                           .startX = 0,
                                                           .startY = 0,
                                                           .frameDuration = 0.015F,
-                                                          .loop = true,
+                                                          .loop = false,
                                                       });
     registry.addComponent<ecs::RigidBody2D>(e, ecs::RigidBody2D{
                                                    .bodyType = ecs::BodyType::Dynamic,
