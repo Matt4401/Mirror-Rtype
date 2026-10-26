@@ -1,3 +1,4 @@
 target("engine_ui")
-    set_kind("headeronly")
+    set_kind("static")
+    add_files("**.cpp")
     add_deps("engine_render", {public = true})
