@@ -45,6 +45,14 @@ class UiRenderSystem {
     [[nodiscard]] const std::vector<UiDrawItem>& drawQueue() const noexcept { return _queue; }
 
   private:
+    /**
+     * @brief Draws a single `UiRect` at the given screen position.
+     * @param x Resolved screen X in pixels.
+     * @param y Resolved screen Y in pixels.
+     * @param rect Component to draw.
+     */
+    static void drawRect(float x, float y, const UiRect& rect);
+
     /** @brief Resolves font identifiers. */
     const FontStore* _fonts;
 

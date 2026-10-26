@@ -2,6 +2,9 @@
 
 #include <raylib.h>
 
+#include <type_traits>
+#include <variant>
+
 #include "ui/components/UiAnchor.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
@@ -45,6 +48,28 @@ void UiRenderSystem::collect(ecs::Registry& registry) {
 }
 
 void UiRenderSystem::draw() const {
+    for (const UiDrawItem& item : _queue) {
+        std::visit(
+            [this, &item](const auto& drawable) {
+                using T = std::decay_t<decltype(drawable)>;
+                if constexpr (std::is_same_v<T, UiRect>) {
+                    drawRect(item.screenX, item.screenY, drawable);
+                }
+            },
+            item.drawable);
+    }
+}
+
+void UiRenderSystem::drawRect(float x, float y, const UiRect& rect) {
+    if (rect.fillColor.a > 0) {
+        const Color fill{.r = rect.fillColor.r, .g = rect.fillColor.g, .b = rect.fillColor.b, .a = rect.fillColor.a};
+        DrawRectangleV({.x = x, .y = y}, {.x = rect.width, .y = rect.height}, fill);
+    }
+    if (rect.borderThickness > 0.0F && rect.borderColor.a > 0) {
+        const Color border{
+            .r = rect.borderColor.r, .g = rect.borderColor.g, .b = rect.borderColor.b, .a = rect.borderColor.a,};
+        DrawRectangleLinesEx({.x = x, .y = y, .width = rect.width, .height = rect.height}, rect.borderThickness, border);
+    }
 }
 
 }  // namespace ui
