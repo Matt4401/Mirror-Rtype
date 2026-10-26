@@ -4,7 +4,7 @@ set_languages("c++23")
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "."})
 
-add_requires("asio", "gtest", "wren", "box2d v2.4.2")
+add_requires("asio", "gtest", "wren", "box2d v2.4.2", "toml++ v3.4.0")
 
 if is_plat("windows") then
     add_defines("_WIN32_WINNT=0x0A00", "WIN32_LEAN_AND_MEAN", "NOMINMAX")
@@ -15,6 +15,7 @@ option("tests", {default = false, showmenu = true, description = "Build tests"})
 
 includes("xmake/common.lua")
 
+includes("log/*/xmake.lua")
 includes("shared/*/xmake.lua")
 includes("engine/*/xmake.lua")
 includes("network/*/xmake.lua")
