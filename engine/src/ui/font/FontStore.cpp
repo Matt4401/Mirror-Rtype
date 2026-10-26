@@ -8,8 +8,10 @@ FontStore::~FontStore() {
     if (!IsWindowReady()) {
         return;
     }
-    for (const Font& font : _fonts) {
-        UnloadFont(font);
+    for (std::size_t i = 0; i < _fonts.size(); ++i) {
+        if (_owned.at(i)) {
+            UnloadFont(_fonts.at(i));
+        }
     }
 }
 
@@ -19,6 +21,13 @@ FontId FontStore::load(const std::string& path) {
         return NO_FONT;
     }
     _fonts.push_back(font);
+    _owned.push_back(true);
+    return static_cast<FontId>(_fonts.size());
+}
+
+FontId FontStore::loadDefault() {
+    _fonts.push_back(GetFontDefault());
+    _owned.push_back(false);
     return static_cast<FontId>(_fonts.size());
 }
 

@@ -41,9 +41,19 @@ class FontStore {
     FontId load(const std::string& path);
 
     /**
+     * @brief Registers raylib's built-in default font.
+     *
+     * The default font is owned by raylib and must not be unloaded; the store
+     * tracks it as a non-owned entry.
+     *
+     * @return The new identifier for the default font.
+     */
+    FontId loadDefault();
+
+    /**
      * @brief Looks a font up.
      *
-     * @param id Identifier returned by `load`.
+     * @param id Identifier returned by `load` or `loadDefault`.
      * @return The font, or nullptr if `id` is unknown.
      */
     [[nodiscard]] const Font* get(FontId id) const;
@@ -51,6 +61,8 @@ class FontStore {
   private:
     /** @brief Loaded fonts; identifier `n` is stored at index `n - 1`. */
     std::vector<Font> _fonts;
+    /** @brief Whether each font entry was GPU-allocated by this store. */
+    std::vector<bool> _owned;
 };
 
 }  // namespace ui
