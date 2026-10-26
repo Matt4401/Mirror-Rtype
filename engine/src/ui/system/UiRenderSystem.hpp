@@ -53,6 +53,14 @@ class UiRenderSystem {
      */
     static void drawRect(float x, float y, const UiRect& rect);
 
+    /**
+     * @brief Draws a single `UiText` at the given screen position.
+     * @param x Resolved screen X in pixels.
+     * @param y Resolved screen Y in pixels.
+     * @param text Component to draw.
+     */
+    void drawText(float x, float y, const UiText& text) const;
+
     /** @brief Resolves font identifiers. */
     const FontStore* _fonts;
 

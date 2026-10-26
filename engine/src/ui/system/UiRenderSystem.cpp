@@ -54,6 +54,8 @@ void UiRenderSystem::draw() const {
                 using T = std::decay_t<decltype(drawable)>;
                 if constexpr (std::is_same_v<T, UiRect>) {
                     drawRect(item.screenX, item.screenY, drawable);
+                } else if constexpr (std::is_same_v<T, UiText>) {
+                    drawText(item.screenX, item.screenY, drawable);
                 }
             },
             item.drawable);
@@ -70,6 +72,14 @@ void UiRenderSystem::drawRect(float x, float y, const UiRect& rect) {
             .r = rect.borderColor.r, .g = rect.borderColor.g, .b = rect.borderColor.b, .a = rect.borderColor.a,};
         DrawRectangleLinesEx({.x = x, .y = y, .width = rect.width, .height = rect.height}, rect.borderThickness, border);
     }
+}
+
+void UiRenderSystem::drawText(float x, float y, const UiText& text) const {
+    const Font* stored = _fonts->get(text.fontId);
+    const Font font = (stored != nullptr) ? *stored : GetFontDefault();
+    const Color color{.r = text.color.r, .g = text.color.g, .b = text.color.b, .a = text.color.a};
+    const float spacing = text.fontSize / 10.0F;
+    DrawTextEx(font, text.text.c_str(), {.x = x, .y = y}, text.fontSize, spacing, color);
 }
 
 }  // namespace ui
