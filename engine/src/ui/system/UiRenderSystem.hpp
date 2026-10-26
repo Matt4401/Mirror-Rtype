@@ -1,0 +1,55 @@
+#pragma once
+
+#include <vector>
+
+#include "ecs/Registry.hpp"
+#include "ui/font/FontStore.hpp"
+#include "ui/system/UiDrawItem.hpp"
+
+namespace ui {
+
+/**
+ * @brief Draws every HUD entity that has a `UiAnchor` and a drawable UI component.
+ *
+ * Mirrors `render::RenderSystem`: `collect` resolves anchors and fills the draw
+ * queue; `draw` issues the actual raylib calls. The queue is reused across frames
+ * to avoid per-frame heap allocation.
+ */
+class UiRenderSystem {
+  public:
+    /**
+     * @brief Creates the system.
+     *
+     * @param fonts Store used to resolve font identifiers; must outlive this system.
+     */
+    explicit UiRenderSystem(const FontStore& fonts);
+
+    /**
+     * @brief Gathers HUD entities and resolves their screen positions.
+     *
+     * @param registry Registry to read from.
+     */
+    void collect(ecs::Registry& registry);
+
+    /**
+     * @brief Draws the items gathered by the last `collect`.
+     *
+     * Must be called between `Window::beginFrame` and `Window::endFrame`.
+     */
+    void draw() const;
+
+    /**
+     * @brief Items gathered by the last `collect`.
+     * @return The draw queue.
+     */
+    [[nodiscard]] const std::vector<UiDrawItem>& drawQueue() const noexcept { return _queue; }
+
+  private:
+    /** @brief Resolves font identifiers. */
+    const FontStore* _fonts;
+
+    /** @brief Items gathered for the current frame; capacity is kept between frames. */
+    std::vector<UiDrawItem> _queue;
+};
+
+}  // namespace ui
