@@ -39,6 +39,13 @@ class UiRenderSystem {
     void draw() const;
 
     /**
+     * @brief Collects then draws in one call.
+     *
+     * @param registry Registry to read from.
+     */
+    void update(ecs::Registry& registry);
+
+    /**
      * @brief Items gathered by the last `collect`.
      * @return The draw queue.
      */

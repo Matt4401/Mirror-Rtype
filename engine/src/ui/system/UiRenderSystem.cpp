@@ -48,6 +48,11 @@ void UiRenderSystem::collect(ecs::Registry& registry) {
         });
 }
 
+void UiRenderSystem::update(ecs::Registry& registry) {
+    collect(registry);
+    draw();
+}
+
 void UiRenderSystem::draw() const {
     for (const UiDrawItem& item : _queue) {
         std::visit(
