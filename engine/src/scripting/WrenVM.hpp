@@ -21,18 +21,13 @@ class ForeignCall;
 
 namespace detail {
 
-inline std::string makeMethodSignature(std::string_view name, std::size_t arity) {
-    std::string sig(name);
-    sig += "(";
-    for (std::size_t i = 0; i < arity; ++i) {
-        if (i > 0) {
-            sig += ",";
-        }
-        sig += "_";
-    }
-    sig += ")";
-    return sig;
-}
+/**
+ * @brief Constructs a Wren method signature string.
+ * @param name Method name.
+ * @param arity Number of parameters expected.
+ * @return Formatted signature string (e.g., "new(_,_)").
+ */
+[[nodiscard]] std::string makeMethodSignature(std::string_view name, std::size_t arity);
 
 }  // namespace detail
 
