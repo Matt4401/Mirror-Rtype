@@ -101,6 +101,15 @@ if has_config("graphics") then
         add_tests("test_audio_settings")
 end
 
+if has_config("graphics") then
+    target("test_ui_components")
+        set_kind("binary")
+        add_deps("engine_ui")
+        add_packages("gtest")
+        add_files("test_ui_components.cpp")
+        add_tests("test_ui_components")
+end
+
 target("test_server_room")
     set_kind("binary")
     add_deps("shared", "engine_core", "engine_time", "engine_events")
