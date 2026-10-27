@@ -57,27 +57,42 @@ void processOptionalDeps(std::size_t nodeIdx, const std::vector<PluginDependency
     }
 }
 
-std::queue<std::size_t> findInitialReadyNodes(const std::vector<std::size_t>& inDegree) {
-    std::queue<std::size_t> readyQueue;
+struct ReadyNode {
+    std::size_t index = 0;
+    int priority = 0;
+
+    bool operator<(const ReadyNode& other) const noexcept {
+        if (priority != other.priority) {
+            return priority < other.priority;
+        }
+        return index > other.index;
+    }
+};
+
+using ReadyQueue = std::priority_queue<ReadyNode>;
+
+ReadyQueue findInitialReadyNodes(const std::vector<int>& priorities, const std::vector<std::size_t>& inDegree) {
+    ReadyQueue readyQueue;
     for (std::size_t i = 0; i < inDegree.size(); ++i) {
         if (inDegree[i] == 0) {
-            readyQueue.push(i);
+            readyQueue.push(ReadyNode{.index = i, .priority = priorities[i]});
         }
     }
     return readyQueue;
 }
 
-void processKahnQueue(std::queue<std::size_t>& readyQueue, const std::vector<std::vector<std::size_t>>& adj,
-                      std::vector<std::size_t>& inDegree, std::vector<std::size_t>& sortedIndices) {
+void processKahnQueue(ReadyQueue& readyQueue, const std::vector<int>& priorities,
+                      const std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree,
+                      std::vector<std::size_t>& sortedIndices) {
     while (!readyQueue.empty()) {
-        const std::size_t u = readyQueue.front();
+        const std::size_t u = readyQueue.top().index;
         readyQueue.pop();
         sortedIndices.push_back(u);
 
         for (const std::size_t v : adj[u]) {
             inDegree[v]--;
             if (inDegree[v] == 0) {
-                readyQueue.push(v);
+                readyQueue.push(ReadyNode{.index = v, .priority = priorities[v]});
             }
         }
     }
@@ -85,7 +100,7 @@ void processKahnQueue(std::queue<std::size_t>& readyQueue, const std::vector<std
 
 }  // namespace
 
-IPlugin& PluginGraph::addPlugin(std::unique_ptr<IPlugin> plugin, std::type_index typeId) {
+IPlugin& PluginGraph::addPlugin(std::unique_ptr<IPlugin> plugin, std::type_index typeId, int priority) {
     if (!plugin) {
         throw PluginDependencyException("Cannot add a null plugin to PluginGraph");
     }
@@ -99,6 +114,7 @@ IPlugin& PluginGraph::addPlugin(std::unique_ptr<IPlugin> plugin, std::type_index
         .plugin = std::move(plugin),
         .requiredDeps = {},
         .optionalDeps = {},
+        .priority = priority,
     });
     _resolved = false;
     return *_nodes.back().plugin;
@@ -145,8 +161,14 @@ void PluginGraph::throwCyclicDependencyError(const std::vector<std::size_t>& inD
 
 void PluginGraph::topologicalSort(const std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree,
                                   std::vector<std::size_t>& sortedIndices) const {
-    auto readyQueue = findInitialReadyNodes(inDegree);
-    processKahnQueue(readyQueue, adj, inDegree, sortedIndices);
+    std::vector<int> priorities;
+    priorities.reserve(_nodes.size());
+    for (const auto& node : _nodes) {
+        priorities.push_back(node.priority);
+    }
+
+    auto readyQueue = findInitialReadyNodes(priorities, inDegree);
+    processKahnQueue(readyQueue, priorities, adj, inDegree, sortedIndices);
 
     if (sortedIndices.size() != inDegree.size()) {
         throwCyclicDependencyError(inDegree);

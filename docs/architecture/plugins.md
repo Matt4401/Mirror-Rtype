@@ -97,7 +97,7 @@ The `engine::PluginGraph` constructs a directed graph of all registered plugins 
    - If absent, resolution proceeds normally without error.
 3. **Cycle Detection**:
    - If a circular dependency exists ($A \rightarrow B \rightarrow A$ or $A \rightarrow B \rightarrow C \rightarrow A$), Kahn's algorithm fails to visit all nodes.
-   - A `PluginDependencyException` is thrown detailing the exact list of plugins participating in the cycle.
+   - A `PluginDependencyException` is thrown listing all unresolved plugins (not necessarily only plugins participating in the cycle, but also any downstream plugins that depend on them).
 
 ---
 
