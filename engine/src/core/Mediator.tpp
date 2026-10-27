@@ -36,7 +36,7 @@ std::expected<std::reference_wrapper<Service>, MediatorError> Mediator::emplaceS
         return std::unexpected(MediatorError::AlreadyRegistered);
     }
     auto instance = std::make_shared<Impl>(std::forward<Args>(args)...);
-    std::shared_ptr<Service> servicePtr = instance;
+    const std::shared_ptr<Service> servicePtr = instance;
     const std::type_index key(typeid(Service));
     _services[key] = std::static_pointer_cast<void>(servicePtr);
     return std::ref(*instance);
@@ -60,7 +60,7 @@ template <typename Service>
 Service& Mediator::service() const {
     auto result = getService<Service>();
     if (!result) {
-        throw std::runtime_error(std::string("Mediator::service - ") + std::string(toString(result.error())));
+        throw MediatorError(result.error());
     }
     return result->get();
 }

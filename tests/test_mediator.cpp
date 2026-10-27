@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <exception>
 #include <memory>
-#include <stdexcept>
 #include <string>
 
 #include "core/Mediator.hpp"
@@ -11,7 +11,12 @@ namespace {
 
 class ITestGreetingService {
   public:
+    ITestGreetingService() = default;
     virtual ~ITestGreetingService() = default;
+    ITestGreetingService(const ITestGreetingService&) = default;
+    ITestGreetingService& operator=(const ITestGreetingService&) = default;
+    ITestGreetingService(ITestGreetingService&&) noexcept = default;
+    ITestGreetingService& operator=(ITestGreetingService&&) noexcept = default;
     [[nodiscard]] virtual std::string greet(const std::string& name) const = 0;
 };
 
@@ -22,7 +27,12 @@ class GreetingService final : public ITestGreetingService {
 
 class ITestCounterService {
   public:
+    ITestCounterService() = default;
     virtual ~ITestCounterService() = default;
+    ITestCounterService(const ITestCounterService&) = default;
+    ITestCounterService& operator=(const ITestCounterService&) = default;
+    ITestCounterService(ITestCounterService&&) noexcept = default;
+    ITestCounterService& operator=(ITestCounterService&&) noexcept = default;
     virtual void increment() = 0;
     [[nodiscard]] virtual int value() const = 0;
 };
@@ -44,7 +54,7 @@ TEST(Mediator, RegisterAndRetrieveService) {
     EXPECT_FALSE(mediator.hasService<ITestGreetingService>());
 
     auto servicePtr = std::make_shared<GreetingService>();
-    mediator.registerService<ITestGreetingService>(servicePtr);
+    [[maybe_unused]] const auto regRes = mediator.registerService<ITestGreetingService>(servicePtr);
 
     EXPECT_TRUE(mediator.hasService<ITestGreetingService>());
     auto retrieved = mediator.getService<ITestGreetingService>();
@@ -55,7 +65,7 @@ TEST(Mediator, RegisterAndRetrieveService) {
 
 TEST(Mediator, EmplaceService) {
     engine::Mediator mediator;
-    mediator.emplaceService<ITestCounterService, CounterService>(10);
+    [[maybe_unused]] const auto empRes = mediator.emplaceService<ITestCounterService, CounterService>(10);
 
     EXPECT_TRUE(mediator.hasService<ITestCounterService>());
     EXPECT_EQ(mediator.service<ITestCounterService>().value(), 10);
@@ -64,12 +74,13 @@ TEST(Mediator, EmplaceService) {
 }
 
 TEST(Mediator, MissingServiceReturnsErrorOrThrows) {
-    engine::Mediator mediator;
+    const engine::Mediator mediator;
     auto result = mediator.getService<ITestGreetingService>();
     EXPECT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), engine::MediatorError::ServiceNotFound);
 
-    EXPECT_THROW(static_cast<void>(mediator.service<ITestGreetingService>()), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(mediator.service<ITestGreetingService>()), engine::MediatorError);
+    EXPECT_THROW(static_cast<void>(mediator.service<ITestGreetingService>()), std::exception);
 }
 
 TEST(Mediator, DuplicateRegistrationRejectsWithAlreadyRegistered) {
@@ -103,7 +114,7 @@ TEST(Mediator, DuplicateEmplaceRejectsWithAlreadyRegistered) {
 
 TEST(Mediator, RemoveService) {
     engine::Mediator mediator;
-    mediator.emplaceService<ITestCounterService, CounterService>(0);
+    [[maybe_unused]] const auto empRes = mediator.emplaceService<ITestCounterService, CounterService>(0);
     EXPECT_TRUE(mediator.hasService<ITestCounterService>());
 
     mediator.removeService<ITestCounterService>();

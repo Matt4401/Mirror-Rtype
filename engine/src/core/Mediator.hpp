@@ -74,7 +74,7 @@ class Mediator {
      * @brief Retrieves a registered service, throwing if absent.
      * @tparam Service Interface type to query.
      * @return Reference to the service.
-     * @throws std::runtime_error If the requested service is not registered.
+     * @throws MediatorError If the requested service is not registered or type mismatch.
      */
     template <typename Service>
     [[nodiscard]] Service& service() const;
