@@ -155,6 +155,11 @@ class Engine {
     void shutdown();
 
   private:
+    /**
+     * @brief Automatically adds mandatory default plugins if they were not registered yet.
+     */
+    void ensureDefaultPlugins();
+
     /** @brief Central ECS registry holding all components and resources. */
     ecs::Registry _registry;
     /** @brief Event dispatch bus coordinating intra-engine and game events. */

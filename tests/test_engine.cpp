@@ -54,6 +54,13 @@ class FrameTimeRecorderPlugin final : public engine::IPlugin {
     float& _recordedDt;
 };
 
+class FailingInitPlugin final : public engine::IPlugin {
+  public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "FailingInitPlugin"; }
+    void build(engine::PluginBuilder& /*builder*/) override {}
+    void init(engine::Engine& /*engine*/) override { throw std::runtime_error("Simulated init failure"); }
+};
+
 }  // namespace
 
 TEST(Engine, AutomaticallyLoadsImplicitPlugins) {
@@ -104,6 +111,20 @@ TEST(Engine, RunPassesRealDeltaTimeToUpdate) {
     engineInstance.run();
 
     EXPECT_NEAR(recordedDt, 0.006944F, 0.0001F);
+}
+
+TEST(Engine, InitFailureReleasesAlreadyInitializedPlugins) {
+    std::vector<std::string> log;
+    engine::Engine engineInstance;
+    engineInstance.addPlugin<LifecycleRecorderPlugin>(log);
+    engineInstance.addPlugin<FailingInitPlugin>();
+
+    EXPECT_THROW(engineInstance.init(), std::runtime_error);
+
+    ASSERT_GE(log.size(), 2U);
+    EXPECT_EQ(log[0], "build");
+    EXPECT_EQ(log[1], "init");
+    EXPECT_EQ(log.back(), "shutdown");
 }
 
 int main(int argc, char** argv) {

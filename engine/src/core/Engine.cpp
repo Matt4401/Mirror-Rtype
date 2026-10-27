@@ -5,7 +5,9 @@
 
 #include "core/Engine.hpp"
 
+#include <ranges>
 #include <utility>
+#include <vector>
 
 #include "core/IPlugin.hpp"
 #include "core/plugins/CorePlugin.hpp"
@@ -24,22 +26,35 @@ Engine::~Engine() {
     }
 }
 
-void Engine::init() {
-    if (_initialized) {
-        return;
-    }
-
+void Engine::ensureDefaultPlugins() {
     if (!hasPlugin<CorePlugin>()) {
         addPlugin<CorePlugin>();
     }
     if (!hasPlugin<TimePlugin>()) {
         addPlugin<TimePlugin>();
     }
+}
 
+void Engine::init() {
+    if (_initialized) {
+        return;
+    }
+
+    ensureDefaultPlugins();
     _pluginGraph.resolve();
 
-    for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-        plugin->init(*this);
+    std::vector<IPlugin*> initialized;
+    initialized.reserve(_pluginGraph.executionOrder().size());
+    try {
+        for (IPlugin* plugin : _pluginGraph.executionOrder()) {
+            plugin->init(*this);
+            initialized.push_back(plugin);
+        }
+    } catch (...) {
+        for (IPlugin* plugin : std::views::reverse(initialized)) {
+            plugin->shutdown(*this);
+        }
+        throw;
     }
 
     _initialized = true;
