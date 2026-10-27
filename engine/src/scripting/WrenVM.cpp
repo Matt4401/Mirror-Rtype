@@ -5,6 +5,7 @@
 
 #include "scripting/WrenVM.hpp"
 
+#include <cstddef>
 #include <exception>
 #include <expected>
 #include <iostream>
