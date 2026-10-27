@@ -31,17 +31,17 @@ class IPlugin {
     /** @brief Virtual destructor. */
     virtual ~IPlugin() = default;
 
-    /** @brief Default copy constructor. */
-    IPlugin(const IPlugin&) = default;
+    /** @brief Deleted copy constructor. */
+    IPlugin(const IPlugin&) = delete;
 
-    /** @brief Default copy assignment operator. */
-    IPlugin& operator=(const IPlugin&) = default;
+    /** @brief Deleted copy assignment operator. */
+    IPlugin& operator=(const IPlugin&) = delete;
 
-    /** @brief Default move constructor. */
-    IPlugin(IPlugin&&) noexcept = default;
+    /** @brief Deleted move constructor. */
+    IPlugin(IPlugin&&) noexcept = delete;
 
-    /** @brief Default move assignment operator. */
-    IPlugin& operator=(IPlugin&&) noexcept = default;
+    /** @brief Deleted move assignment operator. */
+    IPlugin& operator=(IPlugin&&) noexcept = delete;
 
     /**
      * @brief Unique human-readable name of the plugin for debugging and diagnostics.
