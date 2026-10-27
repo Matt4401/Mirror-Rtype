@@ -142,6 +142,24 @@ class PluginGraph {
     void topologicalSort(const std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree,
                          std::vector<std::size_t>& sortedIndices) const;
 
+    /**
+     * @brief Maps each registered plugin's typeId to its index in the nodes vector.
+     * @return Hash map of type index to node index.
+     */
+    [[nodiscard]] std::unordered_map<std::type_index, std::size_t> buildTypeIndexMap() const;
+
+    /**
+     * @brief Populates execution and reverse shutdown orders from sorted node indices.
+     * @param sortedIndices Topologically sorted vector of node indices.
+     */
+    void populateExecutionOrders(const std::vector<std::size_t>& sortedIndices);
+
+    /**
+     * @brief Formats cyclic dependency details and throws a PluginDependencyException.
+     * @param inDegree Array of in-degree counts where remaining non-zero counts indicate cycles.
+     */
+    [[noreturn]] void throwCyclicDependencyError(const std::vector<std::size_t>& inDegree) const;
+
     /** @brief Registered plugin nodes in insertion order. */
     std::vector<PluginNode> _nodes;
     /** @brief Resolved execution sequence for init, update, and render. */

@@ -12,6 +12,7 @@
 #include <ranges>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
@@ -21,6 +22,68 @@
 #include "core/PluginBuilder.hpp"
 
 namespace engine {
+
+namespace {
+
+void addEdge(std::size_t from, std::size_t to, std::vector<std::vector<std::size_t>>& adj,
+             std::vector<std::size_t>& inDegree) {
+    adj[from].push_back(to);
+    inDegree[to]++;
+}
+
+void processRequiredDeps(std::size_t nodeIdx, std::string_view pluginName,
+                         const std::vector<PluginDependency>& required,
+                         const std::unordered_map<std::type_index, std::size_t>& typeToIndex,
+                         std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree) {
+    for (const auto& dep : required) {
+        auto it = typeToIndex.find(dep.typeId);
+        if (it == typeToIndex.end()) {
+            std::ostringstream oss;
+            oss << "Plugin '" << pluginName << "' requires missing dependency '" << dep.name << "'";
+            throw PluginDependencyException(oss.str());
+        }
+        addEdge(it->second, nodeIdx, adj, inDegree);
+    }
+}
+
+void processOptionalDeps(std::size_t nodeIdx, const std::vector<PluginDependency>& optional,
+                         const std::unordered_map<std::type_index, std::size_t>& typeToIndex,
+                         std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree) {
+    for (const auto& dep : optional) {
+        auto it = typeToIndex.find(dep.typeId);
+        if (it != typeToIndex.end()) {
+            addEdge(it->second, nodeIdx, adj, inDegree);
+        }
+    }
+}
+
+std::queue<std::size_t> findInitialReadyNodes(const std::vector<std::size_t>& inDegree) {
+    std::queue<std::size_t> readyQueue;
+    for (std::size_t i = 0; i < inDegree.size(); ++i) {
+        if (inDegree[i] == 0) {
+            readyQueue.push(i);
+        }
+    }
+    return readyQueue;
+}
+
+void processKahnQueue(std::queue<std::size_t>& readyQueue, const std::vector<std::vector<std::size_t>>& adj,
+                      std::vector<std::size_t>& inDegree, std::vector<std::size_t>& sortedIndices) {
+    while (!readyQueue.empty()) {
+        const std::size_t u = readyQueue.front();
+        readyQueue.pop();
+        sortedIndices.push_back(u);
+
+        for (const std::size_t v : adj[u]) {
+            inDegree[v]--;
+            if (inDegree[v] == 0) {
+                readyQueue.push(v);
+            }
+        }
+    }
+}
+
+}  // namespace
 
 IPlugin& PluginGraph::addPlugin(std::unique_ptr<IPlugin> plugin, std::type_index typeId) {
     if (!plugin) {
@@ -56,88 +119,72 @@ IPlugin& PluginGraph::getPlugin(std::type_index typeId) const {
 
 void PluginGraph::buildAdjacency(std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree,
                                  const std::unordered_map<std::type_index, std::size_t>& typeToIndex) {
-    const std::size_t count = _nodes.size();
-    for (std::size_t i = 0; i < count; ++i) {
+    for (std::size_t i = 0; i < _nodes.size(); ++i) {
         PluginBuilder builder;
         _nodes[i].plugin->build(builder);
+        processRequiredDeps(i, _nodes[i].plugin->name(), builder.requiredDependencies(), typeToIndex, adj, inDegree);
+        processOptionalDeps(i, builder.optionalDependencies(), typeToIndex, adj, inDegree);
+    }
+}
 
-        for (const auto& dep : builder.requiredDependencies()) {
-            auto it = typeToIndex.find(dep.typeId);
-            if (it == typeToIndex.end()) {
-                std::ostringstream oss;
-                oss << "Plugin '" << _nodes[i].plugin->name() << "' requires missing dependency '" << dep.name << "'";
-                throw PluginDependencyException(oss.str());
+void PluginGraph::throwCyclicDependencyError(const std::vector<std::size_t>& inDegree) const {
+    std::ostringstream oss;
+    oss << "Cyclic dependency detected in PluginGraph between plugins: ";
+    bool first = true;
+    for (std::size_t i = 0; i < inDegree.size(); ++i) {
+        if (inDegree[i] > 0) {
+            if (!first) {
+                oss << ", ";
             }
-            const std::size_t dependencyIndex = it->second;
-            adj[dependencyIndex].push_back(i);
-            inDegree[i]++;
-        }
-
-        for (const auto& dep : builder.optionalDependencies()) {
-            auto it = typeToIndex.find(dep.typeId);
-            if (it != typeToIndex.end()) {
-                const std::size_t dependencyIndex = it->second;
-                adj[dependencyIndex].push_back(i);
-                inDegree[i]++;
-            }
+            oss << "'" << _nodes[i].plugin->name() << "'";
+            first = false;
         }
     }
+    throw PluginDependencyException(oss.str());
 }
 
 void PluginGraph::topologicalSort(const std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree,
                                   std::vector<std::size_t>& sortedIndices) const {
-    const std::size_t count = inDegree.size();
-    std::queue<std::size_t> readyQueue;
-    for (std::size_t i = 0; i < count; ++i) {
-        if (inDegree[i] == 0) {
-            readyQueue.push(i);
-        }
+    auto readyQueue = findInitialReadyNodes(inDegree);
+    processKahnQueue(readyQueue, adj, inDegree, sortedIndices);
+
+    if (sortedIndices.size() != inDegree.size()) {
+        throwCyclicDependencyError(inDegree);
+    }
+}
+
+std::unordered_map<std::type_index, std::size_t> PluginGraph::buildTypeIndexMap() const {
+    std::unordered_map<std::type_index, std::size_t> typeToIndex;
+    typeToIndex.reserve(_nodes.size());
+    for (std::size_t i = 0; i < _nodes.size(); ++i) {
+        typeToIndex[_nodes[i].typeId] = i;
+    }
+    return typeToIndex;
+}
+
+void PluginGraph::populateExecutionOrders(const std::vector<std::size_t>& sortedIndices) {
+    _executionOrder.clear();
+    _executionOrder.reserve(sortedIndices.size());
+    for (const std::size_t idx : sortedIndices) {
+        _executionOrder.push_back(_nodes[idx].plugin.get());
     }
 
-    while (!readyQueue.empty()) {
-        const std::size_t u = readyQueue.front();
-        readyQueue.pop();
-        sortedIndices.push_back(u);
-
-        for (const std::size_t v : adj[u]) {
-            inDegree[v]--;
-            if (inDegree[v] == 0) {
-                readyQueue.push(v);
-            }
-        }
-    }
-
-    if (sortedIndices.size() != count) {
-        std::ostringstream oss;
-        oss << "Cyclic dependency detected in PluginGraph between plugins: ";
-        bool first = true;
-        for (std::size_t i = 0; i < count; ++i) {
-            if (inDegree[i] > 0) {
-                if (!first) {
-                    oss << ", ";
-                }
-                oss << "'" << _nodes[i].plugin->name() << "'";
-                first = false;
-            }
-        }
-        throw PluginDependencyException(oss.str());
+    _shutdownOrder.clear();
+    _shutdownOrder.reserve(sortedIndices.size());
+    for (const std::size_t idx : std::views::reverse(sortedIndices)) {
+        _shutdownOrder.push_back(_nodes[idx].plugin.get());
     }
 }
 
 void PluginGraph::resolve() {
     const std::size_t count = _nodes.size();
     if (count == 0) {
-        _executionOrder.clear();
-        _shutdownOrder.clear();
+        clear();
         _resolved = true;
         return;
     }
 
-    std::unordered_map<std::type_index, std::size_t> typeToIndex;
-    for (std::size_t i = 0; i < count; ++i) {
-        typeToIndex[_nodes[i].typeId] = i;
-    }
-
+    const auto typeToIndex = buildTypeIndexMap();
     std::vector<std::vector<std::size_t>> adj(count);
     std::vector<std::size_t> inDegree(count, 0);
     buildAdjacency(adj, inDegree, typeToIndex);
@@ -146,18 +193,7 @@ void PluginGraph::resolve() {
     sortedIndices.reserve(count);
     topologicalSort(adj, inDegree, sortedIndices);
 
-    _executionOrder.clear();
-    _executionOrder.reserve(count);
-    for (const std::size_t idx : sortedIndices) {
-        _executionOrder.push_back(_nodes[idx].plugin.get());
-    }
-
-    _shutdownOrder.clear();
-    _shutdownOrder.reserve(count);
-    for (const std::size_t idx : std::views::reverse(sortedIndices)) {
-        _shutdownOrder.push_back(_nodes[idx].plugin.get());
-    }
-
+    populateExecutionOrders(sortedIndices);
     _resolved = true;
 }
 
