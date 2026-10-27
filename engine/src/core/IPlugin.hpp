@@ -37,11 +37,11 @@ class IPlugin {
     /** @brief Deleted copy assignment operator. */
     IPlugin& operator=(const IPlugin&) = delete;
 
-    /** @brief Deleted move constructor. */
-    IPlugin(IPlugin&&) noexcept = delete;
+    /** @brief Default move constructor allowing derived classes to be movable. */
+    IPlugin(IPlugin&&) noexcept = default;
 
-    /** @brief Deleted move assignment operator. */
-    IPlugin& operator=(IPlugin&&) noexcept = delete;
+    /** @brief Default move assignment operator allowing derived classes to be movable. */
+    IPlugin& operator=(IPlugin&&) noexcept = default;
 
     /**
      * @brief Unique human-readable name of the plugin for debugging and diagnostics.
