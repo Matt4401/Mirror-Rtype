@@ -5,7 +5,9 @@
 
 #include "core/Engine.hpp"
 
+#include <memory>
 #include <ranges>
+#include <typeindex>
 #include <utility>
 #include <vector>
 
@@ -28,10 +30,10 @@ Engine::~Engine() {
 
 void Engine::ensureDefaultPlugins() {
     if (!hasPlugin<CorePlugin>()) {
-        addPlugin<CorePlugin>();
+        _pluginGraph.addPlugin(std::make_unique<CorePlugin>(), std::type_index(typeid(CorePlugin)), 2);
     }
     if (!hasPlugin<TimePlugin>()) {
-        addPlugin<TimePlugin>();
+        _pluginGraph.addPlugin(std::make_unique<TimePlugin>(), std::type_index(typeid(TimePlugin)), 1);
     }
 }
 
@@ -65,11 +67,8 @@ void Engine::step(float dt) {
         init();
     }
 
-    const ecs::time::Time fixedTime{
-        .deltaTime = _fixedDt,
-        .totalElapsedTime = _clock.time().totalElapsedTime + _fixedDt,
-        .tickCount = _clock.time().tickCount + 1,
-    };
+    _clock.advance(_fixedDt);
+    const ecs::time::Time fixedTime = _clock.time();
 
     for (IPlugin* plugin : _pluginGraph.executionOrder()) {
         plugin->fixedUpdate(*this, fixedTime);

@@ -61,6 +61,11 @@ class FailingInitPlugin final : public engine::IPlugin {
     void init(engine::Engine& /*engine*/) override { throw std::runtime_error("Simulated init failure"); }
 };
 
+class IndependentUserPlugin final : public engine::IPlugin {
+  public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "IndependentUserPlugin"; }
+};
+
 }  // namespace
 
 TEST(Engine, AutomaticallyLoadsImplicitPlugins) {
@@ -125,6 +130,32 @@ TEST(Engine, InitFailureReleasesAlreadyInitializedPlugins) {
     EXPECT_EQ(log[0], "build");
     EXPECT_EQ(log[1], "init");
     EXPECT_EQ(log.back(), "shutdown");
+}
+
+TEST(Engine, StepAdvancesSimulationClockAccumulatingTicksAndElapsed) {
+    engine::Engine engineInstance;
+    const float fixedDt = engineInstance.fixedDeltaTime();
+
+    engineInstance.step(0.016F);
+    EXPECT_EQ(engineInstance.clock().time().tickCount, 1U);
+    EXPECT_FLOAT_EQ(engineInstance.clock().time().totalElapsedTime, fixedDt);
+
+    engineInstance.step(0.016F);
+    EXPECT_EQ(engineInstance.clock().time().tickCount, 2U);
+    EXPECT_FLOAT_EQ(engineInstance.clock().time().totalElapsedTime, 2.0F * fixedDt);
+}
+
+TEST(Engine, ImplicitPluginsOrderedBeforeIndependentUserPlugins) {
+    engine::Engine engineInstance;
+    engineInstance.addPlugin<IndependentUserPlugin>();
+
+    engineInstance.init();
+
+    const auto& order = engineInstance.executionOrder();
+    ASSERT_GE(order.size(), 3U);
+    EXPECT_EQ(order[0]->name(), "CorePlugin");
+    EXPECT_EQ(order[1]->name(), "TimePlugin");
+    EXPECT_EQ(order[2]->name(), "IndependentUserPlugin");
 }
 
 int main(int argc, char** argv) {

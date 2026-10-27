@@ -150,6 +150,12 @@ class Engine {
     [[nodiscard]] bool isRunning() const noexcept { return _running; }
 
     /**
+     * @brief Gets the ordered list of registered plugins in topological execution sequence.
+     * @return Const reference to execution order vector.
+     */
+    [[nodiscard]] const std::vector<IPlugin*>& executionOrder() const { return _pluginGraph.executionOrder(); }
+
+    /**
      * @brief Shuts down all initialized plugins in reverse topological order.
      */
     void shutdown();
