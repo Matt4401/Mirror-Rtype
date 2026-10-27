@@ -5,17 +5,15 @@
 
 #include "scripting/WrenVM.hpp"
 
+#include <exception>
 #include <expected>
 #include <iostream>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "scripting/detail/WrenApi.hpp"
 #include "scripting/detail/WrenTypes.hpp"
-
-extern "C" {
-#include <wren.h>
-}
 
 namespace scripting {
 
@@ -198,94 +196,118 @@ void* WrenVM::getUserContext() const noexcept { return _userContext; }
 void WrenVM::ensureSlots(int numSlots) { wrenEnsureSlots(_vm, numSlots); }
 
 WrenForeignMethodFn WrenVM::onBindForeignMethod(::WrenVM* vm, const char* module, const char* className, bool isStatic,
-                                                const char* signature) {
-    auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
-    if (self == nullptr) {
+                                                const char* signature) noexcept {
+    try {
+        auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
+        if (self == nullptr) {
+            return nullptr;
+        }
+
+        detail::ForeignMethodKey const key{.module = module != nullptr ? module : "",
+                                           .className = className != nullptr ? className : "",
+                                           .isStatic = isStatic,
+                                           .signature = signature != nullptr ? signature : ""};
+
+        auto it = self->_foreignMethods.find(key);
+        if (it != self->_foreignMethods.end()) {
+            return it->second;
+        }
+        return nullptr;
+    } catch (...) {
         return nullptr;
     }
-
-    detail::ForeignMethodKey const key{.module = module != nullptr ? module : "",
-                                       .className = className != nullptr ? className : "",
-                                       .isStatic = isStatic,
-                                       .signature = signature != nullptr ? signature : ""};
-
-    auto it = self->_foreignMethods.find(key);
-    if (it != self->_foreignMethods.end()) {
-        return it->second;
-    }
-    return nullptr;
 }
 
-WrenForeignClassMethods WrenVM::onBindForeignClass(::WrenVM* vm, const char* module, const char* className) {
-    auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
-    if (self == nullptr) {
+WrenForeignClassMethods WrenVM::onBindForeignClass(::WrenVM* vm, const char* module, const char* className) noexcept {
+    try {
+        auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
+        if (self == nullptr) {
+            return WrenForeignClassMethods{.allocate = nullptr, .finalize = nullptr};
+        }
+
+        std::string const key =
+            std::string(module != nullptr ? module : "") + "/" + (className != nullptr ? className : "");
+        auto it = self->_foreignClasses.find(key);
+        if (it != self->_foreignClasses.end()) {
+            return it->second;
+        }
+        return WrenForeignClassMethods{.allocate = nullptr, .finalize = nullptr};
+    } catch (...) {
         return WrenForeignClassMethods{.allocate = nullptr, .finalize = nullptr};
     }
-
-    std::string const key =
-        std::string(module != nullptr ? module : "") + "/" + (className != nullptr ? className : "");
-    auto it = self->_foreignClasses.find(key);
-    if (it != self->_foreignClasses.end()) {
-        return it->second;
-    }
-    return WrenForeignClassMethods{.allocate = nullptr, .finalize = nullptr};
 }
 
-WrenLoadModuleResult WrenVM::onLoadModule(::WrenVM* vm, const char* name) {
-    auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
-    if (self == nullptr || !self->_moduleLoader) {
-        return WrenLoadModuleResult{.source = nullptr, .onComplete = nullptr, .userData = nullptr};
-    }
-
-    std::string const moduleName(name != nullptr ? name : "");
-    auto it = self->_loadedSources.find(moduleName);
-    if (it == self->_loadedSources.end()) {
-        std::string source = self->_moduleLoader(moduleName);
-        if (source.empty()) {
+WrenLoadModuleResult WrenVM::onLoadModule(::WrenVM* vm, const char* name) noexcept {
+    try {
+        auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
+        if (self == nullptr || !self->_moduleLoader) {
             return WrenLoadModuleResult{.source = nullptr, .onComplete = nullptr, .userData = nullptr};
         }
-        it = self->_loadedSources.emplace(moduleName, std::move(source)).first;
-    }
 
-    return WrenLoadModuleResult{.source = it->second.c_str(), .onComplete = nullptr, .userData = nullptr};
-}
-
-void WrenVM::onWrite(::WrenVM* vm, const char* text) {
-    auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
-    if (self != nullptr && self->_writeHandler) {
-        self->_writeHandler(text);
-    } else {
-        std::cout << text;
-    }
-}
-
-void WrenVM::onError(::WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message) {
-    auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
-    if (self == nullptr) {
-        return;
-    }
-
-    std::string const modStr = (module != nullptr ? module : "?");
-    std::string const msgStr = (message != nullptr ? message : "");
-
-    if (type == WREN_ERROR_COMPILE) {
-        self->_lastError += "[" + modStr + " line " + std::to_string(line) + "] " + msgStr + "\n";
-    } else if (type == WREN_ERROR_RUNTIME) {
-        self->_lastError += "Runtime Error: " + msgStr + "\n";
-    } else if (type == WREN_ERROR_STACK_TRACE) {
-        self->_lastError += "  in " + modStr + " line " + std::to_string(line) + " in " + msgStr + "\n";
-    }
-
-    if (self->_errorHandler) {
-        self->_errorHandler(type, modStr, line, msgStr);
-    } else {
-        if (type == WREN_ERROR_COMPILE) {
-            std::cerr << "[" << modStr << " line " << line << "] " << msgStr << "\n";
-        } else if (type == WREN_ERROR_RUNTIME) {
-            std::cerr << "Runtime Error: " << msgStr << "\n";
-        } else if (type == WREN_ERROR_STACK_TRACE) {
-            std::cerr << "  in " << modStr << " line " << line << " in " << msgStr << "\n";
+        std::string const moduleName(name != nullptr ? name : "");
+        auto it = self->_loadedSources.find(moduleName);
+        if (it == self->_loadedSources.end()) {
+            std::string source = self->_moduleLoader(moduleName);
+            if (source.empty()) {
+                return WrenLoadModuleResult{.source = nullptr, .onComplete = nullptr, .userData = nullptr};
+            }
+            it = self->_loadedSources.emplace(moduleName, std::move(source)).first;
         }
+
+        return WrenLoadModuleResult{.source = it->second.c_str(), .onComplete = nullptr, .userData = nullptr};
+    } catch (...) {
+        return WrenLoadModuleResult{.source = nullptr, .onComplete = nullptr, .userData = nullptr};
+    }
+}
+
+void WrenVM::onWrite(::WrenVM* vm, const char* text) noexcept {
+    try {
+        auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
+        if (self != nullptr && self->_writeHandler) {
+            self->_writeHandler(text);
+        } else {
+            std::cout << text;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[WrenVM] Exception in onWrite: " << e.what() << "\n";
+    } catch (...) {
+        std::cerr << "[WrenVM] Unknown exception in onWrite\n";
+    }
+}
+
+void WrenVM::onError(::WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message) noexcept {
+    try {
+        auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
+        if (self == nullptr) {
+            return;
+        }
+
+        std::string const modStr = (module != nullptr ? module : "?");
+        std::string const msgStr = (message != nullptr ? message : "");
+
+        if (type == WREN_ERROR_COMPILE) {
+            self->_lastError += "[" + modStr + " line " + std::to_string(line) + "] " + msgStr + "\n";
+        } else if (type == WREN_ERROR_RUNTIME) {
+            self->_lastError += "Runtime Error: " + msgStr + "\n";
+        } else if (type == WREN_ERROR_STACK_TRACE) {
+            self->_lastError += "  in " + modStr + " line " + std::to_string(line) + " in " + msgStr + "\n";
+        }
+
+        if (self->_errorHandler) {
+            self->_errorHandler(type, modStr, line, msgStr);
+        } else {
+            if (type == WREN_ERROR_COMPILE) {
+                std::cerr << "[" << modStr << " line " << line << "] " << msgStr << "\n";
+            } else if (type == WREN_ERROR_RUNTIME) {
+                std::cerr << "Runtime Error: " << msgStr << "\n";
+            } else if (type == WREN_ERROR_STACK_TRACE) {
+                std::cerr << "  in " << modStr << " line " << line << " in " << msgStr << "\n";
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[WrenVM] Exception in onError: " << e.what() << "\n";
+    } catch (...) {
+        std::cerr << "[WrenVM] Unknown exception in onError\n";
     }
 }
 

@@ -22,9 +22,6 @@ struct ScriptComponent {
     /** @brief Name of the class defined in the module (e.g. "PlayerScript"). */
     std::string className;
 
-    /** @brief Opaque pointer to the instantiated Wren object handle (`WrenHandle*`). */
-    void* instanceHandle = nullptr;
-
     /** @brief Flag indicating whether this script opts in to the per-frame `update(dt)` loop. */
     bool hasUpdate = false;
 

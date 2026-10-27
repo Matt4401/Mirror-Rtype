@@ -4,19 +4,37 @@
  */
 
 #pragma once
+#include <cstddef>
 #include <expected>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 
-extern "C" {
-#include <wren.h>
-}
-
-#include "scripting/detail/WrenTypes.hpp"
+#include "scripting/detail/WrenApi.hpp"    // IWYU pragma: export
+#include "scripting/detail/WrenTypes.hpp"  // IWYU pragma: export
 
 namespace scripting {
+
+class ForeignCall;
+
+namespace detail {
+
+inline std::string makeMethodSignature(std::string_view name, std::size_t arity) {
+    std::string sig(name);
+    sig += "(";
+    for (std::size_t i = 0; i < arity; ++i) {
+        if (i > 0) {
+            sig += ",";
+        }
+        sig += "_";
+    }
+    sig += ")";
+    return sig;
+}
+
+}  // namespace detail
 
 /**
  * @brief High-level C++23 RAII facade and manager for the Wren Virtual Machine.
@@ -104,7 +122,7 @@ class WrenVM {
     void setErrorHandler(ErrorHandler handler);
 
     /**
-     * @brief Registers a foreign method callback with Wren.
+     * @brief Registers a foreign method callback with Wren using a raw C function pointer.
      *
      * @param module Wren module name containing the class.
      * @param className Wren class name owning the foreign method.
@@ -114,6 +132,22 @@ class WrenVM {
      */
     void registerForeignMethod(std::string_view module, std::string_view className, bool isStatic,
                                std::string_view signature, WrenForeignMethodFn fn);
+
+    /**
+     * @brief Registers a foreign method callback with Wren wrapped in an exception-safe noexcept trampoline.
+     *
+     * The callback Fn can accept `ForeignCall&` or `::WrenVM*`. Any thrown C++ exceptions are caught
+     * and translated to `wrenAbortFiber`.
+     *
+     * @tparam Fn Compile-time function pointer to invoke.
+     * @param module Wren module name.
+     * @param className Wren class name.
+     * @param isStatic True if static method.
+     * @param signature Method signature.
+     */
+    template <auto Fn>
+    void registerForeignMethod(std::string_view module, std::string_view className, bool isStatic,
+                               std::string_view signature);
 
     /**
      * @brief Registers foreign class allocation and finalization callbacks.
@@ -160,6 +194,49 @@ class WrenVM {
      * @return Result status.
      */
     WrenInterpretResult call(const detail::UniqueWrenHandle& method);
+
+    /**
+     * @brief High-level call API invoking a method on a receiver with variadic arguments.
+     *
+     * Ensures slots, writes the receiver into slot 0, writes args into slots 1+,
+     * executes the method, and returns the interpret result.
+     *
+     * @tparam Receiver Receiver type (e.g. WrenHandle*, detail::UniqueWrenHandle, double).
+     * @tparam Args Argument types.
+     * @param method Method call handle.
+     * @param receiver Target receiver object.
+     * @param args Arguments to pass to the method.
+     * @return Wren interpret result code.
+     */
+    template <typename Receiver, typename... Args>
+    WrenInterpretResult call(WrenHandle* method, const Receiver& receiver, const Args&... args);
+
+    /**
+     * @brief High-level call API taking a RAII UniqueWrenHandle method.
+     */
+    template <typename Receiver, typename... Args>
+    WrenInterpretResult call(const detail::UniqueWrenHandle& method, const Receiver& receiver, const Args&... args);
+
+    /**
+     * @brief Instantiates a Wren class with arguments and returns an owning handle to the instance.
+     *
+     * @tparam Args Argument types.
+     * @param module Module containing the class.
+     * @param className Name of the class to instantiate.
+     * @param args Arguments forwarded to constructor.
+     * @return Owning UniqueWrenHandle to the new instance, or null handle on failure.
+     */
+    template <typename... Args>
+    [[nodiscard]] detail::UniqueWrenHandle newInstance(std::string_view module, std::string_view className,
+                                                       const Args&... args);
+
+    /**
+     * @brief Instantiates a Wren class using a pre-cached constructor call handle.
+     */
+    template <typename... Args>
+    [[nodiscard]] detail::UniqueWrenHandle newInstanceWithHandle(const detail::UniqueWrenHandle& newHandle,
+                                                                 std::string_view module, std::string_view className,
+                                                                 const Args&... args);
 
     /**
      * @brief Checks if a module has been loaded/imported into the VM.
@@ -227,85 +304,57 @@ class WrenVM {
 
     /**
      * @brief Sets a value into a Wren VM slot with compile-time type deduction.
-     *
-     * Supported types:
-     * - `std::nullptr_t` -> wrenSetSlotNull
-     * - `bool` -> wrenSetSlotBool
-     * - Arithmetic types (int, float, double, enums) -> wrenSetSlotDouble
-     * - String types (`std::string_view`, `std::string`, `const char*`) -> wrenSetSlotBytes
-     * - `WrenHandle*` / `detail::UniqueWrenHandle` -> wrenSetSlotHandle
-     *
-     * @tparam T Value type.
-     * @param slot Target slot index.
-     * @param value The value to place into the slot.
      */
     template <typename T>
     void setSlot(int slot, const T& value);
 
     /**
-     * @brief Extracts a value of type T from a Wren VM slot.
-     *
-     * Supported types:
-     * - `bool` -> wrenGetSlotBool
-     * - Arithmetic types (int, float, double, etc.) -> wrenGetSlotDouble cast to T
-     * - `std::string_view` -> wrenGetSlotBytes
-     * - `std::string` -> std::string from wrenGetSlotBytes
-     * - `WrenHandle*` -> wrenGetSlotHandle
-     * - `detail::UniqueWrenHandle` -> RAII handle from wrenGetSlotHandle
-     *
+     * @brief Safely extracts a value from a Wren slot with type checking.
      * @tparam T Desired output type.
-     * @param slot Slot index to read from.
-     * @return Extracted value.
+     * @param slot Slot index.
+     * @return Extracted value, or std::nullopt if type mismatch or out of bounds.
+     */
+    template <typename T>
+    [[nodiscard]] std::optional<T> getSlotChecked(int slot);
+
+    /**
+     * @brief Extracts a value of type T from a Wren VM slot, throwing if type does not match.
      */
     template <typename T>
     [[nodiscard]] T getSlot(int slot);
 
   private:
     /**
+     * @brief Generic trampoline wrapping foreign methods in noexcept and try/catch.
+     */
+    template <auto Fn>
+    static void foreignMethodTrampoline(::WrenVM* rawVm) noexcept;
+
+    /**
      * @brief Wren VM callback binding foreign methods to C++ functions.
-     * @param vm Raw Wren VM pointer.
-     * @param module Module name.
-     * @param className Class name.
-     * @param isStatic True if static method.
-     * @param signature Method signature.
-     * @return Function pointer to the foreign method implementation, or nullptr.
      */
     static WrenForeignMethodFn onBindForeignMethod(::WrenVM* vm, const char* module, const char* className,
-                                                   bool isStatic, const char* signature);
+                                                   bool isStatic, const char* signature) noexcept;
 
     /**
      * @brief Wren VM callback binding foreign class allocation and finalization functions.
-     * @param vm Raw Wren VM pointer.
-     * @param module Module name.
-     * @param className Class name.
-     * @return Struct containing allocate and finalize callbacks.
      */
-    static WrenForeignClassMethods onBindForeignClass(::WrenVM* vm, const char* module, const char* className);
+    static WrenForeignClassMethods onBindForeignClass(::WrenVM* vm, const char* module, const char* className) noexcept;
 
     /**
      * @brief Wren VM callback for module import resolution.
-     * @param vm Raw Wren VM pointer.
-     * @param name Module name to import.
-     * @return Struct containing source code or load error status.
      */
-    static WrenLoadModuleResult onLoadModule(::WrenVM* vm, const char* name);
+    static WrenLoadModuleResult onLoadModule(::WrenVM* vm, const char* name) noexcept;
 
     /**
      * @brief Wren VM callback redirecting standard output from `System.print`.
-     * @param vm Raw Wren VM pointer.
-     * @param text Printed text string.
      */
-    static void onWrite(::WrenVM* vm, const char* text);
+    static void onWrite(::WrenVM* vm, const char* text) noexcept;
 
     /**
      * @brief Wren VM callback receiving compile and runtime error diagnostics.
-     * @param vm Raw Wren VM pointer.
-     * @param type Error category (compile error, runtime error, stack trace).
-     * @param module Module where the error occurred.
-     * @param line Line number of the error.
-     * @param message Diagnostic error message.
      */
-    static void onError(::WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message);
+    static void onError(::WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message) noexcept;
 
     /** @brief Underlying raw pointer to the Wren VM C instance. */
     ::WrenVM* _vm = nullptr;

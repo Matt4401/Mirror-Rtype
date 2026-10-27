@@ -17,12 +17,8 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
-#include "scripting/WrenVM.hpp"
-#include "scripting/detail/WrenTypes.hpp"
-
-extern "C" {
-#include <wren.h>
-}
+#include "scripting/WrenVM.hpp"            // IWYU pragma: export
+#include "scripting/detail/WrenTypes.hpp"  // IWYU pragma: export
 
 namespace systems {
 
@@ -132,12 +128,22 @@ class ScriptSystem {
     [[nodiscard]] ecs::Registry* getRegistry() noexcept { return _registry; }
 
     /**
+     * @brief Retrieves the Wren script instance handle for an entity, or nullptr if none.
+     */
+    [[nodiscard]] ::WrenHandle* getScriptInstance(ecs::Entity e) const noexcept;
+
+    /**
+     * @brief Checks if a Wren script instance exists for an entity.
+     */
+    [[nodiscard]] bool hasScriptInstance(ecs::Entity e) const noexcept;
+
+    /**
      * @brief Registers a suspended Wren Fiber to resume after `seconds` have elapsed.
      *
-     * @param fiber Raw pointer to the suspended Wren Fiber handle.
+     * @param fiber Owning RAII handle to the suspended Wren Fiber.
      * @param seconds Sleep duration in seconds.
      */
-    void addSleepingFiber(WrenHandle* fiber, float seconds);
+    void addSleepingFiber(scripting::detail::UniqueWrenHandle fiber, float seconds);
 
     /**
      * @brief Enables or disables runtime hot-reloading of script files.
@@ -219,12 +225,13 @@ class ScriptSystem {
     bool ensureScriptModuleLoaded(const std::string& moduleName);
 
     /**
-     * @brief Instantiates a Wren class object for an entity and stores the handle.
+     * @brief Instantiates a Wren class object for an entity and returns the owning handle.
      * @param e Target entity.
      * @param script Reference to entity's ScriptComponent.
-     * @return Raw WrenHandle pointer to the new instance, or nullptr on failure.
+     * @return Owning UniqueWrenHandle to the new instance, or null handle on failure.
      */
-    WrenHandle* createScriptInstanceHandle(ecs::Entity e, const ecs::ScriptComponent& script);
+    [[nodiscard]] scripting::detail::UniqueWrenHandle createScriptInstance(ecs::Entity e,
+                                                                           const ecs::ScriptComponent& script);
 
     /**
      * @brief Scans all watched script files for timestamp changes and reads updated content.
@@ -263,6 +270,8 @@ class ScriptSystem {
     std::vector<ecs::Entity> _pendingDestroyEntities;
     /** @brief Collection of suspended coroutine fibers awaiting timeout. */
     std::vector<SleepingFiber> _sleepingFibers;
+    /** @brief Active script instance handles indexed by entity ID. */
+    std::unordered_map<ecs::Entity, scripting::detail::UniqueWrenHandle> _instanceHandles;
 
     /** @brief Call handle for class instantiation constructor (`new(_)`). */
     scripting::detail::UniqueWrenHandle _newHandle;
