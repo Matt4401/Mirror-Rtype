@@ -61,6 +61,14 @@ class UiRenderSystem {
      */
     void drawText(float x, float y, const UiText& text) const;
 
+    /**
+     * @brief Draws a single `UiProgressBar` at the given screen position.
+     * @param x Resolved screen X in pixels.
+     * @param y Resolved screen Y in pixels.
+     * @param bar Component to draw.
+     */
+    static void drawProgressBar(float x, float y, const UiProgressBar& bar);
+
     /** @brief Resolves font identifiers. */
     const FontStore* _fonts;
 

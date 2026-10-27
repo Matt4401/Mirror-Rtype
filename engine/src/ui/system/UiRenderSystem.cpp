@@ -2,6 +2,7 @@
 
 #include <raylib.h>
 
+#include <algorithm>
 #include <type_traits>
 #include <variant>
 
@@ -56,6 +57,8 @@ void UiRenderSystem::draw() const {
                     drawRect(item.screenX, item.screenY, drawable);
                 } else if constexpr (std::is_same_v<T, UiText>) {
                     drawText(item.screenX, item.screenY, drawable);
+                } else if constexpr (std::is_same_v<T, UiProgressBar>) {
+                    drawProgressBar(item.screenX, item.screenY, drawable);
                 }
             },
             item.drawable);
@@ -71,6 +74,18 @@ void UiRenderSystem::drawRect(float x, float y, const UiRect& rect) {
         const Color border{
             .r = rect.borderColor.r, .g = rect.borderColor.g, .b = rect.borderColor.b, .a = rect.borderColor.a,};
         DrawRectangleLinesEx({.x = x, .y = y, .width = rect.width, .height = rect.height}, rect.borderThickness, border);
+    }
+}
+
+void UiRenderSystem::drawProgressBar(float x, float y, const UiProgressBar& bar) {
+    const Color bg{.r = bar.background.r, .g = bar.background.g, .b = bar.background.b, .a = bar.background.a};
+    DrawRectangleV({.x = x, .y = y}, {.x = bar.width, .y = bar.height}, bg);
+
+    const float range = bar.max - bar.min;
+    if (range > 0.0F) {
+        const float ratio = std::clamp((bar.value - bar.min) / range, 0.0F, 1.0F);
+        const Color fg{.r = bar.foreground.r, .g = bar.foreground.g, .b = bar.foreground.b, .a = bar.foreground.a};
+        DrawRectangleV({.x = x, .y = y}, {.x = bar.width * ratio, .y = bar.height}, fg);
     }
 }
 
