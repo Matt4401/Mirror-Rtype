@@ -14,12 +14,32 @@ Clock::Clock(TimeSource source, std::size_t maxStepsPerTick)
       _maxStepsPerTick(std::max<std::size_t>(maxStepsPerTick, 1)),
       _lastInstant(_source()) {}
 
+Time Clock::frameTime() const noexcept {
+    return Time{
+        .deltaTime = static_cast<float>(_lastElapsed),
+        .totalElapsedTime = _time.totalElapsedTime,
+        .tickCount = _time.tickCount,
+    };
+}
+
 void Clock::reset() {
     _lastInstant = _source();
     _accumulator = 0.0;
     _totalElapsed = 0.0;
     _lastElapsed = 0.0;
-    _time = Time{};
+    _time = Time{
+        .deltaTime = 0.0F,
+        .totalElapsedTime = 0.0F,
+        .tickCount = 0,
+    };
+}
+
+void Clock::advance(float fixedDt) noexcept {
+    const auto stepSeconds = static_cast<double>(fixedDt);
+    _totalElapsed += stepSeconds;
+    _time.deltaTime = fixedDt;
+    _time.totalElapsedTime = static_cast<float>(_totalElapsed);
+    ++_time.tickCount;
 }
 
 double Clock::pollElapsed() {

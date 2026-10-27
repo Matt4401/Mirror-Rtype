@@ -75,18 +75,18 @@ class Clock {
      * @brief Current frame timing data with variable real-time deltaTime.
      * @return Frame Time structure containing real-time deltaTime and current simulation progress.
      */
-    [[nodiscard]] Time frameTime() const noexcept {
-        return Time{
-            .deltaTime = static_cast<float>(_lastElapsed),
-            .totalElapsedTime = _time.totalElapsedTime,
-            .tickCount = _time.tickCount,
-        };
-    }
+    [[nodiscard]] Time frameTime() const noexcept;
 
     /**
      * @brief Restarts the clock: clears the accumulator and counters.
      */
     void reset();
+
+    /**
+     * @brief Manually advances the simulation clock by a fixed step duration.
+     * @param fixedDt Duration of the step to advance by in seconds.
+     */
+    void advance(float fixedDt) noexcept;
 
   private:
     /** @brief Queries time source and computes seconds elapsed since last call. */
