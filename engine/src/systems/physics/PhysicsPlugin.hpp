@@ -31,11 +31,11 @@ class PhysicsPlugin final : public engine::IPlugin {
     /** @brief Deleted copy assignment operator. */
     PhysicsPlugin& operator=(const PhysicsPlugin&) = delete;
 
-    /** @brief Move constructor. */
-    PhysicsPlugin(PhysicsPlugin&&) noexcept;
+    /** @brief Deleted move constructor. */
+    PhysicsPlugin(PhysicsPlugin&&) = delete;
 
-    /** @brief Move assignment operator. */
-    PhysicsPlugin& operator=(PhysicsPlugin&&) noexcept;
+    /** @brief Deleted move assignment operator. */
+    PhysicsPlugin& operator=(PhysicsPlugin&&) = delete;
 
     /**
      * @brief Gets plugin name.

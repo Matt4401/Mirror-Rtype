@@ -9,6 +9,8 @@
 #include <memory>
 
 #include "core/Engine.hpp"
+#include "core/Mediator.hpp"
+#include "core/MediatorError.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "core/services/IPhysicsService.hpp"
@@ -55,15 +57,14 @@ PhysicsPlugin::~PhysicsPlugin() {
     }
 }
 
-PhysicsPlugin::PhysicsPlugin(PhysicsPlugin&&) noexcept = default;
-PhysicsPlugin& PhysicsPlugin::operator=(PhysicsPlugin&&) noexcept = default;
-
 void PhysicsPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
 
 void PhysicsPlugin::init(engine::Engine& engine) {
     _physicsSystem = std::make_unique<PhysicsSystem>(engine.registry());
     _physicsService = std::make_shared<PhysicsServiceImpl>(*_physicsSystem);
-    [[maybe_unused]] const auto res = engine.mediator().registerService<engine::IPhysicsService>(_physicsService);
+    if (const auto res = engine.mediator().registerService<engine::IPhysicsService>(_physicsService); !res) {
+        throw engine::MediatorError(res.error());
+    }
 }
 
 void PhysicsPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time& time) {
