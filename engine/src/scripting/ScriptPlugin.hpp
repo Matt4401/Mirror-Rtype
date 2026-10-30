@@ -30,11 +30,11 @@ class ScriptPlugin final : public engine::IPlugin {
     /** @brief Deleted copy assignment operator. */
     ScriptPlugin& operator=(const ScriptPlugin&) = delete;
 
-    /** @brief Move constructor. */
-    ScriptPlugin(ScriptPlugin&&) noexcept = default;
+    /** @brief Deleted move constructor. */
+    ScriptPlugin(ScriptPlugin&&) = delete;
 
-    /** @brief Move assignment operator. */
-    ScriptPlugin& operator=(ScriptPlugin&&) noexcept = default;
+    /** @brief Deleted move assignment operator. */
+    ScriptPlugin& operator=(ScriptPlugin&&) = delete;
 
     /**
      * @brief Gets plugin name.
