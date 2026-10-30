@@ -31,11 +31,11 @@ class RTypeGamePlugin final : public engine::IPlugin {
     /** @brief Deleted copy assignment operator. */
     RTypeGamePlugin& operator=(const RTypeGamePlugin&) = delete;
 
-    /** @brief Default move constructor. */
-    RTypeGamePlugin(RTypeGamePlugin&&) noexcept = default;
+    /** @brief Deleted move constructor. */
+    RTypeGamePlugin(RTypeGamePlugin&&) = delete;
 
-    /** @brief Default move assignment operator. */
-    RTypeGamePlugin& operator=(RTypeGamePlugin&&) noexcept = default;
+    /** @brief Deleted move assignment operator. */
+    RTypeGamePlugin& operator=(RTypeGamePlugin&&) = delete;
 
     /**
      * @brief Gets plugin name.
