@@ -8,14 +8,22 @@
 #include <expected>
 #include <functional>
 #include <memory>
+#include <ranges>
 #include <stdexcept>
 #include <typeindex>
 #include <utility>
+#include <vector>
 
 #include "core/Mediator.hpp"  // NOLINT(misc-header-include-cycle)
 #include "core/MediatorError.hpp"
 
 namespace engine {
+
+inline Mediator::~Mediator() {
+    for (const std::type_index& key : std::views::reverse(_order)) {
+        _services.erase(key);
+    }
+}
 
 template <typename Service>
 std::expected<void, MediatorError> Mediator::registerService(const std::shared_ptr<Service>& service) {
@@ -27,6 +35,7 @@ std::expected<void, MediatorError> Mediator::registerService(const std::shared_p
     }
     const std::type_index key(typeid(Service));
     _services[key] = std::static_pointer_cast<void>(service);
+    _order.push_back(key);
     return {};
 }
 
@@ -39,6 +48,7 @@ std::expected<std::reference_wrapper<Service>, MediatorError> Mediator::emplaceS
     const std::shared_ptr<Service> servicePtr = instance;
     const std::type_index key(typeid(Service));
     _services[key] = std::static_pointer_cast<void>(servicePtr);
+    _order.push_back(key);
     return std::ref(*instance);
 }
 
@@ -75,6 +85,7 @@ template <typename Service>
 void Mediator::removeService() {
     const std::type_index key(typeid(Service));
     _services.erase(key);
+    std::erase(_order, key);
 }
 
 }  // namespace engine

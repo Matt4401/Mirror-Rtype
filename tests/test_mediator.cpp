@@ -3,6 +3,7 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "core/Mediator.hpp"
 #include "core/MediatorError.hpp"
@@ -119,6 +120,37 @@ TEST(Mediator, RemoveService) {
 
     mediator.removeService<ITestCounterService>();
     EXPECT_FALSE(mediator.hasService<ITestCounterService>());
+}
+
+namespace {
+
+/** @brief Service appending an identifier to a shared log when destroyed. */
+template <int Id>
+struct DestructionRecorder {
+    explicit DestructionRecorder(std::vector<int>& log) : log(&log) {}
+    DestructionRecorder(const DestructionRecorder&) = delete;
+    DestructionRecorder& operator=(const DestructionRecorder&) = delete;
+    DestructionRecorder(DestructionRecorder&&) = delete;
+    DestructionRecorder& operator=(DestructionRecorder&&) = delete;
+    ~DestructionRecorder() { log->push_back(Id); }
+    std::vector<int>* log;
+};
+
+}  // namespace
+
+TEST(Mediator, ReleasesServicesInReverseRegistrationOrder) {
+    std::vector<int> log;
+    {
+        engine::Mediator mediator;
+        ASSERT_TRUE(mediator.registerService(std::make_shared<DestructionRecorder<1>>(log)).has_value());
+        ASSERT_TRUE((mediator.emplaceService<DestructionRecorder<2>, DestructionRecorder<2>>(log).has_value()));
+        ASSERT_TRUE(mediator.registerService(std::make_shared<DestructionRecorder<3>>(log)).has_value());
+        ASSERT_TRUE(mediator.registerService(std::make_shared<DestructionRecorder<4>>(log)).has_value());
+
+        mediator.removeService<DestructionRecorder<3>>();
+        EXPECT_EQ(log, std::vector<int>{3});
+    }
+    EXPECT_EQ(log, (std::vector<int>{3, 4, 2, 1}));
 }
 
 int main(int argc, char** argv) {

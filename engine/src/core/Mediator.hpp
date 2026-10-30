@@ -10,6 +10,7 @@
 #include <memory>
 #include <typeindex>
 #include <unordered_map>
+#include <vector>
 
 #include "core/MediatorError.hpp"
 
@@ -26,8 +27,8 @@ class Mediator {
     /** @brief Constructs an empty Mediator registry. */
     Mediator() = default;
 
-    /** @brief Destroys the Mediator and releases registered service instances. */
-    ~Mediator() = default;
+    /** @brief Destroys the Mediator and releases services in reverse registration order. */
+    ~Mediator();
 
     /** @brief Deleted copy constructor. */
     Mediator(const Mediator&) = delete;
@@ -35,11 +36,11 @@ class Mediator {
     /** @brief Deleted copy assignment operator. */
     Mediator& operator=(const Mediator&) = delete;
 
-    /** @brief Defaulted move constructor. */
-    Mediator(Mediator&&) noexcept = default;
+    /** @brief Deleted move constructor. */
+    Mediator(Mediator&&) = delete;
 
-    /** @brief Defaulted move assignment operator. */
-    Mediator& operator=(Mediator&&) noexcept = default;
+    /** @brief Deleted move assignment operator. */
+    Mediator& operator=(Mediator&&) = delete;
 
     /**
      * @brief Registers an existing service instance for a specific interface.
@@ -97,6 +98,8 @@ class Mediator {
   private:
     /** @brief Storage slot associating type index with type-erased service shared pointer. */
     std::unordered_map<std::type_index, std::shared_ptr<void>> _services;
+    /** @brief Registration order of the stored services, used to release them deterministically. */
+    std::vector<std::type_index> _order;
 };
 
 }  // namespace engine
