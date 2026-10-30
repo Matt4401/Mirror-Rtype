@@ -29,11 +29,11 @@ class TimePlugin final : public IPlugin {
     /** @brief Deleted copy assignment operator. */
     TimePlugin& operator=(const TimePlugin&) = delete;
 
-    /** @brief Default move constructor. */
-    TimePlugin(TimePlugin&&) noexcept = default;
+    /** @brief Deleted move constructor. */
+    TimePlugin(TimePlugin&&) = delete;
 
-    /** @brief Default move assignment operator. */
-    TimePlugin& operator=(TimePlugin&&) noexcept = default;
+    /** @brief Deleted move assignment operator. */
+    TimePlugin& operator=(TimePlugin&&) = delete;
 
     /**
      * @brief Gets plugin name.

@@ -31,11 +31,11 @@ class CorePlugin final : public IPlugin {
     /** @brief Deleted copy assignment operator. */
     CorePlugin& operator=(const CorePlugin&) = delete;
 
-    /** @brief Default move constructor. */
-    CorePlugin(CorePlugin&&) noexcept = default;
+    /** @brief Deleted move constructor. */
+    CorePlugin(CorePlugin&&) = delete;
 
-    /** @brief Default move assignment operator. */
-    CorePlugin& operator=(CorePlugin&&) noexcept = default;
+    /** @brief Deleted move assignment operator. */
+    CorePlugin& operator=(CorePlugin&&) = delete;
 
     /**
      * @brief Gets the human-readable plugin name.
