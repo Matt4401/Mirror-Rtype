@@ -9,11 +9,12 @@
 #include <utility>
 
 #include "core/Engine.hpp"
+#include "core/Mediator.hpp"
+#include "core/MediatorError.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "core/services/IInputService.hpp"
 #include "ecs/time/Time.hpp"
-#include "render/RenderPlugin.hpp"
 #include "systems/input/InputSystem.hpp"
 
 namespace input {
@@ -47,17 +48,13 @@ InputPlugin::InputPlugin(ActionMapping mapping, int playerIndex, int gamepadInde
 
 InputPlugin::~InputPlugin() = default;
 
-InputPlugin::InputPlugin(InputPlugin&&) noexcept = default;
-InputPlugin& InputPlugin::operator=(InputPlugin&&) noexcept = default;
-
-void InputPlugin::build(engine::PluginBuilder& builder) {
-    builder.require<engine::CorePlugin>();
-    builder.require<render::RenderPlugin>();
-}
+void InputPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
 
 void InputPlugin::init(engine::Engine& engine) {
     _inputService = std::make_shared<InputServiceImpl>(_inputSystem);
-    [[maybe_unused]] const auto res = engine.mediator().registerService<engine::IInputService>(_inputService);
+    if (const auto res = engine.mediator().registerService<engine::IInputService>(_inputService); !res) {
+        throw engine::MediatorError(res.error());
+    }
 }
 
 void InputPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {

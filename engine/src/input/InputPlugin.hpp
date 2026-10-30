@@ -37,11 +37,11 @@ class InputPlugin final : public engine::IPlugin {
     /** @brief Deleted copy assignment operator. */
     InputPlugin& operator=(const InputPlugin&) = delete;
 
-    /** @brief Move constructor. */
-    InputPlugin(InputPlugin&&) noexcept;
+    /** @brief Deleted move constructor. */
+    InputPlugin(InputPlugin&&) = delete;
 
-    /** @brief Move assignment operator. */
-    InputPlugin& operator=(InputPlugin&&) noexcept;
+    /** @brief Deleted move assignment operator. */
+    InputPlugin& operator=(InputPlugin&&) = delete;
 
     /**
      * @brief Gets plugin name.
@@ -50,7 +50,7 @@ class InputPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "InputPlugin"; }
 
     /**
-     * @brief Declares plugin dependencies (requires RenderPlugin and CorePlugin).
+     * @brief Declares plugin dependencies (requires CorePlugin).
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
