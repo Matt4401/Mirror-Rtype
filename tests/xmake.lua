@@ -77,7 +77,7 @@ target("test_config")
 
 target("test_prefabs")
     set_kind("binary")
-    add_deps("engine_core", "rtype_prefabs")
+    add_deps("engine_core", "engine_prefabs", "rtype_prefabs")
     add_packages("gtest")
     add_files("prefabs/PrefabManagerTests.cpp")
     add_tests("test_prefabs")

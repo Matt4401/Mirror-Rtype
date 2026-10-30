@@ -8,6 +8,8 @@
 #include <memory>
 
 #include "core/Engine.hpp"
+#include "core/Mediator.hpp"
+#include "core/MediatorError.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "prefabs/PrefabManager.hpp"
@@ -18,14 +20,13 @@ PrefabPlugin::PrefabPlugin() : _manager(std::make_shared<PrefabManager>()) {}
 
 PrefabPlugin::~PrefabPlugin() = default;
 
-PrefabPlugin::PrefabPlugin(PrefabPlugin&&) noexcept = default;
-PrefabPlugin& PrefabPlugin::operator=(PrefabPlugin&&) noexcept = default;
-
 void PrefabPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
 
 void PrefabPlugin::init(engine::Engine& engine) {
     if (_manager != nullptr) {
-        [[maybe_unused]] const auto res = engine.mediator().registerService<PrefabManager>(_manager);
+        if (const auto res = engine.mediator().registerService<PrefabManager>(_manager); !res) {
+            throw engine::MediatorError(res.error());
+        }
     }
 }
 

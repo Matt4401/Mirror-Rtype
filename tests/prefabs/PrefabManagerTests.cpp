@@ -1,17 +1,22 @@
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <string>
 
 #include "components/Collider2D.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/Transform.hpp"
+#include "core/Engine.hpp"
+#include "core/Mediator.hpp"
+#include "core/MediatorError.hpp"
 #include "ecs/CommandBuffer.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabParams.hpp"
+#include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/PrefabRegistry.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/missile/Missile.hpp"
@@ -277,6 +282,17 @@ TEST(PrefabManager, CollisionCategoriesFilterPairs) {
 }
 
 }  // namespace
+
+TEST(PrefabPlugin, InitFailsAndKeepsExistingManagerOnDuplicate) {
+    engine::Engine engine;
+    auto const existing = std::make_shared<prefabs::PrefabManager>();
+    ASSERT_TRUE(engine.mediator().registerService<prefabs::PrefabManager>(existing).has_value());
+
+    engine.addPlugin<prefabs::PrefabPlugin>();
+
+    EXPECT_THROW(engine.init(), engine::MediatorError);
+    EXPECT_EQ(&engine.mediator().service<prefabs::PrefabManager>(), existing.get());
+}
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);

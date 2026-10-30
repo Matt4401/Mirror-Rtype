@@ -31,11 +31,11 @@ class PrefabPlugin final : public engine::IPlugin {
     /** @brief Deleted copy assignment operator. */
     PrefabPlugin& operator=(const PrefabPlugin&) = delete;
 
-    /** @brief Move constructor. */
-    PrefabPlugin(PrefabPlugin&&) noexcept;
+    /** @brief Deleted move constructor. */
+    PrefabPlugin(PrefabPlugin&&) = delete;
 
-    /** @brief Move assignment operator. */
-    PrefabPlugin& operator=(PrefabPlugin&&) noexcept;
+    /** @brief Deleted move assignment operator. */
+    PrefabPlugin& operator=(PrefabPlugin&&) = delete;
 
     /**
      * @brief Gets plugin name.
