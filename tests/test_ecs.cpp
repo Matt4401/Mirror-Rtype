@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <optional>
 
+#include "ecs/ComponentType.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 
@@ -430,6 +432,49 @@ TEST(ECS, ConstRegistryResourceAccess) {
     EXPECT_TRUE(constRef.hasResource<GameConfig>());
     EXPECT_EQ(constRef.getResource<GameConfig>().width, 1024);
     EXPECT_FLOAT_EQ(constRef.getResource<GameConfig>().volume, 0.9F);
+}
+
+TEST(ECS, DestroyListenerCanAddListenersDuringDispatch) {
+    ecs::Registry registry;
+    const ecs::Entity entity = registry.spawnEntity();
+    int added = 0;
+    int addedCalls = 0;
+    std::array<int, 16> capturedState{};
+    capturedState.back() = 42;
+
+    registry.addDestroyListener([&registry, &added, &addedCalls, capturedState](ecs::Entity) {
+        for (; added < 64; ++added) {
+            registry.addDestroyListener([&addedCalls](ecs::Entity) { ++addedCalls; });
+        }
+        EXPECT_EQ(capturedState.back(), 42);
+    });
+
+    registry.killEntity(entity);
+    EXPECT_EQ(addedCalls, 0);
+
+    registry.killEntity(registry.spawnEntity());
+    EXPECT_EQ(addedCalls, 64);
+}
+
+TEST(ECS, ComponentRemoveListenerCanAddListenersDuringDispatch) {
+    ecs::Registry registry;
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent<int>(entity, 1);
+    int added = 0;
+    int addedCalls = 0;
+    std::array<int, 16> capturedState{};
+    capturedState.back() = 42;
+
+    registry.addComponentRemoveListener(
+        [&registry, &added, &addedCalls, capturedState](ecs::Entity, ecs::ComponentTypeId) {
+            for (; added < 64; ++added) {
+                registry.addComponentRemoveListener([&addedCalls](ecs::Entity, ecs::ComponentTypeId) { ++addedCalls; });
+            }
+            EXPECT_EQ(capturedState.back(), 42);
+        });
+
+    registry.removeComponent<int>(entity);
+    EXPECT_EQ(addedCalls, 0);
 }
 
 int main(int argc, char** argv) {

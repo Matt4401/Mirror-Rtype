@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <queue>
@@ -356,14 +357,14 @@ class Registry {
         bool active = true;
     };
 
-    /** @brief Callbacks notified before an entity's components are removed. */
-    std::vector<DestroyListenerEntry> _destroyListeners;
+    /** @brief Callbacks notified before an entity's components are removed (deque: stable across push_back). */
+    std::deque<DestroyListenerEntry> _destroyListeners;
     /** @brief Reentrancy depth counter for destruction listener dispatch. */
     std::size_t _destroyDispatchDepth = 0;
     /** @brief Identifier assigned to the next registered destruction callback. */
     std::size_t _nextDestroyListenerId = 0;
-    /** @brief Callbacks notified after a component is explicitly removed. */
-    std::vector<ComponentRemoveEntry> _componentRemoveListeners;
+    /** @brief Callbacks notified after a component is explicitly removed (deque: stable across push_back). */
+    std::deque<ComponentRemoveEntry> _componentRemoveListeners;
     /** @brief Reentrancy depth counter for component remove listener dispatch. */
     std::size_t _componentRemoveDispatchDepth = 0;
     /** @brief Identifier assigned to the next registered component-removal callback. */
