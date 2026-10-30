@@ -9,6 +9,8 @@
 #include <utility>
 
 #include "core/Engine.hpp"
+#include "core/Mediator.hpp"
+#include "core/MediatorError.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "core/services/IRenderService.hpp"
@@ -96,9 +98,6 @@ RenderPlugin::~RenderPlugin() {
     _window.reset();
 }
 
-RenderPlugin::RenderPlugin(RenderPlugin&&) noexcept = default;
-RenderPlugin& RenderPlugin::operator=(RenderPlugin&&) noexcept = default;
-
 void RenderPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
 
 void RenderPlugin::init(engine::Engine& engine) {
@@ -109,8 +108,13 @@ void RenderPlugin::init(engine::Engine& engine) {
     _windowService = std::make_shared<WindowServiceImpl>(_config);
     _renderService = std::make_shared<RenderServiceImpl>(*_renderSystem);
 
-    [[maybe_unused]] const auto resWindow = engine.mediator().registerService<engine::IWindowService>(_windowService);
-    [[maybe_unused]] const auto resRender = engine.mediator().registerService<engine::IRenderService>(_renderService);
+    if (const auto res = engine.mediator().registerService<engine::IWindowService>(_windowService); !res) {
+        throw engine::MediatorError(res.error());
+    }
+    if (const auto res = engine.mediator().registerService<engine::IRenderService>(_renderService); !res) {
+        engine.mediator().removeService<engine::IWindowService>();
+        throw engine::MediatorError(res.error());
+    }
 }
 
 void RenderPlugin::render(engine::Engine& engine) {

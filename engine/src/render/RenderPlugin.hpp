@@ -37,11 +37,11 @@ class RenderPlugin final : public engine::IPlugin {
     /** @brief Deleted copy assignment operator. */
     RenderPlugin& operator=(const RenderPlugin&) = delete;
 
-    /** @brief Move constructor. */
-    RenderPlugin(RenderPlugin&&) noexcept;
+    /** @brief Deleted move constructor. */
+    RenderPlugin(RenderPlugin&&) = delete;
 
-    /** @brief Move assignment operator. */
-    RenderPlugin& operator=(RenderPlugin&&) noexcept;
+    /** @brief Deleted move assignment operator. */
+    RenderPlugin& operator=(RenderPlugin&&) = delete;
 
     /**
      * @brief Gets plugin name.
