@@ -5,6 +5,7 @@
 
 #include "scripting/WrenVM.hpp"
 
+#include <cstddef>
 #include <exception>
 #include <expected>
 #include <iostream>
@@ -16,6 +17,23 @@
 #include "scripting/detail/WrenTypes.hpp"
 
 namespace scripting {
+
+namespace detail {
+
+std::string makeMethodSignature(std::string_view name, std::size_t arity) {
+    std::string sig(name);
+    sig += "(";
+    for (std::size_t i = 0; i < arity; ++i) {
+        if (i > 0) {
+            sig += ",";
+        }
+        sig += "_";
+    }
+    sig += ")";
+    return sig;
+}
+
+}  // namespace detail
 
 WrenVM::WrenVM() {
     WrenConfiguration config;

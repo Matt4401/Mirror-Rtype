@@ -10,6 +10,10 @@
 #include <string>
 #include <utility>
 
+extern "C" {
+#include <wren.h>
+}
+
 #include "ecs/Entity.hpp"
 #include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"

@@ -69,6 +69,7 @@ Testing/
 
 # Vscode
 .idea/
+.vscode/
 
 B-CPP-500_rtype_apendix.pdf
 G-CPP-500_KickOff_R-Type_DA-2026_FR.pdf

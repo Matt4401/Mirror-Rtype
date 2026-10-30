@@ -769,6 +769,57 @@ TEST(Scripting, RobustnessForeignCallTypeValidation) {
     EXPECT_EQ(scriptSystem.getVm().call(badConstructorHandle), WREN_RESULT_RUNTIME_ERROR);
 }
 
+TEST(Scripting, RobustnessForeignCallNumericConversions) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<Position>();
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    scripting::ComponentBinder<Position> binder(scriptSystem.getVm(), "core/Position", "Position");
+    binder.property<&Position::x>("x");
+    std::string const wrenPositionClass = binder.generateWrenClass();
+    EXPECT_TRUE(scriptSystem.getVm().interpret("core/Position", wrenPositionClass));
+
+    ecs::Entity const entity = registry.spawnEntity();
+    registry.addComponent<Position>(entity, Position{.x = 10.0F, .y = 20.0F});
+
+    const char* script =
+        "import \"core/Position\" for Position\n"
+        "class Numeric {\n"
+        "    static fractionalEntity() { Position.new(0.5) }\n"
+        "    static tooLargeEntity() { Position.new(2.pow(64)) }\n"
+        "    static tooLargeFloat(entityId) { Position.new(entityId).x = 1e300 }\n"
+        "    static validFloat(entityId) { Position.new(entityId).x = 1.5 }\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret("test_numeric", script));
+
+    auto callStatic = [&scriptSystem](const char* signature) {
+        auto handle = scriptSystem.getVm().makeCallHandle(signature);
+        scriptSystem.getVm().ensureSlots(1);
+        scriptSystem.getVm().getVariable("test_numeric", "Numeric", 0);
+        return scriptSystem.getVm().call(handle);
+    };
+    auto callWithEntity = [&scriptSystem, entity](const char* signature) {
+        auto handle = scriptSystem.getVm().makeCallHandle(signature);
+        scriptSystem.getVm().ensureSlots(2);
+        scriptSystem.getVm().getVariable("test_numeric", "Numeric", 0);
+        scriptSystem.getVm().setSlot(1, static_cast<double>(entity));
+        return scriptSystem.getVm().call(handle);
+    };
+
+    EXPECT_EQ(callStatic("fractionalEntity()"), WREN_RESULT_RUNTIME_ERROR);
+    EXPECT_EQ(callStatic("tooLargeEntity()"), WREN_RESULT_RUNTIME_ERROR);
+
+    EXPECT_EQ(callWithEntity("tooLargeFloat(_)"), WREN_RESULT_RUNTIME_ERROR);
+    EXPECT_FLOAT_EQ(registry.getComponents<Position>().get(entity).x, 10.0F);
+
+    EXPECT_EQ(callWithEntity("validFloat(_)"), WREN_RESULT_SUCCESS);
+    EXPECT_FLOAT_EQ(registry.getComponents<Position>().get(entity).x, 1.5F);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
