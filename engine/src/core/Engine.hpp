@@ -7,6 +7,7 @@
 
 #include <expected>
 #include <functional>
+#include <vector>
 
 #include "core/IPlugin.hpp"
 #include "core/Mediator.hpp"
