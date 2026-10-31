@@ -63,9 +63,6 @@ class PrefabManager {
      * The entity is only created on the next `CommandBuffer::flush`.
      * Unknown names log a warning and queue nothing.
      *
-     * @warning The queued command references the registered factory: the manager must outlive the flush,
-     * and re-registering the same name before the flush makes the pending spawn use the new factory.
-     *
      * @param name Prefab identifier.
      * @param buffer Command buffer receiving the deferred spawn.
      * @param params Instance parameters, merged over the registration defaults.

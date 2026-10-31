@@ -12,6 +12,7 @@
 #include "core/Engine.hpp"
 #include "input/InputPlugin.hpp"
 #include "render/RenderPlugin.hpp"
+#include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 
 int main() {
@@ -20,6 +21,7 @@ int main() {
         engine.addPlugin<render::RenderPlugin>()
             .addPlugin<input::InputPlugin>()
             .addPlugin<systems::PhysicsPlugin>()
+            .addPlugin<scripting::ScriptPlugin>()
             .addPlugin<client::RTypeGamePlugin>();
 
         engine.run();
