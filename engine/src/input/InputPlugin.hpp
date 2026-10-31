@@ -62,11 +62,10 @@ class InputPlugin final : public engine::IPlugin {
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Polls hardware inputs and updates matching InputState ECS components.
+     * @brief Polls hardware inputs once per frame, before the fixed-timestep ticks consume InputState.
      * @param engine Reference to host Engine.
-     * @param time Frame timing information.
      */
-    void update(engine::Engine& engine, const ecs::time::Time& time) override;
+    void preUpdate(engine::Engine& engine) override;
 
     /**
      * @brief Unregisters services from Mediator.

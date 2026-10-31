@@ -14,7 +14,6 @@
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "core/services/IInputService.hpp"
-#include "ecs/time/Time.hpp"
 #include "systems/input/InputSystem.hpp"
 
 namespace input {
@@ -57,9 +56,7 @@ void InputPlugin::init(engine::Engine& engine) {
     }
 }
 
-void InputPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
-    _inputSystem.update(engine.registry(), &engine.eventBus());
-}
+void InputPlugin::preUpdate(engine::Engine& engine) { _inputSystem.update(engine.registry(), &engine.eventBus()); }
 
 void InputPlugin::shutdown(engine::Engine& engine) {
     if (engine.mediator().hasService<engine::IInputService>()) {
