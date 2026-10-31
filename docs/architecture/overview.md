@@ -9,7 +9,7 @@ The project is structured into three primary tiers:
    - **`engine_time`**: Fixed-timestep simulation clock (`Clock`), time data (`Time`), and monotonic time providers.
    - **`engine_events`**: Decoupled message passing interface (`EventBus`).
    - **`engine_scripting`**: Embedded Wren virtual machine, runtime scripting system (`ScriptSystem`), and `ScriptPlugin`.
-   - **`engine_render` & `engine_input`**: Raylib-backed windowing, rendering, and spatial input sampling plugins (`RenderPlugin`, `InputPlugin`).
+   - **`engine_render` & `engine_input`**: Raylib-backed windowing and rendering (`RenderPlugin`), and input mapping (`InputPlugin`) sampling hardware through `IWindowService`.
    - **`engine_physics`**: Box2D rigid body simulation plugin (`PhysicsPlugin`).
    - **`engine_prefabs`**: Named entity template registry plugin (`PrefabPlugin`).
    - **`engine_all`**: Meta/phony target building all engine sub-components together.

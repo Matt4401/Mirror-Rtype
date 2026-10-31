@@ -5,6 +5,8 @@
 
 #include "render/RenderPlugin.hpp"
 
+#include <raylib.h>
+
 #include <memory>
 #include <utility>
 
@@ -42,6 +44,18 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
     [[nodiscard]] int width() const noexcept override { return _config.width; }
 
     [[nodiscard]] int height() const noexcept override { return _config.height; }
+
+    [[nodiscard]] bool isKeyDown(int key) const noexcept override { return IsKeyDown(key); }
+
+    [[nodiscard]] bool isGamepadAvailable(int gamepad) const noexcept override { return IsGamepadAvailable(gamepad); }
+
+    [[nodiscard]] bool isGamepadButtonDown(int gamepad, int button) const noexcept override {
+        return IsGamepadButtonDown(gamepad, button);
+    }
+
+    [[nodiscard]] float gamepadAxis(int gamepad, int axis) const noexcept override {
+        return GetGamepadAxisMovement(gamepad, axis);
+    }
 
   private:
     /** @brief Stored window configuration. */

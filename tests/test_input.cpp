@@ -2,17 +2,61 @@
 #include <raylib.h>
 
 #include <cmath>
+#include <memory>
+#include <string_view>
 
+#include "core/Engine.hpp"
+#include "core/IPlugin.hpp"
+#include "core/Mediator.hpp"
+#include "core/PluginBuilder.hpp"
+#include "core/PluginGraph.hpp"
+#include "core/services/IWindowService.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/InputActionEvent.hpp"
 #include "input/ActionId.hpp"
 #include "input/ActionMapping.hpp"
 #include "input/InputConstants.hpp"
+#include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/KeyboardLayout.hpp"
 #include "input/RTypeBindings.hpp"
 #include "systems/input/InputSystem.hpp"
+
+namespace {
+
+class FakeWindow final : public engine::IWindowService {
+  public:
+    explicit FakeWindow(int heldKey = 0) : _heldKey(heldKey) {}
+    [[nodiscard]] bool shouldClose() const noexcept override { return false; }
+    void beginFrame() override {}
+    void endFrame() override {}
+    [[nodiscard]] int width() const noexcept override { return 0; }
+    [[nodiscard]] int height() const noexcept override { return 0; }
+    [[nodiscard]] bool isKeyDown(int key) const noexcept override { return key == _heldKey; }
+    [[nodiscard]] bool isGamepadAvailable(int /*gamepad*/) const noexcept override { return false; }
+    [[nodiscard]] bool isGamepadButtonDown(int /*gamepad*/, int /*button*/) const noexcept override { return false; }
+    [[nodiscard]] float gamepadAxis(int /*gamepad*/, int /*axis*/) const noexcept override { return 0.0F; }
+
+  private:
+    int _heldKey;
+};
+
+class FakeWindowPlugin final : public engine::IPlugin {
+  public:
+    explicit FakeWindowPlugin(int heldKey) : _heldKey(heldKey) {}
+    [[nodiscard]] std::string_view name() const noexcept override { return "FakeWindowPlugin"; }
+    void build(engine::PluginBuilder& builder) override { builder.provides<engine::IWindowService>(); }
+    void init(engine::Engine& engine) override {
+        ASSERT_TRUE(engine.mediator().registerService<engine::IWindowService>(std::make_shared<FakeWindow>(_heldKey)));
+    }
+
+  private:
+    int _heldKey;
+};
+
+}  // namespace
 
 TEST(ActionId, Fnv1aHashConsistency) {
     constexpr input::ActionId shootId = input::makeActionId("shoot");
@@ -146,8 +190,9 @@ TEST(InputSystem, UpdatesComponentForMatchingPlayerIndex) {
     const ecs::Entity player1 = registry.spawnEntity();
     registry.addComponent<input::InputState>(player1, input::InputState{.playerIndex = 1, .actions = {}});
 
-    system0.update(registry, &eventBus);
-    system1.update(registry, &eventBus);
+    const FakeWindow window;
+    system0.update(window, registry, &eventBus);
+    system1.update(window, registry, &eventBus);
 
     const auto& p0State = registry.getComponents<input::InputState>().get(player0);
     EXPECT_EQ(p0State.playerIndex, 0);
@@ -165,7 +210,8 @@ TEST(InputSystem, DoesNothingWhenNoEntityHasInputState) {
     eventBus.subscribe<events::InputActionEvent>(
         [&eventTriggered](const events::InputActionEvent& /*event*/) { eventTriggered = true; });
 
-    system.update(registry, &eventBus);
+    const FakeWindow window;
+    system.update(window, registry, &eventBus);
     EXPECT_FALSE(registry.hasResource<input::InputState>());
     EXPECT_FALSE(eventTriggered);
 }
@@ -240,6 +286,45 @@ TEST(RTypeBindings, SetupDefaultBindings) {
 
     EXPECT_TRUE(mapping.hasKey("shoot", KEY_SPACE));
     EXPECT_TRUE(mapping.hasKey("charge_weapon", KEY_LEFT_SHIFT));
+}
+
+TEST(ActionMapping, SamplesKeysThroughWindowService) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+    mapping.bindKey("shoot", KEY_SPACE);
+    mapping.registerAction("move_x", input::ActionType::Axis);
+    mapping.bindAxisComposite("move_x", KEY_A, KEY_D);
+
+    const FakeWindow holdingSpace(KEY_SPACE);
+    EXPECT_TRUE(mapping.isActionDown(holdingSpace, "shoot"));
+
+    const FakeWindow holdingA(KEY_A);
+    EXPECT_FALSE(mapping.isActionDown(holdingA, "shoot"));
+    EXPECT_FLOAT_EQ(mapping.getAxis(holdingA, "move_x"), -1.0F);
+}
+
+TEST(InputPlugin, RequiresAWindowServiceProvider) {
+    engine::Engine engine;
+    engine.addPlugin<input::InputPlugin>();
+
+    EXPECT_THROW(engine.init(), engine::PluginDependencyException);
+}
+
+TEST(InputPlugin, PollsAnyWindowServiceProvider) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+    mapping.bindKey("shoot", KEY_SPACE);
+
+    engine::Engine engine;
+    engine.addPlugin<input::InputPlugin>(mapping);
+    engine.addPlugin<FakeWindowPlugin>(KEY_SPACE);
+
+    const ecs::Entity player = engine.registry().spawnEntity();
+    engine.registry().addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
+
+    engine.step(0.016F);
+
+    EXPECT_TRUE(engine.registry().getComponents<input::InputState>().get(player).isDown("shoot"));
 }
 
 int main(int argc, char** argv) {

@@ -60,6 +60,36 @@ class IWindowService {
      * @return Window height.
      */
     [[nodiscard]] virtual int height() const noexcept = 0;
+
+    /**
+     * @brief Queries whether a keyboard key is held down.
+     * @param key Backend key code.
+     * @return True if the key is held down.
+     */
+    [[nodiscard]] virtual bool isKeyDown(int key) const noexcept = 0;
+
+    /**
+     * @brief Queries whether a gamepad is connected.
+     * @param gamepad Hardware gamepad index.
+     * @return True if the gamepad is available.
+     */
+    [[nodiscard]] virtual bool isGamepadAvailable(int gamepad) const noexcept = 0;
+
+    /**
+     * @brief Queries whether a gamepad button is held down.
+     * @param gamepad Hardware gamepad index.
+     * @param button Backend button code.
+     * @return True if the button is held down.
+     */
+    [[nodiscard]] virtual bool isGamepadButtonDown(int gamepad, int button) const noexcept = 0;
+
+    /**
+     * @brief Samples a gamepad axis.
+     * @param gamepad Hardware gamepad index.
+     * @param axis Backend axis code.
+     * @return Axis position.
+     */
+    [[nodiscard]] virtual float gamepadAxis(int gamepad, int axis) const noexcept = 0;
 };
 
 }  // namespace engine

@@ -126,7 +126,7 @@ if (windowService && !windowService->get().shouldClose()) {
 
 | Interface | Header | Purpose | Provided By |
 | ----------- | -------- | --------- | ------------- |
-| `IWindowService` | `core/services/IWindowService.hpp` | Window state, frame bracketing, close queries | `RenderPlugin` |
+| `IWindowService` | `core/services/IWindowService.hpp` | Window state, frame bracketing, close queries, keyboard and gamepad sampling | `RenderPlugin` |
 | `IRenderService` | `core/services/IRenderService.hpp` | 2D entity draw collection and presentation | `RenderPlugin` |
 | `IInputService` | `core/services/IInputService.hpp` | Action mapping configuration and controller indices | `InputPlugin` |
 | `IPhysicsService` | `core/services/IPhysicsService.hpp` | Physics simulation stepping and body stats | `PhysicsPlugin` |

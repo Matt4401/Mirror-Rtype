@@ -9,6 +9,10 @@
 #include "input/ActionId.hpp"
 #include "input/InputConstants.hpp"
 
+namespace engine {
+class IWindowService;
+}
+
 namespace input {
 
 /**
@@ -127,19 +131,21 @@ class ActionMapping {
     void clear();
 
     /** @brief Tells whether an action is currently active on hardware devices. */
-    [[nodiscard]] bool isActionDown(ActionId action, int gamepadIndex = 0) const;
+    [[nodiscard]] bool isActionDown(const engine::IWindowService& window, ActionId action, int gamepadIndex = 0) const;
 
     /** @brief Tells whether an action is currently active on hardware devices by name. */
-    [[nodiscard]] bool isActionDown(std::string_view name, int gamepadIndex = 0) const {
-        return isActionDown(makeActionId(name), gamepadIndex);
+    [[nodiscard]] bool isActionDown(const engine::IWindowService& window, std::string_view name,
+                                    int gamepadIndex = 0) const {
+        return isActionDown(window, makeActionId(name), gamepadIndex);
     }
 
     /** @brief Samples continuous 1D axis value in [-1.0F, 1.0F] from hardware devices. */
-    [[nodiscard]] float getAxis(ActionId action, int gamepadIndex = 0) const;
+    [[nodiscard]] float getAxis(const engine::IWindowService& window, ActionId action, int gamepadIndex = 0) const;
 
     /** @brief Samples continuous 1D axis value in [-1.0F, 1.0F] from hardware devices by name. */
-    [[nodiscard]] float getAxis(std::string_view name, int gamepadIndex = 0) const {
-        return getAxis(makeActionId(name), gamepadIndex);
+    [[nodiscard]] float getAxis(const engine::IWindowService& window, std::string_view name,
+                                int gamepadIndex = 0) const {
+        return getAxis(window, makeActionId(name), gamepadIndex);
     }
 
     /** @brief Gets internal binding configuration for an action if registered. */
@@ -153,13 +159,16 @@ class ActionMapping {
     ActionBinding& getOrCreateBinding(ActionId action);
 
     /** @brief Samples continuous composite keyboard contributions for an action binding. */
-    [[nodiscard]] static float sampleKeyboardComposite(const ActionBinding& binding);
+    [[nodiscard]] static float sampleKeyboardComposite(const engine::IWindowService& window,
+                                                       const ActionBinding& binding);
 
     /** @brief Samples continuous composite gamepad button contributions for an action binding. */
-    [[nodiscard]] static float sampleGamepadButtonComposite(const ActionBinding& binding, int gamepadIndex);
+    [[nodiscard]] static float sampleGamepadButtonComposite(const engine::IWindowService& window,
+                                                            const ActionBinding& binding, int gamepadIndex);
 
     /** @brief Samples analog stick axis contribution for an action binding with deadzone threshold. */
-    [[nodiscard]] static float sampleGamepadStick(const ActionBinding& binding, int gamepadIndex, float deadzone);
+    [[nodiscard]] static float sampleGamepadStick(const engine::IWindowService& window, const ActionBinding& binding,
+                                                  int gamepadIndex, float deadzone);
 
     /** @brief Table of bindings indexed by ActionId. */
     std::unordered_map<ActionId, ActionBinding> _bindings;

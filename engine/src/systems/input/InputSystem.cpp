@@ -2,6 +2,7 @@
 
 #include <utility>
 
+#include "core/services/IWindowService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
@@ -15,20 +16,20 @@ namespace systems {
 InputSystem::InputSystem(input::ActionMapping mapping, int playerIndex, int gamepadIndex)
     : _mapping(std::move(mapping)), _playerIndex(playerIndex), _gamepadIndex(gamepadIndex) {}
 
-void InputSystem::update(ecs::Registry& registry, ecs::EventBus* eventBus) {
-    registry.runSystem<input::InputState>([this, eventBus](ecs::Entity /*entity*/, input::InputState& state) {
+void InputSystem::update(const engine::IWindowService& window, ecs::Registry& registry, ecs::EventBus* eventBus) {
+    registry.runSystem<input::InputState>([this, &window, eventBus](ecs::Entity /*entity*/, input::InputState& state) {
         if (state.playerIndex == _playerIndex) {
-            updateState(state, eventBus);
+            updateState(window, state, eventBus);
         }
     });
 }
 
-void InputSystem::updateState(input::InputState& state, ecs::EventBus* eventBus) {
+void InputSystem::updateState(const engine::IWindowService& window, input::InputState& state, ecs::EventBus* eventBus) {
     state.resetFrameTransitions();
 
     for (const auto& [actionId, binding] : _mapping.bindings()) {
         if (binding.type == input::ActionType::Button) {
-            const bool isDown = _mapping.isActionDown(actionId, _gamepadIndex);
+            const bool isDown = _mapping.isActionDown(window, actionId, _gamepadIndex);
             auto& actionData = state.actions[actionId];
             const bool wasDown = actionData.held;
 
@@ -56,7 +57,7 @@ void InputSystem::updateState(input::InputState& state, ecs::EventBus* eventBus)
                 }
             }
         } else if (binding.type == input::ActionType::Axis) {
-            const float axisValue = _mapping.getAxis(actionId, _gamepadIndex);
+            const float axisValue = _mapping.getAxis(window, actionId, _gamepadIndex);
             state.actions[actionId].axis = axisValue;
         }
     }

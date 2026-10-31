@@ -1,28 +1,27 @@
 #include "input/ActionMapping.hpp"
 
-#include <raylib.h>
-
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <string>
 #include <string_view>
 
+#include "core/services/IWindowService.hpp"
 #include "input/ActionId.hpp"
 #include "input/InputConstants.hpp"
 
 namespace input {
 
-float ActionMapping::sampleKeyboardComposite(const ActionBinding& binding) {
+float ActionMapping::sampleKeyboardComposite(const engine::IWindowService& window, const ActionBinding& binding) {
     float value = 0.0F;
     for (std::size_t i = 0; i < binding.negativeKeyCount; ++i) {
-        if (IsKeyDown(binding.negativeKeys.at(i))) {
+        if (window.isKeyDown(binding.negativeKeys.at(i))) {
             value -= 1.0F;
             break;
         }
     }
     for (std::size_t i = 0; i < binding.keyCount; ++i) {
-        if (IsKeyDown(binding.keys.at(i))) {
+        if (window.isKeyDown(binding.keys.at(i))) {
             value += 1.0F;
             break;
         }
@@ -30,16 +29,17 @@ float ActionMapping::sampleKeyboardComposite(const ActionBinding& binding) {
     return value;
 }
 
-float ActionMapping::sampleGamepadButtonComposite(const ActionBinding& binding, int gamepadIndex) {
+float ActionMapping::sampleGamepadButtonComposite(const engine::IWindowService& window, const ActionBinding& binding,
+                                                  int gamepadIndex) {
     float value = 0.0F;
     for (std::size_t i = 0; i < binding.negativePadButtonCount; ++i) {
-        if (IsGamepadButtonDown(gamepadIndex, binding.negativePadButtons.at(i))) {
+        if (window.isGamepadButtonDown(gamepadIndex, binding.negativePadButtons.at(i))) {
             value -= 1.0F;
             break;
         }
     }
     for (std::size_t i = 0; i < binding.padButtonCount; ++i) {
-        if (IsGamepadButtonDown(gamepadIndex, binding.padButtons.at(i))) {
+        if (window.isGamepadButtonDown(gamepadIndex, binding.padButtons.at(i))) {
             value += 1.0F;
             break;
         }
@@ -47,11 +47,12 @@ float ActionMapping::sampleGamepadButtonComposite(const ActionBinding& binding, 
     return value;
 }
 
-float ActionMapping::sampleGamepadStick(const ActionBinding& binding, int gamepadIndex, float deadzone) {
+float ActionMapping::sampleGamepadStick(const engine::IWindowService& window, const ActionBinding& binding,
+                                        int gamepadIndex, float deadzone) {
     if (binding.padAxis < 0) {
         return 0.0F;
     }
-    const float raw = GetGamepadAxisMovement(gamepadIndex, binding.padAxis);
+    const float raw = window.gamepadAxis(gamepadIndex, binding.padAxis);
     if (std::abs(raw) > deadzone) {
         return raw * binding.padAxisDirection;
     }
@@ -204,27 +205,24 @@ void ActionMapping::bindAxisComposite(ActionId axis, int negativeKey, int positi
     }
 }
 
-bool ActionMapping::isActionDown(ActionId action, int gamepadIndex) const {
-    if (!IsWindowReady()) {
-        return false;
-    }
+bool ActionMapping::isActionDown(const engine::IWindowService& window, ActionId action, int gamepadIndex) const {
     const ActionBinding* binding = getBinding(action);
     if (binding == nullptr) {
         return false;
     }
     for (std::size_t i = 0; i < binding->keyCount; ++i) {
-        if (IsKeyDown(binding->keys.at(i))) {
+        if (window.isKeyDown(binding->keys.at(i))) {
             return true;
         }
     }
-    if (IsGamepadAvailable(gamepadIndex)) {
+    if (window.isGamepadAvailable(gamepadIndex)) {
         for (std::size_t i = 0; i < binding->padButtonCount; ++i) {
-            if (IsGamepadButtonDown(gamepadIndex, binding->padButtons.at(i))) {
+            if (window.isGamepadButtonDown(gamepadIndex, binding->padButtons.at(i))) {
                 return true;
             }
         }
         if (binding->padAxis >= 0) {
-            const float val = GetGamepadAxisMovement(gamepadIndex, binding->padAxis);
+            const float val = window.gamepadAxis(gamepadIndex, binding->padAxis);
             if (binding->padAxisDirection > 0.0F && val > _deadzone) {
                 return true;
             }
@@ -236,18 +234,15 @@ bool ActionMapping::isActionDown(ActionId action, int gamepadIndex) const {
     return false;
 }
 
-float ActionMapping::getAxis(ActionId action, int gamepadIndex) const {
-    if (!IsWindowReady()) {
-        return 0.0F;
-    }
+float ActionMapping::getAxis(const engine::IWindowService& window, ActionId action, int gamepadIndex) const {
     const ActionBinding* binding = getBinding(action);
     if (binding == nullptr) {
         return 0.0F;
     }
-    float axisValue = sampleKeyboardComposite(*binding);
-    if (IsGamepadAvailable(gamepadIndex)) {
-        axisValue += sampleGamepadButtonComposite(*binding, gamepadIndex);
-        axisValue += sampleGamepadStick(*binding, gamepadIndex, _deadzone);
+    float axisValue = sampleKeyboardComposite(window, *binding);
+    if (window.isGamepadAvailable(gamepadIndex)) {
+        axisValue += sampleGamepadButtonComposite(window, *binding, gamepadIndex);
+        axisValue += sampleGamepadStick(window, *binding, gamepadIndex, _deadzone);
     }
     return std::clamp(axisValue, -1.0F, 1.0F);
 }
