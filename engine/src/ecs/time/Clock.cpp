@@ -14,9 +14,11 @@ Clock::Clock(TimeSource source, std::size_t maxStepsPerTick)
       _maxStepsPerTick(std::max<std::size_t>(maxStepsPerTick, 1)),
       _lastInstant(_source()) {}
 
-Time Clock::frameTime() const noexcept {
+Time Clock::frameTime() const noexcept { return frameTime(static_cast<float>(_lastElapsed)); }
+
+Time Clock::frameTime(float deltaTime) const noexcept {
     return Time{
-        .deltaTime = static_cast<float>(_lastElapsed),
+        .deltaTime = deltaTime,
         .totalElapsedTime = _time.totalElapsedTime,
         .tickCount = _time.tickCount,
     };

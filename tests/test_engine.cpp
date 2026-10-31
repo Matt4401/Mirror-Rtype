@@ -23,6 +23,8 @@ class LifecycleRecorderPlugin final : public engine::IPlugin {
 
     void init(engine::Engine& /*engine*/) override { _log.push_back("init"); }
 
+    void preUpdate(engine::Engine& /*engine*/) override { _log.push_back("preUpdate"); }
+
     void fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time& /*time*/) override {
         _log.push_back("fixedUpdate");
     }
@@ -90,12 +92,13 @@ TEST(Engine, ExecutesPhasesInSequence) {
 
         engineInstance.step(0.016F);
 
-        ASSERT_GE(log.size(), 5U);
+        ASSERT_GE(log.size(), 6U);
         EXPECT_EQ(log[0], "build");
         EXPECT_EQ(log[1], "init");
-        EXPECT_EQ(log[2], "fixedUpdate");
-        EXPECT_EQ(log[3], "update");
-        EXPECT_EQ(log[4], "render");
+        EXPECT_EQ(log[2], "preUpdate");
+        EXPECT_EQ(log[3], "fixedUpdate");
+        EXPECT_EQ(log[4], "update");
+        EXPECT_EQ(log[5], "render");
 
         engineInstance.shutdown();
         EXPECT_EQ(log.back(), "shutdown");

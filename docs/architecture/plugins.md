@@ -6,7 +6,7 @@ The R-Type engine is designed according to **Track #1 (Advanced Architecture)**:
 
 To achieve true modularity, the engine introduces three interconnected architectural patterns:
 
-1. **The Plugin System (`engine::IPlugin`)**: Replaces manual procedural wiring with an inversion-of-control lifecycle (`build`, `init`, `fixedUpdate`, `update`, `render`, `shutdown`).
+1. **The Plugin System (`engine::IPlugin`)**: Replaces manual procedural wiring with an inversion-of-control lifecycle (`build`, `init`, `preUpdate`, `fixedUpdate`, `update`, `render`, `shutdown`).
 2. **The Dependency Graph (`engine::PluginGraph`)**: Resolves compile-time and runtime inter-plugin requirements as a Directed Acyclic Graph (DAG) using **Kahn's topological sort algorithm**, providing early cycle and missing-dependency detection.
 3. **The Mediator (`engine::Mediator`)**: A typed service registry where plugins register and query **abstract interfaces** (`IWindowService`, `IRenderService`, `IInputService`, `IPhysicsService`) rather than concrete subsystems, decoupling modules entirely.
 
@@ -56,6 +56,7 @@ class IPlugin {
 
     virtual void build(PluginBuilder& builder) {}
     virtual void init(Engine& engine) {}
+    virtual void preUpdate(Engine& engine) {}
     virtual void fixedUpdate(Engine& engine, const ecs::time::Time& time) {}
     virtual void update(Engine& engine, const ecs::time::Time& time) {}
     virtual void render(Engine& engine) {}
@@ -71,16 +72,19 @@ class IPlugin {
 2. **`init(Engine& engine)`**:
    - Executed in **topological order** (dependencies initialize before dependents).
    - Instantiates subsystem resources and registers abstract services into `engine.mediator()`.
-3. **`fixedUpdate(Engine& engine, const Time& time)`**:
+3. **`preUpdate(Engine& engine)`**:
+   - Executed in **topological order** once per frame, before any fixed-timestep step.
+   - Used for sampling external state that the frame's simulation must observe, such as hardware input.
+4. **`fixedUpdate(Engine& engine, const Time& time)`**:
    - Executed in **topological order** inside constant `fixedDt` simulation steps.
    - Used for deterministic physics, movement, and network synchronization.
-4. **`update(Engine& engine, const Time& time)`**:
+5. **`update(Engine& engine, const Time& time)`**:
    - Executed in **topological order** on every frame with variable delta time.
-   - Used for input polling, state updates, animations, and gameplay triggers.
-5. **`render(Engine& engine)`**:
+   - Used for state updates, animations, and gameplay triggers.
+6. **`render(Engine& engine)`**:
    - Executed in **topological order** during the frame presentation phase.
    - Collects and draws entities through active cameras.
-6. **`shutdown(Engine& engine)`**:
+7. **`shutdown(Engine& engine)`**:
    - Executed in **reverse topological order** (dependents shut down before their dependencies).
    - Unregisters services and safely releases GPU / hardware resources.
 

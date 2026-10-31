@@ -78,6 +78,13 @@ class Clock {
     [[nodiscard]] Time frameTime() const noexcept;
 
     /**
+     * @brief Current frame timing data with a caller-provided deltaTime.
+     * @param deltaTime Frame delta time in seconds.
+     * @return Frame Time structure containing deltaTime and current simulation progress.
+     */
+    [[nodiscard]] Time frameTime(float deltaTime) const noexcept;
+
+    /**
      * @brief Restarts the clock: clears the accumulator and counters.
      */
     void reset();

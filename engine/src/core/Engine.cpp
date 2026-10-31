@@ -67,6 +67,10 @@ void Engine::step(float dt) {
         init();
     }
 
+    for (IPlugin* plugin : _pluginGraph.executionOrder()) {
+        plugin->preUpdate(*this);
+    }
+
     _clock.advance(_fixedDt);
     const ecs::time::Time fixedTime = _clock.time();
 
@@ -74,11 +78,7 @@ void Engine::step(float dt) {
         plugin->fixedUpdate(*this, fixedTime);
     }
 
-    const ecs::time::Time frameTime{
-        .deltaTime = dt,
-        .totalElapsedTime = fixedTime.totalElapsedTime,
-        .tickCount = fixedTime.tickCount,
-    };
+    const ecs::time::Time frameTime = _clock.frameTime(dt);
 
     for (IPlugin* plugin : _pluginGraph.executionOrder()) {
         plugin->update(*this, frameTime);
@@ -106,17 +106,17 @@ void Engine::run() {
             break;
         }
 
+        for (IPlugin* plugin : _pluginGraph.executionOrder()) {
+            plugin->preUpdate(*this);
+        }
+
         _clock.tick(_fixedDt, [&](const ecs::time::Time& fixedTime) {
             for (IPlugin* plugin : _pluginGraph.executionOrder()) {
                 plugin->fixedUpdate(*this, fixedTime);
             }
         });
 
-        const ecs::time::Time frameTime{
-            .deltaTime = _clock.lastFrameDelta(),
-            .totalElapsedTime = _clock.time().totalElapsedTime,
-            .tickCount = _clock.time().tickCount,
-        };
+        const ecs::time::Time frameTime = _clock.frameTime();
 
         for (IPlugin* plugin : _pluginGraph.executionOrder()) {
             plugin->update(*this, frameTime);

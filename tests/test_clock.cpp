@@ -152,6 +152,17 @@ TEST(Clock, SyncsTimeResourceInRegistry) {
     EXPECT_EQ(registry.getResource<ecs::time::Time>().tickCount, 1U);
 }
 
+TEST(Clock, FrameTimeUsesProvidedDeltaAndCurrentProgress) {
+    ecs::time::Clock clock;
+    clock.advance(0.5F);
+
+    const ecs::time::Time frame = clock.frameTime(0.25F);
+
+    EXPECT_FLOAT_EQ(frame.deltaTime, 0.25F);
+    EXPECT_FLOAT_EQ(frame.totalElapsedTime, 0.5F);
+    EXPECT_EQ(frame.tickCount, 1U);
+}
+
 TEST(Clock, LastFrameDeltaTracksRealElapsed) {
     FakeTime fake;
     ecs::time::Clock clock(fake.source());
