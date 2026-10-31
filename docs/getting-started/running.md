@@ -1,13 +1,26 @@
 # Running the Game
 
-Currently, the project compiles three main executables generated at the root of the repository.
+Currently, the project compiles three main executables generated at the root of the repository, along with several test suites.
 
 ## Running the Tests
 
-To ensure the core ECS engine is functioning correctly:
+To run all automated tests (ECS, Plugins, Clock, Input, Scripting, Prefabs, Physics):
 
 ```bash
-xmake run test_ecs
+xmake test
+```
+
+Or run individual test suites:
+
+```bash
+xmake run test_engine        # Engine and plugin lifecycle
+xmake run test_plugin_graph  # Plugin dependency DAG
+xmake run test_mediator      # Mediator service registry
+xmake run test_ecs           # Core ECS Registry & Sparse Sets
+xmake run test_clock         # Fixed-timestep simulation clock
+xmake run test_input         # Action mapping and input normalization
+xmake run test_physics       # Box2D physics simulation
+xmake run test_scripting     # Wren scripting integration
 ```
 
 ## Running the Server
@@ -50,7 +63,7 @@ rtype::log::debug("server", "client ", client, " joined room ", roomId);
 
 ## Running the Client
 
-The graphical client connects to the server and handles rendering and input via Raylib:
+The graphical client initializes the `engine::Engine` and loads modular plugins (`RenderPlugin`, `InputPlugin`, `PhysicsPlugin`, `RTypeGamePlugin`) via Raylib:
 
 ```bash
 xmake run r-type_client

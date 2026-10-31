@@ -17,7 +17,25 @@ The documentation in this section is **automatically extracted from code docstri
 
 ## Core Subsystems
 
-### 1. Scripting Subsystem (`scripting` & `systems`)
+### 1. Engine Core, Plugins & Mediator (`engine`)
+
+The core architecture framework orchestrating the game loop, DAG dependency resolution, and decoupled abstract services.
+
+| Class / Struct | Role & Description |
+| :--- | :--- |
+| [`engine::Engine`](rtype/classengine_1_1Engine.md) | Central coordinator owning Registry, EventBus, Mediator, Clock, and the continuous game loop. |
+| [`engine::IPlugin`](rtype/classengine_1_1IPlugin.md) | Base interface providing lifecycle stages (`build`, `init`, `fixedUpdate`, `update`, `render`, `shutdown`). |
+| [`engine::PluginBuilder`](rtype/classengine_1_1PluginBuilder.md) | Fluent dependency configuration builder for declaring required and optional constraints. |
+| [`engine::PluginGraph`](rtype/classengine_1_1PluginGraph.md) | Topological sorter (Kahn's algorithm) managing dependency DAGs and cycle detection. |
+| [`engine::Mediator`](rtype/classengine_1_1Mediator.md) | Decoupled typed service registry supporting abstract interface resolution with `std::expected`. |
+| [`engine::IWindowService`](rtype/classengine_1_1IWindowService.md) | Abstract window lifecycle interface for close state and frame presentation. |
+| [`engine::IRenderService`](rtype/classengine_1_1IRenderService.md) | Abstract 2D rendering service interface for entity collection and camera views. |
+| [`engine::IInputService`](rtype/classengine_1_1IInputService.md) | Abstract input service interface providing action mappings and controller state. |
+| [`engine::IPhysicsService`](rtype/classengine_1_1IPhysicsService.md) | Abstract physics service interface for simulation stepping and rigid body metrics. |
+
+---
+
+### 2. Scripting Subsystem (`scripting` & `systems`)
 
 The scripting module embeds the Wren lightweight VM into the C++23 engine, providing safe, high-performance scripting for gameplay designers without macro dependencies.
 
