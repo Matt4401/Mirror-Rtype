@@ -50,7 +50,7 @@ class InputPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "InputPlugin"; }
 
     /**
-     * @brief Declares plugin dependencies (requires CorePlugin).
+     * @brief Declares plugin dependencies (requires CorePlugin and a window service).
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;

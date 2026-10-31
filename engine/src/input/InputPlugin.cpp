@@ -14,6 +14,7 @@
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "core/services/IInputService.hpp"
+#include "core/services/IWindowService.hpp"
 #include "systems/input/InputSystem.hpp"
 
 namespace input {
@@ -47,7 +48,11 @@ InputPlugin::InputPlugin(ActionMapping mapping, int playerIndex, int gamepadInde
 
 InputPlugin::~InputPlugin() = default;
 
-void InputPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
+void InputPlugin::build(engine::PluginBuilder& builder) {
+    builder.require<engine::CorePlugin>();
+    builder.requireService<engine::IWindowService>();
+    builder.provides<engine::IInputService>();
+}
 
 void InputPlugin::init(engine::Engine& engine) {
     _inputService = std::make_shared<InputServiceImpl>(_inputSystem);

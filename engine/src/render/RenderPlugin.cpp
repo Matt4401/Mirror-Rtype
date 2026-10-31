@@ -98,7 +98,11 @@ RenderPlugin::~RenderPlugin() {
     _window.reset();
 }
 
-void RenderPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
+void RenderPlugin::build(engine::PluginBuilder& builder) {
+    builder.require<engine::CorePlugin>();
+    builder.provides<engine::IWindowService>();
+    builder.provides<engine::IRenderService>();
+}
 
 void RenderPlugin::init(engine::Engine& engine) {
     _window = std::make_unique<Window>(_config);

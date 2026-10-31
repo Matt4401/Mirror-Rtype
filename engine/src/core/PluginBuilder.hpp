@@ -68,6 +68,28 @@ class PluginBuilder {
     PluginBuilder& optionally();
 
     /**
+     * @brief Declares that this plugin provides a service once initialized.
+     *
+     * Plugins requiring this service are initialized after this plugin.
+     *
+     * @tparam Service The service interface provided by this plugin.
+     * @return Reference to this builder for method chaining.
+     */
+    template <typename Service>
+    PluginBuilder& provides();
+
+    /**
+     * @brief Declares a mandatory dependency on a service, whichever plugin provides it.
+     *
+     * If no plugin provides the service at engine initialization, initialization fails.
+     *
+     * @tparam Service The service interface required by this plugin.
+     * @return Reference to this builder for method chaining.
+     */
+    template <typename Service>
+    PluginBuilder& requireService();
+
+    /**
      * @brief Retrieves the list of required plugin dependencies.
      * @return Const reference to required dependencies list.
      */
@@ -79,11 +101,27 @@ class PluginBuilder {
      */
     [[nodiscard]] const std::vector<PluginDependency>& optionalDependencies() const noexcept { return _optional; }
 
+    /**
+     * @brief Retrieves the list of services provided by the plugin.
+     * @return Const reference to provided services list.
+     */
+    [[nodiscard]] const std::vector<PluginDependency>& providedServices() const noexcept { return _providedServices; }
+
+    /**
+     * @brief Retrieves the list of services required by the plugin.
+     * @return Const reference to required services list.
+     */
+    [[nodiscard]] const std::vector<PluginDependency>& requiredServices() const noexcept { return _requiredServices; }
+
   private:
     /** @brief List of mandatory plugin dependencies. */
     std::vector<PluginDependency> _required;
     /** @brief List of optional plugin dependencies. */
     std::vector<PluginDependency> _optional;
+    /** @brief List of services provided by the plugin. */
+    std::vector<PluginDependency> _providedServices;
+    /** @brief List of services required by the plugin. */
+    std::vector<PluginDependency> _requiredServices;
 };
 
 }  // namespace engine

@@ -50,7 +50,55 @@ class OptionalConsumer final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override { builder.optionally<PluginA>(); }
 };
 
+class ITestService {};
+
+class ServiceProvider final : public engine::IPlugin {
+  public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "ServiceProvider"; }
+    void build(engine::PluginBuilder& builder) override { builder.provides<ITestService>(); }
+};
+
+class OtherServiceProvider final : public engine::IPlugin {
+  public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "OtherServiceProvider"; }
+    void build(engine::PluginBuilder& builder) override { builder.provides<ITestService>(); }
+};
+
+class ServiceConsumer final : public engine::IPlugin {
+  public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "ServiceConsumer"; }
+    void build(engine::PluginBuilder& builder) override { builder.requireService<ITestService>(); }
+};
+
 }  // namespace
+
+TEST(PluginGraph, OrdersServiceProviderBeforeConsumer) {
+    engine::PluginGraph graph;
+    graph.addPlugin(std::make_unique<ServiceConsumer>(), std::type_index(typeid(ServiceConsumer)));
+    graph.addPlugin(std::make_unique<ServiceProvider>(), std::type_index(typeid(ServiceProvider)));
+
+    graph.resolve();
+
+    const auto& order = graph.executionOrder();
+    ASSERT_EQ(order.size(), 2U);
+    EXPECT_EQ(order[0]->name(), "ServiceProvider");
+    EXPECT_EQ(order[1]->name(), "ServiceConsumer");
+}
+
+TEST(PluginGraph, ThrowsOnMissingServiceProvider) {
+    engine::PluginGraph graph;
+    graph.addPlugin(std::make_unique<ServiceConsumer>(), std::type_index(typeid(ServiceConsumer)));
+
+    EXPECT_THROW(graph.resolve(), engine::PluginDependencyException);
+}
+
+TEST(PluginGraph, ThrowsOnDuplicateServiceProvider) {
+    engine::PluginGraph graph;
+    graph.addPlugin(std::make_unique<ServiceProvider>(), std::type_index(typeid(ServiceProvider)));
+    graph.addPlugin(std::make_unique<OtherServiceProvider>(), std::type_index(typeid(OtherServiceProvider)));
+
+    EXPECT_THROW(graph.resolve(), engine::PluginDependencyException);
+}
 
 TEST(PluginGraph, ResolvesTopologicalOrder) {
     engine::PluginGraph graph;

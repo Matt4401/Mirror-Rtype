@@ -57,7 +57,10 @@ PhysicsPlugin::~PhysicsPlugin() {
     }
 }
 
-void PhysicsPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
+void PhysicsPlugin::build(engine::PluginBuilder& builder) {
+    builder.require<engine::CorePlugin>();
+    builder.provides<engine::IPhysicsService>();
+}
 
 void PhysicsPlugin::init(engine::Engine& engine) {
     _physicsSystem = std::make_unique<PhysicsSystem>(engine.registry());

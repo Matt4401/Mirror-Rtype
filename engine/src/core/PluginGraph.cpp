@@ -57,6 +57,21 @@ void processOptionalDeps(std::size_t nodeIdx, const std::vector<PluginDependency
     }
 }
 
+void processRequiredServices(std::size_t nodeIdx, std::string_view pluginName,
+                             const std::vector<PluginDependency>& required,
+                             const std::unordered_map<std::type_index, std::size_t>& serviceProviders,
+                             std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree) {
+    for (const auto& dep : required) {
+        auto it = serviceProviders.find(dep.typeId);
+        if (it == serviceProviders.end()) {
+            std::ostringstream oss;
+            oss << "Plugin '" << pluginName << "' requires service '" << dep.name << "' but no plugin provides it";
+            throw PluginDependencyException(oss.str());
+        }
+        addEdge(it->second, nodeIdx, adj, inDegree);
+    }
+}
+
 struct ReadyNode {
     std::size_t index = 0;
     int priority = 0;
@@ -135,11 +150,26 @@ IPlugin& PluginGraph::getPlugin(std::type_index typeId) const {
 
 void PluginGraph::buildAdjacency(std::vector<std::vector<std::size_t>>& adj, std::vector<std::size_t>& inDegree,
                                  const std::unordered_map<std::type_index, std::size_t>& typeToIndex) {
+    std::vector<PluginBuilder> builders(_nodes.size());
+    std::unordered_map<std::type_index, std::size_t> serviceProviders;
     for (std::size_t i = 0; i < _nodes.size(); ++i) {
-        PluginBuilder builder;
-        _nodes[i].plugin->build(builder);
-        processRequiredDeps(i, _nodes[i].plugin->name(), builder.requiredDependencies(), typeToIndex, adj, inDegree);
-        processOptionalDeps(i, builder.optionalDependencies(), typeToIndex, adj, inDegree);
+        _nodes[i].plugin->build(builders[i]);
+        for (const auto& service : builders[i].providedServices()) {
+            const auto [it, inserted] = serviceProviders.try_emplace(service.typeId, i);
+            if (!inserted && it->second != i) {
+                std::ostringstream oss;
+                oss << "Service '" << service.name << "' is provided by both '" << _nodes[it->second].plugin->name()
+                    << "' and '" << _nodes[i].plugin->name() << "'";
+                throw PluginDependencyException(oss.str());
+            }
+        }
+    }
+
+    for (std::size_t i = 0; i < _nodes.size(); ++i) {
+        const std::string_view pluginName = _nodes[i].plugin->name();
+        processRequiredDeps(i, pluginName, builders[i].requiredDependencies(), typeToIndex, adj, inDegree);
+        processOptionalDeps(i, builders[i].optionalDependencies(), typeToIndex, adj, inDegree);
+        processRequiredServices(i, pluginName, builders[i].requiredServices(), serviceProviders, adj, inDegree);
     }
 }
 
