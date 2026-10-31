@@ -69,7 +69,7 @@ All gameplay rules, entity templates, and input bindings for the client demonstr
   ```
 
 - **Initialization (`init`)**:
-  - Populates standard physical bindings (ZQSD / WASD + Space) via `client::input::setupDefaultBindings()` on the `IInputService`.
+  - Populates standard physical bindings (WASD, i.e. ZQSD on AZERTY keyboards, arrow keys + Space) via `client::input::setupDefaultBindings()` on the `IInputService`.
   - Spawns the initial demo scene (`spawnDemoScene`): player ship, static obstacle, dynamic background projectiles, and camera.
 - **Fixed Timestep Tick (`fixedUpdate`)**:
   - Updates ship movement (`movePlayer`).
@@ -83,7 +83,7 @@ All gameplay rules, entity templates, and input bindings for the client demonstr
 ## 4. Input & Rendering Pipelines
 
 1. **Input Pipeline**:
-   - `input::InputPlugin` queries hardware input state (keyboard, gamepad) each frame.
+   - `input::InputPlugin` queries hardware input state (keyboard, gamepad) once per frame in `preUpdate`, before the fixed-timestep ticks.
    - Updates matching `InputState` ECS components on controllable entities.
    - Dispatches transition events (`InputActionEvent`) through the `EventBus`.
 2. **Rendering Pipeline**:

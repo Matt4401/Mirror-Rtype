@@ -13,12 +13,14 @@ xmake test
 Or run individual test suites:
 
 ```bash
-xmake run test_plugins  # Plugins lifecycle, DAG, Mediator
-xmake run test_ecs      # Core ECS Registry & Sparse Sets
-xmake run test_clock    # Fixed-timestep simulation clock
-xmake run test_input    # Action mapping and input normalization
-xmake run test_physics  # Box2D physics simulation
-xmake run test_scripting# Wren scripting integration
+xmake run test_engine        # Engine and plugin lifecycle
+xmake run test_plugin_graph  # Plugin dependency DAG
+xmake run test_mediator      # Mediator service registry
+xmake run test_ecs           # Core ECS Registry & Sparse Sets
+xmake run test_clock         # Fixed-timestep simulation clock
+xmake run test_input         # Action mapping and input normalization
+xmake run test_physics       # Box2D physics simulation
+xmake run test_scripting     # Wren scripting integration
 ```
 
 ## Running the Server
