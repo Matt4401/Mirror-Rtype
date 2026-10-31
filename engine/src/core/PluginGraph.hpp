@@ -53,13 +53,14 @@ class PluginGraph {
     PluginGraph& operator=(PluginGraph&&) noexcept = default;
 
     /**
-     * @brief Adds a plugin instance to the graph.
+     * @brief Adds a plugin instance to the graph with an optional priority level.
      * @param plugin Unique pointer owning the plugin.
      * @param typeId Type index of the plugin.
+     * @param priority Priority weight (higher values execute earlier among independent plugins).
      * @return Reference to the added plugin.
      * @throws PluginDependencyException If a plugin of the same type is already added.
      */
-    IPlugin& addPlugin(std::unique_ptr<IPlugin> plugin, std::type_index typeId);
+    IPlugin& addPlugin(std::unique_ptr<IPlugin> plugin, std::type_index typeId, int priority = 0);
 
     /**
      * @brief Checks if a plugin of the given type has been added.
@@ -122,6 +123,8 @@ class PluginGraph {
         std::vector<std::type_index> requiredDeps;
         /** @brief List of optional dependency type indices. */
         std::vector<std::type_index> optionalDeps;
+        /** @brief Priority weight for breaking ties among independent plugins. */
+        int priority = 0;
     };
 
     /**

@@ -44,7 +44,7 @@ class Clock {
      * @return Number of steps executed.
      */
     template <typename Step>
-    std::size_t tick(float fixedDt, Step&& step);
+    std::size_t tick(float fixedDt, Step step);
 
     /**
      * @brief Advances the simulation by elapsed time, automatically updating the Time resource in the Registry.
@@ -58,7 +58,7 @@ class Clock {
      * @return Number of steps executed.
      */
     template <typename Step>
-    std::size_t tick(float fixedDt, Registry& registry, Step&& step);
+    std::size_t tick(float fixedDt, Registry& registry, Step step);
 
     /**
      * @brief Time data of the latest executed step.
@@ -66,9 +66,34 @@ class Clock {
     [[nodiscard]] const Time& time() const noexcept { return _time; }
 
     /**
+     * @brief Real elapsed time in seconds between the two most recent tick calls.
+     * @return Real frame delta time in seconds.
+     */
+    [[nodiscard]] float lastFrameDelta() const noexcept { return static_cast<float>(_lastElapsed); }
+
+    /**
+     * @brief Current frame timing data with variable real-time deltaTime.
+     * @return Frame Time structure containing real-time deltaTime and current simulation progress.
+     */
+    [[nodiscard]] Time frameTime() const noexcept;
+
+    /**
+     * @brief Current frame timing data with a caller-provided deltaTime.
+     * @param deltaTime Frame delta time in seconds.
+     * @return Frame Time structure containing deltaTime and current simulation progress.
+     */
+    [[nodiscard]] Time frameTime(float deltaTime) const noexcept;
+
+    /**
      * @brief Restarts the clock: clears the accumulator and counters.
      */
     void reset();
+
+    /**
+     * @brief Manually advances the simulation clock by a fixed step duration.
+     * @param fixedDt Duration of the step to advance by in seconds.
+     */
+    void advance(float fixedDt) noexcept;
 
   private:
     /** @brief Queries time source and computes seconds elapsed since last call. */
@@ -85,6 +110,9 @@ class Clock {
 
     /** @brief Accumulated real time awaiting consumption in fixedDt steps. */
     double _accumulator = 0.0;
+
+    /** @brief Real elapsed time in seconds measured during the most recent tick. */
+    double _lastElapsed = 0.0;
 
     /** @brief Total accumulated elapsed simulation time. */
     double _totalElapsed = 0.0;
