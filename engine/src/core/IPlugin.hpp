@@ -62,6 +62,15 @@ class IPlugin {
     virtual void init(Engine& engine) { (void)engine; }
 
     /**
+     * @brief Frame preparation phase, run once per frame before any fixed-timestep tick.
+     *
+     * Intended for sampling external state (such as hardware input) that the frame's simulation steps must observe.
+     *
+     * @param engine Reference to the hosting Engine.
+     */
+    virtual void preUpdate(Engine& engine) { (void)engine; }
+
+    /**
      * @brief Fixed-timestep simulation tick (called per constant fixedDt interval).
      * @param engine Reference to the hosting Engine.
      * @param time Fixed simulation timing information.
