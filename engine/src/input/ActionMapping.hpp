@@ -20,41 +20,47 @@ namespace input {
  * @brief Bindings configured for a single semantic action.
  */
 struct ActionBinding {
-    /** @brief Category of this action (Button or Axis). */
-    ActionType type = ActionType::Button;
-
-    /** @brief Human-readable name of the action. */
-    std::string name;
-
-    /** @brief Array of keyboard key codes triggering this action or positive axis contribution. */
-    std::array<engine::Key, MAX_KEY_BINDINGS> keys = {};
-
     /** @brief Number of active key bindings in the keys array. */
     std::size_t keyCount = 0;
-
-    /** @brief Array of negative keyboard key codes for composite axes. */
-    std::array<engine::Key, MAX_KEY_BINDINGS> negativeKeys = {};
 
     /** @brief Number of active negative key bindings. */
     std::size_t negativeKeyCount = 0;
 
-    /** @brief Array of gamepad button codes bound to this action or positive axis contribution. */
-    std::array<engine::GamepadButton, MAX_PAD_BUTTON_BINDINGS> padButtons = {};
-
     /** @brief Number of active gamepad button bindings. */
     std::size_t padButtonCount = 0;
-
-    /** @brief Array of negative gamepad button codes for composite axes. */
-    std::array<engine::GamepadButton, MAX_PAD_BUTTON_BINDINGS> negativePadButtons = {};
 
     /** @brief Number of active negative gamepad button bindings. */
     std::size_t negativePadButtonCount = 0;
 
-    /** @brief Gamepad analog axis bound to this action (GamepadAxis::None if none). */
-    engine::GamepadAxis padAxis = engine::GamepadAxis::None;
+    /** @brief Number of active mouse button bindings. */
+    std::size_t mouseButtonCount = 0;
+
+    /** @brief Human-readable name of the action. */
+    std::string name;
 
     /** @brief Required direction (-1.0F or +1.0F) or scale multiplier for the axis. */
     float padAxisDirection = 1.0F;
+
+    /** @brief Category of this action (Button or Axis). */
+    ActionType type = ActionType::Button;
+
+    /** @brief Gamepad analog axis bound to this action (GamepadAxis::None if none). */
+    engine::GamepadAxis padAxis = engine::GamepadAxis::None;
+
+    /** @brief Array of gamepad button codes bound to this action or positive axis contribution. */
+    std::array<engine::GamepadButton, MAX_PAD_BUTTON_BINDINGS> padButtons = {};
+
+    /** @brief Array of negative gamepad button codes for composite axes. */
+    std::array<engine::GamepadButton, MAX_PAD_BUTTON_BINDINGS> negativePadButtons = {};
+
+    /** @brief Array of mouse buttons bound to this action. Only Button actions sample them. */
+    std::array<engine::MouseButton, MAX_MOUSE_BUTTON_BINDINGS> mouseButtons = {};
+
+    /** @brief Array of keyboard key codes triggering this action or positive axis contribution. */
+    std::array<engine::Key, MAX_KEY_BINDINGS> keys = {};
+
+    /** @brief Array of negative keyboard key codes for composite axes. */
+    std::array<engine::Key, MAX_KEY_BINDINGS> negativeKeys = {};
 };
 
 /**
@@ -106,6 +112,14 @@ class ActionMapping {
     /** @brief Associates a gamepad button with an action by name. */
     bool bindGamepadButton(std::string_view name, engine::GamepadButton button) {
         return bindGamepadButton(makeActionId(name), button);
+    }
+
+    /** @brief Associates a mouse button with an action. */
+    bool bindMouseButton(ActionId action, engine::MouseButton button);
+
+    /** @brief Associates a mouse button with an action by name. */
+    bool bindMouseButton(std::string_view name, engine::MouseButton button) {
+        return bindMouseButton(makeActionId(name), button);
     }
 
     /** @brief Associates an analog stick axis and scale with an action. */

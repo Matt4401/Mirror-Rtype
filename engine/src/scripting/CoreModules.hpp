@@ -63,7 +63,7 @@ class World {
  * @brief Core Wren script source code for the `core/Input` module.
  *
  * Exposes static query methods for action buttons and continuous axes (`isDown`, `isJustPressed`, `isJustReleased`,
- * `getAxis`).
+ * `getAxis`), and for the mouse (`mouseX`, `mouseY`, `mouseWheel`).
  */
 inline constexpr std::string_view CORE_INPUT_SOURCE = R"wren(
 class Input {
@@ -71,11 +71,17 @@ class Input {
     foreign static isJustPressed(playerIndex, action)
     foreign static isJustReleased(playerIndex, action)
     foreign static getAxis(playerIndex, action)
+    foreign static mouseX(playerIndex)
+    foreign static mouseY(playerIndex)
+    foreign static mouseWheel(playerIndex)
 
     static isDown(action) { isDown(0, action) }
     static isJustPressed(action) { isJustPressed(0, action) }
     static isJustReleased(action) { isJustReleased(0, action) }
     static getAxis(action) { getAxis(0, action) }
+    static mouseX { mouseX(0) }
+    static mouseY { mouseY(0) }
+    static mouseWheel { mouseWheel(0) }
 }
 )wren";
 

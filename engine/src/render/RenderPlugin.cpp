@@ -17,6 +17,7 @@
 #include "core/plugins/CorePlugin.hpp"
 #include "core/services/IRenderService.hpp"
 #include "core/services/IWindowService.hpp"
+#include "core/services/InputCodes.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
@@ -28,6 +29,9 @@ namespace {
 
 /** @brief Raylib has no enumerator for an absent gamepad axis. */
 constexpr int INVALID_GAMEPAD_AXIS = -1;
+
+/** @brief Raylib has no enumerator for an unknown mouse button. */
+constexpr int INVALID_MOUSE_BUTTON = -1;
 
 }  // namespace
 
@@ -293,6 +297,28 @@ namespace {
     return GAMEPAD_BUTTON_UNKNOWN;
 }
 
+[[nodiscard]] int toRaylib(engine::MouseButton button) noexcept {
+    switch (button) {
+        case engine::MouseButton::Unknown:
+            return INVALID_MOUSE_BUTTON;
+        case engine::MouseButton::Left:
+            return MOUSE_BUTTON_LEFT;
+        case engine::MouseButton::Right:
+            return MOUSE_BUTTON_RIGHT;
+        case engine::MouseButton::Middle:
+            return MOUSE_BUTTON_MIDDLE;
+        case engine::MouseButton::Side:
+            return MOUSE_BUTTON_SIDE;
+        case engine::MouseButton::Extra:
+            return MOUSE_BUTTON_EXTRA;
+        case engine::MouseButton::Forward:
+            return MOUSE_BUTTON_FORWARD;
+        case engine::MouseButton::Back:
+            return MOUSE_BUTTON_BACK;
+    }
+    return INVALID_MOUSE_BUTTON;
+}
+
 [[nodiscard]] int toRaylib(engine::GamepadAxis axis) noexcept {
     switch (axis) {
         case engine::GamepadAxis::None:
@@ -352,6 +378,18 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
         const int code = toRaylib(axis);
         return code != INVALID_GAMEPAD_AXIS ? GetGamepadAxisMovement(gamepad, code) : 0.0F;
     }
+
+    [[nodiscard]] bool isMouseButtonDown(engine::MouseButton button) const noexcept override {
+        const int code = toRaylib(button);
+        return code != INVALID_MOUSE_BUTTON && IsMouseButtonDown(code);
+    }
+
+    [[nodiscard]] engine::MousePosition mousePosition() const noexcept override {
+        const Vector2 position = GetMousePosition();
+        return engine::MousePosition{.x = position.x, .y = position.y};
+    }
+
+    [[nodiscard]] float mouseWheelDelta() const noexcept override { return GetMouseWheelMove(); }
 
   private:
     /** @brief Stored window configuration. */

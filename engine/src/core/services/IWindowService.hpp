@@ -92,6 +92,25 @@ class IWindowService {
      * @return Axis position.
      */
     [[nodiscard]] virtual float gamepadAxis(int gamepad, GamepadAxis axis) const noexcept = 0;
+
+    /**
+     * @brief Queries whether a mouse button is held down.
+     * @param button Mouse button.
+     * @return True if the button is held down.
+     */
+    [[nodiscard]] virtual bool isMouseButtonDown(MouseButton button) const noexcept = 0;
+
+    /**
+     * @brief Samples the mouse cursor position.
+     * @return Cursor position in window pixels.
+     */
+    [[nodiscard]] virtual MousePosition mousePosition() const noexcept = 0;
+
+    /**
+     * @brief Samples the mouse wheel movement of the current frame.
+     * @return Wheel movement, positive when scrolling up.
+     */
+    [[nodiscard]] virtual float mouseWheelDelta() const noexcept = 0;
 };
 
 }  // namespace engine

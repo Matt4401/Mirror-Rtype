@@ -3,6 +3,7 @@
 #include <utility>
 
 #include "core/services/IWindowService.hpp"
+#include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
@@ -26,6 +27,9 @@ void InputSystem::update(const engine::IWindowService& window, ecs::Registry& re
 
 void InputSystem::updateState(const engine::IWindowService& window, input::InputState& state, ecs::EventBus* eventBus) {
     state.resetFrameTransitions();
+
+    const engine::MousePosition mousePosition = window.mousePosition();
+    state.mouse = input::MouseState{.x = mousePosition.x, .y = mousePosition.y, .wheel = window.mouseWheelDelta()};
 
     for (const auto& [actionId, binding] : _mapping.bindings()) {
         if (binding.type == input::ActionType::Button) {

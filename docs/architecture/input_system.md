@@ -18,6 +18,7 @@ flowchart TD
     subgraph Hardware["Physical Hardware Devices"]
         KB["Keyboard (AZERTY, QWERTY, Arrow keys)"]
         GP["Gamepads (Buttons, Analog Thumbsticks)"]
+        MS["Mouse (Buttons, Cursor, Wheel)"]
     end
 
     subgraph ClientLayer["Game Layer (client/)"]
@@ -37,6 +38,7 @@ flowchart TD
 
     KB --> AM
     GP --> AM
+    MS --> AM
     Bindings --> AM
     AM --> IS
     IS --> State
@@ -165,6 +167,12 @@ To uphold Data-Oriented Design (DOD) principles and C++20 designated initializer
   ```
 
 - It provides `const noexcept` inline query methods (`isDown`, `getAxis`, `getVector2`) for ergonomic consumption by gameplay systems.
+
+### Mouse
+
+- Mouse buttons bind to Button actions like keys: `mapping.bindMouseButton("shoot", engine::MouseButton::Left);`. They do not contribute to Axis actions.
+- `InputSystem` also copies the cursor position (window pixels) and the frame's wheel movement into `InputState::mouse`.
+- Scripts read them with `Input.mouseX`, `Input.mouseY` and `Input.mouseWheel`, or `Input.mouseX(playerIndex)` and the like.
 
 ### Local Multiplayer Support (Couch Co-op / Multiple Gamepads)
 

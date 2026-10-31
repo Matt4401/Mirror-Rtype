@@ -34,6 +34,11 @@ class FakeWindow final : public engine::IWindowService {
         _tiltedAxis = axis;
         _axisValue = value;
     }
+    void holdMouseButton(engine::MouseButton button) { _heldMouseButton = button; }
+    void moveMouse(engine::MousePosition position, float wheel) {
+        _mousePosition = position;
+        _mouseWheel = wheel;
+    }
     [[nodiscard]] bool shouldClose() const noexcept override { return false; }
     void beginFrame() override {}
     void endFrame() override {}
@@ -47,12 +52,20 @@ class FakeWindow final : public engine::IWindowService {
     [[nodiscard]] float gamepadAxis(int /*gamepad*/, engine::GamepadAxis axis) const noexcept override {
         return axis == _tiltedAxis ? _axisValue : 0.0F;
     }
+    [[nodiscard]] bool isMouseButtonDown(engine::MouseButton button) const noexcept override {
+        return button == _heldMouseButton;
+    }
+    [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return _mousePosition; }
+    [[nodiscard]] float mouseWheelDelta() const noexcept override { return _mouseWheel; }
 
   private:
     engine::Key _heldKey;
     engine::GamepadButton _heldButton = engine::GamepadButton::Unknown;
     engine::GamepadAxis _tiltedAxis = engine::GamepadAxis::None;
     float _axisValue = 0.0F;
+    engine::MouseButton _heldMouseButton = engine::MouseButton::Unknown;
+    engine::MousePosition _mousePosition;
+    float _mouseWheel = 0.0F;
 };
 
 class FakeWindowPlugin final : public engine::IPlugin {
@@ -362,6 +375,42 @@ TEST(ActionMapping, SamplesGamepadThroughWindowService) {
     window.tiltAxis(engine::GamepadAxis::LeftX, 0.5F);
     EXPECT_TRUE(mapping.isActionDown(window, "shoot"));
     EXPECT_FLOAT_EQ(mapping.getAxis(window, "move_x"), 0.5F);
+}
+
+TEST(ActionMapping, SamplesMouseButtonsThroughWindowService) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+    EXPECT_FALSE(mapping.bindMouseButton("shoot", engine::MouseButton::Unknown));
+    EXPECT_TRUE(mapping.bindMouseButton("shoot", engine::MouseButton::Left));
+    EXPECT_FALSE(mapping.bindMouseButton("shoot", engine::MouseButton::Left));
+    EXPECT_TRUE(mapping.bindMouseButton("shoot", engine::MouseButton::Right));
+    EXPECT_FALSE(mapping.bindMouseButton("shoot", engine::MouseButton::Middle));
+
+    FakeWindow window;
+    EXPECT_FALSE(mapping.isActionDown(window, "shoot"));
+
+    window.holdMouseButton(engine::MouseButton::Right);
+    EXPECT_TRUE(mapping.isActionDown(window, "shoot"));
+}
+
+TEST(InputSystem, UpdatesMouseStateOfMatchingPlayerOnly) {
+    ecs::Registry registry;
+    systems::InputSystem system(input::ActionMapping{}, 0, 0);
+
+    const ecs::Entity player0 = registry.spawnEntity();
+    registry.addComponent<input::InputState>(player0, input::InputState{.playerIndex = 0, .actions = {}});
+    const ecs::Entity player1 = registry.spawnEntity();
+    registry.addComponent<input::InputState>(player1, input::InputState{.playerIndex = 1, .actions = {}});
+
+    FakeWindow window;
+    window.moveMouse(engine::MousePosition{.x = 12.0F, .y = 34.0F}, 2.0F);
+    system.update(window, registry);
+
+    const auto& mouse = registry.getComponents<input::InputState>().get(player0).mouse;
+    EXPECT_FLOAT_EQ(mouse.x, 12.0F);
+    EXPECT_FLOAT_EQ(mouse.y, 34.0F);
+    EXPECT_FLOAT_EQ(mouse.wheel, 2.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<input::InputState>().get(player1).mouse.x, 0.0F);
 }
 
 int main(int argc, char** argv) {

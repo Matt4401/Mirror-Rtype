@@ -67,18 +67,20 @@ ActionId ActionMapping::registerAction(std::string_view name, ActionType type) {
     auto it = _bindings.find(id);
     if (it == _bindings.end()) {
         _bindings[id] = ActionBinding{
-            .type = type,
-            .name = std::string(name),
-            .keys = {},
             .keyCount = 0,
-            .negativeKeys = {},
             .negativeKeyCount = 0,
-            .padButtons = {},
             .padButtonCount = 0,
-            .negativePadButtons = {},
             .negativePadButtonCount = 0,
-            .padAxis = engine::GamepadAxis::None,
+            .mouseButtonCount = 0,
+            .name = std::string(name),
             .padAxisDirection = 1.0F,
+            .type = type,
+            .padAxis = engine::GamepadAxis::None,
+            .padButtons = {},
+            .negativePadButtons = {},
+            .mouseButtons = {},
+            .keys = {},
+            .negativeKeys = {},
         };
     } else {
         it->second.type = type;
@@ -189,6 +191,23 @@ bool ActionMapping::bindGamepadButton(ActionId action, engine::GamepadButton but
     return true;
 }
 
+bool ActionMapping::bindMouseButton(ActionId action, engine::MouseButton button) {
+    if (button == engine::MouseButton::Unknown) {
+        return false;
+    }
+    ActionBinding& binding = getOrCreateBinding(action);
+    for (std::size_t i = 0; i < binding.mouseButtonCount; ++i) {
+        if (binding.mouseButtons.at(i) == button) {
+            return false;
+        }
+    }
+    if (binding.mouseButtonCount >= MAX_MOUSE_BUTTON_BINDINGS) {
+        return false;
+    }
+    binding.mouseButtons.at(binding.mouseButtonCount++) = button;
+    return true;
+}
+
 void ActionMapping::bindGamepadAxis(ActionId action, engine::GamepadAxis axis, float scale) {
     ActionBinding& binding = getOrCreateBinding(action);
     binding.padAxis = axis;
@@ -213,6 +232,11 @@ bool ActionMapping::isActionDown(const engine::IWindowService& window, ActionId 
     }
     for (std::size_t i = 0; i < binding->keyCount; ++i) {
         if (window.isKeyDown(binding->keys.at(i))) {
+            return true;
+        }
+    }
+    for (std::size_t i = 0; i < binding->mouseButtonCount; ++i) {
+        if (window.isMouseButtonDown(binding->mouseButtons.at(i))) {
             return true;
         }
     }

@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 namespace engine {
 
 /**
@@ -12,7 +14,7 @@ namespace engine {
  *
  * Key::W is therefore the key labeled `Z` on an AZERTY keyboard.
  */
-enum class Key {
+enum class Key : std::uint8_t {
     Unknown = 0,
     Apostrophe,
     Comma,
@@ -124,7 +126,7 @@ enum class Key {
 /**
  * @brief Gamepad button, identified by its physical position on the controller.
  */
-enum class GamepadButton {
+enum class GamepadButton : std::uint8_t {
     Unknown = 0,
     LeftFaceUp,
     LeftFaceRight,
@@ -148,7 +150,7 @@ enum class GamepadButton {
 /**
  * @brief Gamepad analog axis.
  */
-enum class GamepadAxis {
+enum class GamepadAxis : std::uint8_t {
     None = 0,
     LeftX,
     LeftY,
@@ -156,6 +158,30 @@ enum class GamepadAxis {
     RightY,
     LeftTrigger,
     RightTrigger,
+};
+
+/**
+ * @brief Mouse button.
+ */
+enum class MouseButton : std::uint8_t {
+    Unknown = 0,
+    Left,
+    Right,
+    Middle,
+    Side,
+    Extra,
+    Forward,
+    Back,
+};
+
+/**
+ * @brief Mouse cursor position in window pixels, from the top-left corner.
+ */
+struct MousePosition {
+    /** @brief Horizontal position in pixels. */
+    float x = 0.0F;
+    /** @brief Vertical position in pixels. */
+    float y = 0.0F;
 };
 
 }  // namespace engine
