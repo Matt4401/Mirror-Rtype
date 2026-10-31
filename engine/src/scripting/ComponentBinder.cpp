@@ -13,6 +13,7 @@
 #include "ecs/Entity.hpp"
 #include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
+#include "scripting/detail/WrenApi.hpp"
 
 namespace scripting {
 

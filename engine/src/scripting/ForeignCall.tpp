@@ -53,6 +53,10 @@ std::optional<T> ForeignCall::arg(int slot) const noexcept {
             abort("Number argument is NaN or infinite");
             return std::nullopt;
         }
+        if (std::abs(val) > static_cast<double>(std::numeric_limits<DecayedT>::max())) {
+            abort("Number argument out of floating-point bounds");
+            return std::nullopt;
+        }
         return static_cast<T>(val);
     } else if constexpr (std::is_integral_v<DecayedT>) {
         if (wrenGetSlotType(_vm, slot) != WREN_TYPE_NUM) {
@@ -64,8 +68,13 @@ std::optional<T> ForeignCall::arg(int slot) const noexcept {
             abort("Number argument is NaN or infinite");
             return std::nullopt;
         }
+        if (std::trunc(val) != val) {
+            abort("Expected argument to be an integer");
+            return std::nullopt;
+        }
+        // The upper limit is exclusive: max() may round up to 2^digits once converted to double.
         if (val < static_cast<double>(std::numeric_limits<DecayedT>::lowest()) ||
-            val > static_cast<double>(std::numeric_limits<DecayedT>::max())) {
+            val >= std::ldexp(1.0, std::numeric_limits<DecayedT>::digits)) {
             abort("Number argument out of integer bounds");
             return std::nullopt;
         }

@@ -8,7 +8,7 @@
 #include <vector>
 
 #include "scripting/WrenVM.hpp"
-#include "scripting/detail/WrenApi.hpp"  // IWYU pragma: keep
+#include "scripting/detail/WrenApi.hpp"
 
 namespace scripting {
 
