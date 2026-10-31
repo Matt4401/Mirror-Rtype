@@ -60,10 +60,10 @@ This violated engine modularity:
 
 - **The Engine** provides a generic dynamic toolkit: `ActionId`, `ActionMapping`, `InputState`, `InputSystem`.
 - **The Client** defines its own semantic actions in [`client/src/input/RTypeBindings.cpp`](../../client/src/input/RTypeBindings.cpp):
-  - `"move_x"` (1D composite axis: `KEY_A`/`KEY_D`, `KEY_LEFT`/`KEY_RIGHT`, left stick X).
-  - `"move_y"` (1D composite axis: `KEY_W`/`KEY_S`, `KEY_UP`/`KEY_DOWN`, left stick Y).
-  - `"shoot"` (Digital button: `KEY_SPACE`, `KEY_ENTER`, gamepad button A).
-  - `"charge_weapon"` (Digital button: `KEY_LEFT_SHIFT`, right trigger).
+  - `"move_x"` (1D composite axis: `Key::A`/`Key::D`, `Key::Left`/`Key::Right`, left stick X).
+  - `"move_y"` (1D composite axis: `Key::W`/`Key::S`, `Key::Up`/`Key::Down`, left stick Y).
+  - `"shoot"` (Digital button: `Key::Space`, `Key::Enter`, gamepad button A).
+  - `"charge_weapon"` (Digital button: `Key::LeftShift`, right trigger).
 
 ---
 
@@ -251,19 +251,19 @@ The C++ glue in [`ScriptSystemBindings.cpp`](../../engine/src/systems/script/Scr
 
 Binding both QWERTY (`WASD`) and AZERTY (`ZQSD`) keys simultaneously to the same movement axes causes conflicting behavior:
 
-- In GLFW (Raylib's desktop backend), key tokens represent **physical spatial scancodes on a standard keyboard**, not local character letters.
-- On an AZERTY layout, the physical `W` key (bottom row) generates `KEY_Z`, while the physical `Z` key (top row) generates `KEY_W`.
-- If both `KEY_W` and `KEY_Z` are bound to Move Up, pressing the physical key labeled `W` on AZERTY causes the ship to move forward!
-- Similarly, the physical key labeled `A` on AZERTY generates `KEY_Q`. If `KEY_Q` is bound to Move Left, hitting `A` triggers unwanted horizontal displacement.
+- `engine::Key` values (`core/services/InputCodes.hpp`) represent **physical positions on a US-layout keyboard**, not local character letters. `RenderPlugin` translates them to its backend (Raylib, whose GLFW desktop backend uses the same convention); the rest of the input stack never sees backend codes.
+- On an AZERTY layout, the physical `W` key (bottom row) is `Key::Z`, while the physical `Z` key (top row) is `Key::W`.
+- If both `Key::W` and `Key::Z` are bound to Move Up, pressing the physical key labeled `W` on AZERTY causes the ship to move forward!
+- Similarly, the physical key labeled `A` on AZERTY is `Key::Q`. If `Key::Q` is bound to Move Left, hitting `A` triggers unwanted horizontal displacement.
 
 ### Unified Spatial Key Bindings
 
-Because `KEY_W`, `KEY_A`, `KEY_S`, `KEY_D` represent the physical inverted-T cluster in Raylib/GLFW:
+Because `Key::W`, `Key::A`, `Key::S`, `Key::D` represent the physical inverted-T cluster:
 
 - On an AZERTY keyboard, they correspond directly to the keys labeled **`Z`**, **`Q`**, **`S`**, **`D`**.
 - On a QWERTY keyboard, they correspond directly to the keys labeled **`W`**, **`A`**, **`S`**, **`D`**.
 
-By solely binding the spatial cluster keys in [`RTypeBindings.cpp`](../../client/src/input/RTypeBindings.cpp) and omitting `KEY_Z` and `KEY_Q`, both keyboard layouts are cleanly supported by a single, unified `setupDefaultBindings()` function without duplicate binding profiles or phantom inputs.
+By solely binding the spatial cluster keys in [`RTypeBindings.cpp`](../../client/src/input/RTypeBindings.cpp) and omitting `Key::Z` and `Key::Q`, both keyboard layouts are cleanly supported by a single, unified `setupDefaultBindings()` function without duplicate binding profiles or phantom inputs.
 
 ### Purpose of Engine `KeyboardLayout` Detection
 

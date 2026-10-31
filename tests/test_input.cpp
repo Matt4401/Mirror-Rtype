@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include <raylib.h>
 
 #include <cmath>
 #include <memory>
@@ -11,6 +10,7 @@
 #include "core/PluginBuilder.hpp"
 #include "core/PluginGraph.hpp"
 #include "core/services/IWindowService.hpp"
+#include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
@@ -28,24 +28,36 @@ namespace {
 
 class FakeWindow final : public engine::IWindowService {
   public:
-    explicit FakeWindow(int heldKey = 0) : _heldKey(heldKey) {}
+    explicit FakeWindow(engine::Key heldKey = engine::Key::Unknown) : _heldKey(heldKey) {}
+    void holdButton(engine::GamepadButton button) { _heldButton = button; }
+    void tiltAxis(engine::GamepadAxis axis, float value) {
+        _tiltedAxis = axis;
+        _axisValue = value;
+    }
     [[nodiscard]] bool shouldClose() const noexcept override { return false; }
     void beginFrame() override {}
     void endFrame() override {}
     [[nodiscard]] int width() const noexcept override { return 0; }
     [[nodiscard]] int height() const noexcept override { return 0; }
-    [[nodiscard]] bool isKeyDown(int key) const noexcept override { return key == _heldKey; }
-    [[nodiscard]] bool isGamepadAvailable(int /*gamepad*/) const noexcept override { return false; }
-    [[nodiscard]] bool isGamepadButtonDown(int /*gamepad*/, int /*button*/) const noexcept override { return false; }
-    [[nodiscard]] float gamepadAxis(int /*gamepad*/, int /*axis*/) const noexcept override { return 0.0F; }
+    [[nodiscard]] bool isKeyDown(engine::Key key) const noexcept override { return key == _heldKey; }
+    [[nodiscard]] bool isGamepadAvailable(int /*gamepad*/) const noexcept override { return true; }
+    [[nodiscard]] bool isGamepadButtonDown(int /*gamepad*/, engine::GamepadButton button) const noexcept override {
+        return button == _heldButton;
+    }
+    [[nodiscard]] float gamepadAxis(int /*gamepad*/, engine::GamepadAxis axis) const noexcept override {
+        return axis == _tiltedAxis ? _axisValue : 0.0F;
+    }
 
   private:
-    int _heldKey;
+    engine::Key _heldKey;
+    engine::GamepadButton _heldButton = engine::GamepadButton::Unknown;
+    engine::GamepadAxis _tiltedAxis = engine::GamepadAxis::None;
+    float _axisValue = 0.0F;
 };
 
 class FakeWindowPlugin final : public engine::IPlugin {
   public:
-    explicit FakeWindowPlugin(int heldKey) : _heldKey(heldKey) {}
+    explicit FakeWindowPlugin(engine::Key heldKey) : _heldKey(heldKey) {}
     [[nodiscard]] std::string_view name() const noexcept override { return "FakeWindowPlugin"; }
     void build(engine::PluginBuilder& builder) override { builder.provides<engine::IWindowService>(); }
     void init(engine::Engine& engine) override {
@@ -53,7 +65,7 @@ class FakeWindowPlugin final : public engine::IPlugin {
     }
 
   private:
-    int _heldKey;
+    engine::Key _heldKey;
 };
 
 }  // namespace
@@ -69,9 +81,9 @@ TEST(ActionId, Fnv1aHashConsistency) {
 TEST(ActionMapping, DefaultConstructorIsEmpty) {
     const input::ActionMapping mapping;
 
-    EXPECT_FALSE(mapping.hasKey("move_up", KEY_W));
-    EXPECT_FALSE(mapping.hasKey("move_up", KEY_Z));
-    EXPECT_FALSE(mapping.hasKey("shoot", KEY_SPACE));
+    EXPECT_FALSE(mapping.hasKey("move_up", engine::Key::W));
+    EXPECT_FALSE(mapping.hasKey("move_up", engine::Key::Z));
+    EXPECT_FALSE(mapping.hasKey("shoot", engine::Key::Space));
     EXPECT_FLOAT_EQ(mapping.deadzone(), 0.2F);
 }
 
@@ -79,21 +91,21 @@ TEST(ActionMapping, RuntimeBindingAndRemapping) {
     input::ActionMapping mapping;
 
     mapping.registerAction("shoot", input::ActionType::Button);
-    EXPECT_TRUE(mapping.bindKey("shoot", KEY_E));
-    EXPECT_TRUE(mapping.hasKey("shoot", KEY_E));
+    EXPECT_TRUE(mapping.bindKey("shoot", engine::Key::E));
+    EXPECT_TRUE(mapping.hasKey("shoot", engine::Key::E));
 
-    EXPECT_TRUE(mapping.unbindKey("shoot", KEY_E));
-    EXPECT_FALSE(mapping.hasKey("shoot", KEY_E));
+    EXPECT_TRUE(mapping.unbindKey("shoot", engine::Key::E));
+    EXPECT_FALSE(mapping.hasKey("shoot", engine::Key::E));
 
     mapping.registerAction("move_up", input::ActionType::Button);
-    EXPECT_TRUE(mapping.bindKey("move_up", KEY_W));
-    EXPECT_TRUE(mapping.bindKey("move_up", KEY_Z));
-    EXPECT_TRUE(mapping.hasKey("move_up", KEY_W));
-    EXPECT_TRUE(mapping.hasKey("move_up", KEY_Z));
+    EXPECT_TRUE(mapping.bindKey("move_up", engine::Key::W));
+    EXPECT_TRUE(mapping.bindKey("move_up", engine::Key::Z));
+    EXPECT_TRUE(mapping.hasKey("move_up", engine::Key::W));
+    EXPECT_TRUE(mapping.hasKey("move_up", engine::Key::Z));
 
     mapping.clearKeyBindings("move_up");
-    EXPECT_FALSE(mapping.hasKey("move_up", KEY_W));
-    EXPECT_FALSE(mapping.hasKey("move_up", KEY_Z));
+    EXPECT_FALSE(mapping.hasKey("move_up", engine::Key::W));
+    EXPECT_FALSE(mapping.hasKey("move_up", engine::Key::Z));
 
     mapping.setDeadzone(0.35F);
     EXPECT_FLOAT_EQ(mapping.deadzone(), 0.35F);
@@ -105,13 +117,13 @@ TEST(ActionMapping, RuntimeBindingAndRemapping) {
 TEST(ActionMapping, CompositeAxisConfiguration) {
     input::ActionMapping mapping;
     mapping.registerAction("move_x", input::ActionType::Axis);
-    mapping.bindAxisComposite("move_x", KEY_A, KEY_D);
+    mapping.bindAxisComposite("move_x", engine::Key::A, engine::Key::D);
 
     const auto* binding = mapping.getBinding(input::makeActionId("move_x"));
     ASSERT_NE(binding, nullptr);
     EXPECT_EQ(binding->type, input::ActionType::Axis);
-    EXPECT_EQ(binding->negativeKeys.at(0), KEY_A);
-    EXPECT_EQ(binding->keys.at(0), KEY_D);
+    EXPECT_EQ(binding->negativeKeys.at(0), engine::Key::A);
+    EXPECT_EQ(binding->keys.at(0), engine::Key::D);
 }
 
 TEST(InputState, DynamicActionsAndAxes) {
@@ -270,35 +282,35 @@ TEST(RTypeBindings, SetupDefaultBindings) {
     input::ActionMapping mapping;
     client::input::setupDefaultBindings(mapping);
 
-    // Spatial cluster keys: KEY_A (physical Left) and KEY_W (physical Up)
-    EXPECT_TRUE(mapping.hasKey("move_x", KEY_A));
-    EXPECT_TRUE(mapping.hasKey("move_x", KEY_D));
-    EXPECT_TRUE(mapping.hasKey("move_x", KEY_LEFT));
-    EXPECT_TRUE(mapping.hasKey("move_x", KEY_RIGHT));
-    // Physical 'A' on AZERTY (KEY_Q) and physical 'W' on AZERTY (KEY_Z) must NOT move the ship
-    EXPECT_FALSE(mapping.hasKey("move_x", KEY_Q));
+    // Spatial cluster keys: Key::A (physical Left) and Key::W (physical Up)
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::A));
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::D));
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::Left));
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::Right));
+    // Physical 'A' on AZERTY (Key::Q) and physical 'W' on AZERTY (Key::Z) must NOT move the ship
+    EXPECT_FALSE(mapping.hasKey("move_x", engine::Key::Q));
 
-    EXPECT_TRUE(mapping.hasKey("move_y", KEY_W));
-    EXPECT_TRUE(mapping.hasKey("move_y", KEY_S));
-    EXPECT_TRUE(mapping.hasKey("move_y", KEY_UP));
-    EXPECT_TRUE(mapping.hasKey("move_y", KEY_DOWN));
-    EXPECT_FALSE(mapping.hasKey("move_y", KEY_Z));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::W));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::S));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::Up));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::Down));
+    EXPECT_FALSE(mapping.hasKey("move_y", engine::Key::Z));
 
-    EXPECT_TRUE(mapping.hasKey("shoot", KEY_SPACE));
-    EXPECT_TRUE(mapping.hasKey("charge_weapon", KEY_LEFT_SHIFT));
+    EXPECT_TRUE(mapping.hasKey("shoot", engine::Key::Space));
+    EXPECT_TRUE(mapping.hasKey("charge_weapon", engine::Key::LeftShift));
 }
 
 TEST(ActionMapping, SamplesKeysThroughWindowService) {
     input::ActionMapping mapping;
     mapping.registerAction("shoot", input::ActionType::Button);
-    mapping.bindKey("shoot", KEY_SPACE);
+    mapping.bindKey("shoot", engine::Key::Space);
     mapping.registerAction("move_x", input::ActionType::Axis);
-    mapping.bindAxisComposite("move_x", KEY_A, KEY_D);
+    mapping.bindAxisComposite("move_x", engine::Key::A, engine::Key::D);
 
-    const FakeWindow holdingSpace(KEY_SPACE);
+    const FakeWindow holdingSpace(engine::Key::Space);
     EXPECT_TRUE(mapping.isActionDown(holdingSpace, "shoot"));
 
-    const FakeWindow holdingA(KEY_A);
+    const FakeWindow holdingA(engine::Key::A);
     EXPECT_FALSE(mapping.isActionDown(holdingA, "shoot"));
     EXPECT_FLOAT_EQ(mapping.getAxis(holdingA, "move_x"), -1.0F);
 }
@@ -313,11 +325,11 @@ TEST(InputPlugin, RequiresAWindowServiceProvider) {
 TEST(InputPlugin, PollsAnyWindowServiceProvider) {
     input::ActionMapping mapping;
     mapping.registerAction("shoot", input::ActionType::Button);
-    mapping.bindKey("shoot", KEY_SPACE);
+    mapping.bindKey("shoot", engine::Key::Space);
 
     engine::Engine engine;
     engine.addPlugin<input::InputPlugin>(mapping);
-    engine.addPlugin<FakeWindowPlugin>(KEY_SPACE);
+    engine.addPlugin<FakeWindowPlugin>(engine::Key::Space);
 
     const ecs::Entity player = engine.registry().spawnEntity();
     engine.registry().addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
@@ -325,6 +337,31 @@ TEST(InputPlugin, PollsAnyWindowServiceProvider) {
     engine.step(0.016F);
 
     EXPECT_TRUE(engine.registry().getComponents<input::InputState>().get(player).isDown("shoot"));
+}
+
+TEST(ActionMapping, RejectsUnknownInputCodes) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+
+    EXPECT_FALSE(mapping.bindKey("shoot", engine::Key::Unknown));
+    EXPECT_FALSE(mapping.bindGamepadButton("shoot", engine::GamepadButton::Unknown));
+}
+
+TEST(ActionMapping, SamplesGamepadThroughWindowService) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+    mapping.bindGamepadButton("shoot", engine::GamepadButton::RightFaceDown);
+    mapping.registerAction("move_x", input::ActionType::Axis);
+    mapping.bindGamepadAxis("move_x", engine::GamepadAxis::LeftX, 1.0F);
+
+    FakeWindow window;
+    EXPECT_FALSE(mapping.isActionDown(window, "shoot"));
+    EXPECT_FLOAT_EQ(mapping.getAxis(window, "move_x"), 0.0F);
+
+    window.holdButton(engine::GamepadButton::RightFaceDown);
+    window.tiltAxis(engine::GamepadAxis::LeftX, 0.5F);
+    EXPECT_TRUE(mapping.isActionDown(window, "shoot"));
+    EXPECT_FLOAT_EQ(mapping.getAxis(window, "move_x"), 0.5F);
 }
 
 int main(int argc, char** argv) {

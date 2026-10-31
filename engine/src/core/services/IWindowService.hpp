@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "core/services/InputCodes.hpp"
+
 namespace engine {
 
 /**
@@ -63,10 +65,10 @@ class IWindowService {
 
     /**
      * @brief Queries whether a keyboard key is held down.
-     * @param key Backend key code.
+     * @param key Physical key.
      * @return True if the key is held down.
      */
-    [[nodiscard]] virtual bool isKeyDown(int key) const noexcept = 0;
+    [[nodiscard]] virtual bool isKeyDown(Key key) const noexcept = 0;
 
     /**
      * @brief Queries whether a gamepad is connected.
@@ -78,18 +80,18 @@ class IWindowService {
     /**
      * @brief Queries whether a gamepad button is held down.
      * @param gamepad Hardware gamepad index.
-     * @param button Backend button code.
+     * @param button Gamepad button.
      * @return True if the button is held down.
      */
-    [[nodiscard]] virtual bool isGamepadButtonDown(int gamepad, int button) const noexcept = 0;
+    [[nodiscard]] virtual bool isGamepadButtonDown(int gamepad, GamepadButton button) const noexcept = 0;
 
     /**
      * @brief Samples a gamepad axis.
      * @param gamepad Hardware gamepad index.
-     * @param axis Backend axis code.
+     * @param axis Gamepad axis.
      * @return Axis position.
      */
-    [[nodiscard]] virtual float gamepadAxis(int gamepad, int axis) const noexcept = 0;
+    [[nodiscard]] virtual float gamepadAxis(int gamepad, GamepadAxis axis) const noexcept = 0;
 };
 
 }  // namespace engine

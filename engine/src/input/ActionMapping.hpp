@@ -6,6 +6,7 @@
 #include <string_view>
 #include <unordered_map>
 
+#include "core/services/InputCodes.hpp"
 #include "input/ActionId.hpp"
 #include "input/InputConstants.hpp"
 
@@ -26,31 +27,31 @@ struct ActionBinding {
     std::string name;
 
     /** @brief Array of keyboard key codes triggering this action or positive axis contribution. */
-    std::array<int, MAX_KEY_BINDINGS> keys = {0, 0, 0, 0};
+    std::array<engine::Key, MAX_KEY_BINDINGS> keys = {};
 
     /** @brief Number of active key bindings in the keys array. */
     std::size_t keyCount = 0;
 
     /** @brief Array of negative keyboard key codes for composite axes. */
-    std::array<int, MAX_KEY_BINDINGS> negativeKeys = {0, 0, 0, 0};
+    std::array<engine::Key, MAX_KEY_BINDINGS> negativeKeys = {};
 
     /** @brief Number of active negative key bindings. */
     std::size_t negativeKeyCount = 0;
 
     /** @brief Array of gamepad button codes bound to this action or positive axis contribution. */
-    std::array<int, MAX_PAD_BUTTON_BINDINGS> padButtons = {-1, -1};
+    std::array<engine::GamepadButton, MAX_PAD_BUTTON_BINDINGS> padButtons = {};
 
     /** @brief Number of active gamepad button bindings. */
     std::size_t padButtonCount = 0;
 
     /** @brief Array of negative gamepad button codes for composite axes. */
-    std::array<int, MAX_PAD_BUTTON_BINDINGS> negativePadButtons = {-1, -1};
+    std::array<engine::GamepadButton, MAX_PAD_BUTTON_BINDINGS> negativePadButtons = {};
 
     /** @brief Number of active negative gamepad button bindings. */
     std::size_t negativePadButtonCount = 0;
 
-    /** @brief Gamepad analog axis index bound to this action (-1 if none). */
-    int padAxis = -1;
+    /** @brief Gamepad analog axis bound to this action (GamepadAxis::None if none). */
+    engine::GamepadAxis padAxis = engine::GamepadAxis::None;
 
     /** @brief Required direction (-1.0F or +1.0F) or scale multiplier for the axis. */
     float padAxisDirection = 1.0F;
@@ -76,16 +77,16 @@ class ActionMapping {
     ActionId registerAction(std::string_view name, ActionType type = ActionType::Button);
 
     /** @brief Associates a keyboard keycode with an action. */
-    bool bindKey(ActionId action, int key);
+    bool bindKey(ActionId action, engine::Key key);
 
     /** @brief Associates a keyboard keycode with an action by name. */
-    bool bindKey(std::string_view name, int key) { return bindKey(makeActionId(name), key); }
+    bool bindKey(std::string_view name, engine::Key key) { return bindKey(makeActionId(name), key); }
 
     /** @brief Removes a keyboard keycode from an action. */
-    bool unbindKey(ActionId action, int key);
+    bool unbindKey(ActionId action, engine::Key key);
 
     /** @brief Removes a keyboard keycode from an action by name. */
-    bool unbindKey(std::string_view name, int key) { return unbindKey(makeActionId(name), key); }
+    bool unbindKey(std::string_view name, engine::Key key) { return unbindKey(makeActionId(name), key); }
 
     /** @brief Clears all keyboard keycodes mapped to an action. */
     void clearKeyBindings(ActionId action);
@@ -94,30 +95,32 @@ class ActionMapping {
     void clearKeyBindings(std::string_view name) { clearKeyBindings(makeActionId(name)); }
 
     /** @brief Checks if a key is currently bound to an action. */
-    [[nodiscard]] bool hasKey(ActionId action, int key) const;
+    [[nodiscard]] bool hasKey(ActionId action, engine::Key key) const;
 
     /** @brief Checks if a key is currently bound to an action by name. */
-    [[nodiscard]] bool hasKey(std::string_view name, int key) const { return hasKey(makeActionId(name), key); }
+    [[nodiscard]] bool hasKey(std::string_view name, engine::Key key) const { return hasKey(makeActionId(name), key); }
 
     /** @brief Associates a gamepad button with an action. */
-    bool bindGamepadButton(ActionId action, int button);
+    bool bindGamepadButton(ActionId action, engine::GamepadButton button);
 
     /** @brief Associates a gamepad button with an action by name. */
-    bool bindGamepadButton(std::string_view name, int button) { return bindGamepadButton(makeActionId(name), button); }
+    bool bindGamepadButton(std::string_view name, engine::GamepadButton button) {
+        return bindGamepadButton(makeActionId(name), button);
+    }
 
     /** @brief Associates an analog stick axis and scale with an action. */
-    void bindGamepadAxis(ActionId action, int axis, float scale = 1.0F);
+    void bindGamepadAxis(ActionId action, engine::GamepadAxis axis, float scale = 1.0F);
 
     /** @brief Associates an analog stick axis and scale with an action by name. */
-    void bindGamepadAxis(std::string_view name, int axis, float scale = 1.0F) {
+    void bindGamepadAxis(std::string_view name, engine::GamepadAxis axis, float scale = 1.0F) {
         bindGamepadAxis(makeActionId(name), axis, scale);
     }
 
     /** @brief Binds negative and positive keys to a 1D continuous axis. */
-    void bindAxisComposite(ActionId axis, int negativeKey, int positiveKey);
+    void bindAxisComposite(ActionId axis, engine::Key negativeKey, engine::Key positiveKey);
 
     /** @brief Binds negative and positive keys to a 1D continuous axis by name. */
-    void bindAxisComposite(std::string_view name, int negativeKey, int positiveKey) {
+    void bindAxisComposite(std::string_view name, engine::Key negativeKey, engine::Key positiveKey) {
         bindAxisComposite(makeActionId(name), negativeKey, positiveKey);
     }
 
