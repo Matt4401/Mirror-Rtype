@@ -1,4 +1,4 @@
-#include "TcpSession.hpp"
+#include "net/asio/TcpSession.hpp"
 
 #include <algorithm>
 #include <asio/buffer.hpp>
@@ -14,15 +14,20 @@
 #include <tuple>
 #include <utility>
 
-#include "LogTag.hpp"
 #include "Logger.hpp"
-#include "Network/INetworkManager.hpp"
-#include "Wire.hpp"
+#include "net/INetworkManager.hpp"
+#include "net/asio/LogTag.hpp"
+#include "net/asio/Wire.hpp"
 
-namespace rtype::net::session {
+namespace ecs::net::detail {
 
-TcpSession::TcpSession(asio::ip::tcp::socket socket, const ClientId id, MessageHandler onMessage, CloseHandler onClose)
-    : _socket(std::move(socket)), _id(id), _onMessage(std::move(onMessage)), _onClose(std::move(onClose)) {}
+TcpSession::TcpSession(asio::ip::tcp::socket socket, const PeerId id, const Limits limits, MessageHandler onMessage,
+                       CloseHandler onClose)
+    : _socket(std::move(socket)),
+      _id(id),
+      _limits(limits),
+      _onMessage(std::move(onMessage)),
+      _onClose(std::move(onClose)) {}
 
 void TcpSession::start() { readHeader(); }
 
@@ -39,7 +44,7 @@ void TcpSession::readHeader() {
                          }
 
                          const std::uint32_t size = wire::readU32(std::span(self->_header).first<4>());
-                         if (size > wire::MAX_TCP_PAYLOAD) {
+                         if (size > self->_limits.maxPayload) {
                              self->onError(asio::error::message_size);
                              return;
                          }
@@ -77,8 +82,9 @@ void TcpSession::send(const wire::MessageKind kind, const Bytes& payload) {
     if (_closing) {
         return;
     }
-    if (payload.size() > wire::MAX_TCP_PAYLOAD) {
-        log::error(LOG_TAG, "reliable payload of ", payload.size(), " bytes refused (max ", wire::MAX_TCP_PAYLOAD, ')');
+    if (payload.size() > _limits.maxPayload) {
+        rtype::log::error(LOG_TAG, "reliable payload of ", payload.size(), " bytes refused (max ", _limits.maxPayload,
+                          ')');
         return;
     }
 
@@ -87,8 +93,8 @@ void TcpSession::send(const wire::MessageKind kind, const Bytes& payload) {
     frame[4] = static_cast<std::uint8_t>(kind);
     std::ranges::copy(payload, frame.begin() + wire::TCP_HEADER_SIZE);
 
-    if (_queuedBytes + frame.size() > MAX_TCP_QUEUE_BYTES) {
-        log::warning(LOG_TAG, "client ", _id, " does not read its TCP socket anymore: disconnected");
+    if (_queuedBytes + frame.size() > _limits.maxQueueBytes) {
+        rtype::log::warning(LOG_TAG, "peer ", _id, " does not read its TCP socket anymore: disconnected");
         close();
         return;
     }
@@ -145,4 +151,4 @@ void TcpSession::closeNow() {
     }
 }
 
-}  // namespace rtype::net::session
+}  // namespace ecs::net::detail

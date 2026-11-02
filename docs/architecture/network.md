@@ -58,54 +58,84 @@ Three ideas drive the design:
 1. **Two transports, one API.** Game code chooses a *channel* (`Reliable` or `Unreliable`); the library maps it to TCP
    or UDP. Which message uses which channel is defined
    in [Network Transport & Connection](../protocol/transport.md#1-transport-tcp-or-udp).
-2. **Interfaces only.** Game code never sees Asio, sockets or endpoints, only `ClientId`s and bytes.
+2. **Interfaces only.** Game code never sees Asio, sockets or endpoints, only `PeerId`s and bytes.
 3. **Polling.** The library receives on its own thread and queues events; game code pulls them once per tick.
 
 ---
 
 ## 3. Library layout
 
-The network code is split between two xmake targets:
+The network code is part of the engine, split between two xmake targets, so that a game using the engine gets a
+transport without depending on R-Type code:
 
-| Target    | Kind           | Folder         | Content                                 | Depends on       |
-|-----------|----------------|----------------|-----------------------------------------|------------------|
-| `shared`  | header-only    | `shared/src/`  | Interfaces and types used by game code  | nothing          |
-| `network` | static library | `network/src/` | Asio implementation of these interfaces | `shared`, `asio` |
+| Target                | Kind           | Folder                 | Content                                                      | Depends on                      |
+|-----------------------|----------------|------------------------|--------------------------------------------------------------|---------------------------------|
+| `engine_network`      | static library | `engine/src/net/`      | Interfaces, types, `NetworkConfig`, replication helpers      | `engine_core`                   |
+| `engine_network_asio` | static library | `engine/src/net/asio/` | Asio implementation of the interfaces, `createServer/Client` | `engine_network`, `log`, `asio` |
 
 ```
-shared/src/                          # target "shared" (header-only), must not include Asio
-└── Network/
-    ├── INetworkManager.hpp          # ClientId, Bytes, Channel, EventType, State, NetworkEvent, INetworkManager
-    ├── INetworkServer.hpp           # rtype::net::server::INetworkServer
-    └── INetworkClient.hpp           # rtype::net::client::INetworkClient
-
-network/src/                         # target "network" (static library), Asio is used only here
+engine/src/net/                      # target "engine_network": must not include Asio
+├── INetworkManager.hpp              # PeerId, Bytes, Channel, EventType, State, NetworkEvent, INetworkManager
+├── INetworkServer.hpp               # ecs::net::INetworkServer
+├── INetworkClient.hpp               # ecs::net::INetworkClient
+├── NetworkConfig.hpp                # NetworkConfig, isValid(), MAX_UNRELIABLE_PAYLOAD
+├── NetworkFactory.hpp               # createServer() / createClient(), defined in engine_network_asio
+├── InputQueue.hpp/.cpp              # replication helpers (see the ECS components)
+└── NetworkEntityMap.hpp/.cpp
+engine/src/net/asio/                 # target "engine_network_asio": Asio is used only here (namespace ecs::net::detail)
 ├── NetworkServer.hpp/.cpp
 ├── NetworkClient.hpp/.cpp
-├── session/TcpSession.hpp/.cpp      # shared by NetworkServer and NetworkClient
-├── Wire.hpp                         # bytes the library adds on the wire (kinds, headers, delays)
-└── EventQueue.hpp/.cpp
+├── TcpSession.hpp/.cpp              # shared by NetworkServer and NetworkClient
+├── Wire.hpp                         # bytes the library adds on the wire (kinds, headers)
+├── EventQueue.hpp/.cpp
+└── NetworkFactory.cpp
 ```
 
-Both targets export their `src/` folder as a public include directory, so an interface is included with its folder:
+Both targets export `engine/src/` as a public include directory, so a header is included with its folder:
 
 ```cpp
-#include "Network/INetworkServer.hpp"
+#include "net/INetworkServer.hpp"
 ```
 
 ### Why two targets
 
-- `shared` contains only abstract classes and plain types. Code that depends on it (game logic, tests using a mock
-  network) never pulls in Asio.
-- `network` is the only target linked against Asio. Changing the implementation (another transport, another library)
-  does not touch `shared` or the game code.
+- `engine_network` contains only abstract classes, plain types and Asio-free helpers. Code that depends on it (game
+  logic, tests using a mock network) never pulls in Asio.
+- `engine_network_asio` is the only target linked against Asio. Changing the implementation (another transport, another
+  library) does not touch `engine_network` or the game code. Only the executables that open sockets link it.
 
 ```
 r-type_server ──┐
-                ├──► network ──► shared
+                ├──► engine_network_asio ──► engine_network
 r-type_client ──┘       │
                         └──► asio
 ```
+
+### Nothing game-specific
+
+The transport takes everything that depends on the game from a `NetworkConfig` given at creation, so a second game
+reuses it as is:
+
+```cpp
+auto server = ecs::net::createServer({.protocolId = MY_GAME_PROTOCOL_ID, .maxPeers = 16});
+```
+
+| Field                   | Default | Meaning                                                                     |
+|-------------------------|---------|-----------------------------------------------------------------------------|
+| `protocolId`            | `0`     | Checked in the transport handshake: a peer of another game is refused       |
+| `maxPeers`              | `64`    | Server: simultaneous connections, handshaking ones included                 |
+| `udpTick`               | 250 ms  | Period of the UDP housekeeping (timeouts, keepalives, bind resends)         |
+| `keepaliveInterval`     | 1 s     | Empty datagram sent after this much UDP silence                             |
+| `udpTimeout`            | 5 s     | While UDP is open, a peer silent for this long is disconnected              |
+| `handshakeTimeout`      | 5 s     | Server: a connection that did not send its `Handshake` in time is closed    |
+| `maxReliablePayload`    | 64 KiB  | Largest TCP payload, sent or received                                       |
+| `maxReliableQueueBytes` | 1 MiB   | Bytes waiting to be written to one peer before it is considered not reading |
+
+`createServer()` / `createClient()` throw `std::invalid_argument` if `isValid(config)` is false (zero duration or limit,
+keepalive not shorter than the timeout). The UDP datagram size (1200 bytes, `MAX_UNRELIABLE_PAYLOAD` = 1192 for the
+game)
+is not configurable: it is chosen to avoid IP fragmentation, not by the game. The port is not part of the configuration
+either: it is passed to `start()` / `connect()`, and its default value belongs to the game (`protocol::DEFAULT_PORT`).
 
 ### Layers
 
@@ -130,12 +160,12 @@ it.
 
 ### Types
 
-Declared in `shared/src/Network/INetworkManager.hpp`, next to `INetworkManager`.
+Declared in `engine/src/net/INetworkManager.hpp`, next to `INetworkManager`.
 
 ```cpp
-namespace net {
+namespace ecs::net {
 
-using ClientId = uint32_t;
+using PeerId   = uint32_t;
 using Bytes    = std::vector<uint8_t>;
 
 enum class Channel   { Reliable, Unreliable };
@@ -143,7 +173,7 @@ enum class EventType { Connected, Disconnected, Data };
 
 struct NetworkEvent {
     EventType type;
-    ClientId  client;    // starts at 1 on the server, always 0 on the client side
+    PeerId    peer;      // starts at 1 on the server, always 0 on the client side
     Channel   channel;   // meaningful for Data events
     Bytes     data;      // empty for Connected / Disconnected
 };
@@ -155,12 +185,14 @@ Event contract, the same on both sides:
 
 | Event          | Meaning                                                                                                                                       |
 |----------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| `Connected`    | The library is ready for this connection. Server: TCP accepted. Client: `Welcome` received, `openUdp()` can be called.                        |
+| `Connected`    | The library is ready for this connection. Server: `Handshake` accepted. Client: `Welcome` received, `openUdp()` can be called.                |
 | `Data`         | A game message. `channel` tells whether it came over TCP or UDP.                                                                              |
 | `Disconnected` | The connection is gone (closed, timed out, kicked, or the peer stopped reading). Sent once per connection. Client: the client is now stopped. |
 
-A `Disconnected` can arrive **without** a `Connected` before it, when a connection fails before the library is ready:
-server full, or connection lost before `Welcome`. Game code must handle a `Disconnected` for a connection it never saw.
+On the client, a `Disconnected` can arrive **without** a `Connected` before it, when a connection fails before the
+library is ready: server full, other `protocolId`, or connection lost before `Welcome`. Game code must handle a
+`Disconnected` for a connection it never saw. On the server, a peer is announced only once its handshake is accepted, so
+a refused connection produces no event at all.
 
 The server and the client are **single-use objects**. After `stop()`, their `io_context` cannot run again:
 `start()` / `connect()` return `false`. To reconnect (back to the menu, then join again), create a new object. A failed
@@ -188,9 +220,9 @@ public:
 class INetworkServer : public INetworkManager {
 public:
     virtual bool start(uint16_t port) = 0;
-    virtual void send(ClientId client, const Bytes& data, Channel channel) = 0;
+    virtual void send(PeerId peer, const Bytes& data, Channel channel) = 0;
     virtual void broadcast(const Bytes& data, Channel channel) = 0;
-    virtual void kick(ClientId client) = 0;
+    virtual void kick(PeerId peer) = 0;
 };
 
 class INetworkClient : public INetworkManager {
@@ -215,11 +247,12 @@ public:
 ### Factory
 
 ```cpp
-std::unique_ptr<INetworkServer> net::createServer();
-std::unique_ptr<INetworkClient> net::createClient();
+std::unique_ptr<INetworkServer> ecs::net::createServer(const NetworkConfig& config = {});
+std::unique_ptr<INetworkClient> ecs::net::createClient(const NetworkConfig& config = {});
 ```
 
-Game code never includes an implementation header, so it never includes Asio.
+Game code never includes an implementation header, so it never includes Asio. The factory is declared in
+`engine_network` and defined in `engine_network_asio`: link the latter to use it.
 
 ---
 
@@ -233,21 +266,22 @@ NetworkServer                         implements INetworkServer
 ├── EventQueue
 ├── tcp::acceptor
 ├── udp::socket                       one socket for all clients
-├── steady_timer                      UDP tick (250 ms): timeouts and keepalives
-└── unordered_map<ClientId, ClientInfo>   at most MAX_CLIENTS (64), ids start at 1
+├── steady_timer                      UDP tick (udpTick): handshake and UDP timeouts, keepalives
+└── unordered_map<PeerId, PeerInfo>   at most maxPeers, ids start at 1
     ├── token
     ├── shared_ptr<TcpSession>
+    ├── handshaken · acceptedAt       false until a valid Handshake: the game does not know the peer yet
     ├── udpOpen                       set by UdpOpen / UdpClose received over TCP
     ├── optional<udp::endpoint>       learnt from the last valid datagram
     └── lastSeen · lastSent
 ```
 
-| Class           | Responsibility                                                                                                                                                                             |
-|-----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `NetworkServer` | Owns the `io_context`, the network thread and the event queue. Accepts connections (up to `MAX_CLIENTS`), assigns `ClientId` and token, validates datagrams, runs timeouts and keepalives. |
-| `TcpSession`    | One TCP connection: framing (length + kind), write queue limited to 1 MiB, deferred close. Hands each message to its owner through a callback. Inherits `enable_shared_from_this`.         |
-| `EventQueue`    | Mutex-protected queue. The network thread pushes; `poll()` pops everything at once.                                                                                                        |
-| `Wire.hpp`      | Message kinds, header sizes, size limits and delays shared by the server, the client and the session.                                                                                      |
+| Class           | Responsibility                                                                                                                                                                               |
+|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `NetworkServer` | Owns the `io_context`, the network thread and the event queue. Accepts connections (up to `maxPeers`), checks the handshake, assigns `PeerId` and token, validates datagrams, runs timeouts. |
+| `TcpSession`    | One TCP connection: framing (length + kind), write queue limited to 1 MiB, deferred close. Hands each message to its owner through a callback. Inherits `enable_shared_from_this`.           |
+| `EventQueue`    | Mutex-protected queue. The network thread pushes; `poll()` pops everything at once.                                                                                                          |
+| `Wire.hpp`      | Message kinds, header sizes and the little-endian helpers shared by the server, the client and the session; limits come from `NetworkConfig`.                                                |
 
 ### Bytes added by the library
 
@@ -257,25 +291,26 @@ library never reads the game payload. The full format is in
 
 ```
 TCP frame                 [ length u32 ][ kind u8 ][ payload ]
-UDP client -> server      [ ClientId u32 ][ token u32 ][ payload ]
+UDP client -> server      [ PeerId u32 ][ token u32 ][ payload ]
 UDP server -> client      [ payload ]
 ```
 
-| `kind`         | Direction       | Meaning                                                   |
-|----------------|-----------------|-----------------------------------------------------------|
-| `0` `Data`     | both            | Game payload, handed to the game as a `Data` event        |
-| `1` `Welcome`  | server → client | `[ClientId u32][token u32]`, needed to send UDP datagrams |
-| `2` `UdpOpen`  | client → server | The client opened UDP: the server starts its timeout      |
-| `3` `UdpClose` | client → server | The client closed UDP: the server stops its timeout       |
+| `kind`          | Direction       | Meaning                                                                   |
+|-----------------|-----------------|---------------------------------------------------------------------------|
+| `0` `Data`      | both            | Game payload, handed to the game as a `Data` event                        |
+| `1` `Welcome`   | server → client | `[PeerId u32][token u32]`, needed to send UDP datagrams                   |
+| `2` `UdpOpen`   | client → server | The client opened UDP: the server starts its timeout                      |
+| `3` `UdpClose`  | client → server | The client closed UDP: the server stops its timeout                       |
+| `4` `Handshake` | client → server | `[protocolId u32]`, first frame; any other first frame closes the session |
 
 A message with a kind not allowed in its direction closes the session. An empty UDP payload is a keepalive.
 
 ### Closing a session
 
 `TcpSession::close()` never closes immediately. It marks the session as closing, so nothing more is read, handed to the
-owner or queued, and posts the real close to the network thread. The owner's close handler (which erases the client from
-`_clients` on the server) therefore never runs in the middle of one of the owner's own loops, such as `broadcast()`
-iterating over `_clients` while one client's write queue overflows. Every caller can call `close()` anywhere.
+owner or queued, and posts the real close to the network thread. The owner's close handler (which erases the peer from
+`_peers` on the server) therefore never runs in the middle of one of the owner's own loops, such as `broadcast()`
+iterating over `_peers` while one peer's write queue overflows. Every caller can call `close()` anywhere.
 
 `stop()` still waits for these closes: a posted handler is pending work, so `io_context::run()` executes it before
 returning.
@@ -284,17 +319,19 @@ returning.
 
 | Limit                       | Value  | When it is exceeded                                                      |
 |-----------------------------|--------|--------------------------------------------------------------------------|
-| Clients per server          | 64     | The new TCP connection is closed right away (`MAX_CLIENTS`)              |
+| Peers per server            | 64     | The new TCP connection is closed right away (`maxPeers`)                 |
+| Handshake delay             | 5 s    | A connection that did not send a valid `Handshake` is closed             |
 | TCP write queue per session | 1 MiB  | The peer is not reading anymore: the session is closed (`Disconnected`)  |
 | TCP payload                 | 64 KiB | `send()` refuses it; a received frame announcing more closes the session |
 | UDP game payload            | 1192 B | `send()` refuses it (and refuses an empty one, reserved for keepalives)  |
 
-`MAX_CLIENTS` protects the server's resources. It is not the number of players per room, which is game logic.
+Every value except the UDP payload is a `NetworkConfig` default. `maxPeers` protects the server's resources. It is not
+the number of players per room, which is game logic.
 
 ### Routing
 
 ```cpp
-void NetworkServer::send(ClientId client, const Bytes& data, Channel channel) {
+void NetworkServer::send(PeerId client, const Bytes& data, Channel channel) {
     if (channel == Channel::Reliable)
         tcp_.send(client, data);
     else
@@ -316,12 +353,12 @@ NetworkClient                         implements INetworkClient
 ```
 
 The client reuses `TcpSession` instead of reimplementing TCP: framing, size check, write queue and close logic exist
-only once, so client and server cannot drift apart. The client's events always carry `ClientId` 0. It pushes
+only once, so client and server cannot drift apart. The client's events always carry `PeerId` 0. It pushes
 `Connected` when `Welcome` arrives, and its close handler closes UDP and pushes `Disconnected`.
 
 | Function        | Effect                                                                                                                                                                                                                        |
 |-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `connect()`     | Opens TCP only, creates the `TcpSession`, starts the network thread. Returns once TCP is connected; `Connected` follows when `Welcome` (`ClientId` + token) arrives.                                                          |
+| `connect()`     | Opens TCP only, creates the `TcpSession`, sends `Handshake`, starts the network thread. Returns once TCP is connected; `Connected` follows when `Welcome` (`PeerId` + token) arrives.                                         |
 | `openUdp(port)` | Called at game start with the server's UDP port. Returns `false` before `Connected`. Opens UDP towards the TCP server's address, sends `UdpOpen` over TCP, then an empty bind datagram every 250 ms until the server answers. |
 | `closeUdp()`    | Called at game over. Sends `UdpClose` over TCP and closes UDP. The client goes back to TCP only (lobby).                                                                                                                      |
 
@@ -354,26 +391,26 @@ Network thread (Asio)                     Game thread (fixed tick)
 ```cpp
 class GameServer {
 public:
-    explicit GameServer(net::INetworkServer& network) : network_(network) {}
+    explicit GameServer(ecs::net::INetworkServer& network) : network_(network) {}
 
     void tick() {
         for (auto& e : network_.poll()) {
             switch (e.type) {
-                case net::EventType::Connected:    onJoin(e.client);  break;
-                case net::EventType::Disconnected: onLeave(e.client); break;
-                case net::EventType::Data:         onPacket(e.client, e.channel, e.data); break;
+                case ecs::net::EventType::Connected:    onJoin(e.peer);  break;
+                case ecs::net::EventType::Disconnected: onLeave(e.peer); break;
+                case ecs::net::EventType::Data:         onPacket(e.peer, e.channel, e.data); break;
             }
         }
         simulate();
-        network_.broadcast(serializeWorldState(), net::Channel::Unreliable);
+        network_.broadcast(serializeWorldState(), ecs::net::Channel::Unreliable);
     }
 
 private:
-    net::INetworkServer& network_;
+    ecs::net::INetworkServer& network_;
 };
 
 int main() {
-    auto network = net::createServer();
+    auto network = ecs::net::createServer({.protocolId = MY_GAME_PROTOCOL_ID});
     if (!network->start(4242))
         return 1;
     GameServer server(*network);
@@ -384,15 +421,15 @@ int main() {
 ### Client
 
 ```cpp
-auto network = net::createClient();
+auto network = ecs::net::createClient({.protocolId = MY_GAME_PROTOCOL_ID});
 network->connect("127.0.0.1", 4242);
 
 // each tick
-network->send(serializeInput(sequence, keys), net::Channel::Unreliable);
+network->send(serializeInput(sequence, keys), ecs::net::Channel::Unreliable);
 for (auto& e : network->poll()) {
-    if (e.type == net::EventType::Data)
+    if (e.type == ecs::net::EventType::Data)
         handlePacket(e.channel, e.data);
-    else if (e.type == net::EventType::Disconnected)
+    else if (e.type == ecs::net::EventType::Disconnected)
         showConnectionLost();
 }
 ```
@@ -406,20 +443,21 @@ without sockets.
 
 ## 8. Pitfalls
 
-| Pitfall                                                                              | Consequence                                       | Fix                                                                      |
-|--------------------------------------------------------------------------------------|---------------------------------------------------|--------------------------------------------------------------------------|
-| Asio included in a public header                                                     | Slow builds, `<windows.h>` conflicts in game code | Asio only in `network/src/`, never in `shared/`                          |
-| Windows: UDP receive fails with `connection_reset` after sending to a closed client  | Receive loop stops; server deaf to everyone       | Ignore `connection_reset` / `connection_refused` and restart the receive |
-| Callback uses a destroyed `TcpSession`                                               | Crash                                             | `shared_from_this()` in every async handler                              |
-| Socket used from the game thread                                                     | Data race                                         | `asio::post` to the network thread                                       |
-| Receive buffer smaller than the datagram                                             | Datagram silently truncated                       | Buffer ≥ maximum packet size                                             |
-| `system_clock` for timeouts                                                          | Timeouts break when the system clock changes      | `steady_clock`                                                           |
-| Identifying clients by IP only                                                       | Players behind the same NAT are merged            | `ClientId` + token in every client datagram                              |
-| UDP timeout while the client is in the lobby                                         | Every lobby player kicked after 5 s               | Timeout only while `udpOpen`, driven by `UdpOpen` / `UdpClose` over TCP  |
-| Timeout relying on the game sending every tick                                       | A pause screen disconnects everyone               | Keepalive sent by the library after 1 s without UDP traffic              |
-| Async send buffer not captured by the handler                                        | Asio reads freed memory                           | Capture the `shared_ptr` holding the buffer in the handler               |
-| Closing a session inside a loop over `_clients` (e.g. queue full during `broadcast`) | Iterator invalidated, undefined behaviour         | `TcpSession::close()` is always deferred with `asio::post`               |
-| Peer that never reads its TCP socket                                                 | Server memory grows with every `send`             | Write queue limited to 1 MiB, then the session is closed                 |
-| Connection flood                                                                     | Thousands of idle sessions                        | `MAX_CLIENTS`                                                            |
-| Windows: datagram bigger than the receive buffer                                     | `message_size` error logged for each packet       | Ignore `message_size` like `connection_reset` and restart the receive    |
-| `start()` / `connect()` after `stop()`                                               | Returns `true` but nothing runs                   | Three-state `Idle` / `Running` / `Stopped`, single-use objects           |
+| Pitfall                                                                             | Consequence                                       | Fix                                                                      |
+|-------------------------------------------------------------------------------------|---------------------------------------------------|--------------------------------------------------------------------------|
+| Asio included in a public header                                                    | Slow builds, `<windows.h>` conflicts in game code | Asio only in `engine/src/net/asio/`, never in `engine/src/net/*.hpp`     |
+| Windows: UDP receive fails with `connection_reset` after sending to a closed client | Receive loop stops; server deaf to everyone       | Ignore `connection_reset` / `connection_refused` and restart the receive |
+| Callback uses a destroyed `TcpSession`                                              | Crash                                             | `shared_from_this()` in every async handler                              |
+| Socket used from the game thread                                                    | Data race                                         | `asio::post` to the network thread                                       |
+| Receive buffer smaller than the datagram                                            | Datagram silently truncated                       | Buffer ≥ maximum packet size                                             |
+| `system_clock` for timeouts                                                         | Timeouts break when the system clock changes      | `steady_clock`                                                           |
+| Identifying clients by IP only                                                      | Players behind the same NAT are merged            | `PeerId` + token in every client datagram                                |
+| UDP timeout while the client is in the lobby                                        | Every lobby player kicked after 5 s               | Timeout only while `udpOpen`, driven by `UdpOpen` / `UdpClose` over TCP  |
+| Timeout relying on the game sending every tick                                      | A pause screen disconnects everyone               | Keepalive sent by the library after 1 s without UDP traffic              |
+| Async send buffer not captured by the handler                                       | Asio reads freed memory                           | Capture the `shared_ptr` holding the buffer in the handler               |
+| Closing a session inside a loop over `_peers` (e.g. queue full during `broadcast`)  | Iterator invalidated, undefined behaviour         | `TcpSession::close()` is always deferred with `asio::post`               |
+| Peer that never reads its TCP socket                                                | Server memory grows with every `send`             | Write queue limited to 1 MiB, then the session is closed                 |
+| Connection flood                                                                    | Thousands of idle sessions                        | `maxPeers`, and `handshakeTimeout` for connections that stay silent      |
+| Client of another game (or a port scanner) connecting                               | Garbage reaches the game's decoder                | `Handshake` with `protocolId` checked before the game sees the peer      |
+| Windows: datagram bigger than the receive buffer                                    | `message_size` error logged for each packet       | Ignore `message_size` like `connection_reset` and restart the receive    |
+| `start()` / `connect()` after `stop()`                                              | Returns `true` but nothing runs                   | Three-state `Idle` / `Running` / `Stopped`, single-use objects           |

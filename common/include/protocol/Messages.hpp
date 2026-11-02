@@ -10,6 +10,15 @@ namespace rtype::protocol {
 
 /** @brief Protocol version sent in `Hello`; bumped on every breaking change of `rtype.proto`. */
 inline constexpr std::uint32_t PROTOCOL_VERSION = 1;
+/**
+ * @brief Transport-level id of the R-Type protocol (`NetworkConfig::protocolId`), ASCII "RTYP".
+ *
+ * Checked by the engine's transport before `Hello`: a client of another game is refused before reaching the game.
+ * Unlike `PROTOCOL_VERSION`, it never changes.
+ */
+inline constexpr std::uint32_t TRANSPORT_PROTOCOL_ID = 0x50595452;
+/** @brief TCP and UDP port the server listens on when none is given. */
+inline constexpr std::uint16_t DEFAULT_PORT = 4242;
 
 /** @brief Maximum number of players in a room (player slots, scores). */
 inline constexpr std::size_t MAX_PLAYERS = 4;

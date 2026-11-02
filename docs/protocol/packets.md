@@ -94,7 +94,7 @@ Standard protobuf wire format. Main consequences:
 
 **Direction:** Client → Server · **Channel:** Reliable · **Phase:** Handshake
 
-Sent right after the library delivers its own `Welcome` (`ClientId` + token). Starts version negotiation.
+Sent right after the library delivers its own `Welcome` (`PeerId` + token). Starts version negotiation.
 
 | Field     | # | Type     | Description                                             |
 |-----------|---|----------|---------------------------------------------------------|
