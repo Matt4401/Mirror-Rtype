@@ -29,6 +29,12 @@
 #include "systems/input/InputSystem.hpp"
 #include "systems/physics/PhysicsSystem.hpp"
 #include "systems/render/RenderSystem.hpp"
+#include "ui/components/UiAnchor.hpp"
+#include "ui/components/UiProgressBar.hpp"
+#include "ui/components/UiRect.hpp"
+#include "ui/components/UiText.hpp"
+#include "ui/font/FontStore.hpp"
+#include "ui/system/UiRenderSystem.hpp"
 
 namespace {
 
@@ -84,6 +90,28 @@ void spawnDemoScene(ecs::Registry& registry) {
                                            ecs::Renderable{.tint = {.r = 50, .g = 220, .b = 90, .a = 255}, .layer = 3});
     registry.addComponent<client::ShipInput>(player, client::ShipInput{.playerIndex = 0, .speed = 350.0F});
     registry.addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
+
+    const ecs::Entity hpBar = registry.spawnEntity();
+    registry.addComponent<ui::UiAnchor>(hpBar, ui::UiAnchor{.anchorX = 0.02F, .anchorY = 0.04F});
+    registry.addComponent<ui::UiProgressBar>(hpBar, ui::UiProgressBar{
+        .value = 75.0F, .min = 0.0F, .max = 100.0F, .width = 220.0F, .height = 22.0F,
+    });
+
+    const ecs::Entity hpBorder = registry.spawnEntity();
+    registry.addComponent<ui::UiAnchor>(hpBorder, ui::UiAnchor{.anchorX = 0.02F, .anchorY = 0.04F});
+    registry.addComponent<ui::UiRect>(hpBorder, ui::UiRect{
+        .width = 220.0F, .height = 22.0F,
+        .borderColor = {.r = 255, .g = 255, .b = 255, .a = 255},
+        .borderThickness = 2.0F,
+    });
+
+    const ecs::Entity scoreText = registry.spawnEntity();
+    registry.addComponent<ui::UiAnchor>(scoreText, ui::UiAnchor{.anchorX = 0.75F, .anchorY = 0.04F});
+    registry.addComponent<ui::UiText>(scoreText, ui::UiText{
+        .text = "SCORE: 1337",
+        .fontSize = 26.0F,
+        .color = {.r = 255, .g = 220, .b = 50, .a = 255},
+    });
 }
 
 void movePlayer(ecs::Registry& registry, float deltaTime) {
@@ -153,6 +181,8 @@ int main() {
         const render::Window window(render::WindowConfig{});
         const render::TextureStore textures;
         render::RenderSystem renderSystem(textures);
+        ui::FontStore fonts;
+        ui::UiRenderSystem uiRenderSystem(fonts);
         systems::InputSystem inputSystem;
         client::input::setupDefaultBindings(inputSystem.mapping());
         ecs::EventBus eventBus;
@@ -175,6 +205,7 @@ int main() {
 
             render::Window::beginFrame();
             renderSystem.update(registry);
+            uiRenderSystem.update(registry);
             render::Window::endFrame();
         }
     } catch (const std::exception& error) {
