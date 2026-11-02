@@ -1,6 +1,9 @@
 #pragma once
+#include <array>
+#include <cstddef>
 #include <stdexcept>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 
 #include "ComponentType.hpp"
@@ -8,6 +11,42 @@
 #include "ecs/Registry.hpp"
 
 namespace ecs {
+
+namespace detail {
+
+template <std::size_t DriverIdx, class TargetComponent, class... Components>
+decltype(auto) getComponentFor(std::tuple<SparseArray<Components>&...>& arrays, Entity e, std::size_t driverIndex) {
+    using DriverComponent = std::tuple_element_t<DriverIdx, std::tuple<Components...>>;
+    if constexpr (std::is_same_v<TargetComponent, DriverComponent>) {
+        (void)e;
+        return std::get<DriverIdx>(arrays).getDense()[driverIndex];
+    } else {
+        (void)driverIndex;
+        return std::get<SparseArray<TargetComponent>&>(arrays).get(e);
+    }
+}
+
+template <std::size_t DriverIdx, class... Components, std::size_t... Is>
+bool checkOtherContains(const std::tuple<SparseArray<Components>&...>& arrays, Entity e, std::index_sequence<Is...>) {
+    return ((Is == DriverIdx || std::get<Is>(arrays).contains(e)) && ...);
+}
+
+template <std::size_t DriverIdx, class... Components, class Func>
+void runSystemWithDriver(std::tuple<SparseArray<Components>&...>& arrays, Func& func) {
+    auto& driverArray = std::get<DriverIdx>(arrays);
+    const auto& driverEntities = driverArray.getDenseEntities();
+    auto& driverComponents = driverArray.getDense();
+    const std::size_t count = driverEntities.size();
+
+    for (std::size_t i = 0; i < count; ++i) {
+        const Entity e = driverEntities[i];
+        if (checkOtherContains<DriverIdx, Components...>(arrays, e, std::index_sequence_for<Components...>{})) {
+            func(e, getComponentFor<DriverIdx, Components>(arrays, e, i)...);
+        }
+    }
+}
+
+}  // namespace detail
 
 template <class Component>
 void Registry::registerComponent() {
@@ -70,18 +109,16 @@ void Registry::removeComponent(Entity from) {
         return;
     }
     components.erase(from);
-    const auto componentRemoveListeners = _componentRemoveListeners;
-    for (const auto& listenerEntry : componentRemoveListeners) {
-        ComponentRemoveListener listener;
-        for (const auto& registeredListener : _componentRemoveListeners) {
-            if (registeredListener.first == listenerEntry.first) {
-                listener = registeredListener.second;
-                break;
-            }
+    ++_componentRemoveDispatchDepth;
+    const std::size_t count = _componentRemoveListeners.size();
+    for (std::size_t i = 0; i < count; ++i) {
+        if (_componentRemoveListeners[i].active && _componentRemoveListeners[i].callback) {
+            _componentRemoveListeners[i].callback(from, id);
         }
-        if (listener) {
-            listener(from, id);
-        }
+    }
+    --_componentRemoveDispatchDepth;
+    if (_componentRemoveDispatchDepth == 0) {
+        std::erase_if(_componentRemoveListeners, [](const auto& entry) { return !entry.active; });
     }
 }
 
@@ -143,15 +180,33 @@ template <class... Components, class Func>
 void Registry::runSystem(Func func) {
     if constexpr (sizeof...(Components) == 0) {
         return;
+    } else if constexpr (sizeof...(Components) == 1) {
+        auto& arr = getComponents<Components...>();
+        auto& denseComponents = arr.getDense();
+        const auto& denseEntities = arr.getDenseEntities();
+        const std::size_t count = denseEntities.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            func(denseEntities[i], denseComponents[i]);
+        }
     } else {
         std::tuple<SparseArray<Components>&...> arrays{getComponents<Components>()...};
-        auto& firstArray = std::get<0>(arrays);
+        const std::array<std::size_t, sizeof...(Components)> sizes{
+            std::get<SparseArray<Components>&>(arrays).getDenseEntities().size()...};
 
-        for (Entity const e : firstArray.getDenseEntities()) {
-            if ((std::get<SparseArray<Components>&>(arrays).contains(e) && ...)) {
-                func(e, std::get<SparseArray<Components>&>(arrays).get(e)...);
+        std::size_t minIdx = 0;
+        for (std::size_t i = 1; i < sizes.size(); ++i) {
+            if (sizes[i] < sizes[minIdx]) {
+                minIdx = i;
             }
         }
+
+        if (sizes[minIdx] == 0) {
+            return;
+        }
+
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            (((minIdx == Is) ? (detail::runSystemWithDriver<Is, Components...>(arrays, func), true) : false) || ...);
+        }(std::index_sequence_for<Components...>{});
     }
 }
 

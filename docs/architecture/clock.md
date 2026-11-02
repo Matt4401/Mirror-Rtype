@@ -123,9 +123,21 @@ while (running) {
 }
 ```
 
-### Client main loop
+### Client main loop & Engine integration
 
-The simulation advances in fixed steps, while drawing happens once per displayed frame, **outside** of `tick`:
+In the modern architecture, the `Clock` is driven automatically by the central `engine::Engine`. The engine ticks the clock during its main loop and dispatches `fixedUpdate(engine, time)` to all registered plugins, while the implicit `engine::TimePlugin` keeps the `ecs::time::Time` resource synchronized in the ECS Registry:
+
+```cpp
+engine::Engine engine;
+engine.addPlugin<render::RenderPlugin>()
+      .addPlugin<input::InputPlugin>()
+      .addPlugin<systems::PhysicsPlugin>()
+      .addPlugin<client::RTypeGamePlugin>();
+
+engine.run();
+```
+
+When managing a manual loop (e.g. in standalone tests):
 
 ```cpp
 while (!window.shouldClose()) {

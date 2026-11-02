@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <memory>
 #include <typeindex>
 #include <unordered_map>
 #include <vector>
@@ -69,15 +70,25 @@ class EventBus {
     /**
      * @brief Internal tracking structure pairing a subscription token with a type-erased callback.
      */
-    struct Listener {
-        /** @brief Unique cancellation token identifying this listener. */
-        EventToken token;
+    struct ListenerBinding {
+        /** @brief Flag indicating if the subscription is still active. */
+        bool active = true;
         /** @brief Type-erased invocation callback receiving an opaque event pointer. */
         MoveOnlyFunction<void(const void*)> callback;
     };
 
+    /**
+     * @brief Subscriber entry stored in the type-erased listener list.
+     */
+    struct Listener {
+        /** @brief Unique cancellation token identifying this listener. */
+        EventToken token = 0;
+        /** @brief Shared handle to the invocable binding and its active status. */
+        std::shared_ptr<ListenerBinding> binding;
+    };
+
     /** @brief Map of event types to their active subscriber callback lists. */
-    std::unordered_map<std::type_index, std::vector<Listener>> _listeners;
+    std::unordered_map<std::type_index, std::shared_ptr<std::vector<Listener>>> _listeners;
     /** @brief Monotonically increasing counter issuing unique event tokens. */
     EventToken _nextToken = 0;
 };

@@ -29,19 +29,19 @@ void Registry::killEntity(Entity e) {
         return;
     }
     _isAlive[e] = false;
-    const auto destroyListeners = _destroyListeners;
-    for (const auto& listenerEntry : destroyListeners) {
-        DestroyListener listener;
-        for (const auto& registeredListener : _destroyListeners) {
-            if (registeredListener.first == listenerEntry.first) {
-                listener = registeredListener.second;
-                break;
-            }
-        }
-        if (listener) {
-            listener(e);
+
+    ++_destroyDispatchDepth;
+    const std::size_t count = _destroyListeners.size();
+    for (std::size_t i = 0; i < count; ++i) {
+        if (_destroyListeners[i].active && _destroyListeners[i].callback) {
+            _destroyListeners[i].callback(e);
         }
     }
+    --_destroyDispatchDepth;
+    if (_destroyDispatchDepth == 0) {
+        std::erase_if(_destroyListeners, [](const auto& entry) { return !entry.active; });
+    }
+
     for (auto const& array : _componentsArrays) {
         if (array) {
             array->erase(e);
@@ -52,23 +52,40 @@ void Registry::killEntity(Entity e) {
 
 std::size_t Registry::addDestroyListener(DestroyListener listener) {
     const std::size_t listenerId = _nextDestroyListenerId++;
-    _destroyListeners.emplace_back(listenerId, std::move(listener));
+    _destroyListeners.push_back(
+        DestroyListenerEntry{.id = listenerId, .callback = std::move(listener), .active = true});
     return listenerId;
 }
 
 void Registry::removeDestroyListener(std::size_t listenerId) {
-    std::erase_if(_destroyListeners, [listenerId](const auto& listener) { return listener.first == listenerId; });
+    for (auto& entry : _destroyListeners) {
+        if (entry.id == listenerId) {
+            entry.active = false;
+            break;
+        }
+    }
+    if (_destroyDispatchDepth == 0) {
+        std::erase_if(_destroyListeners, [](const auto& entry) { return !entry.active; });
+    }
 }
 
 std::size_t Registry::addComponentRemoveListener(ComponentRemoveListener listener) {
     const std::size_t listenerId = _nextComponentRemoveListenerId++;
-    _componentRemoveListeners.emplace_back(listenerId, std::move(listener));
+    _componentRemoveListeners.push_back(
+        ComponentRemoveEntry{.id = listenerId, .callback = std::move(listener), .active = true});
     return listenerId;
 }
 
 void Registry::removeComponentRemoveListener(std::size_t listenerId) {
-    std::erase_if(_componentRemoveListeners,
-                  [listenerId](const auto& listener) { return listener.first == listenerId; });
+    for (auto& entry : _componentRemoveListeners) {
+        if (entry.id == listenerId) {
+            entry.active = false;
+            break;
+        }
+    }
+    if (_componentRemoveDispatchDepth == 0) {
+        std::erase_if(_componentRemoveListeners, [](const auto& entry) { return !entry.active; });
+    }
 }
 
 }  // namespace ecs

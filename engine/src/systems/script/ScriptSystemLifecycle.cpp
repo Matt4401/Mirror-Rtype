@@ -11,18 +11,23 @@
 #include <system_error>
 #include <utility>
 
-#include "systems/script/ScriptSystem.hpp"
-
-extern "C" {
-#include <wren.h>
-}
-
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "scripting/WrenVM.hpp"
+#include "systems/script/ScriptSystem.hpp"
 
 namespace systems {
+
+::WrenHandle* ScriptSystem::getScriptInstance(ecs::Entity e) const noexcept {
+    auto it = _instanceHandles.find(e);
+    if (it != _instanceHandles.end()) {
+        return it->second.get();
+    }
+    return nullptr;
+}
+
+bool ScriptSystem::hasScriptInstance(ecs::Entity e) const noexcept { return _instanceHandles.contains(e); }
 
 bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
     std::string filename = moduleName;
@@ -69,36 +74,22 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
     return true;
 }
 
-WrenHandle* ScriptSystem::createScriptInstanceHandle(ecs::Entity e, const ecs::ScriptComponent& script) {
-    ::WrenVM* raw = _vm.raw();
+scripting::detail::UniqueWrenHandle ScriptSystem::createScriptInstance(ecs::Entity e,
+                                                                       const ecs::ScriptComponent& script) {
     if (!_vm.hasVariable(script.moduleName, script.className)) {
         std::cerr << "[ScriptSystem] Class " << script.className << " not found in " << script.moduleName << "\n";
-        return nullptr;
+        return {};
     }
 
-    wrenEnsureSlots(raw, 2);
-    WrenHandle* entityArgHandle = nullptr;
+    scripting::detail::UniqueWrenHandle entityArg;
     if (_vm.hasVariable("core/Entity", "Entity")) {
-        _vm.getVariable("core/Entity", "Entity", 0);
-        wrenSetSlotDouble(raw, 1, static_cast<double>(e));
-        if (wrenCall(raw, _newHandle.get()) == WREN_RESULT_SUCCESS) {
-            entityArgHandle = wrenGetSlotHandle(raw, 0);
-        }
+        entityArg = _vm.newInstanceWithHandle(_newHandle, "core/Entity", "Entity", static_cast<double>(e));
     }
 
-    wrenEnsureSlots(raw, 2);
-    _vm.getVariable(script.moduleName, script.className, 0);
-    if (entityArgHandle != nullptr) {
-        wrenSetSlotHandle(raw, 1, entityArgHandle);
-        wrenReleaseHandle(raw, entityArgHandle);
-    } else {
-        wrenSetSlotDouble(raw, 1, static_cast<double>(e));
+    if (entityArg) {
+        return _vm.newInstanceWithHandle(_newHandle, script.moduleName, script.className, entityArg.get());
     }
-
-    if (wrenCall(raw, _newHandle.get()) != WREN_RESULT_SUCCESS) {
-        return nullptr;
-    }
-    return wrenGetSlotHandle(raw, 0);
+    return _vm.newInstanceWithHandle(_newHandle, script.moduleName, script.className, static_cast<double>(e));
 }
 
 void ScriptSystem::instantiateScript(ecs::Entity e, ecs::ScriptComponent& script, bool isReload) {
@@ -106,19 +97,23 @@ void ScriptSystem::instantiateScript(ecs::Entity e, ecs::ScriptComponent& script
         return;
     }
 
-    script.instanceHandle = createScriptInstanceHandle(e, script);
-    if (script.instanceHandle == nullptr) {
+    auto instance = createScriptInstance(e, script);
+    if (!instance) {
         return;
     }
+
+    _instanceHandles[e] = std::move(instance);
     script.initialized = true;
 
     if (!isReload && _vm.hasVariable("_internal", "Dispatcher")) {
-        ::WrenVM* raw = _vm.raw();
-        wrenEnsureSlots(raw, 2);
-        _vm.getVariable("_internal", "Dispatcher", 0);
-        wrenSetSlotHandle(raw, 1, static_cast<WrenHandle*>(script.instanceHandle));
         auto trySpawnHandle = _vm.makeCallHandle("tryCallSpawn(_)");
-        wrenCall(raw, trySpawnHandle.get());
+        _vm.ensureSlots(2);
+        _vm.getVariable("_internal", "Dispatcher", 0);
+        _vm.setSlot(1, _instanceHandles[e].get());
+        auto const res = _vm.call(trySpawnHandle.get());
+        if (res != WREN_RESULT_SUCCESS) {
+            std::cerr << "[ScriptSystem] Warning: tryCallSpawn failed for entity " << e << "\n";
+        }
     }
 
     if (script.hasUpdate) {
@@ -127,26 +122,28 @@ void ScriptSystem::instantiateScript(ecs::Entity e, ecs::ScriptComponent& script
 }
 
 void ScriptSystem::triggerDestroyHook(ecs::Entity e) {
-    if (_registry == nullptr || !_registry->getComponents<ecs::ScriptComponent>().contains(e)) {
-        return;
-    }
-    auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
-    if (script.instanceHandle == nullptr || !script.initialized) {
+    auto it = _instanceHandles.find(e);
+    if (it == _instanceHandles.end()) {
         return;
     }
 
     if (_vm.hasVariable("_internal", "Dispatcher")) {
-        ::WrenVM* raw = _vm.raw();
-        wrenEnsureSlots(raw, 2);
-        _vm.getVariable("_internal", "Dispatcher", 0);
-        wrenSetSlotHandle(raw, 1, static_cast<WrenHandle*>(script.instanceHandle));
         auto tryDestroyHandle = _vm.makeCallHandle("tryCallDestroy(_)");
-        wrenCall(raw, tryDestroyHandle.get());
+        _vm.ensureSlots(2);
+        _vm.getVariable("_internal", "Dispatcher", 0);
+        _vm.setSlot(1, it->second.get());
+        auto const res = _vm.call(tryDestroyHandle.get());
+        if (res != WREN_RESULT_SUCCESS) {
+            std::cerr << "[ScriptSystem] Warning: tryCallDestroy failed for entity " << e << "\n";
+        }
     }
 
-    _vm.releaseHandle(static_cast<WrenHandle*>(script.instanceHandle));
-    script.instanceHandle = nullptr;
-    script.initialized = false;
+    _instanceHandles.erase(it);
+
+    if (_registry != nullptr && _registry->getComponents<ecs::ScriptComponent>().contains(e)) {
+        auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
+        script.initialized = false;
+    }
 }
 
 void ScriptSystem::queueDestroyEntity(ecs::Entity e) {

@@ -67,6 +67,7 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Engine: architecture/engine.md
+      - Plugins & Mediator: architecture/plugins.md
       - Engine Clock: architecture/clock.md
       - Physics: architecture/physics.md
       - Audio: architecture/audio.md

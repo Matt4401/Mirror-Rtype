@@ -9,11 +9,12 @@
 #include <memory>
 #include <string>
 
-extern "C" {
-#include <wren.h>
-}
+#include "scripting/detail/WrenApi.hpp"  // IWYU pragma: export
 
 namespace scripting::detail {
+
+template <typename...>
+inline constexpr bool always_false_v = false;
 
 /**
  * @brief Composite lookup key identifying a registered Wren foreign method.
@@ -68,16 +69,12 @@ struct WrenHandleDeleter {
      * @brief Releases the handle via `wrenReleaseHandle` if both handle and vm are valid.
      * @param handle Raw handle to release.
      */
-    void operator()(WrenHandle* handle) const noexcept {
-        if (handle != nullptr && vm != nullptr) {
-            wrenReleaseHandle(vm, handle);
-        }
-    }
+    void operator()(::WrenHandle* handle) const noexcept;
 };
 
 /**
  * @brief Unique ownership RAII smart pointer for a WrenHandle.
  */
-using UniqueWrenHandle = std::unique_ptr<WrenHandle, WrenHandleDeleter>;
+using UniqueWrenHandle = std::unique_ptr<::WrenHandle, WrenHandleDeleter>;
 
 }  // namespace scripting::detail
