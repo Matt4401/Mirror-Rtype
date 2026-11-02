@@ -1,6 +1,6 @@
 target("engine_input")
     set_kind("static")
-    add_files("**.cpp", "../systems/input/**.cpp")
+    add_files("**.cpp|InputState.cpp", "../systems/input/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core", "engine_events", {public = true})
+    add_deps("engine_core", "engine_events", "engine_input_state", {public = true})
     add_packages("raylib", {public = true})
