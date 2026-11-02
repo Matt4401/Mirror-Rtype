@@ -122,9 +122,16 @@ if has_config("graphics") then
         add_tests("test_audio_settings")
 end
 
+target("test_network_components")
+    set_kind("binary")
+    add_deps("engine_core", "engine_network")
+    add_packages("gtest")
+    add_files("test_network_components.cpp")
+    add_tests("test_network_components")
+
 target("test_server_room")
     set_kind("binary")
-    add_deps("shared", "engine_core", "engine_time", "engine_events")
+    add_deps("shared", "engine_core", "engine_time", "engine_events", "engine_network")
     add_packages("gtest")
     add_files("server/RoomInputTests.cpp", "../server/src/Room.cpp")
     add_includedirs("../server/src")
@@ -139,7 +146,7 @@ target("test_protocol")
 
 target("test_server_manager")
     set_kind("binary")
-    add_deps("shared", "log", "common", "engine_core", "engine_time", "engine_events")
+    add_deps("shared", "log", "common", "engine_core", "engine_time", "engine_events", "engine_network")
     add_packages("gtest")
     add_files("server/ServerManagerTests.cpp", "../server/src/ServerManager.cpp", "../server/src/Room.cpp")
     add_includedirs("../server/src")

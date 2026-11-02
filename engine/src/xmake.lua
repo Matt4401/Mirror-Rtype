@@ -39,6 +39,14 @@ target("engine_scripting")
     add_deps("engine_core", "engine_events", "engine_input_state")
     add_packages("wren", {public = true})
 
+-- Network-agnostic replication building blocks (input queue, network id map). No socket here: the transport stays
+-- in the top-level "network" target, so the engine never depends on asio.
+target("engine_network")
+    set_kind("static")
+    add_files("net/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core")
+
 target("engine_physics")
     set_kind("static")
     add_files("systems/physics/**.cpp")
@@ -48,7 +56,7 @@ target("engine_physics")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_input_state", "engine_scripting", "engine_physics")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_input_state", "engine_scripting", "engine_network", "engine_physics")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end
