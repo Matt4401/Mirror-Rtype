@@ -130,6 +130,17 @@ TEST(Protocol, RejectsOutOfRangeLists) {
     EXPECT_FALSE(decode(encode(over)).has_value());
 }
 
+TEST(Protocol, RejectsInvalidRoomEntries) {
+    const auto list = [](const std::uint8_t playerCount, const std::uint8_t maxPlayers) {
+        return LobbyList{.rooms = {{.roomId = 1, .playerCount = playerCount, .maxPlayers = maxPlayers}}};
+    };
+    EXPECT_FALSE(decode(encode(list(0, 0))).has_value());
+    EXPECT_FALSE(decode(encode(list(4, 1))).has_value());
+    EXPECT_FALSE(decode(encode(list(5, 5))).has_value());
+    EXPECT_TRUE(decode(encode(list(0, 1))).has_value());
+    EXPECT_TRUE(decode(encode(list(4, 4))).has_value());
+}
+
 TEST(Protocol, RejectsInvalidFields) {
     EXPECT_FALSE(decode(encode(Welcome{.udpPort = 0})).has_value());
     EXPECT_FALSE(decode(encode(GameStart{.roomId = 1, .playerIndex = 2, .playerCount = 2})).has_value());
