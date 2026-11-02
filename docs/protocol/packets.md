@@ -137,8 +137,8 @@ Answer to `LobbyListRequest`, also pushed whenever a room is created, changed or
 | Field          | # | Type        | Description                                        |
 |----------------|---|-------------|----------------------------------------------------|
 | `room_id`      | 1 | `uint32`    | Room id, assigned by the server                    |
-| `player_count` | 2 | `uint32`    | Current number of players (0–4)                    |
-| `max_players`  | 3 | `uint32`    | Capacity of the room (0–4)                         |
+| `player_count` | 2 | `uint32`    | Current number of players (0 to `max_players`)     |
+| `max_players`  | 3 | `uint32`    | Capacity of the room (1–4)                         |
 | `state`        | 4 | `RoomState` | `ROOM_STATE_WAITING` (0), `ROOM_STATE_IN_GAME` (1) |
 
 ### `LobbyCreate` (34)
@@ -312,12 +312,21 @@ payload MUST be dropped silently — when:
 - the envelope carries no message, or a message this build does not know;
 - an enum holds an unknown value (`EntityType`, `RoomState`, `GameOverReason`);
 - a number is outside its documented range (`subtype`, `health`, `flags` > 255; `x`/`y` outside int16; `udp_port`
-  of 0 or > 65535; `player_count` > 4; `player_index` >= `player_count`);
+  of 0 or > 65535; `max_players` of 0 or > 4; a room `player_count` > `max_players`; `GameStart.player_count` of 0
+  or > 4; `player_index` >= `player_count`);
 - a list is longer than its maximum (`rooms` > 256; `slots`, `player_scores` > 4);
 - a chat `text` is empty or longer than 256 bytes.
 
-Reserved `buttons` bits (5–31) are cleared, not rejected. Phase checks (a message valid but received in the wrong
-phase or on the wrong channel) are done by the game: for example, the server only accepts `PlayerInput` over UDP.
+Reserved `buttons` bits (5–31) are cleared, not rejected.
+
+Phase and channel checks (a message valid but received in the wrong phase or on the wrong channel) are done by the
+game, after decoding. The server currently enforces:
+
+- before a successful `Hello`, every other message (reliable or unreliable) is dropped;
+- a second `Hello` from the same client is dropped (no second `Welcome`);
+- over UDP, only `PlayerInput` is accepted, and only from a client in a room.
+
+Lobby and in-game phase checks come with the lobby implementation.
 
 ---
 

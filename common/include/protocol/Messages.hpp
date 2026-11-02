@@ -66,7 +66,7 @@ enum class RoomState : std::uint8_t {
 struct RoomEntry {
     /** @brief Room id, assigned by the server. */
     std::uint32_t roomId = 0;
-    /** @brief Current number of players (0-`MAX_PLAYERS`). */
+    /** @brief Current number of players (0 to `maxPlayers`). */
     std::uint8_t playerCount = 0;
     /** @brief Capacity of the room (1-`MAX_PLAYERS`). */
     std::uint8_t maxPlayers = 0;

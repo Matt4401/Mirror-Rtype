@@ -76,6 +76,7 @@ void ServerManager::onConnected(const ClientId client) {
 void ServerManager::onDisconnected(const ClientId client) {
     // Can arrive without onConnected (connection lost before being ready): leaveRoom() then does nothing.
     leaveRoom(client);
+    _handshaken.erase(client);
     log::info(LOG_TAG, "client ", client, " disconnected");
 }
 
@@ -94,13 +95,22 @@ void ServerManager::onData(const ClientId client, const net::Channel channel, co
 
 void ServerManager::onReliableMessage(const ClientId client, const protocol::Message& message) {
     if (const auto* hello = std::get_if<protocol::Hello>(&message)) {
+        if (_handshaken.contains(client)) {
+            log::debug(LOG_TAG, "client ", client, " sent a second Hello: dropped");
+            return;
+        }
         if (hello->version != protocol::PROTOCOL_VERSION) {
             log::info(LOG_TAG, "client ", client, " uses protocol version ", hello->version, " (expected ",
                       protocol::PROTOCOL_VERSION, "): kicked");
             _network->kick(client);
             return;
         }
+        _handshaken.insert(client);
         send(client, protocol::Welcome{.udpPort = _port}, net::Channel::Reliable);
+        return;
+    }
+    if (!_handshaken.contains(client)) {
+        log::debug(LOG_TAG, "client ", client, " sent a message before Hello: dropped");
         return;
     }
     if (std::holds_alternative<protocol::Leave>(message)) {
@@ -116,6 +126,10 @@ void ServerManager::onReliableMessage(const ClientId client, const protocol::Mes
 }
 
 void ServerManager::onUnreliableMessage(const ClientId client, const protocol::Message& message) {
+    if (!_handshaken.contains(client)) {
+        log::debug(LOG_TAG, "client ", client, " sent UDP data before Hello: dropped");
+        return;
+    }
     const auto* input = std::get_if<protocol::PlayerInput>(&message);
     if (input == nullptr) {
         log::debug(LOG_TAG, "client ", client, " sent a non-input message over UDP: dropped");

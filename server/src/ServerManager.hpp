@@ -5,6 +5,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "Network/INetworkManager.hpp"
 #include "Network/INetworkServer.hpp"
@@ -112,6 +113,8 @@ class ServerManager {
     std::unordered_map<RoomId, Room> _rooms;
     /** @brief Room of each client in a room: routes inputs and disconnections. */
     std::unordered_map<ClientId, RoomId> _roomOf;
+    /** @brief Clients whose `Hello` was accepted; any other message from a client not in this set is dropped. */
+    std::unordered_set<ClientId> _handshaken;
     /** @brief Id given to the next room created. */
     RoomId _nextRoomId = 1;
     /** @brief Loop flag, cleared by `stop()`. */

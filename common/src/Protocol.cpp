@@ -139,7 +139,8 @@ std::optional<Message> read(const pb::LobbyList& in) {
     for (const auto& room : in.rooms()) {
         const auto playerCount = narrow<std::uint8_t>(room.player_count(), MAX_PLAYERS);
         const auto maxPlayers = narrow<std::uint8_t>(room.max_players(), MAX_PLAYERS);
-        if (!playerCount || !maxPlayers || !pb::RoomState_IsValid(room.state())) {
+        if (!playerCount || !maxPlayers || *maxPlayers == 0 || *playerCount > *maxPlayers ||
+            !pb::RoomState_IsValid(room.state())) {
             return std::nullopt;
         }
         out.rooms.push_back({
