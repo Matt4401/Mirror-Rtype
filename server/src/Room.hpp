@@ -23,7 +23,7 @@ using net::ClientId;
 /**
  * @brief Decoded input of one player.
  *
- * Placeholder until the protocol (`common/`) defines the input message.
+ * Converted from `protocol::PlayerInput` by the `ServerManager`, so that the room does not depend on the protocol.
  */
 struct PlayerInput {
     /** @brief Increases with every input sent by the client; used to drop late inputs and for reconciliation. */

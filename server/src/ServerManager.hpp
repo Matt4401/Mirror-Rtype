@@ -9,6 +9,7 @@
 #include "Network/INetworkManager.hpp"
 #include "Network/INetworkServer.hpp"
 #include "Room.hpp"
+#include "protocol/Messages.hpp"
 
 namespace rtype::server {
 
@@ -74,8 +75,14 @@ class ServerManager {
     void onConnected(ClientId client);
     /** @brief A client is gone. Can arrive without `onConnected()` (connection lost before being ready). */
     void onDisconnected(ClientId client);
-    /** @brief A game message: lobby messages over TCP, inputs over UDP. */
-    void onData(ClientId client, net::Channel channel, const net::Bytes& data) const;
+    /** @brief A game message: decodes it and routes it; invalid payloads are dropped. */
+    void onData(ClientId client, net::Channel channel, const net::Bytes& data);
+    /** @brief A message received over TCP: handshake, lobby, chat, leave. */
+    void onReliableMessage(ClientId client, const protocol::Message& message);
+    /** @brief A message received over UDP: only inputs, from a client in a room. */
+    void onUnreliableMessage(ClientId client, const protocol::Message& message);
+    /** @brief Encodes a message and sends it to one client. */
+    void send(ClientId client, const protocol::Message& message, net::Channel channel) const;
 
     /** @brief Lets each room run the steps due on its own clock, and sends a snapshot for each room that stepped. */
     void advanceRooms();
@@ -94,6 +101,8 @@ class ServerManager {
 
     /** @brief Network server, polled and sent to on the game thread only. */
     std::unique_ptr<net::server::INetworkServer> _network;
+    /** @brief Port the server listens on (TCP and UDP), sent to clients in `Welcome`. */
+    std::uint16_t _port = 0;
     /**
      * @brief Rooms in progress or waiting for players, by id.
      *
