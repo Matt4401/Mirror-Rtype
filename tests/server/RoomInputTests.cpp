@@ -4,8 +4,13 @@
 #include <cstdint>
 
 #include "Room.hpp"
+#include "components/InputBuffer.hpp"
+#include "components/NetworkId.hpp"
+#include "components/NetworkOwner.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
+#include "net/NetworkEntityMap.hpp"
 
 namespace {
 
@@ -109,6 +114,24 @@ TEST_F(RoomInputTest, TimeResourceIsStoredInTheRegistry) {
     step();
     ASSERT_TRUE(room.registry().hasResource<ecs::time::Time>());
     EXPECT_EQ(room.registry().getResource<ecs::time::Time>().tickCount, 1U);
+}
+
+TEST_F(RoomInputTest, PlayerEntityCarriesItsNetworkComponents) {
+    int found = 0;
+    room.registry().runSystem<ecs::NetworkOwner, ecs::NetworkId, ecs::InputBuffer>(
+        [&](ecs::Entity entity, const ecs::NetworkOwner& owner, const ecs::NetworkId& id, const ecs::InputBuffer&) {
+            EXPECT_EQ(owner.client, PLAYER);
+            EXPECT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().entityOf(id.value), entity);
+            ++found;
+        });
+    EXPECT_EQ(found, 1);
+}
+
+TEST_F(RoomInputTest, RemovedPlayerIsUnmapped) {
+    room.removePlayer(PLAYER);
+
+    EXPECT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().size(), 0U);
+    EXPECT_EQ(room.lastProcessedInput(PLAYER), 0U);
 }
 
 int main(int argc, char** argv) {
