@@ -134,8 +134,8 @@ depend on how often the game sends. In the lobby (UDP closed), only TCP closing 
 | UDP, client → server | Preserved (one datagram = one message) | `[ClientId u32][token u32][payload]`                            |
 | UDP, server → client | Preserved (one datagram = one message) | None: `[payload]`                                               |
 
-All integers added by the library are **little-endian**. The payload is the game's message, starting with the protocol
-header; the library never reads it.
+All integers added by the library are **little-endian**. The payload is the game's message, one serialized protobuf
+`Envelope` (see [packets.md](packets.md)); the library never reads it.
 
 TCP `kind` values:
 
@@ -162,4 +162,5 @@ Rules enforced by the library:
 
 Rules enforced by the game protocol layer:
 
-- Any message that is too short, or has a wrong magic or version, is dropped **before** its payload is read.
+- Any payload that is not a valid `Envelope` (parse error, unknown message, out-of-range field) is dropped by
+  `protocol::decode()` before the game acts on it.

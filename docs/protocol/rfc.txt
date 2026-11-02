@@ -13,14 +13,16 @@ Abstract
 
    This document specifies the application-level binary protocol used
    between the R-Type game client (r-type_client) and server
-   (r-type_server).  It defines the packet format, opcode table,
-   connection lifecycle, versioning rules, and error-handling policy.
+   (r-type_server).  Messages are encoded with Protocol Buffers.  It
+   defines the message envelope, message table, connection lifecycle,
+   versioning rules, and error-handling policy.
 
    A developer with no access to the source code should be able to
    implement a compatible client or server by reading this document
    together with the transport specification (transport.md).
 
-   For byte-by-byte packet layouts, see Packet Reference (packets.md).
+   For the fields of every message, see Packet Reference (packets.md)
+   and the schema common/proto/rtype.proto.
 
 Table of Contents
 
@@ -29,7 +31,7 @@ Table of Contents
    3.  Protocol Architecture ..................................  3
    4.  Protocol Versioning ....................................  4
    5.  Connection Lifecycle ...................................  5
-   6.  Opcode Table ...........................................  6
+   6.  Message Table ..........................................  6
    7.  Error Handling .........................................  7
    8.  Security Considerations ................................  8
    9.  Port Assignment ........................................  9
@@ -49,7 +51,9 @@ Table of Contents
                     transport layer.
 
    The protocol is entirely binary.  No human-readable encoding is
-   used.  All integers are little-endian unless stated otherwise.
+   used.  Game messages are encoded with Protocol Buffers (proto3
+   binary wire format, [PROTOBUF]); the transport layer adds its own
+   little-endian headers around them.
 
    The client-server model is authoritative server: all game logic
    runs on the server.  The client sends inputs and renders the world
@@ -59,31 +63,39 @@ Table of Contents
 
 2.1.  Notation
 
-   u8, u16, u32   Unsigned integers of 8, 16, 32 bits, little-endian.
-   i16            Signed 16-bit integer, little-endian, two's
-                  complement.
-   u8[N]          Fixed-size byte array of N bytes.
-   LE             Little-endian byte order.
+   uint32, sint32, bool, string, enum
+                  Protocol Buffers scalar types, encoded as defined
+                  by the protobuf wire format (varints, zigzag for
+                  sint32, length-prefixed strings and messages).
+   u8, i16        Logical range of a field carried as uint32 or
+                  sint32 (protobuf has no 8- or 16-bit integers).
+                  The receiver MUST reject a value outside the range.
+   #N             Protobuf field number N.
 
-   All offsets are zero-based and expressed in bytes.  "Reserved"
-   fields MUST be set to 0 by the sender and MUST be ignored by the
-   receiver.
+   "Reserved" bits MUST be set to 0 by the sender and MUST be ignored
+   by the receiver.
 
 2.2.  Requirements Language
 
    The key words MUST, MUST NOT, SHOULD, and MAY in this document are
    to be interpreted as described in RFC 2119.
 
-2.3.  Packet Diagrams
+2.3.  Message Envelope
 
-   Packet diagrams show fields from left (lowest offset) to right
-   (highest offset).
+   Every game payload is exactly one serialized Envelope message:
 
-    0               1               2               3
-    0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-   |    magic[0]   |    magic[1]   |    version    |    opcode     |
-   +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+      message Envelope {
+          oneof message {
+              PlayerInput player_input = 1;
+              WorldState  world_state  = 2;
+              Hello       hello        = 16;
+              ...
+          }
+      }
+
+   The field number of the oneof case identifies the message, like an
+   opcode.  An Envelope with no case set, or with a case unknown to
+   the receiver, is malformed (Section 7.1).
 
 3.  Protocol Architecture
 
@@ -109,7 +121,9 @@ Table of Contents
 
    The network library is opaque to the game: it only exposes
    send(bytes, channel) and poll() -> events.  The game layer never
-   touches sockets directly.
+   touches sockets directly.  The packet builder is the codec of
+   common/ (protocol::encode / protocol::decode); protobuf types never
+   leave it.
 
 3.2.  Channels
 
@@ -127,32 +141,30 @@ Table of Contents
    Lobby        Room creation, joining, and ready-state management.
    In-game      Real-time exchange of inputs and world state over UDP.
 
-   Opcodes are only valid in the phases listed in Section 6.  A
+   Messages are only valid in the phases listed in Section 6.  A
    message received in the wrong phase MUST be silently dropped.
 
 4.  Protocol Versioning
 
-   Every game message starts with a 4-byte header:
-
-      magic[0] = 0x52  ('R')
-      magic[1] = 0x54  ('T')
-      version  = 0x01
-      opcode   = <opcode>
-
-   The magic field allows quick validation.  The version field is the
-   protocol version.
+   The protocol version is PROTOCOL_VERSION = 1.  It is carried by the
+   Hello message only; other messages carry no header.
 
    Version negotiation:
 
-   (1) The client sends HELLO with client_version set to 0x01.
-   (2) The server rejects any HELLO where client_version != 0x01 by
-       closing the TCP connection.
-   (3) Once the server sends WELCOME, both sides agree on version
-       0x01 for the session.
+   (1) The client sends Hello with version set to 1.
+   (2) The server rejects any Hello whose version differs by closing
+       the TCP connection.
+   (3) Once the server sends Welcome, both sides agree on version 1
+       for the session.
 
-   Future versions increment the version byte.  A server supporting
-   version N MAY accept clients announcing N-1 (backward
-   compatibility), but this is not required.
+   Compatible changes do NOT bump the version: adding a field to a
+   message, or adding a new message to the Envelope.  Older receivers
+   skip unknown fields and drop unknown messages.  Field numbers MUST
+   never be reused or renumbered, and a field's type MUST never change.
+
+   Breaking changes (removing or changing the meaning of a field)
+   increment PROTOCOL_VERSION.  A server supporting version N MAY
+   accept clients announcing N-1, but this is not required.
 
 5.  Connection Lifecycle
 
@@ -166,57 +178,63 @@ Table of Contents
      |-- TCP connect -----------------------> | (transport)
      |<-- Welcome [ClientId, token] --------- | (transport)
      |                                        |
-     |-- HELLO (0x01) ---------------------> | Handshake
-     |<-- WELCOME (0x02) ----------------- - |
+     |-- Hello (16) -----------------------> | Handshake
+     |<-- Welcome (17) --------------------- |
      |                                        |
-     |-- LOBBY_LIST_REQ (0x10) -----------> | Lobby
-     |<-- LOBBY_LIST (0x11) ------------- - |
-     |-- LOBBY_CREATE (0x12) OR             |
-     |   LOBBY_JOIN (0x13) ---------------> |
-     |<-- LOBBY_UPDATE (0x15) ----------- - |
-     |-- LOBBY_READY (0x14) -------------> |
-     |<-- GAME_START (0x20) ------------- - |
+     |-- LobbyListRequest (32) -----------> | Lobby
+     |<-- LobbyList (33) ----------------- |
+     |-- LobbyCreate (34) OR               |
+     |   LobbyJoin (35) ------------------> |
+     |<-- LobbyUpdate (37) --------------- |
+     |-- LobbyReady (36) ----------------> |
+     |<-- GameStart (48) ----------------- |
      |                                        |
      |-- [UDP open] -----------------------> | (transport)
-     |-- PLAYER_INPUT (0x60) [UDP] -------> | In-game
-     |<-- WORLD_STATE (0x70) [UDP] ------ - |
+     |-- PlayerInput (1) [UDP] ----------> | In-game
+     |<-- WorldState (2) [UDP] ----------- |
      |                                        |
-     |<-- GAME_OVER (0x30) [TCP] --------- - |
+     |<-- GameOver (49) [TCP] ------------ |
      |-- [UDP close] ----------------------> | (transport)
-     |-- LEAVE (0x40) [TCP] -------------> |
+     |-- Leave (64) [TCP] ---------------> |
      |<-- TCP closed ----------------------- |
 
-6.  Opcode Table
+6.  Message Table
 
-   Opcode  Name             Dir    Channel     Phase
-   ------  ---------------  -----  ----------  ----------------
-   0x01    HELLO            C->S   Reliable    Handshake
-   0x02    WELCOME          S->C   Reliable    Handshake
-   0x10    LOBBY_LIST_REQ   C->S   Reliable    Lobby
-   0x11    LOBBY_LIST       S->C   Reliable    Lobby
-   0x12    LOBBY_CREATE     C->S   Reliable    Lobby
-   0x13    LOBBY_JOIN       C->S   Reliable    Lobby
-   0x14    LOBBY_READY      C->S   Reliable    Lobby
-   0x15    LOBBY_UPDATE     S->C   Reliable    Lobby
-   0x20    GAME_START       S->C   Reliable    Lobby -> In-game
-   0x30    GAME_OVER        S->C   Reliable    In-game -> Lobby
-   0x40    LEAVE            C->S   Reliable    Any
-   0x50    CHAT             Both   Reliable    Lobby + In-game
-   0x60    PLAYER_INPUT     C->S   Unreliable  In-game
-   0x70    WORLD_STATE      S->C   Unreliable  In-game
+   #     Message           Dir    Channel     Phase
+   ----  ----------------  -----  ----------  ----------------
+   1     PlayerInput       C->S   Unreliable  In-game
+   2     WorldState        S->C   Unreliable  In-game
+   16    Hello             C->S   Reliable    Handshake
+   17    Welcome           S->C   Reliable    Handshake
+   32    LobbyListRequest  C->S   Reliable    Lobby
+   33    LobbyList         S->C   Reliable    Lobby
+   34    LobbyCreate       C->S   Reliable    Lobby
+   35    LobbyJoin         C->S   Reliable    Lobby
+   36    LobbyReady        C->S   Reliable    Lobby
+   37    LobbyUpdate       S->C   Reliable    Lobby
+   48    GameStart         S->C   Reliable    Lobby -> In-game
+   49    GameOver          S->C   Reliable    In-game -> Lobby
+   50    PlayerLeft        S->C   Reliable    Lobby + In-game
+   64    Leave             C->S   Reliable    Any
+   65    Chat              Both   Reliable    Lobby + In-game
+
+   "#" is the field number of the message in the Envelope oneof.
 
 7.  Error Handling
 
 7.1.  Malformed Packets
 
-   A packet is considered malformed if any of the following hold:
+   A payload is considered malformed if any of the following hold:
 
-   o  Its total length is shorter than 4 bytes (the header).
-   o  magic[0] != 0x52 or magic[1] != 0x54.
-   o  version does not match the negotiated version.
-   o  The opcode is unknown.
-   o  The payload is shorter than the minimum required for the opcode.
-   o  A field value is outside its defined range.
+   o  It is empty or larger than 64 KiB.
+   o  It is not a valid serialized Envelope (protobuf parse error:
+      truncated varint, length past the end, invalid wire type,
+      invalid UTF-8 in a string).
+   o  The Envelope has no message set, or a message unknown to the
+      receiver.
+   o  An enum field holds an unknown value.
+   o  A field value is outside its defined range, or a repeated field
+      is longer than its defined maximum (see packets.md Section 8).
 
    Malformed packets MUST be silently dropped.  The receiver MUST NOT
    close the connection or send an error reply.  This prevents a
@@ -224,8 +242,10 @@ Table of Contents
 
 7.2.  Wrong Phase
 
-   A valid packet received in the wrong phase (e.g., PLAYER_INPUT
-   during the lobby) MUST be silently dropped.
+   A valid message received in the wrong phase or on the wrong
+   channel (e.g., PlayerInput during the lobby, or any message other
+   than PlayerInput sent to the server over UDP) MUST be silently
+   dropped.
 
 7.3.  Transport-Layer Errors
 
@@ -248,12 +268,16 @@ Table of Contents
 
    The game layer MUST validate every field before acting on it:
 
-   o  entity_id values in WORLD_STATE not in the known entity table
+   o  Payloads are size-checked before parsing (64 KiB maximum), so
+      parsing never allocates more than a bounded amount of memory.
+   o  entity_id values in WorldState not in the known entity table
       MUST be ignored.
-   o  player_index in GAME_START outside [0, player_count) MUST cause
-      the client to disconnect.
-   o  CHAT messages longer than 256 bytes MUST be truncated or
+   o  GameStart with player_index outside [0, player_count) is
+      malformed and dropped.
+   o  Chat messages that are empty or longer than 256 bytes are
       dropped.
+   o  The server ignores the client_id of a received Chat and fills
+      in the sender's ClientId itself.
 
 8.3.  Denial of Service
 
@@ -267,9 +291,8 @@ Table of Contents
 8.4.  Authoritative Server
 
    The server is the sole authority on game state.  Clients send only
-   inputs (PLAYER_INPUT).  Any client that attempts to send game-state
-   packets over UDP has those datagrams dropped because their opcode
-   does not match 0x60.
+   inputs (PlayerInput).  Any client that attempts to send another
+   message over UDP has those datagrams dropped.
 
 9.  Port Assignment
 
@@ -279,7 +302,7 @@ Table of Contents
    UDP       4242          Same port; server multiplexes.
 
    The server binds both TCP and UDP to the same port.  The client
-   learns the UDP port from the WELCOME packet's udp_port field,
+   learns the UDP port from the Welcome message's udp_port field,
    which allows the operator to choose a different port at startup.
 
 10. References
@@ -287,8 +310,13 @@ Table of Contents
    [transport.md]    Network Transport & Connection -- TCP/UDP channel
                      rules, connection lifecycle, framing.
 
-   [packets.md]      Packet Reference -- binary layout of every
-                     opcode.
+   [packets.md]      Packet Reference -- fields of every message.
+
+   [rtype.proto]     common/proto/rtype.proto -- Protocol Buffers
+                     schema, source of truth for field numbers.
+
+   [PROTOBUF]        Google, "Protocol Buffers -- Encoding",
+                     https://protobuf.dev/programming-guides/encoding/
 
    [architecture/network.md]
                      Network Architecture -- library design and

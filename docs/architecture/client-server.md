@@ -4,8 +4,8 @@ The client and the server, layer by layer, and what travels between them.
 
 !!! note "Status"
 The `network/` library, the `shared/` interfaces and the ECS core of `engine/` (registry, clock) exist.
-`ServerManager` and `Room` exist as a skeleton: the game systems and the protocol are still `TODO`s. `common/`
-(the `.proto`), the lobby and the gameplay systems describe the planned design.
+`ServerManager` and `Room` exist as a skeleton. The protocol (`common/`: `rtype.proto` and its codec) exists and the
+server decodes inputs and sends snapshots; the lobby and the gameplay systems describe the planned design.
 
 **Layers**
 
