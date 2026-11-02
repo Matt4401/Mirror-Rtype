@@ -3,6 +3,6 @@ target("r-type_client")
     set_targetdir("$(projectdir)")
     add_files("**.cpp")
     add_includedirs(".")
-    add_deps("shared", "engine_core", "engine_time", "engine_events", "engine_scripting", "engine_render", "engine_input", "engine_physics", "engine_audio", "engine_config")
-    -- add_deps("network")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting", "engine_render", "engine_input", "engine_physics", "engine_audio", "engine_config")
+    -- add_deps("engine_network", "engine_network_asio") once the client uses the network
     add_packages("asio", "raylib", "wren")

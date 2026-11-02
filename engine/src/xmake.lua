@@ -39,13 +39,24 @@ target("engine_scripting")
     add_deps("engine_core", "engine_events", "engine_input_state")
     add_packages("wren", {public = true})
 
--- Network-agnostic replication building blocks (input queue, network id map). No socket here: the transport stays
--- in the top-level "network" target, so the engine never depends on asio.
+-- Network interfaces (transport, config) and replication building blocks (input queue, network id map).
+-- No socket library here: code that only talks to the interfaces never depends on asio.
 target("engine_network")
     set_kind("static")
     add_files("net/*.cpp")
     add_includedirs(".", {public = true})
     add_deps("engine_core")
+
+-- Asio implementation of the transport, behind net/NetworkFactory.hpp. Only the executables that open sockets link it.
+target("engine_network_asio")
+    set_kind("static")
+    add_files("net/asio/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_network", "log")
+    add_packages("asio")
+    if is_plat("windows", "mingw") then
+        add_syslinks("ws2_32", "mswsock", {public = true})
+    end
 
 target("engine_physics")
     set_kind("static")
@@ -56,7 +67,7 @@ target("engine_physics")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_input_state", "engine_scripting", "engine_network", "engine_physics")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_input_state", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end

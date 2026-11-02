@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-#include "Wire.hpp"
+#include "protocol/Messages.hpp"
 
 namespace rtype::server {
 
@@ -18,7 +18,7 @@ inline constexpr std::string_view LOGS_COLORFUL_FLAG = "--logs-colorful";
 /** @brief Settings of the server, read from the command line. */
 struct Options {
     /** @brief TCP and UDP port to listen on. */
-    std::uint16_t port = net::wire::DEFAULT_PORT;
+    std::uint16_t port = protocol::DEFAULT_PORT;
     /** @brief Whether the debug logs are printed (`--logs` or `--logs-colorful`). */
     bool logs = false;
     /** @brief Whether the logs are colored (`--logs-colorful`). */

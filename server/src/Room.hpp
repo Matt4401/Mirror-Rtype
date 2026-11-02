@@ -5,13 +5,13 @@
 #include <ranges>
 #include <unordered_map>
 
-#include "Network/INetworkManager.hpp"
 #include "components/InputBuffer.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
+#include "net/INetworkManager.hpp"
 #include "net/NetworkEntityMap.hpp"
 
 namespace rtype::server {
@@ -19,7 +19,8 @@ namespace rtype::server {
 /** @brief Maximum number of inputs queued per player; when exceeded, the oldest one is dropped. */
 inline constexpr std::size_t MAX_PENDING_INPUTS = ecs::DEFAULT_MAX_PENDING_INPUTS;
 
-using net::ClientId;
+/** @brief Network id of a player: the transport's peer id. */
+using ClientId = ecs::net::PeerId;
 
 /**
  * @brief Decoded input of one player.

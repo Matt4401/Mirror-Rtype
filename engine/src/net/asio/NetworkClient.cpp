@@ -1,4 +1,4 @@
-#include "NetworkClient.hpp"
+#include "net/asio/NetworkClient.hpp"
 
 #include <algorithm>
 #include <asio/buffer.hpp>
@@ -22,17 +22,19 @@
 #include <tuple>
 #include <utility>
 
-#include "LogTag.hpp"
 #include "Logger.hpp"
-#include "Network/INetworkManager.hpp"
-#include "Wire.hpp"
-#include "session/TcpSession.hpp"
+#include "net/INetworkManager.hpp"
+#include "net/NetworkConfig.hpp"
+#include "net/asio/LogTag.hpp"
+#include "net/asio/TcpSession.hpp"
+#include "net/asio/Wire.hpp"
 
-namespace rtype::net::client {
+namespace ecs::net::detail {
 
 using wire::MessageKind;
 
-NetworkClient::NetworkClient() : _work(asio::make_work_guard(_io)), _udpSocket(_io), _udpTimer(_io) {}
+NetworkClient::NetworkClient(const NetworkConfig& config)
+    : _config(config), _work(asio::make_work_guard(_io)), _udpSocket(_io), _udpTimer(_io) {}
 
 NetworkClient::~NetworkClient() { NetworkClient::stop(); }
 
@@ -49,20 +51,26 @@ bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
         asio::connect(socket, resolver.resolve(host, std::to_string(port)));
         _serverAddress = socket.remote_endpoint().address();
     } catch (asio::system_error& e) {
-        log::error(LOG_TAG, "cannot connect to ", host, ':', port, ": ", e.what());
+        rtype::log::error(LOG_TAG, "cannot connect to ", host, ':', port, ": ", e.what());
         _state = State::Idle;
         return false;
     }
 
-    _tcp = std::make_shared<session::TcpSession>(
+    _tcp = std::make_shared<TcpSession>(
         std::move(socket), 0,
-        [this](ClientId, const MessageKind kind, Bytes payload) { onTcpMessage(kind, std::move(payload)); },
-        [this](const ClientId client) {
+        TcpSession::Limits{.maxPayload = _config.maxReliablePayload, .maxQueueBytes = _config.maxReliableQueueBytes},
+        [this](PeerId, const MessageKind kind, Bytes payload) { onTcpMessage(kind, std::move(payload)); },
+        [this](const PeerId peer) {
             _state = State::Stopped;
             closeUdpNow();
-            _events.push({.type = EventType::Disconnected, .client = client, .data = {}, .channel = Channel::Reliable});
+            _events.push({.type = EventType::Disconnected, .peer = peer, .data = {}, .channel = Channel::Reliable});
         });
     _tcp->start();
+
+    // First frame: the server refuses the connection if it runs another protocol.
+    Bytes handshake(wire::HANDSHAKE_SIZE);
+    wire::writeU32(std::span(handshake).first<4>(), _config.protocolId);
+    _tcp->send(MessageKind::Handshake, handshake);
 
     _thread = std::thread([this] { _io.run(); });
     return true;
@@ -72,17 +80,17 @@ void NetworkClient::onTcpMessage(const MessageKind kind, Bytes payload) {
     switch (kind) {
         case MessageKind::Data:
             _events.push(
-                {.type = EventType::Data, .client = 0, .data = std::move(payload), .channel = Channel::Reliable});
+                {.type = EventType::Data, .peer = 0, .data = std::move(payload), .channel = Channel::Reliable});
             break;
         case MessageKind::Welcome:
-            if (payload.size() != wire::UDP_HEADER_SIZE) {
+            if (_welcomed || payload.size() != wire::WELCOME_SIZE) {
                 _tcp->close();
                 return;
             }
-            _clientId = wire::readU32(std::span(payload).first<4>());
+            _peerId = wire::readU32(std::span(payload).first<4>());
             _token = wire::readU32(std::span(payload).subspan<4, 4>());
             _welcomed = true;
-            _events.push({.type = EventType::Connected, .client = 0, .data = {}, .channel = Channel::Reliable});
+            _events.push({.type = EventType::Connected, .peer = 0, .data = {}, .channel = Channel::Reliable});
             break;
         default:
             _tcp->close();
@@ -96,14 +104,14 @@ bool NetworkClient::openUdp(const std::uint16_t port) {
     }
     auto open = [this, port] {
         if (!_welcomed) {
-            log::error(LOG_TAG, "cannot open UDP: no Welcome received from the server yet");
+            rtype::log::error(LOG_TAG, "cannot open UDP: no Welcome received from the server yet");
             return false;
         }
         try {
             _serverUdp = {_serverAddress, port};
             _udpSocket = asio::ip::udp::socket(_io, {_serverUdp.protocol(), 0});
         } catch (const asio::system_error& e) {
-            log::error(LOG_TAG, "cannot open UDP to port ", port, ": ", e.what());
+            rtype::log::error(LOG_TAG, "cannot open UDP to port ", port, ": ", e.what());
             return false;
         }
         _tcp->send(MessageKind::UdpOpen);
@@ -144,13 +152,13 @@ void NetworkClient::receiveUdp() {
                                       if (ec == asio::error::operation_aborted) {
                                           return;
                                       }
-                                      if (!ec && _udpFrom == _serverUdp && size <= wire::MAX_DATAGRAM) {
+                                      if (!ec && _udpFrom == _serverUdp && size <= MAX_DATAGRAM) {
                                           _lastUdpReceived = std::chrono::steady_clock::now();
                                           _udpBound = true;
                                           if (size > 0) {
                                               const auto payload = std::span(_udpBuffer).first(size);
                                               _events.push({.type = EventType::Data,
-                                                            .client = 0,
+                                                            .peer = 0,
                                                             .data = Bytes(payload.begin(), payload.end()),
                                                             .channel = Channel::Unreliable});
                                           }
@@ -160,17 +168,17 @@ void NetworkClient::receiveUdp() {
 }
 
 void NetworkClient::sendDatagram(const Bytes& payload) {
-    const auto datagram = std::make_shared<Bytes>(wire::UDP_HEADER_SIZE + payload.size());
-    wire::writeU32(std::span(*datagram).first<4>(), _clientId);
+    const auto datagram = std::make_shared<Bytes>(DATAGRAM_HEADER_SIZE + payload.size());
+    wire::writeU32(std::span(*datagram).first<4>(), _peerId);
     wire::writeU32(std::span(*datagram).subspan<4, 4>(), _token);
-    std::ranges::copy(payload, datagram->begin() + wire::UDP_HEADER_SIZE);
+    std::ranges::copy(payload, datagram->begin() + DATAGRAM_HEADER_SIZE);
 
     _lastUdpSent = std::chrono::steady_clock::now();
     _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [datagram](std::error_code, std::size_t) {});
 }
 
 void NetworkClient::scheduleUdpTick() {
-    _udpTimer.expires_after(wire::UDP_TICK);
+    _udpTimer.expires_after(_config.udpTick);
     _udpTimer.async_wait([this](const std::error_code ec) {
         if (ec) {
             return;
@@ -182,18 +190,18 @@ void NetworkClient::scheduleUdpTick() {
 void NetworkClient::onUdpTick() {
     const auto now = std::chrono::steady_clock::now();
 
-    if (now - _lastUdpReceived > wire::UDP_TIMEOUT) {
+    if (now - _lastUdpReceived > _config.udpTimeout) {
         _tcp->close();
         return;
     }
-    if (!_udpBound || now - _lastUdpSent >= wire::KEEPALIVE_INTERVAL) {
+    if (!_udpBound || now - _lastUdpSent >= _config.keepaliveInterval) {
         sendDatagram({});
     }
     scheduleUdpTick();
 }
 
 void NetworkClient::send(const Bytes& data, const Channel channel) {
-    if (_state.load() != State::Running || !wire::isSendable(data, channel)) {
+    if (_state.load() != State::Running || !wire::isSendable(data, channel, _config.maxReliablePayload)) {
         return;
     }
 
@@ -225,4 +233,4 @@ void NetworkClient::stop() {
     }
 }
 
-}  // namespace rtype::net::client
+}  // namespace ecs::net::detail
