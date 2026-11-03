@@ -10,6 +10,7 @@
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/CommandBuffer.hpp"
 
 namespace client {
 
@@ -84,6 +85,8 @@ class RTypeGamePlugin final : public engine::IPlugin {
     ecs::TextureId _starMediumId = ecs::NO_TEXTURE;
     /** @brief Texture identifier for large star sprites. */
     ecs::TextureId _starLargeId = ecs::NO_TEXTURE;
+    /** @brief Deferred command buffer for safe prefab spawning during update loops. */
+    ecs::CommandBuffer _commandBuffer;
 };
 
 }  // namespace client

@@ -11,6 +11,7 @@
 #include "RTypeGamePlugin.hpp"
 #include "core/Engine.hpp"
 #include "input/InputPlugin.hpp"
+#include "prefabs/PrefabPlugin.hpp"
 #include "render/RenderPlugin.hpp"
 #include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
@@ -23,6 +24,7 @@ int main() {
             .addPlugin<input::InputPlugin>()
             .addPlugin<systems::PhysicsPlugin>()
             .addPlugin<systems::AnimationPlugin>()
+            .addPlugin<prefabs::PrefabPlugin>()
             .addPlugin<scripting::ScriptPlugin>()
             .addPlugin<client::RTypeGamePlugin>();
 

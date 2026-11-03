@@ -17,7 +17,6 @@
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
 #include "components/Renderable.hpp"
-#include "components/RigidBody2D.hpp"
 #include "components/ShipInput.hpp"
 #include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
@@ -30,6 +29,10 @@
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
+#include "prefabs/ClientBullet.hpp"
+#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
+#include "prefabs/PrefabPlugin.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
@@ -45,17 +48,12 @@ constexpr float MIN_X = 32.0F;
 constexpr float MAX_X = 1248.0F;
 constexpr float MIN_Y = 32.0F;
 constexpr float MAX_Y = 688.0F;
-constexpr float PLAYER_BULLET_SPEED = 700.0F;
-
 constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
 constexpr ecs::Rgba COLOR_STAR_LARGE = {.r = 255, .g = 255, .b = 255, .a = 220};
 
 using ::input::InputState;
-
-/** @brief Tag component marking player bullets. */
-struct PlayerBullet {};
 
 struct StarLayer {
     int count = 0;
@@ -160,8 +158,9 @@ void movePlayer(ecs::Registry& registry, float deltaTime) {
 
 void killOffscreenBullets(ecs::Registry& registry) {
     std::vector<ecs::Entity> toDestroy;
-    registry.runSystem<ecs::Transform, PlayerBullet>(
-        [&toDestroy](ecs::Entity entity, const ecs::Transform& transform, PlayerBullet& /*tag*/) {
+    registry.runSystem<ecs::Transform, client::prefabs::ClientBullet>(
+        [&toDestroy](ecs::Entity entity, const ecs::Transform& transform,
+                     client::prefabs::ClientBullet& /*tag*/) {
             if (transform.x > SCENE_WIDTH + 64.0F) {
                 toDestroy.push_back(entity);
             }
@@ -178,6 +177,7 @@ void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
     builder.require<::input::InputPlugin>();
     builder.require<systems::PhysicsPlugin>();
     builder.require<systems::AnimationPlugin>();
+    builder.require<::prefabs::PrefabPlugin>();
 }
 
 void RTypeGamePlugin::init(engine::Engine& engine) {
@@ -198,6 +198,11 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     _shipTexId = load("sprites/r-typesheet42.gif");
     _bydosTexId = load("sprites/spritesheet5.png");
     _bulletTexId = load("sprites/r-typesheet-amo.png");
+
+    engine.getPlugin<::prefabs::PrefabPlugin>().manager().registerPrefab(
+        client::prefabs::CLIENT_BULLET_PREFAB, client::prefabs::buildClientBullet,
+        {{"textureId", static_cast<std::int64_t>(_bulletTexId)}, {"scaleX", 1.5F}, {"scaleY", 1.5F}});
+
     _starSmallId = load("sprites/star_small.png");
     _starMediumId = load("sprites/star_medium.png");
     _starLargeId = load("sprites/star_large.png");
@@ -225,35 +230,12 @@ void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*ti
             }
         });
 
+    auto& prefabManager = engine.service<::prefabs::PrefabManager>();
     for (const auto& pos : spawnPositions) {
-        const ecs::Entity bullet = engine.registry().spawnEntity();
-        engine.registry().addComponent<ecs::Transform>(
-            bullet, ecs::Transform{.x = pos.x + 40.0F, .y = pos.y, .scaleX = 1.5F, .scaleY = 1.5F});
-        engine.registry().addComponent<ecs::Renderable>(bullet,
-                                                        ecs::Renderable{
-                                                            .textureId = _bulletTexId,
-                                                            .sourceRect = {.x = 0, .y = 0, .width = 32, .height = 32},
-                                                            .origin = {.x = 0.5F, .y = 0.5F},
-                                                            .tint = COLOR_WHITE,
-                                                            .layer = 3,
-                                                        });
-        engine.registry().addComponent<ecs::AnimationComponent>(bullet, ecs::AnimationComponent{
-                                                                            .frameWidth = 32,
-                                                                            .frameHeight = 32,
-                                                                            .frameCount = 4,
-                                                                            .startX = 0,
-                                                                            .startY = 0,
-                                                                            .frameDuration = 0.015F,
-                                                                            .loop = false,
-                                                                        });
-        engine.registry().addComponent<ecs::RigidBody2D>(bullet, ecs::RigidBody2D{
-                                                                     .bodyType = ecs::BodyType::Dynamic,
-                                                                     .velocityX = PLAYER_BULLET_SPEED,
-                                                                     .fixedRotation = true,
-                                                                     .bullet = true,
-                                                                 });
-        engine.registry().addComponent<PlayerBullet>(bullet, PlayerBullet{});
+        prefabManager.spawn(client::prefabs::CLIENT_BULLET_PREFAB, _commandBuffer,
+                            {{"x", pos.x + 40.0F}, {"y", pos.y}});
     }
+    _commandBuffer.flush(engine.registry());
 }
 
 }  // namespace client
