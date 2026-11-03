@@ -4,6 +4,9 @@ set_languages("c++23")
 add_rules("mode.debug", "mode.release")
 add_rules("plugin.compile_commands.autoupdate", {outputdir = "."})
 
+-- Patched abseil for protobuf's C++20 build on MSVC, see xmake/repo/packages/a/abseil/xmake.lua.
+add_repositories("rtype-repo xmake/repo")
+
 add_requires("asio", "gtest", "wren", "box2d v2.4.2", "toml++ v3.4.0", "protobuf-cpp 31.1")
 -- protobuf picks its C++ standard from abseil (default 17). The type of protobuf's global empty string differs
 -- between C++17 and C++20, which MSVC encodes in the mangled name: build both in C++20 to match our c++23 code.
