@@ -25,18 +25,11 @@ target("engine_prefabs")
     add_includedirs(".", {public = true})
     add_deps("engine_core")
 
--- Raylib-free part of the input module: the action state read by gameplay code and scripts. Built without the
--- graphics option, so that headless targets (server) using the scripting module still link.
-target("engine_input_state")
-    set_kind("static")
-    add_files("input/InputState.cpp")
-    add_includedirs(".", {public = true})
-
 target("engine_scripting")
     set_kind("static")
     add_files("scripting/**.cpp", "systems/script/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core", "engine_events", "engine_input_state")
+    add_deps("engine_core", "engine_events", "engine_input")
     add_packages("wren", {public = true})
 
 target("engine_physics")
@@ -48,7 +41,7 @@ target("engine_physics")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_physics", "engine_input", "engine_input_state")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_physics", "engine_input")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end
