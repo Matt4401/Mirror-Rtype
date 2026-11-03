@@ -137,6 +137,18 @@ engine.addPlugin<render::RenderPlugin>()
 engine.run();
 ```
 
+When the loop belongs to someone else (a server running several engines in one thread), call `engine.advance()`
+instead: it runs one frame without blocking or rendering, ticks the clock, and returns the number of fixed steps
+executed. See [Plugins — Driving the Loop](plugins.md#driving-the-loop).
+
+```cpp
+engine.clock().reset();                     // ignore the time spent before the game starts
+while (running) {
+    const std::size_t steps = engine.advance();   // 0, 1 or more fixed steps
+    if (steps > 0) { /* the simulation moved */ }
+}
+```
+
 When managing a manual loop (e.g. in standalone tests):
 
 ```cpp

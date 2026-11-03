@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <expected>
 #include <functional>
 #include <vector>
@@ -160,6 +161,15 @@ class Engine {
      * @brief Shuts down all initialized plugins in reverse topological order.
      */
     void shutdown();
+
+    /**
+     * @brief Runs one non-blocking frame: preUpdate, the fixed steps due since the last call, then update.
+     *
+     * For loops driven from outside the engine (e.g. a server running several engines in one thread).
+     * Does not render.
+     * @return Number of fixed steps executed (0 if less than one fixed step has elapsed).
+     */
+    std::size_t advance();
 
   private:
     /**
