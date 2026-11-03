@@ -32,6 +32,18 @@ struct AxisVector2 {
 };
 
 /**
+ * @brief Mouse cursor and wheel state sampled once per frame.
+ */
+struct MouseState {
+    /** @brief Horizontal cursor position in window pixels. */
+    float x = 0.0F;
+    /** @brief Vertical cursor position in window pixels. */
+    float y = 0.0F;
+    /** @brief Wheel movement of the current frame, positive when scrolling up. */
+    float wheel = 0.0F;
+};
+
+/**
  * @brief ECS component holding dynamic action states and continuous axes for an entity.
  */
 struct InputState {
@@ -40,6 +52,9 @@ struct InputState {
 
     /** @brief Table of action states and magnitudes indexed by action ID. */
     std::unordered_map<ActionId, ActionData> actions;
+
+    /** @brief Mouse cursor and wheel state. */
+    MouseState mouse;
 
     /**
      * @brief Tells whether an action is currently held down.

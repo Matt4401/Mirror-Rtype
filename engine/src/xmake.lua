@@ -41,7 +41,7 @@ target("engine_physics")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_physics")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_physics", "engine_input")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio", "engine_ui")
     end
@@ -49,6 +49,6 @@ target("engine_all")
 if has_config("graphics") then
     includes("render")
     includes("audio")
-    includes("input")
     includes("ui")
 end
+includes("input")

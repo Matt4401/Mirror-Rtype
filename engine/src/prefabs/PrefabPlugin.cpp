@@ -20,7 +20,10 @@ PrefabPlugin::PrefabPlugin() : _manager(std::make_shared<PrefabManager>()) {}
 
 PrefabPlugin::~PrefabPlugin() = default;
 
-void PrefabPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
+void PrefabPlugin::build(engine::PluginBuilder& builder) {
+    builder.require<engine::CorePlugin>();
+    builder.provides<PrefabManager>();
+}
 
 void PrefabPlugin::init(engine::Engine& engine) {
     if (_manager != nullptr) {

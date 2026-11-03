@@ -7,6 +7,7 @@
 
 #include "components/CameraComponent.hpp"
 #include "components/Renderable.hpp"
+#include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -34,6 +35,29 @@ void RenderSystem::collect(ecs::Registry& registry) {
                 .tint = renderable.tint,
             });
         });
+    registry.runSystem<ecs::SpriteInstances, ecs::Renderable>(
+        [this](ecs::Entity entity, const ecs::SpriteInstances& pool, const ecs::Renderable& renderable) {
+            for (const auto& inst : pool.instances) {
+                _queue.push_back(DrawItem{
+                    .entity = entity,
+                    .layer = renderable.layer,
+                    .textureId = renderable.textureId,
+                    .sourceRect = renderable.sourceRect,
+                    .origin = renderable.origin,
+                    .transform =
+                        ecs::Transform{
+                            .x = inst.x,
+                            .y = inst.y,
+                            .z = pool.z,
+                            .rotation = pool.rotation,
+                            .scaleX = pool.scaleX,
+                            .scaleY = pool.scaleY,
+                        },
+                    .tint = renderable.tint,
+                });
+            }
+        });
+
     std::ranges::sort(_queue, detail::drawsBefore);
 
     _camera = detail::neutralCamera();
