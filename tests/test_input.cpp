@@ -1,18 +1,87 @@
 #include <gtest/gtest.h>
-#include <raylib.h>
 
 #include <cmath>
+#include <memory>
+#include <string_view>
 
+#include "core/Engine.hpp"
+#include "core/IPlugin.hpp"
+#include "core/Mediator.hpp"
+#include "core/PluginBuilder.hpp"
+#include "core/PluginGraph.hpp"
+#include "core/services/IWindowService.hpp"
+#include "core/services/InputCodes.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/InputActionEvent.hpp"
 #include "input/ActionId.hpp"
 #include "input/ActionMapping.hpp"
 #include "input/InputConstants.hpp"
+#include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/KeyboardLayout.hpp"
 #include "input/RTypeBindings.hpp"
 #include "systems/input/InputSystem.hpp"
+
+namespace {
+
+class FakeWindow final : public engine::IWindowService {
+  public:
+    explicit FakeWindow(engine::Key heldKey = engine::Key::Unknown) : _heldKey(heldKey) {}
+    void holdButton(engine::GamepadButton button) { _heldButton = button; }
+    void tiltAxis(engine::GamepadAxis axis, float value) {
+        _tiltedAxis = axis;
+        _axisValue = value;
+    }
+    void holdMouseButton(engine::MouseButton button) { _heldMouseButton = button; }
+    void moveMouse(engine::MousePosition position, float wheel) {
+        _mousePosition = position;
+        _mouseWheel = wheel;
+    }
+    [[nodiscard]] bool shouldClose() const noexcept override { return false; }
+    void beginFrame() override {}
+    void endFrame() override {}
+    [[nodiscard]] int width() const noexcept override { return 0; }
+    [[nodiscard]] int height() const noexcept override { return 0; }
+    [[nodiscard]] bool isKeyDown(engine::Key key) const noexcept override { return key == _heldKey; }
+    [[nodiscard]] bool isGamepadAvailable(int /*gamepad*/) const noexcept override { return true; }
+    [[nodiscard]] bool isGamepadButtonDown(int /*gamepad*/, engine::GamepadButton button) const noexcept override {
+        return button == _heldButton;
+    }
+    [[nodiscard]] float gamepadAxis(int /*gamepad*/, engine::GamepadAxis axis) const noexcept override {
+        return axis == _tiltedAxis ? _axisValue : 0.0F;
+    }
+    [[nodiscard]] bool isMouseButtonDown(engine::MouseButton button) const noexcept override {
+        return button == _heldMouseButton;
+    }
+    [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return _mousePosition; }
+    [[nodiscard]] float mouseWheelDelta() const noexcept override { return _mouseWheel; }
+
+  private:
+    engine::Key _heldKey;
+    engine::GamepadButton _heldButton = engine::GamepadButton::Unknown;
+    engine::GamepadAxis _tiltedAxis = engine::GamepadAxis::None;
+    float _axisValue = 0.0F;
+    engine::MouseButton _heldMouseButton = engine::MouseButton::Unknown;
+    engine::MousePosition _mousePosition;
+    float _mouseWheel = 0.0F;
+};
+
+class FakeWindowPlugin final : public engine::IPlugin {
+  public:
+    explicit FakeWindowPlugin(engine::Key heldKey) : _heldKey(heldKey) {}
+    [[nodiscard]] std::string_view name() const noexcept override { return "FakeWindowPlugin"; }
+    void build(engine::PluginBuilder& builder) override { builder.provides<engine::IWindowService>(); }
+    void init(engine::Engine& engine) override {
+        ASSERT_TRUE(engine.mediator().registerService<engine::IWindowService>(std::make_shared<FakeWindow>(_heldKey)));
+    }
+
+  private:
+    engine::Key _heldKey;
+};
+
+}  // namespace
 
 TEST(ActionId, Fnv1aHashConsistency) {
     constexpr input::ActionId shootId = input::makeActionId("shoot");
@@ -25,9 +94,9 @@ TEST(ActionId, Fnv1aHashConsistency) {
 TEST(ActionMapping, DefaultConstructorIsEmpty) {
     const input::ActionMapping mapping;
 
-    EXPECT_FALSE(mapping.hasKey("move_up", KEY_W));
-    EXPECT_FALSE(mapping.hasKey("move_up", KEY_Z));
-    EXPECT_FALSE(mapping.hasKey("shoot", KEY_SPACE));
+    EXPECT_FALSE(mapping.hasKey("move_up", engine::Key::W));
+    EXPECT_FALSE(mapping.hasKey("move_up", engine::Key::Z));
+    EXPECT_FALSE(mapping.hasKey("shoot", engine::Key::Space));
     EXPECT_FLOAT_EQ(mapping.deadzone(), 0.2F);
 }
 
@@ -35,21 +104,21 @@ TEST(ActionMapping, RuntimeBindingAndRemapping) {
     input::ActionMapping mapping;
 
     mapping.registerAction("shoot", input::ActionType::Button);
-    EXPECT_TRUE(mapping.bindKey("shoot", KEY_E));
-    EXPECT_TRUE(mapping.hasKey("shoot", KEY_E));
+    EXPECT_TRUE(mapping.bindKey("shoot", engine::Key::E));
+    EXPECT_TRUE(mapping.hasKey("shoot", engine::Key::E));
 
-    EXPECT_TRUE(mapping.unbindKey("shoot", KEY_E));
-    EXPECT_FALSE(mapping.hasKey("shoot", KEY_E));
+    EXPECT_TRUE(mapping.unbindKey("shoot", engine::Key::E));
+    EXPECT_FALSE(mapping.hasKey("shoot", engine::Key::E));
 
     mapping.registerAction("move_up", input::ActionType::Button);
-    EXPECT_TRUE(mapping.bindKey("move_up", KEY_W));
-    EXPECT_TRUE(mapping.bindKey("move_up", KEY_Z));
-    EXPECT_TRUE(mapping.hasKey("move_up", KEY_W));
-    EXPECT_TRUE(mapping.hasKey("move_up", KEY_Z));
+    EXPECT_TRUE(mapping.bindKey("move_up", engine::Key::W));
+    EXPECT_TRUE(mapping.bindKey("move_up", engine::Key::Z));
+    EXPECT_TRUE(mapping.hasKey("move_up", engine::Key::W));
+    EXPECT_TRUE(mapping.hasKey("move_up", engine::Key::Z));
 
     mapping.clearKeyBindings("move_up");
-    EXPECT_FALSE(mapping.hasKey("move_up", KEY_W));
-    EXPECT_FALSE(mapping.hasKey("move_up", KEY_Z));
+    EXPECT_FALSE(mapping.hasKey("move_up", engine::Key::W));
+    EXPECT_FALSE(mapping.hasKey("move_up", engine::Key::Z));
 
     mapping.setDeadzone(0.35F);
     EXPECT_FLOAT_EQ(mapping.deadzone(), 0.35F);
@@ -61,13 +130,13 @@ TEST(ActionMapping, RuntimeBindingAndRemapping) {
 TEST(ActionMapping, CompositeAxisConfiguration) {
     input::ActionMapping mapping;
     mapping.registerAction("move_x", input::ActionType::Axis);
-    mapping.bindAxisComposite("move_x", KEY_A, KEY_D);
+    mapping.bindAxisComposite("move_x", engine::Key::A, engine::Key::D);
 
     const auto* binding = mapping.getBinding(input::makeActionId("move_x"));
     ASSERT_NE(binding, nullptr);
     EXPECT_EQ(binding->type, input::ActionType::Axis);
-    EXPECT_EQ(binding->negativeKeys.at(0), KEY_A);
-    EXPECT_EQ(binding->keys.at(0), KEY_D);
+    EXPECT_EQ(binding->negativeKeys.at(0), engine::Key::A);
+    EXPECT_EQ(binding->keys.at(0), engine::Key::D);
 }
 
 TEST(InputState, DynamicActionsAndAxes) {
@@ -146,8 +215,9 @@ TEST(InputSystem, UpdatesComponentForMatchingPlayerIndex) {
     const ecs::Entity player1 = registry.spawnEntity();
     registry.addComponent<input::InputState>(player1, input::InputState{.playerIndex = 1, .actions = {}});
 
-    system0.update(registry, &eventBus);
-    system1.update(registry, &eventBus);
+    const FakeWindow window;
+    system0.update(window, registry, &eventBus);
+    system1.update(window, registry, &eventBus);
 
     const auto& p0State = registry.getComponents<input::InputState>().get(player0);
     EXPECT_EQ(p0State.playerIndex, 0);
@@ -165,7 +235,8 @@ TEST(InputSystem, DoesNothingWhenNoEntityHasInputState) {
     eventBus.subscribe<events::InputActionEvent>(
         [&eventTriggered](const events::InputActionEvent& /*event*/) { eventTriggered = true; });
 
-    system.update(registry, &eventBus);
+    const FakeWindow window;
+    system.update(window, registry, &eventBus);
     EXPECT_FALSE(registry.hasResource<input::InputState>());
     EXPECT_FALSE(eventTriggered);
 }
@@ -224,22 +295,122 @@ TEST(RTypeBindings, SetupDefaultBindings) {
     input::ActionMapping mapping;
     client::input::setupDefaultBindings(mapping);
 
-    // Spatial cluster keys: KEY_A (physical Left) and KEY_W (physical Up)
-    EXPECT_TRUE(mapping.hasKey("move_x", KEY_A));
-    EXPECT_TRUE(mapping.hasKey("move_x", KEY_D));
-    EXPECT_TRUE(mapping.hasKey("move_x", KEY_LEFT));
-    EXPECT_TRUE(mapping.hasKey("move_x", KEY_RIGHT));
-    // Physical 'A' on AZERTY (KEY_Q) and physical 'W' on AZERTY (KEY_Z) must NOT move the ship
-    EXPECT_FALSE(mapping.hasKey("move_x", KEY_Q));
+    // Spatial cluster keys: Key::A (physical Left) and Key::W (physical Up)
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::A));
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::D));
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::Left));
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::Right));
+    // Physical 'A' on AZERTY (Key::Q) and physical 'W' on AZERTY (Key::Z) must NOT move the ship
+    EXPECT_FALSE(mapping.hasKey("move_x", engine::Key::Q));
 
-    EXPECT_TRUE(mapping.hasKey("move_y", KEY_W));
-    EXPECT_TRUE(mapping.hasKey("move_y", KEY_S));
-    EXPECT_TRUE(mapping.hasKey("move_y", KEY_UP));
-    EXPECT_TRUE(mapping.hasKey("move_y", KEY_DOWN));
-    EXPECT_FALSE(mapping.hasKey("move_y", KEY_Z));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::W));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::S));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::Up));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::Down));
+    EXPECT_FALSE(mapping.hasKey("move_y", engine::Key::Z));
 
-    EXPECT_TRUE(mapping.hasKey("shoot", KEY_SPACE));
-    EXPECT_TRUE(mapping.hasKey("charge_weapon", KEY_LEFT_SHIFT));
+    EXPECT_TRUE(mapping.hasKey("shoot", engine::Key::Space));
+    EXPECT_TRUE(mapping.hasKey("charge_weapon", engine::Key::LeftShift));
+}
+
+TEST(ActionMapping, SamplesKeysThroughWindowService) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+    mapping.bindKey("shoot", engine::Key::Space);
+    mapping.registerAction("move_x", input::ActionType::Axis);
+    mapping.bindAxisComposite("move_x", engine::Key::A, engine::Key::D);
+
+    const FakeWindow holdingSpace(engine::Key::Space);
+    EXPECT_TRUE(mapping.isActionDown(holdingSpace, "shoot"));
+
+    const FakeWindow holdingA(engine::Key::A);
+    EXPECT_FALSE(mapping.isActionDown(holdingA, "shoot"));
+    EXPECT_FLOAT_EQ(mapping.getAxis(holdingA, "move_x"), -1.0F);
+}
+
+TEST(InputPlugin, RequiresAWindowServiceProvider) {
+    engine::Engine engine;
+    engine.addPlugin<input::InputPlugin>();
+
+    EXPECT_THROW(engine.init(), engine::PluginDependencyException);
+}
+
+TEST(InputPlugin, PollsAnyWindowServiceProvider) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+    mapping.bindKey("shoot", engine::Key::Space);
+
+    engine::Engine engine;
+    engine.addPlugin<input::InputPlugin>(mapping);
+    engine.addPlugin<FakeWindowPlugin>(engine::Key::Space);
+
+    const ecs::Entity player = engine.registry().spawnEntity();
+    engine.registry().addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
+
+    engine.step(0.016F);
+
+    EXPECT_TRUE(engine.registry().getComponents<input::InputState>().get(player).isDown("shoot"));
+}
+
+TEST(ActionMapping, RejectsUnknownInputCodes) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+
+    EXPECT_FALSE(mapping.bindKey("shoot", engine::Key::Unknown));
+    EXPECT_FALSE(mapping.bindGamepadButton("shoot", engine::GamepadButton::Unknown));
+}
+
+TEST(ActionMapping, SamplesGamepadThroughWindowService) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+    mapping.bindGamepadButton("shoot", engine::GamepadButton::RightFaceDown);
+    mapping.registerAction("move_x", input::ActionType::Axis);
+    mapping.bindGamepadAxis("move_x", engine::GamepadAxis::LeftX, 1.0F);
+
+    FakeWindow window;
+    EXPECT_FALSE(mapping.isActionDown(window, "shoot"));
+    EXPECT_FLOAT_EQ(mapping.getAxis(window, "move_x"), 0.0F);
+
+    window.holdButton(engine::GamepadButton::RightFaceDown);
+    window.tiltAxis(engine::GamepadAxis::LeftX, 0.5F);
+    EXPECT_TRUE(mapping.isActionDown(window, "shoot"));
+    EXPECT_FLOAT_EQ(mapping.getAxis(window, "move_x"), 0.5F);
+}
+
+TEST(ActionMapping, SamplesMouseButtonsThroughWindowService) {
+    input::ActionMapping mapping;
+    mapping.registerAction("shoot", input::ActionType::Button);
+    EXPECT_FALSE(mapping.bindMouseButton("shoot", engine::MouseButton::Unknown));
+    EXPECT_TRUE(mapping.bindMouseButton("shoot", engine::MouseButton::Left));
+    EXPECT_FALSE(mapping.bindMouseButton("shoot", engine::MouseButton::Left));
+    EXPECT_TRUE(mapping.bindMouseButton("shoot", engine::MouseButton::Right));
+    EXPECT_FALSE(mapping.bindMouseButton("shoot", engine::MouseButton::Middle));
+
+    FakeWindow window;
+    EXPECT_FALSE(mapping.isActionDown(window, "shoot"));
+
+    window.holdMouseButton(engine::MouseButton::Right);
+    EXPECT_TRUE(mapping.isActionDown(window, "shoot"));
+}
+
+TEST(InputSystem, UpdatesMouseStateOfMatchingPlayerOnly) {
+    ecs::Registry registry;
+    systems::InputSystem system(input::ActionMapping{}, 0, 0);
+
+    const ecs::Entity player0 = registry.spawnEntity();
+    registry.addComponent<input::InputState>(player0, input::InputState{.playerIndex = 0, .actions = {}});
+    const ecs::Entity player1 = registry.spawnEntity();
+    registry.addComponent<input::InputState>(player1, input::InputState{.playerIndex = 1, .actions = {}});
+
+    FakeWindow window;
+    window.moveMouse(engine::MousePosition{.x = 12.0F, .y = 34.0F}, 2.0F);
+    system.update(window, registry);
+
+    const auto& mouse = registry.getComponents<input::InputState>().get(player0).mouse;
+    EXPECT_FLOAT_EQ(mouse.x, 12.0F);
+    EXPECT_FLOAT_EQ(mouse.y, 34.0F);
+    EXPECT_FLOAT_EQ(mouse.wheel, 2.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<input::InputState>().get(player1).mouse.x, 0.0F);
 }
 
 int main(int argc, char** argv) {

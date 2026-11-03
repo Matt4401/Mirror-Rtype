@@ -196,6 +196,27 @@ void inputGetAxis(scripting::ForeignCall& call) {
     call.ret(inputState != nullptr ? inputState->getAxis(*actionName) : 0.0F);
 }
 
+/**
+ * @brief Returns one field of a player's mouse state to Wren.
+ * @tparam Field MouseState field to return.
+ * @param call ForeignCall execution context.
+ */
+template <float input::MouseState::* Field>
+void inputMouseField(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    if (scriptSystem == nullptr) {
+        call.ret(0.0F);
+        return;
+    }
+    auto const playerIndex = call.arg<int>(1);
+    if (!playerIndex.has_value()) {
+        call.ret(0.0F);
+        return;
+    }
+    const auto* inputState = resolvePlayerInputState(scriptSystem->getRegistry(), *playerIndex);
+    call.ret(inputState != nullptr ? inputState->mouse.*Field : 0.0F);
+}
+
 }  // namespace
 
 void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
@@ -209,6 +230,9 @@ void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
     vm.registerForeignMethod<&inputIsJustPressed>("core/Input", "Input", true, "isJustPressed(_,_)");
     vm.registerForeignMethod<&inputIsJustReleased>("core/Input", "Input", true, "isJustReleased(_,_)");
     vm.registerForeignMethod<&inputGetAxis>("core/Input", "Input", true, "getAxis(_,_)");
+    vm.registerForeignMethod<&inputMouseField<&input::MouseState::x>>("core/Input", "Input", true, "mouseX(_)");
+    vm.registerForeignMethod<&inputMouseField<&input::MouseState::y>>("core/Input", "Input", true, "mouseY(_)");
+    vm.registerForeignMethod<&inputMouseField<&input::MouseState::wheel>>("core/Input", "Input", true, "mouseWheel(_)");
 }
 
 void ScriptSystem::loadCoreModules() {
