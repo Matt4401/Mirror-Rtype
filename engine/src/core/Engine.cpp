@@ -5,6 +5,7 @@
 
 #include "core/Engine.hpp"
 
+#include <cstddef>
 #include <memory>
 #include <ranges>
 #include <typeindex>
@@ -106,21 +107,7 @@ void Engine::run() {
             break;
         }
 
-        for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-            plugin->preUpdate(*this);
-        }
-
-        _clock.tick(_fixedDt, [&](const ecs::time::Time& fixedTime) {
-            for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-                plugin->fixedUpdate(*this, fixedTime);
-            }
-        });
-
-        const ecs::time::Time frameTime = _clock.frameTime();
-
-        for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-            plugin->update(*this, frameTime);
-        }
+        advance();
 
         for (IPlugin* plugin : _pluginGraph.executionOrder()) {
             plugin->render(*this);
@@ -140,6 +127,25 @@ void Engine::shutdown() {
     }
 
     _initialized = false;
+}
+
+std::size_t Engine::advance() {
+    if (!_initialized) {
+        init();
+    }
+    for (IPlugin* plugin : _pluginGraph.executionOrder()) {
+        plugin->preUpdate(*this);
+    }
+    const std::size_t steps = _clock.tick(_fixedDt, [&](const ecs::time::Time& fixedTime) {
+        for (IPlugin* plugin : _pluginGraph.executionOrder()) {
+            plugin->fixedUpdate(*this, fixedTime);
+        }
+    });
+    const ecs::time::Time frameTime = _clock.frameTime();
+    for (IPlugin* plugin : _pluginGraph.executionOrder()) {
+        plugin->update(*this, frameTime);
+    }
+    return steps;
 }
 
 }  // namespace engine
