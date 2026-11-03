@@ -29,4 +29,22 @@ PluginBuilder& PluginBuilder::optionally() {
     return *this;
 }
 
+template <typename Service>
+PluginBuilder& PluginBuilder::provides() {
+    _providedServices.push_back(PluginDependency{
+        .typeId = std::type_index(typeid(Service)),
+        .name = typeid(Service).name(),
+    });
+    return *this;
+}
+
+template <typename Service>
+PluginBuilder& PluginBuilder::requireService() {
+    _requiredServices.push_back(PluginDependency{
+        .typeId = std::type_index(typeid(Service)),
+        .name = typeid(Service).name(),
+    });
+    return *this;
+}
+
 }  // namespace engine
