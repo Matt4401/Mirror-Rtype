@@ -291,7 +291,7 @@ TEST(AudioBackendFactory, ReleasesTheDeviceWithTheBackend) {
     {
         const auto backend = audio::makeAudioBackend();
     }
-    EXPECT_NO_THROW(audio::makeAudioBackend());
+    EXPECT_NO_THROW([[maybe_unused]] auto backend = audio::makeAudioBackend());
 }
 
 int main(int argc, char** argv) {
