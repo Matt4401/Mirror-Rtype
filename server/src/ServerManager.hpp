@@ -1,19 +1,30 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "Network/INetworkManager.hpp"
 #include "Network/INetworkServer.hpp"
 #include "Room.hpp"
+#include "protocol/Messages.hpp"
 
 namespace rtype::server {
 
 /** @brief Maximum number of players in one room. */
 inline constexpr std::uint8_t MAX_PLAYERS_PER_ROOM = 4;
+
+/**
+ * @brief Time a connected client has to send its `Hello`: past it, the client is kicked.
+ *
+ * Without it, a peer that opens the TCP connection and stays silent would hold its slot forever (the network layer
+ * only times out clients whose UDP channel is open, which happens after the handshake).
+ */
+inline constexpr std::chrono::milliseconds HANDSHAKE_TIMEOUT{std::chrono::seconds(5)};
 
 /**
  * @brief Identifier of a room.
@@ -38,8 +49,10 @@ class ServerManager {
      * The network is injected: `main()` passes `net::createServer()`, a test can pass a mock.
      *
      * @param network Network server, owned by the ServerManager.
+     * @param handshakeTimeout Time a connected client has to send its `Hello` before being kicked.
      */
-    explicit ServerManager(std::unique_ptr<net::server::INetworkServer> network);
+    explicit ServerManager(std::unique_ptr<net::server::INetworkServer> network,
+                           std::chrono::milliseconds handshakeTimeout = HANDSHAKE_TIMEOUT);
     /** @brief Default destructor. */
     ~ServerManager() = default;
 
@@ -74,8 +87,16 @@ class ServerManager {
     void onConnected(ClientId client);
     /** @brief A client is gone. Can arrive without `onConnected()` (connection lost before being ready). */
     void onDisconnected(ClientId client);
-    /** @brief A game message: lobby messages over TCP, inputs over UDP. */
-    void onData(ClientId client, net::Channel channel, const net::Bytes& data) const;
+    /** @brief A game message: decodes it and routes it; invalid payloads are dropped. */
+    void onData(ClientId client, net::Channel channel, const net::Bytes& data);
+    /** @brief A message received over TCP: handshake, lobby, chat, leave. */
+    void onReliableMessage(ClientId client, const protocol::Message& message);
+    /** @brief A message received over UDP: only inputs, from a client in a room. */
+    void onUnreliableMessage(ClientId client, const protocol::Message& message);
+    /** @brief Kicks the connected clients that did not send their `Hello` within the handshake timeout. */
+    void expireHandshakes();
+    /** @brief Encodes a message and sends it to one client. */
+    void send(ClientId client, const protocol::Message& message, net::Channel channel) const;
 
     /** @brief Lets each room run the steps due on its own clock, and sends a snapshot for each room that stepped. */
     void advanceRooms();
@@ -94,6 +115,8 @@ class ServerManager {
 
     /** @brief Network server, polled and sent to on the game thread only. */
     std::unique_ptr<net::server::INetworkServer> _network;
+    /** @brief Port the server listens on (TCP and UDP), sent to clients in `Welcome`. */
+    std::uint16_t _port = 0;
     /**
      * @brief Rooms in progress or waiting for players, by id.
      *
@@ -103,6 +126,12 @@ class ServerManager {
     std::unordered_map<RoomId, Room> _rooms;
     /** @brief Room of each client in a room: routes inputs and disconnections. */
     std::unordered_map<ClientId, RoomId> _roomOf;
+    /** @brief Clients whose `Hello` was accepted; any other message from a client not in this set is dropped. */
+    std::unordered_set<ClientId> _handshaken;
+    /** @brief Connection time of each connected client that has not completed its handshake yet. */
+    std::unordered_map<ClientId, std::chrono::steady_clock::time_point> _pendingHandshakes;
+    /** @brief Time a connected client has to send its `Hello`. */
+    std::chrono::milliseconds _handshakeTimeout;
     /** @brief Id given to the next room created. */
     RoomId _nextRoomId = 1;
     /** @brief Loop flag, cleared by `stop()`. */

@@ -1,0 +1,176 @@
+// R-Type game-layer protocol.
+//
+// Every game payload (TCP `Data` message or UDP datagram) is exactly one serialized `Envelope`.
+// The network library frames these bytes but never reads them; only `common/` (Protocol.cpp) touches this schema.
+//
+// Compatibility rules: never renumber or reuse a field number, never change a field's type. New fields and new
+// `oneof` cases are backward compatible; a receiver drops an `Envelope` whose case it does not know.
+// Breaking changes bump `PROTOCOL_VERSION` (Protocol.hpp), checked by `Hello`.
+//
+// Field numbers 1-15 are encoded on one tag byte: keep them for the hot UDP messages and small fields.
+
+syntax = "proto3";
+
+package rtype.protocol.pb;
+
+option optimize_for = LITE_RUNTIME;
+
+// ---- Handshake ----------------------------------------------------------------------------------------------------
+
+// C -> S, reliable. First message of the client. The server closes the connection on a version mismatch.
+message Hello {
+    uint32 version = 1;
+}
+
+// S -> C, reliable. Answer to Hello: the client then opens UDP on this port.
+message Welcome {
+    uint32 udp_port = 1;  // 1-65535
+}
+
+// ---- Lobby --------------------------------------------------------------------------------------------------------
+
+// C -> S, reliable. Asks for LobbyList.
+message LobbyListRequest {}
+
+enum RoomState {
+    ROOM_STATE_WAITING = 0;
+    ROOM_STATE_IN_GAME = 1;
+}
+
+message RoomEntry {
+    uint32 room_id = 1;
+    uint32 player_count = 2;  // 0 to max_players
+    uint32 max_players = 3;   // 1-4
+    RoomState state = 4;
+}
+
+// S -> C, reliable. Answer to LobbyListRequest, also pushed whenever a room changes.
+message LobbyList {
+    repeated RoomEntry rooms = 1;  // at most MAX_ROOMS
+}
+
+// C -> S, reliable. Creates a room and joins it.
+message LobbyCreate {}
+
+// C -> S, reliable. Joins a waiting room that is not full.
+message LobbyJoin {
+    uint32 room_id = 1;
+}
+
+// C -> S, reliable. Sets the ready state; the game starts when every player of the room is ready.
+message LobbyReady {
+    bool ready = 1;
+}
+
+message PlayerSlot {
+    uint32 client_id = 1;
+    bool ready = 2;
+}
+
+// S -> C, reliable. Pushed when a player joins, leaves or changes their ready state. Slots in join order.
+message LobbyUpdate {
+    uint32 room_id = 1;
+    repeated PlayerSlot slots = 2;  // at most MAX_PLAYERS
+}
+
+// ---- Game events --------------------------------------------------------------------------------------------------
+
+// S -> C, reliable. The game starts: the client opens UDP and switches to the in-game phase.
+message GameStart {
+    uint32 room_id = 1;
+    uint32 player_index = 2;  // 0-3, the ship this client controls
+    uint32 player_count = 3;  // 1-4
+}
+
+enum GameOverReason {
+    GAME_OVER_REASON_ALL_DEAD = 0;
+    GAME_OVER_REASON_VICTORY = 1;
+    GAME_OVER_REASON_SERVER_SHUTDOWN = 2;
+}
+
+// S -> C, reliable. The game ended: the client closes UDP and goes back to the lobby.
+message GameOver {
+    GameOverReason reason = 1;
+    uint32 score = 2;
+    repeated uint32 player_scores = 3;  // one per player slot, at most MAX_PLAYERS
+}
+
+// S -> C, reliable. A player left the room during the game.
+message PlayerLeft {
+    uint32 client_id = 1;
+}
+
+// ---- General ------------------------------------------------------------------------------------------------------
+
+// C -> S, reliable. Graceful disconnection, sent before closing TCP.
+message Leave {}
+
+// Both directions, reliable. The server fills client_id with the sender's id before broadcasting to its room.
+message Chat {
+    uint32 client_id = 1;
+    string text = 2;  // UTF-8, 1-MAX_CHAT_LENGTH bytes
+}
+
+// ---- In-game (UDP) ------------------------------------------------------------------------------------------------
+
+// Value of one axis action during a client tick.
+message AxisValue {
+    fixed32 action = 1;  // action id (FNV-1a hash of the action name): fixed32, a hash is rarely shorter as a varint
+    float value = 2;     // -1 to 1, finite
+}
+
+// C -> S, unreliable, every client tick. Inputs with sequence <= the last one received are dropped.
+// Actions are the game's own (declared in its ActionMapping): the protocol does not know what they mean.
+message PlayerInput {
+    reserved 2;  // v1 `buttons` bitmask (R-Type keys only), replaced by `held` and `axes`
+    uint32 sequence = 1;
+    repeated fixed32 held = 3;     // action ids of the buttons held down, at most MAX_INPUT_BUTTONS
+    repeated AxisValue axes = 4;   // non-zero axes, at most MAX_INPUT_AXES
+}
+
+// Kinds, subtypes and flags are the game's own: the protocol carries them without knowing what they mean.
+message EntityState {
+    uint32 entity_id = 1;
+    reserved 2;          // v1 R-Type `EntityType` enum, replaced by `kind`
+    uint32 subtype = 3;  // 0-255, game-defined variant of the kind (R-Type: player index of a ship)
+    reserved 4, 5;       // v1 int16 pixel positions, replaced by the float x and y
+    uint32 health = 6;   // 0-255, 0 = died this tick (sent once)
+    uint32 flags = 7;    // 0-255, game-defined bits
+    float x = 8;         // world units, same as the engine Transform; finite
+    float y = 9;         // world units; finite
+    fixed32 kind = 10;   // FNV-1a hash of the entity's prefab name, see makeEntityKind() in Messages.hpp
+}
+
+// S -> C, unreliable, every server step. Snapshots with tick <= the last one received are dropped.
+message WorldState {
+    uint32 tick = 1;
+    uint32 last_processed_input = 2;  // sequence of the last input of this client applied by the server
+    repeated EntityState entities = 3;
+}
+
+// ---- Envelope -----------------------------------------------------------------------------------------------------
+
+message Envelope {
+    oneof message {
+        // In-game messages first: one tag byte, sent every tick.
+        PlayerInput player_input = 1;
+        WorldState world_state = 2;
+
+        Hello hello = 16;
+        Welcome welcome = 17;
+
+        LobbyListRequest lobby_list_request = 32;
+        LobbyList lobby_list = 33;
+        LobbyCreate lobby_create = 34;
+        LobbyJoin lobby_join = 35;
+        LobbyReady lobby_ready = 36;
+        LobbyUpdate lobby_update = 37;
+
+        GameStart game_start = 48;
+        GameOver game_over = 49;
+        PlayerLeft player_left = 50;
+
+        Leave leave = 64;
+        Chat chat = 65;
+    }
+}

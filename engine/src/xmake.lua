@@ -29,7 +29,7 @@ target("engine_scripting")
     set_kind("static")
     add_files("scripting/**.cpp", "systems/script/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core", "engine_events")
+    add_deps("engine_core", "engine_events", "engine_input")
     add_packages("wren", {public = true})
 
 target("engine_physics")

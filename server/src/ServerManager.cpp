@@ -7,12 +7,15 @@
 #include <ranges>
 #include <thread>
 #include <utility>
+#include <variant>
 
 #include "LogTag.hpp"
 #include "Logger.hpp"
 #include "Network/INetworkManager.hpp"
 #include "Network/INetworkServer.hpp"
 #include "Room.hpp"
+#include "protocol/Messages.hpp"
+#include "protocol/Protocol.hpp"
 
 namespace rtype::server {
 
@@ -23,18 +26,22 @@ constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
 
 }  // namespace
 
-ServerManager::ServerManager(std::unique_ptr<net::server::INetworkServer> network) : _network(std::move(network)) {}
+ServerManager::ServerManager(std::unique_ptr<net::server::INetworkServer> network,
+                             const std::chrono::milliseconds handshakeTimeout)
+    : _network(std::move(network)), _handshakeTimeout(handshakeTimeout) {}
 
 bool ServerManager::run(const std::uint16_t port) {
     if (!_network->start(port)) {
         return false;
     }
+    _port = port;
     log::info(LOG_TAG, "listening on port ", port);
     log::debug(LOG_TAG, "debug logs enabled");
     _running = true;
 
     while (_running.load()) {
         handleEvents();
+        expireHandshakes();
         advanceRooms();
         std::this_thread::sleep_for(IDLE_SLEEP);
     }
@@ -62,38 +69,108 @@ void ServerManager::handleEvents() {
     }
 }
 
-// Not static on purpose: the lobby logic (e.g. sending the list of rooms) will need the members.
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 void ServerManager::onConnected(const ClientId client) {
-    // The client is in the lobby: it joins a room through a lobby message (see onData).
+    _pendingHandshakes[client] = std::chrono::steady_clock::now();
     log::info(LOG_TAG, "client ", client, " connected");
 }
 
 void ServerManager::onDisconnected(const ClientId client) {
     // Can arrive without onConnected (connection lost before being ready): leaveRoom() then does nothing.
     leaveRoom(client);
+    _handshaken.erase(client);
+    _pendingHandshakes.erase(client);
     log::info(LOG_TAG, "client ", client, " disconnected");
 }
 
-void ServerManager::onData(const ClientId client, const net::Channel channel,
-                           [[maybe_unused]] const net::Bytes& data) const {
-    log::debug(LOG_TAG, "client ", client, " sent ", data.size(), " bytes over ",
-               channel == net::Channel::Reliable ? "TCP" : "UDP");
+void ServerManager::onData(const ClientId client, const net::Channel channel, const net::Bytes& data) {
+    const auto message = protocol::decode(data);
+    if (!message) {
+        log::debug(LOG_TAG, "client ", client, " sent an invalid payload of ", data.size(), " bytes: dropped");
+        return;
+    }
     if (channel == net::Channel::Reliable) {
-        // TODO(protocol): decode the lobby message (join, ready, chat, leave...), e.g.:
-        // JOIN  -> joinRoom(client)
-        // READY -> when every player of the room is ready: room.start(), then GAME_START to each player
-        // (onData then modifies the rooms: remove its const)
-        return;
+        onReliableMessage(client, *message);
+    } else {
+        onUnreliableMessage(client, *message);
     }
+}
 
-    if (!roomOf(client)) {
-        log::debug(LOG_TAG, "client ", client, " is not in a room: UDP data ignored");
+void ServerManager::onReliableMessage(const ClientId client, const protocol::Message& message) {
+    if (const auto* hello = std::get_if<protocol::Hello>(&message)) {
+        if (_handshaken.contains(client)) {
+            log::debug(LOG_TAG, "client ", client, " sent a second Hello: dropped");
+            return;
+        }
+        if (hello->version != protocol::PROTOCOL_VERSION) {
+            log::info(LOG_TAG, "client ", client, " uses protocol version ", hello->version, " (expected ",
+                      protocol::PROTOCOL_VERSION, "): kicked");
+            _pendingHandshakes.erase(client);
+            _network->kick(client);
+            return;
+        }
+        _pendingHandshakes.erase(client);
+        _handshaken.insert(client);
+        send(client, protocol::Welcome{.udpPort = _port}, net::Channel::Reliable);
         return;
     }
-    // TODO(protocol): if (const auto room = _rooms.find(*roomOf(client)); room != _rooms.end()) {
-    //                     room->second.onInput(client, protocol::decodeInput(data));
-    //                 }
+    if (!_handshaken.contains(client)) {
+        log::debug(LOG_TAG, "client ", client, " sent a message before Hello: dropped");
+        return;
+    }
+    if (std::holds_alternative<protocol::Leave>(message)) {
+        leaveRoom(client);
+        return;
+    }
+    // TODO(protocol): lobby messages, e.g.:
+    // LobbyListRequest -> LobbyList
+    // LobbyCreate / LobbyJoin -> joinRoom(client), then LobbyUpdate to the room
+    // LobbyReady -> when every player of the room is ready: room.start(), then GameStart to each player
+    // Chat -> fill clientId, then send to the other players of the room
+    log::debug(LOG_TAG, "client ", client, " sent an unhandled message (index ", message.index(), ")");
+}
+
+void ServerManager::onUnreliableMessage(const ClientId client, const protocol::Message& message) {
+    if (!_handshaken.contains(client)) {
+        log::debug(LOG_TAG, "client ", client, " sent UDP data before Hello: dropped");
+        return;
+    }
+    const auto* input = std::get_if<protocol::PlayerInput>(&message);
+    if (input == nullptr) {
+        log::debug(LOG_TAG, "client ", client, " sent a non-input message over UDP: dropped");
+        return;
+    }
+    const auto id = roomOf(client);
+    if (!id) {
+        log::debug(LOG_TAG, "client ", client, " is not in a room: input ignored");
+        return;
+    }
+    if (const auto room = _rooms.find(*id); room != _rooms.end()) {
+        PlayerInput converted{.sequence = input->sequence, .held = input->held, .axes = {}};
+        converted.axes.reserve(input->axes.size());
+        for (const auto& [action, value] : input->axes) {
+            converted.axes.push_back({.action = action, .value = value});
+        }
+        room->second.onInput(client, converted);
+    }
+}
+
+void ServerManager::expireHandshakes() {
+    const auto now = std::chrono::steady_clock::now();
+    // A kicked client leaves the map at once: it is kicked only once, even if its Disconnected event arrives a few
+    // iterations later.
+    std::erase_if(_pendingHandshakes, [this, now](const auto& pending) {
+        const auto& [client, connectedAt] = pending;
+        if (now - connectedAt < _handshakeTimeout) {
+            return false;
+        }
+        log::info(LOG_TAG, "client ", client, " sent no Hello within ", _handshakeTimeout.count(), " ms: kicked");
+        _network->kick(client);
+        return true;
+    });
+}
+
+void ServerManager::send(const ClientId client, const protocol::Message& message, const net::Channel channel) const {
+    _network->send(client, protocol::encode(message), channel);
 }
 
 void ServerManager::advanceRooms() {
@@ -106,14 +183,18 @@ void ServerManager::advanceRooms() {
     }
 }
 
-// Not static on purpose: sending the snapshot will use _network once the protocol exists.
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 void ServerManager::sendSnapshot(const Room& room) const {
+    protocol::WorldState snapshot{.tick = static_cast<std::uint32_t>(room.time().tickCount)};
+    // TODO(protocol): fill snapshot.entities from room.registry() once the entities remember their prefab name
+    // (kind = protocol::makeEntityKind(name)); subtype and flags follow the R-Type conventions of packets.md.
     for (const ClientId player : room.players()) {
-        // TODO(protocol): encode room.time().tickCount (orders snapshots on the client),
-        // room.lastProcessedInput(player) and the entities of room.registry(), then:
-        // _network->send(player, snapshot, net::Channel::Unreliable);
-        static_cast<void>(player);
+        snapshot.lastProcessedInput = room.lastProcessedInput(player);
+        const auto bytes = protocol::encode(snapshot);
+        if (bytes.size() > protocol::MAX_UNRELIABLE_SIZE) {
+            log::error(LOG_TAG, "snapshot of ", bytes.size(), " bytes does not fit in a datagram: not sent");
+            return;
+        }
+        _network->send(player, bytes, net::Channel::Unreliable);
     }
 }
 
@@ -158,10 +239,9 @@ void ServerManager::leaveRoom(const ClientId client) {
     }
     room->second.removePlayer(client);
     log::debug(LOG_TAG, "client ", client, " left room ", *id);
+    const auto left = protocol::encode(protocol::PlayerLeft{.clientId = client});
     for (const ClientId other : room->second.players()) {
-        // TODO(protocol): tell the remaining players that `client` left (check the exact wording in the subject, p.10),
-        // on the reliable channel: _network->send(other, protocol::encodePlayerLeft(client), net::Channel::Reliable);
-        static_cast<void>(other);
+        _network->send(other, left, net::Channel::Reliable);
     }
     if (room->second.isEmpty()) {
         _rooms.erase(room);
