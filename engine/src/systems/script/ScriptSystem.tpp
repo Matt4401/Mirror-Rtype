@@ -4,6 +4,8 @@
  */
 
 #pragma once
+#include <utility>
+
 #include "systems/script/ScriptSystem.hpp"
 
 namespace systems {
@@ -19,40 +21,26 @@ void ScriptSystem::registerEventForwarding(ecs::EventBus& bus, std::string const
     bus.subscribe<EventType>(
         [this, signature, extractor = std::forward<ArgExtractor>(extractor)](const EventType& event) {
             auto [targetEntity, argEntity] = extractor(event);
-            if (!_registry->template getComponents<ecs::ScriptComponent>().contains(targetEntity)) {
-                return;
-            }
-            auto& script = _registry->template getComponents<ecs::ScriptComponent>().get(targetEntity);
-            if (script.instanceHandle == nullptr) {
+            auto itInst = _instanceHandles.find(targetEntity);
+            if (itInst == _instanceHandles.end()) {
                 return;
             }
 
-            auto it = _cachedMethodHandles.find(signature);
-            if (it == _cachedMethodHandles.end() || it->second == nullptr) {
+            auto itMethod = _cachedMethodHandles.find(signature);
+            if (itMethod == _cachedMethodHandles.end() || itMethod->second == nullptr) {
                 return;
             }
-            WrenHandle* rawHandle = it->second.get();
 
-            ::WrenVM* raw = _vm.raw();
-            WrenHandle* argHandle = nullptr;
+            scripting::detail::UniqueWrenHandle argObj;
             if (_vm.hasVariable("core/Entity", "Entity")) {
-                wrenEnsureSlots(raw, 2);
-                _vm.getVariable("core/Entity", "Entity", 0);
-                wrenSetSlotDouble(raw, 1, static_cast<double>(argEntity));
-                if (wrenCall(raw, _newHandle.get()) == WREN_RESULT_SUCCESS) {
-                    argHandle = wrenGetSlotHandle(raw, 0);
-                }
+                argObj = _vm.newInstanceWithHandle(_newHandle, "core/Entity", "Entity", static_cast<double>(argEntity));
             }
 
-            wrenEnsureSlots(raw, 2);
-            wrenSetSlotHandle(raw, 0, static_cast<WrenHandle*>(script.instanceHandle));
-            if (argHandle != nullptr) {
-                wrenSetSlotHandle(raw, 1, argHandle);
-                wrenReleaseHandle(raw, argHandle);
+            if (argObj) {
+                _vm.call(itMethod->second, itInst->second.get(), argObj.get());
             } else {
-                wrenSetSlotDouble(raw, 1, static_cast<double>(argEntity));
+                _vm.call(itMethod->second, itInst->second.get(), static_cast<double>(argEntity));
             }
-            wrenCall(raw, rawHandle);
         });
 }
 

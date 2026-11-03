@@ -4,16 +4,14 @@
  */
 
 #pragma once
-#include <cstddef>
+#include <exception>
 #include <string>
+#include <string_view>
 #include <type_traits>
-
-extern "C" {
-#include <wren.h>
-}
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
 
 namespace scripting::detail {
@@ -51,32 +49,34 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
      *
      * @param rawVm Raw pointer to the underlying Wren VM instance.
      */
-    static void getter(::WrenVM* rawVm) {
-        auto* vmWrapper = static_cast<WrenVM*>(wrenGetUserData(rawVm));
-        if (vmWrapper == nullptr || vmWrapper->getRegistry() == nullptr) {
-            wrenSetSlotNull(rawVm, 0);
-            return;
-        }
-        auto& registry = *static_cast<ecs::Registry*>(vmWrapper->getRegistry());
+    static void getter(::WrenVM* rawVm) noexcept {
+        try {
+            ForeignCall const call(rawVm);
+            auto* vmWrapper = call.vm();
+            if (vmWrapper == nullptr || vmWrapper->getRegistry() == nullptr) {
+                call.retNull();
+                return;
+            }
+            auto& registry = *static_cast<ecs::Registry*>(vmWrapper->getRegistry());
 
-        auto* entityPtr = static_cast<ecs::Entity*>(wrenGetSlotForeign(rawVm, 0));
-        if (entityPtr == nullptr) {
-            wrenSetSlotNull(rawVm, 0);
-            return;
-        }
-        ecs::Entity const e = *entityPtr;
-        if (!registry.template getComponents<ComponentType>().contains(e)) {
-            wrenSetSlotNull(rawVm, 0);
-            return;
-        }
-        auto const& comp = registry.template getComponents<ComponentType>().get(e);
-
-        if constexpr (std::is_arithmetic_v<FieldType> && !std::is_same_v<FieldType, bool>) {
-            wrenSetSlotDouble(rawVm, 0, static_cast<double>(comp.*MemberPtr));
-        } else if constexpr (std::is_same_v<FieldType, bool>) {
-            wrenSetSlotBool(rawVm, 0, comp.*MemberPtr);
-        } else if constexpr (std::is_same_v<FieldType, std::string>) {
-            wrenSetSlotBytes(rawVm, 0, (comp.*MemberPtr).data(), (comp.*MemberPtr).size());
+            auto* entityPtr = call.argForeign<ecs::Entity>(0);
+            if (entityPtr == nullptr) {
+                call.retNull();
+                return;
+            }
+            ecs::Entity const e = *entityPtr;
+            if (!registry.template getComponents<ComponentType>().contains(e)) {
+                call.retNull();
+                return;
+            }
+            auto const& comp = registry.template getComponents<ComponentType>().get(e);
+            call.ret(comp.*MemberPtr);
+        } catch (const std::exception& e) {
+            ForeignCall const call(rawVm);
+            call.abort(std::string("Exception in getter: ") + e.what());
+        } catch (...) {
+            ForeignCall const call(rawVm);
+            call.abort("Unknown exception in getter");
         }
     }
 
@@ -88,31 +88,44 @@ struct PropertyAccessor<ComponentType, MemberPtr> {
      *
      * @param rawVm Raw pointer to the underlying Wren VM instance.
      */
-    static void setter(::WrenVM* rawVm) {
-        auto* vmWrapper = static_cast<WrenVM*>(wrenGetUserData(rawVm));
-        if (vmWrapper == nullptr || vmWrapper->getRegistry() == nullptr) {
-            return;
-        }
-        auto& registry = *static_cast<ecs::Registry*>(vmWrapper->getRegistry());
+    static void setter(::WrenVM* rawVm) noexcept {
+        try {
+            ForeignCall const call(rawVm);
+            auto* vmWrapper = call.vm();
+            if (vmWrapper == nullptr || vmWrapper->getRegistry() == nullptr) {
+                return;
+            }
+            auto& registry = *static_cast<ecs::Registry*>(vmWrapper->getRegistry());
 
-        auto* entityPtr = static_cast<ecs::Entity*>(wrenGetSlotForeign(rawVm, 0));
-        if (entityPtr == nullptr) {
-            return;
-        }
-        ecs::Entity const e = *entityPtr;
-        if (!registry.template getComponents<ComponentType>().contains(e)) {
-            return;
-        }
-        auto& comp = registry.template getComponents<ComponentType>().get(e);
+            auto* entityPtr = call.argForeign<ecs::Entity>(0);
+            if (entityPtr == nullptr) {
+                return;
+            }
+            ecs::Entity const e = *entityPtr;
+            if (!registry.template getComponents<ComponentType>().contains(e)) {
+                return;
+            }
+            auto& comp = registry.template getComponents<ComponentType>().get(e);
 
-        if constexpr (std::is_arithmetic_v<FieldType> && !std::is_same_v<FieldType, bool>) {
-            comp.*MemberPtr = static_cast<FieldType>(wrenGetSlotDouble(rawVm, 1));
-        } else if constexpr (std::is_same_v<FieldType, bool>) {
-            comp.*MemberPtr = wrenGetSlotBool(rawVm, 1);
-        } else if constexpr (std::is_same_v<FieldType, std::string>) {
-            int len = 0;
-            const char* s = wrenGetSlotBytes(rawVm, 1, &len);
-            comp.*MemberPtr = std::string(s, static_cast<std::size_t>(len));
+            if constexpr (std::is_same_v<FieldType, std::string>) {
+                auto val = call.arg<std::string_view>(1);
+                if (!val.has_value()) {
+                    return;
+                }
+                comp.*MemberPtr = std::string(*val);
+            } else {
+                auto val = call.arg<FieldType>(1);
+                if (!val.has_value()) {
+                    return;
+                }
+                comp.*MemberPtr = *val;
+            }
+        } catch (const std::exception& e) {
+            ForeignCall const call(rawVm);
+            call.abort(std::string("Exception in setter: ") + e.what());
+        } catch (...) {
+            ForeignCall const call(rawVm);
+            call.abort("Unknown exception in setter");
         }
     }
 };

@@ -53,16 +53,19 @@ graph TD
     end
 ```
 
-## 3. Engine Subsystems
+## 3. Engine Subsystems & Plugin Architecture
 
-The engine is partitioned into decoupled subsystems:
+The engine is orchestrated by the central `engine::Engine` class and partitioned into modular plugins:
 
-- **ECS Core:** Manages entity lifecycles, component pools, and system execution order.
-- **Rendering & Audio (Raylib):** Abstracts 2D drawing, textures, sprite batching, font rendering, and sound effects.
-- **Physics & Collisions:** Manages spatial partitioning (e.g., Quadtree or Grid) and AABB collision queries.
-- **Event Bus:** Decoupled publisher/subscriber messaging mechanism enabling asynchronous events (e.g., audio triggers on collision without direct coupling).
-- **Network Abstraction (Asio):** Transport layer supporting both TCP (lobby, auth) and UDP (real-time gameplay state synchronization).
-- **Scripting Subsystem (`ScriptSystem` & `WrenVM`):** Embeds Wren for rapid gameplay prototyping. Supports C++23 compile-time member property reflection (`ComponentBinder`), selective `update(dt)` polling, coroutine fibers (`Engine.wait`), deferred structural mutations (`CommandBuffer`), and non-intrusive live hot-reloading with staging validation and lifecycle hooks (`onSpawn`, `onReload`, `onDestroy`).
+- **Engine Core & Plugins (`engine::Engine`, `engine::IPlugin`):** Manages the central `Registry`, `EventBus`, `Mediator`, dependency DAG resolution (`PluginGraph`), simulation `Clock`, and the continuous game loop. See [Plugins & Mediator](plugins.md) for complete details.
+- **ECS Core (`Registry`, `SparseArray`):** High-throughput data-oriented entity storage with $O(1)$ lookups, swap-and-pop removals, and auto-registration.
+- **Mediator (`engine::Mediator`):** Typed service registry providing abstract interfaces (`IWindowService`, `IRenderService`, `IInputService`, `IPhysicsService`) to prevent direct concrete coupling between subsystems.
+- **Rendering Subsystem (`RenderPlugin`, Raylib):** 2D sprite rendering, sorted layer drawing, texture stores, and camera management.
+- **Input Subsystem (`InputPlugin`):** Hardware controller and keyboard mapping with spatial cluster key support.
+- **Physics Subsystem (`PhysicsPlugin`, Box2D):** Rigid body simulation, kinematic synchronization with ECS Transforms, and collider components.
+- **Event Bus (`EventBus`):** Type-safe synchronous pub-sub event dispatch connecting decoupled systems.
+- **Prefab System (`PrefabPlugin`, `PrefabManager`):** Named entity templates instantiated safely through deferred command buffers.
+- **Scripting Subsystem (`ScriptPlugin`, `ScriptSystem` & `WrenVM`):** Embeds Wren for rapid gameplay prototyping. Supports C++23 member property reflection (`ComponentBinder`), selective `update(dt)` polling, coroutine fibers (`Engine.wait`), deferred structural mutations (`CommandBuffer`), and non-intrusive live hot-reloading with staging validation and lifecycle hooks (`onSpawn`, `onReload`, `onDestroy`).
 
 ## 4. Decoupling & Modularity
 

@@ -6,12 +6,9 @@
 #include "systems/script/ScriptSystem.hpp"
 
 #include <functional>
+#include <iostream>
 #include <utility>
 #include <vector>
-
-extern "C" {
-#include <wren.h>
-}
 
 #include "components/ScriptComponent.hpp"
 #include "ecs/CommandBuffer.hpp"
@@ -35,6 +32,7 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _updatingEntities(std::move(other._updatingEntities)),
       _pendingDestroyEntities(std::move(other._pendingDestroyEntities)),
       _sleepingFibers(std::move(other._sleepingFibers)),
+      _instanceHandles(std::move(other._instanceHandles)),
       _newHandle(std::move(other._newHandle)),
       _updateHandle(std::move(other._updateHandle)),
       _onSpawnHandle(std::move(other._onSpawnHandle)),
@@ -58,6 +56,7 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _updatingEntities = std::move(other._updatingEntities);
         _pendingDestroyEntities = std::move(other._pendingDestroyEntities);
         _sleepingFibers = std::move(other._sleepingFibers);
+        _instanceHandles = std::move(other._instanceHandles);
         _newHandle = std::move(other._newHandle);
         _updateHandle = std::move(other._updateHandle);
         _onSpawnHandle = std::move(other._onSpawnHandle);
@@ -101,33 +100,28 @@ void ScriptSystem::updateSleepingFibers(float dt) {
         }
     }
 
-    ::WrenVM* raw = _vm.raw();
     for (auto& sleeping : readyFibers) {
-        wrenEnsureSlots(raw, 1);
-        wrenSetSlotHandle(raw, 0, sleeping.fiber.get());
-        wrenCall(raw, _fiberCallHandle.get());
+        auto const res = _vm.call(_fiberCallHandle, sleeping.fiber.get());
+        if (res != WREN_RESULT_SUCCESS) {
+            std::cerr << "[ScriptSystem] Warning: Resuming sleeping fiber failed\n";
+        }
     }
 }
 
 void ScriptSystem::updateScriptEntities(float dt) {
     for (ecs::Entity const e : _updatingEntities) {
-        if (!_registry->getComponents<ecs::ScriptComponent>().contains(e)) {
-            continue;
-        }
-        auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);
-        if (script.instanceHandle == nullptr) {
+        auto it = _instanceHandles.find(e);
+        if (it == _instanceHandles.end()) {
             continue;
         }
 
-        ::WrenVM* raw = _vm.raw();
-        wrenEnsureSlots(raw, 2);
-        wrenSetSlotHandle(raw, 0, static_cast<WrenHandle*>(script.instanceHandle));
-        wrenSetSlotDouble(raw, 1, static_cast<double>(dt));
-        wrenCall(raw, _updateHandle.get());
+        auto const res = _vm.call(_updateHandle, it->second.get(), static_cast<double>(dt));
+        if (res != WREN_RESULT_SUCCESS) {
+            std::cerr << "[ScriptSystem] Warning: Script update loop failed for entity " << e << "\n";
+        }
     }
 
-    std::erase_if(_updatingEntities,
-                  [this](ecs::Entity e) { return !_registry->getComponents<ecs::ScriptComponent>().contains(e); });
+    std::erase_if(_updatingEntities, [this](ecs::Entity e) { return !_instanceHandles.contains(e); });
 }
 
 void ScriptSystem::flushPendingDestructions() {
@@ -177,10 +171,8 @@ scripting::WrenVM& ScriptSystem::getVm() noexcept { return _vm; }
 
 ecs::CommandBuffer& ScriptSystem::getCommandBuffer() noexcept { return _commandBuffer; }
 
-void ScriptSystem::addSleepingFiber(WrenHandle* fiber, float seconds) {
-    _sleepingFibers.push_back(SleepingFiber{
-        .fiber = scripting::detail::UniqueWrenHandle(fiber, scripting::detail::WrenHandleDeleter{.vm = _vm.raw()}),
-        .timeRemaining = seconds});
+void ScriptSystem::addSleepingFiber(scripting::detail::UniqueWrenHandle fiber, float seconds) {
+    _sleepingFibers.push_back(SleepingFiber{.fiber = std::move(fiber), .timeRemaining = seconds});
 }
 
 }  // namespace systems
