@@ -19,7 +19,7 @@ namespace systems {
  * @brief Engine plugin driving frame-based sprite animation and parallax scrolling.
  *
  * Runs AnimationSystem and ParallaxSystem on every fixed-timestep tick, after physics.
- * Requires RenderPlugin (window + texture store must be alive).
+ * Requires IRenderService (window + texture store must be alive).
  */
 class AnimationPlugin final : public engine::IPlugin {
   public:
@@ -48,7 +48,7 @@ class AnimationPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "AnimationPlugin"; }
 
     /**
-     * @brief Declares dependency on RenderPlugin.
+     * @brief Declares service dependency on IRenderService.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
