@@ -1,2 +1,0 @@
-# xmake checks package patches by sha256: keep them byte-identical on every platform.
-*.patch -text
