@@ -156,6 +156,8 @@ Table of Contents
        the TCP connection.
    (3) Once the server sends Welcome, both sides agree on version 1
        for the session.
+   (4) The client MUST send Hello within 5 seconds of the TCP
+       connection.  Otherwise the server closes the connection.
 
    Compatible changes do NOT bump the version: adding a field to a
    message, or adding a new message to the Envelope.  Older receivers

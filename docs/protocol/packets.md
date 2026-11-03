@@ -100,7 +100,9 @@ Sent right after the library delivers its own `Welcome` (`ClientId` + token). St
 |-----------|---|----------|---------------------------------------------------------|
 | `version` | 1 | `uint32` | Client protocol version, MUST be `PROTOCOL_VERSION` (1) |
 
-On a version mismatch, the server closes the connection without sending `Welcome`.
+On a version mismatch, the server closes the connection without sending `Welcome`. The client MUST send `Hello`
+within 5 seconds of connecting: past that, the server closes the connection (messages other than `Hello` do not reset
+the timer).
 
 ### `Welcome` (17)
 
@@ -324,6 +326,7 @@ game, after decoding. The server currently enforces:
 
 - before a successful `Hello`, every other message (reliable or unreliable) is dropped;
 - a second `Hello` from the same client is dropped (no second `Welcome`);
+- a client that sends no valid `Hello` within 5 seconds of connecting is kicked;
 - over UDP, only `PlayerInput` is accepted, and only from a client in a room.
 
 Lobby and in-game phase checks come with the lobby implementation.

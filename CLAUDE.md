@@ -30,7 +30,7 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
   `engine_render` (render/, systems/render/), `engine_input` (input/). `engine_all` is a phony aggregate.
 - `network/src/` — asio-based UDP client/server + wire serialization (`Wire.hpp`)
 - `shared/src/` — header-only interfaces shared by client/server (e.g. `INetworkServer`)
-- `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`include/protocol/`), protobuf types stay
+- `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`src/protocol/`), protobuf types stay
   private
 - `server/src/`, `client/src/` — the R-Type game executables
 - `scripts/` — Wren scripts (`scripts/core/*.wren`) + tooling scripts
