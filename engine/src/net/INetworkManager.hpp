@@ -50,6 +50,9 @@ struct NetworkEvent {
     Channel channel;
 };
 
+/** @brief Special peer id of the server, used by the client. */
+inline constexpr PeerId SERVER_PEER = 0;
+
 /**
  * @brief Common part of the client and server transports.
  *
