@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -159,8 +160,7 @@ void movePlayer(ecs::Registry& registry, float deltaTime) {
 void killOffscreenBullets(ecs::Registry& registry) {
     std::vector<ecs::Entity> toDestroy;
     registry.runSystem<ecs::Transform, client::prefabs::ClientBullet>(
-        [&toDestroy](ecs::Entity entity, const ecs::Transform& transform,
-                     client::prefabs::ClientBullet& /*tag*/) {
+        [&toDestroy](ecs::Entity entity, const ecs::Transform& transform, client::prefabs::ClientBullet& /*tag*/) {
             if (transform.x > SCENE_WIDTH + 64.0F) {
                 toDestroy.push_back(entity);
             }
@@ -230,7 +230,7 @@ void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*ti
             }
         });
 
-    auto& prefabManager = engine.service<::prefabs::PrefabManager>();
+    const auto& prefabManager = engine.service<::prefabs::PrefabManager>();
     for (const auto& pos : spawnPositions) {
         prefabManager.spawn(client::prefabs::CLIENT_BULLET_PREFAB, _commandBuffer,
                             {{"x", pos.x + 40.0F}, {"y", pos.y}});
