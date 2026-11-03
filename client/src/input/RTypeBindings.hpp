@@ -7,7 +7,7 @@ namespace client::input {
 /**
  * @brief Configures standard key and gamepad bindings for the R-Type game.
  *
- * Utilizes Raylib/GLFW physical spatial cluster keys (KEY_W, KEY_A, KEY_S, KEY_D)
+ * Utilizes physical spatial cluster keys (Key::W, Key::A, Key::S, Key::D)
  * which naturally align with ZQSD on AZERTY keyboards and WASD on QWERTY keyboards,
  * completely avoiding cross-layout key conflicts.
  *

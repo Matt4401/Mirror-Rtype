@@ -68,6 +68,7 @@ class IPlugin {
 
 1. **`build(PluginBuilder& builder)`**:
    - Declares mandatory dependencies (`builder.require<T>()`) and optional dependencies (`builder.optionally<T>()`).
+   - Declares provided services (`builder.provides<S>()`) and required services (`builder.requireService<S>()`). Prefer a service requirement when any implementation fits: the graph orders each provider before its consumers, and fails if a required service has no provider or a service has two.
    - Invoked during `engine.init()` before topological resolution.
 2. **`init(Engine& engine)`**:
    - Executed in **topological order** (dependencies initialize before dependents).
@@ -125,7 +126,7 @@ if (windowService && !windowService->get().shouldClose()) {
 
 | Interface | Header | Purpose | Provided By |
 | ----------- | -------- | --------- | ------------- |
-| `IWindowService` | `core/services/IWindowService.hpp` | Window state, frame bracketing, close queries | `RenderPlugin` |
+| `IWindowService` | `core/services/IWindowService.hpp` | Window state, frame bracketing, close queries, keyboard, gamepad and mouse sampling through engine input codes | `RenderPlugin` |
 | `IRenderService` | `core/services/IRenderService.hpp` | 2D entity draw collection and presentation | `RenderPlugin` |
 | `IInputService` | `core/services/IInputService.hpp` | Action mapping configuration and controller indices | `InputPlugin` |
 | `IPhysicsService` | `core/services/IPhysicsService.hpp` | Physics simulation stepping and body stats | `PhysicsPlugin` |

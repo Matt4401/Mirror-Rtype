@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
 
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
@@ -691,6 +692,43 @@ TEST(Scripting, InputModuleBindings) {
     scriptSystem.getVm().setSlot(2, "shoot");
     EXPECT_EQ(scriptSystem.getVm().call(isJustReleasedHandle), WREN_RESULT_SUCCESS);
     EXPECT_FALSE(scriptSystem.getVm().getSlot<bool>(0));
+}
+
+TEST(Scripting, InputExposesMouseState) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<input::InputState>();
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    input::InputState state{.playerIndex = 0, .actions = {}};
+    state.mouse = input::MouseState{.x = 12.0F, .y = 34.0F, .wheel = -1.0F};
+    registry.addComponent<input::InputState>(registry.spawnEntity(), std::move(state));
+
+    const char* script =
+        "import \"core/Input\" for Input\n"
+        "class MouseQuery {\n"
+        "    static x { Input.mouseX }\n"
+        "    static y { Input.mouseY(0) }\n"
+        "    static wheel { Input.mouseWheel }\n"
+        "    static missingPlayer { Input.mouseX(7) }\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret("test_mouse", script));
+
+    auto query = [&scriptSystem](const char* signature) {
+        auto handle = scriptSystem.getVm().makeCallHandle(signature);
+        scriptSystem.getVm().ensureSlots(1);
+        scriptSystem.getVm().getVariable("test_mouse", "MouseQuery", 0);
+        EXPECT_EQ(scriptSystem.getVm().call(handle), WREN_RESULT_SUCCESS);
+        return scriptSystem.getVm().getSlot<double>(0);
+    };
+
+    EXPECT_DOUBLE_EQ(query("x"), 12.0);
+    EXPECT_DOUBLE_EQ(query("y"), 34.0);
+    EXPECT_DOUBLE_EQ(query("wheel"), -1.0);
+    EXPECT_DOUBLE_EQ(query("missingPlayer"), 0.0);
 }
 
 TEST(Scripting, RobustnessForeignCallTypeValidation) {

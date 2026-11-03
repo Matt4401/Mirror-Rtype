@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "core/services/InputCodes.hpp"
+
 namespace engine {
 
 /**
@@ -60,6 +62,55 @@ class IWindowService {
      * @return Window height.
      */
     [[nodiscard]] virtual int height() const noexcept = 0;
+
+    /**
+     * @brief Queries whether a keyboard key is held down.
+     * @param key Physical key.
+     * @return True if the key is held down.
+     */
+    [[nodiscard]] virtual bool isKeyDown(Key key) const noexcept = 0;
+
+    /**
+     * @brief Queries whether a gamepad is connected.
+     * @param gamepad Hardware gamepad index.
+     * @return True if the gamepad is available.
+     */
+    [[nodiscard]] virtual bool isGamepadAvailable(int gamepad) const noexcept = 0;
+
+    /**
+     * @brief Queries whether a gamepad button is held down.
+     * @param gamepad Hardware gamepad index.
+     * @param button Gamepad button.
+     * @return True if the button is held down.
+     */
+    [[nodiscard]] virtual bool isGamepadButtonDown(int gamepad, GamepadButton button) const noexcept = 0;
+
+    /**
+     * @brief Samples a gamepad axis.
+     * @param gamepad Hardware gamepad index.
+     * @param axis Gamepad axis.
+     * @return Axis position.
+     */
+    [[nodiscard]] virtual float gamepadAxis(int gamepad, GamepadAxis axis) const noexcept = 0;
+
+    /**
+     * @brief Queries whether a mouse button is held down.
+     * @param button Mouse button.
+     * @return True if the button is held down.
+     */
+    [[nodiscard]] virtual bool isMouseButtonDown(MouseButton button) const noexcept = 0;
+
+    /**
+     * @brief Samples the mouse cursor position.
+     * @return Cursor position in window pixels.
+     */
+    [[nodiscard]] virtual MousePosition mousePosition() const noexcept = 0;
+
+    /**
+     * @brief Samples the mouse wheel movement of the current frame.
+     * @return Wheel movement, positive when scrolling up.
+     */
+    [[nodiscard]] virtual float mouseWheelDelta() const noexcept = 0;
 };
 
 }  // namespace engine
