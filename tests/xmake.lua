@@ -129,6 +129,13 @@ target("test_network_components")
     add_files("test_network_components.cpp")
     add_tests("test_network_components")
 
+target("test_network_plugin")
+    set_kind("binary")
+    add_deps("engine_core", "engine_network")
+    add_packages("gtest")
+    add_files("test_network_plugin.cpp")
+    add_tests("test_network_plugin")
+
 target("test_transport")
     set_kind("binary")
     add_deps("engine_network_asio")
