@@ -29,6 +29,8 @@ using rtype::server::ServerManager;
 namespace protocol = rtype::protocol;
 
 constexpr std::uint16_t PORT = 4242;
+/** @brief Any action id: the server forwards inputs without knowing what their actions mean. */
+constexpr protocol::ActionId SHOOT = 0x5EED;
 constexpr auto TIMEOUT = std::chrono::seconds(2);
 /** @brief Handshake timeout of `HandshakeTimeoutTest`, short so that the tests stay fast. */
 constexpr auto SHORT_HANDSHAKE_TIMEOUT = std::chrono::milliseconds(50);
@@ -201,7 +203,7 @@ TEST_F(ServerManagerTest, HelloOverUdpIsDropped) {
 
 TEST_F(ServerManagerTest, MessagesBeforeHelloDoNotCompleteTheHandshake) {
     message(CLIENT, protocol::LobbyCreate{});
-    message(CLIENT, protocol::PlayerInput{.sequence = 1, .buttons = protocol::BUTTON_UP}, Channel::Unreliable);
+    message(CLIENT, protocol::PlayerInput{.sequence = 1, .held = {SHOOT}, .axes = {}}, Channel::Unreliable);
     message(CLIENT, protocol::Leave{});
     sync();
     {
@@ -243,7 +245,7 @@ TEST_F(HandshakeTimeoutTest, SilentClientIsKickedOnce) {
 TEST_F(HandshakeTimeoutTest, MessagesOtherThanHelloDoNotStopTheTimeout) {
     push(EventType::Connected, CLIENT);
     message(CLIENT, protocol::LobbyListRequest{});
-    message(CLIENT, protocol::PlayerInput{.sequence = 1, .buttons = protocol::BUTTON_UP}, Channel::Unreliable);
+    message(CLIENT, protocol::PlayerInput{.sequence = 1, .held = {SHOOT}, .axes = {}}, Channel::Unreliable);
     EXPECT_TRUE(waitFor([](const NetworkState& network) { return !network.kicked.empty(); }));
 }
 

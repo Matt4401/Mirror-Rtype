@@ -145,7 +145,12 @@ void ServerManager::onUnreliableMessage(const ClientId client, const protocol::M
         return;
     }
     if (const auto room = _rooms.find(*id); room != _rooms.end()) {
-        room->second.onInput(client, PlayerInput{.sequence = input->sequence, .actions = input->buttons});
+        PlayerInput converted{.sequence = input->sequence, .held = input->held, .axes = {}};
+        converted.axes.reserve(input->axes.size());
+        for (const auto& [action, value] : input->axes) {
+            converted.axes.push_back({.action = action, .value = value});
+        }
+        room->second.onInput(client, converted);
     }
 }
 
@@ -180,7 +185,8 @@ void ServerManager::advanceRooms() {
 
 void ServerManager::sendSnapshot(const Room& room) const {
     protocol::WorldState snapshot{.tick = static_cast<std::uint32_t>(room.time().tickCount)};
-    // TODO(protocol): fill snapshot.entities from room.registry() once the entities carry a type component.
+    // TODO(protocol): fill snapshot.entities from room.registry() once the entities remember their prefab name
+    // (kind = protocol::makeEntityKind(name)); subtype and flags follow the R-Type conventions of packets.md.
     for (const ClientId player : room.players()) {
         snapshot.lastProcessedInput = room.lastProcessedInput(player);
         const auto bytes = protocol::encode(snapshot);

@@ -29,8 +29,7 @@ namespace rtype::protocol {
  * @brief Parses an untrusted payload.
  *
  * Rejects payloads larger than `MAX_MESSAGE_SIZE`, malformed protobuf, envelopes without a known message, unknown
- * enum values, out-of-range numbers and lists longer than their documented maximum. Reserved bits of
- * `PlayerInput::buttons` are cleared.
+ * enum values, out-of-range numbers, non-finite floats and lists longer than their documented maximum.
  *
  * @param bytes Payload received from the network.
  * @return The message, or `std::nullopt` if the payload is invalid: drop it.

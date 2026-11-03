@@ -5,6 +5,7 @@
 #include <deque>
 #include <ranges>
 #include <unordered_map>
+#include <vector>
 
 #include "Network/INetworkManager.hpp"
 #include "ecs/Entity.hpp"
@@ -12,6 +13,7 @@
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
+#include "input/ActionId.hpp"
 
 namespace rtype::server {
 
@@ -19,6 +21,14 @@ namespace rtype::server {
 inline constexpr std::size_t MAX_PENDING_INPUTS = 8;
 
 using net::ClientId;
+
+/** @brief Value of one axis action during an input. */
+struct AxisInput {
+    /** @brief Axis action, e.g. `input::makeActionId("move_x")`. */
+    input::ActionId action = 0;
+    /** @brief Value of the axis, in [-1, 1]. */
+    float value = 0.0F;
+};
 
 /**
  * @brief Decoded input of one player.
@@ -28,8 +38,10 @@ using net::ClientId;
 struct PlayerInput {
     /** @brief Increases with every input sent by the client; used to drop late inputs and for reconciliation. */
     std::uint32_t sequence = 0;
-    /** @brief Bitmask of the actions held during this input (up, down, left, right, shoot...). */
-    std::uint16_t actions = 0;
+    /** @brief Button actions held during this input, e.g. `input::makeActionId("shoot")`. */
+    std::vector<input::ActionId> held;
+    /** @brief Axis actions whose value is not 0 during this input. */
+    std::vector<AxisInput> axes;
 };
 
 /**

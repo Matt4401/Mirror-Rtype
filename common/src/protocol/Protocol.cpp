@@ -1,5 +1,6 @@
 #include "protocol/Protocol.hpp"
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -85,7 +86,12 @@ void fill(pb::Envelope& envelope, const Chat& message) {
 void fill(pb::Envelope& envelope, const PlayerInput& message) {
     auto* out = envelope.mutable_player_input();
     out->set_sequence(message.sequence);
-    out->set_buttons(message.buttons);
+    out->mutable_held()->Add(message.held.begin(), message.held.end());
+    for (const auto& [action, value] : message.axes) {
+        auto* axis = out->add_axes();
+        axis->set_action(action);
+        axis->set_value(value);
+    }
 }
 
 void fill(pb::Envelope& envelope, const WorldState& message) {
@@ -93,10 +99,10 @@ void fill(pb::Envelope& envelope, const WorldState& message) {
     out->set_tick(message.tick);
     out->set_last_processed_input(message.lastProcessedInput);
     out->mutable_entities()->Reserve(static_cast<int>(message.entities.size()));
-    for (const auto& [entityId, type, subtype, x, y, health, flags] : message.entities) {
+    for (const auto& [entityId, kind, subtype, x, y, health, flags] : message.entities) {
         auto* entity = out->add_entities();
         entity->set_entity_id(entityId);
-        entity->set_type(static_cast<pb::EntityType>(type));
+        entity->set_kind(kind);
         entity->set_subtype(subtype);
         entity->set_x(x);
         entity->set_y(y);
@@ -114,13 +120,8 @@ std::optional<T> narrow(const std::uint32_t value, const std::uint32_t max = std
     return static_cast<T>(value);
 }
 
-/** @brief Narrows a signed protobuf field to `int16_t`, or fails if it does not fit. */
-std::optional<std::int16_t> narrowI16(const std::int32_t value) {
-    if (value < std::numeric_limits<std::int16_t>::min() || value > std::numeric_limits<std::int16_t>::max()) {
-        return std::nullopt;
-    }
-    return static_cast<std::int16_t>(value);
-}
+/** @brief Tells whether a float received from the network can be used: NaN and infinities are rejected. */
+bool isFinite(const float value) { return std::isfinite(value); }
 
 std::optional<Message> read(const pb::Welcome& in) {
     const auto port = narrow<std::uint16_t>(in.udp_port());
@@ -196,7 +197,19 @@ std::optional<Message> read(const pb::Chat& in) {
 }
 
 std::optional<Message> read(const pb::PlayerInput& in) {
-    return PlayerInput{.sequence = in.sequence(), .buttons = static_cast<std::uint8_t>(in.buttons() & BUTTONS_MASK)};
+    if (std::cmp_greater(in.held_size(), MAX_INPUT_BUTTONS) || std::cmp_greater(in.axes_size(), MAX_INPUT_AXES)) {
+        return std::nullopt;
+    }
+    PlayerInput out{.sequence = in.sequence(), .held = {in.held().begin(), in.held().end()}, .axes = {}};
+    out.axes.reserve(static_cast<std::size_t>(in.axes_size()));
+    for (const auto& axis : in.axes()) {
+        // NaN fails both comparisons: checked separately so that the intent is explicit.
+        if (!isFinite(axis.value()) || axis.value() < -1.0F || axis.value() > 1.0F) {
+            return std::nullopt;
+        }
+        out.axes.push_back({.action = axis.action(), .value = axis.value()});
+    }
+    return out;
 }
 
 std::optional<Message> read(const pb::WorldState& in) {
@@ -204,19 +217,17 @@ std::optional<Message> read(const pb::WorldState& in) {
     out.entities.reserve(static_cast<std::size_t>(in.entities_size()));
     for (const auto& entity : in.entities()) {
         const auto subtype = narrow<std::uint8_t>(entity.subtype());
-        const auto x = narrowI16(entity.x());
-        const auto y = narrowI16(entity.y());
         const auto health = narrow<std::uint8_t>(entity.health());
         const auto flags = narrow<std::uint8_t>(entity.flags());
-        if (!pb::EntityType_IsValid(entity.type()) || !subtype || !x || !y || !health || !flags) {
+        if (!subtype || !health || !flags || !isFinite(entity.x()) || !isFinite(entity.y())) {
             return std::nullopt;
         }
         out.entities.push_back({
             .entityId = entity.entity_id(),
-            .type = static_cast<EntityType>(entity.type()),
+            .kind = entity.kind(),
             .subtype = *subtype,
-            .x = *x,
-            .y = *y,
+            .x = entity.x(),
+            .y = entity.y(),
             .health = *health,
             .flags = *flags,
         });

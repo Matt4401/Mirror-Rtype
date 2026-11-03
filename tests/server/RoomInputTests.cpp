@@ -31,7 +31,9 @@ class RoomInputTest : public ::testing::Test {
         return room.advance();
     }
 
-    void send(const std::uint32_t sequence) { room.onInput(PLAYER, PlayerInput{.sequence = sequence, .actions = 0}); }
+    void send(const std::uint32_t sequence) {
+        room.onInput(PLAYER, PlayerInput{.sequence = sequence, .held = {}, .axes = {}});
+    }
 
     double now = 0.0;
     Room room;
@@ -100,7 +102,7 @@ TEST_F(RoomInputTest, FullQueueKeepsTheNewestInputs) {
 }
 
 TEST_F(RoomInputTest, InputOfUnknownPlayerIsIgnored) {
-    room.onInput(42, PlayerInput{.sequence = 1, .actions = 0});
+    room.onInput(42, PlayerInput{.sequence = 1, .held = {}, .axes = {}});
     EXPECT_EQ(room.lastProcessedInput(42), 0U);
 }
 

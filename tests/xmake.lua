@@ -124,7 +124,7 @@ end
 
 target("test_server_room")
     set_kind("binary")
-    add_deps("shared", "engine_core", "engine_time", "engine_events")
+    add_deps("shared", "engine_core", "engine_time", "engine_events", "engine_input_state")
     add_packages("gtest")
     add_files("server/RoomInputTests.cpp", "../server/src/Room.cpp")
     add_includedirs("../server/src")
@@ -139,7 +139,7 @@ target("test_protocol")
 
 target("test_server_manager")
     set_kind("binary")
-    add_deps("shared", "log", "common", "engine_core", "engine_time", "engine_events")
+    add_deps("shared", "log", "common", "engine_core", "engine_time", "engine_events", "engine_input_state")
     add_packages("gtest")
     add_files("server/ServerManagerTests.cpp", "../server/src/ServerManager.cpp", "../server/src/Room.cpp")
     add_includedirs("../server/src")
