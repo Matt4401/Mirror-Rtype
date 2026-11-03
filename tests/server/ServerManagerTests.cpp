@@ -30,6 +30,8 @@ namespace protocol = rtype::protocol;
 
 constexpr std::uint16_t PORT = 4242;
 constexpr auto TIMEOUT = std::chrono::seconds(2);
+/** @brief Handshake timeout of `HandshakeTimeoutTest`, short so that the tests stay fast. */
+constexpr auto SHORT_HANDSHAKE_TIMEOUT = std::chrono::milliseconds(50);
 
 /** @brief One payload sent by the server. */
 struct Sent {
@@ -76,9 +78,11 @@ class FakeNetwork : public rtype::net::server::INetworkServer {
 /** @brief Runs a real `ServerManager` loop on its own thread, on top of the fake network. */
 class ServerManagerTest : public ::testing::Test {
   protected:
-    ServerManagerTest()
+    ServerManagerTest() : ServerManagerTest(rtype::server::HANDSHAKE_TIMEOUT) {}
+
+    explicit ServerManagerTest(const std::chrono::milliseconds handshakeTimeout)
         : state(std::make_shared<NetworkState>()),
-          server(std::make_unique<FakeNetwork>(state)),
+          server(std::make_unique<FakeNetwork>(state), handshakeTimeout),
           loop([this] { server.run(PORT); }) {}
 
     ~ServerManagerTest() override {
@@ -140,6 +144,18 @@ class ServerManagerTest : public ::testing::Test {
 
   private:
     ClientId _nextSentinel = 1000;
+};
+
+/** @brief Same server, with a handshake timeout short enough to expire during a test. */
+class HandshakeTimeoutTest : public ServerManagerTest {
+  protected:
+    HandshakeTimeoutTest() : ServerManagerTest(SHORT_HANDSHAKE_TIMEOUT) {}
+
+    /** @brief Lets the handshake timeout expire several times over, then waits for the pending events. */
+    void waitPastTimeout() {
+        std::this_thread::sleep_for(SHORT_HANDSHAKE_TIMEOUT * 4);
+        sync();
+    }
 };
 
 constexpr ClientId CLIENT = 1;
@@ -212,6 +228,51 @@ TEST_F(ServerManagerTest, InvalidPayloadIsIgnored) {
     push(EventType::Data, CLIENT, Bytes{}, Channel::Unreliable);
     message(CLIENT, protocol::Hello{});
     EXPECT_TRUE(waitFor([](const NetworkState& network) { return welcomes(network, CLIENT) == 1; }));
+}
+
+TEST_F(HandshakeTimeoutTest, SilentClientIsKickedOnce) {
+    push(EventType::Connected, CLIENT);
+    ASSERT_TRUE(waitFor([](const NetworkState& network) { return !network.kicked.empty(); }));
+    // The fake network never sends Disconnected: the server must not kick the client again on every iteration.
+    waitPastTimeout();
+
+    const std::scoped_lock lock(state->mutex);
+    EXPECT_EQ(state->kicked, std::vector<ClientId>{CLIENT});
+}
+
+TEST_F(HandshakeTimeoutTest, MessagesOtherThanHelloDoNotStopTheTimeout) {
+    push(EventType::Connected, CLIENT);
+    message(CLIENT, protocol::LobbyListRequest{});
+    message(CLIENT, protocol::PlayerInput{.sequence = 1, .buttons = protocol::BUTTON_UP}, Channel::Unreliable);
+    EXPECT_TRUE(waitFor([](const NetworkState& network) { return !network.kicked.empty(); }));
+}
+
+TEST_F(HandshakeTimeoutTest, HelloInTimeIsNotKicked) {
+    push(EventType::Connected, CLIENT);
+    message(CLIENT, protocol::Hello{});
+    ASSERT_TRUE(waitFor([](const NetworkState& network) { return welcomes(network, CLIENT) == 1; }));
+    waitPastTimeout();
+
+    const std::scoped_lock lock(state->mutex);
+    EXPECT_TRUE(state->kicked.empty());
+}
+
+TEST_F(HandshakeTimeoutTest, WrongVersionIsKickedOnlyOnce) {
+    push(EventType::Connected, CLIENT);
+    message(CLIENT, protocol::Hello{.version = protocol::PROTOCOL_VERSION + 1});
+    waitPastTimeout();
+
+    const std::scoped_lock lock(state->mutex);
+    EXPECT_EQ(state->kicked, std::vector<ClientId>{CLIENT});
+}
+
+TEST_F(HandshakeTimeoutTest, DisconnectionCancelsTheTimeout) {
+    push(EventType::Connected, CLIENT);
+    push(EventType::Disconnected, CLIENT);
+    waitPastTimeout();
+
+    const std::scoped_lock lock(state->mutex);
+    EXPECT_TRUE(state->kicked.empty());
 }
 
 int main(int argc, char** argv) {

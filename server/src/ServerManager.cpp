@@ -26,7 +26,9 @@ constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
 
 }  // namespace
 
-ServerManager::ServerManager(std::unique_ptr<net::server::INetworkServer> network) : _network(std::move(network)) {}
+ServerManager::ServerManager(std::unique_ptr<net::server::INetworkServer> network,
+                             const std::chrono::milliseconds handshakeTimeout)
+    : _network(std::move(network)), _handshakeTimeout(handshakeTimeout) {}
 
 bool ServerManager::run(const std::uint16_t port) {
     if (!_network->start(port)) {
@@ -39,6 +41,7 @@ bool ServerManager::run(const std::uint16_t port) {
 
     while (_running.load()) {
         handleEvents();
+        expireHandshakes();
         advanceRooms();
         std::this_thread::sleep_for(IDLE_SLEEP);
     }
@@ -66,10 +69,8 @@ void ServerManager::handleEvents() {
     }
 }
 
-// Not static on purpose: the lobby logic (e.g. sending the list of rooms) will need the members.
-// NOLINTNEXTLINE(readability-convert-member-functions-to-static)
 void ServerManager::onConnected(const ClientId client) {
-    // The client is in the lobby: it joins a room through a lobby message (see onData).
+    _pendingHandshakes[client] = std::chrono::steady_clock::now();
     log::info(LOG_TAG, "client ", client, " connected");
 }
 
@@ -77,6 +78,7 @@ void ServerManager::onDisconnected(const ClientId client) {
     // Can arrive without onConnected (connection lost before being ready): leaveRoom() then does nothing.
     leaveRoom(client);
     _handshaken.erase(client);
+    _pendingHandshakes.erase(client);
     log::info(LOG_TAG, "client ", client, " disconnected");
 }
 
@@ -102,9 +104,11 @@ void ServerManager::onReliableMessage(const ClientId client, const protocol::Mes
         if (hello->version != protocol::PROTOCOL_VERSION) {
             log::info(LOG_TAG, "client ", client, " uses protocol version ", hello->version, " (expected ",
                       protocol::PROTOCOL_VERSION, "): kicked");
+            _pendingHandshakes.erase(client);
             _network->kick(client);
             return;
         }
+        _pendingHandshakes.erase(client);
         _handshaken.insert(client);
         send(client, protocol::Welcome{.udpPort = _port}, net::Channel::Reliable);
         return;
@@ -143,6 +147,21 @@ void ServerManager::onUnreliableMessage(const ClientId client, const protocol::M
     if (const auto room = _rooms.find(*id); room != _rooms.end()) {
         room->second.onInput(client, PlayerInput{.sequence = input->sequence, .actions = input->buttons});
     }
+}
+
+void ServerManager::expireHandshakes() {
+    const auto now = std::chrono::steady_clock::now();
+    // A kicked client leaves the map at once: it is kicked only once, even if its Disconnected event arrives a few
+    // iterations later.
+    std::erase_if(_pendingHandshakes, [this, now](const auto& pending) {
+        const auto& [client, connectedAt] = pending;
+        if (now - connectedAt < _handshakeTimeout) {
+            return false;
+        }
+        log::info(LOG_TAG, "client ", client, " sent no Hello within ", _handshakeTimeout.count(), " ms: kicked");
+        _network->kick(client);
+        return true;
+    });
 }
 
 void ServerManager::send(const ClientId client, const protocol::Message& message, const net::Channel channel) const {
