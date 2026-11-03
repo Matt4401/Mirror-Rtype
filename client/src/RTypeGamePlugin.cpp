@@ -27,6 +27,7 @@
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
+#include "components/RigidBody2D.hpp"
 #include "core/services/IInputService.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
@@ -155,11 +156,10 @@ void movePlayer(ecs::Registry& registry, float deltaTime) {
         });
 }
 
-void movePlayerBullets(ecs::Registry& registry, float deltaTime) {
+void killOffscreenBullets(ecs::Registry& registry) {
     std::vector<ecs::Entity> toDestroy;
     registry.runSystem<ecs::Transform, PlayerBullet>(
-        [&toDestroy, deltaTime](ecs::Entity entity, ecs::Transform& transform, PlayerBullet& /*tag*/) {
-            transform.x += PLAYER_BULLET_SPEED * deltaTime;
+        [&toDestroy](ecs::Entity entity, const ecs::Transform& transform, PlayerBullet& /*tag*/) {
             if (transform.x > SCENE_WIDTH + 64.0F) {
                 toDestroy.push_back(entity);
             }
@@ -210,7 +210,7 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
 
 void RTypeGamePlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) {
     movePlayer(engine.registry(), time.deltaTime);
-    movePlayerBullets(engine.registry(), time.deltaTime);
+    killOffscreenBullets(engine.registry());
 }
 
 void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
@@ -231,10 +231,22 @@ void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*ti
         engine.registry().addComponent<ecs::Renderable>(
             bullet, ecs::Renderable{
                         .textureId = _bulletTexId,
-                        .sourceRect = {.x = 0, .y = 0, .width = 16, .height = 8},
+                        .sourceRect = {.x = 0, .y = 0, .width = 32, .height = 32},
                         .origin = {.x = 0.5F, .y = 0.5F},
                         .tint = COLOR_WHITE,
                         .layer = 3,
+                    });
+        engine.registry().addComponent<ecs::AnimationComponent>(
+            bullet, ecs::AnimationComponent{
+                        .frameWidth = 32, .frameHeight = 32, .frameCount = 4,
+                        .startX = 0, .startY = 0, .frameDuration = 0.015F, .loop = false,
+                    });
+        engine.registry().addComponent<ecs::RigidBody2D>(
+            bullet, ecs::RigidBody2D{
+                        .bodyType = ecs::BodyType::Dynamic,
+                        .velocityX = PLAYER_BULLET_SPEED,
+                        .fixedRotation = true,
+                        .bullet = true,
                     });
         engine.registry().addComponent<PlayerBullet>(bullet, PlayerBullet{});
     }
