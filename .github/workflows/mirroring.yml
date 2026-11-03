@@ -153,7 +153,8 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           source: "r-type_server"
-          target: "/home/rtype/server_deploy"
+          # Upload to a staging dir: the running binary cannot be overwritten in place ("Text file busy").
+          target: "/home/rtype/server_deploy/incoming"
           overwrite: true
 
       - name: Restart server service on VPS
@@ -163,7 +164,11 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
+            set -e
             export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-            chmod +x /home/rtype/server_deploy/r-type_server
+            cd /home/rtype/server_deploy
+            chmod +x incoming/r-type_server
+            # Atomic rename: swaps the directory entry, the running process keeps its old inode until restart.
+            mv -f incoming/r-type_server r-type_server
             systemctl --user restart rtype-server.service
             systemctl --user status rtype-server.service
