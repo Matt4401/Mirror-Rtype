@@ -21,9 +21,8 @@ For the protocol overview and connection lifecycle, see [rfc.txt](rfc.txt).
 7. [In-game (UDP)](#7-in-game-udp)
 8. [Validation](#8-validation)
 9. [Why Protocol Buffers](#9-why-protocol-buffers)
-10. [Appendix A — Entity Types](#appendix-a--entity-types)
-11. [Appendix B — Button Bitmask](#appendix-b--button-bitmask)
-12. [Appendix C — Message Summary](#appendix-c--message-summary)
+10. [Appendix A — R-Type Entity Conventions](#appendix-a--r-type-entity-conventions)
+11. [Appendix B — Message Summary](#appendix-b--message-summary)
 
 ---
 
@@ -77,14 +76,14 @@ Standard protobuf wire format. Main consequences:
 | `sint32`      | positions (`x`, `y`)         | zigzag varint: small negative values stay small            |
 | `bool`        | flags                        | varint, 1 byte                                             |
 | `string`      | chat text                    | length-prefixed, valid UTF-8                               |
-| enum          | `EntityType`, `RoomState`... | varint; unknown values are rejected by the receiver        |
+| enum          | `RoomState`, `GameOverReason` | varint; unknown values are rejected by the receiver        |
 | message       | nested records               | length-prefixed                                            |
 
 - A field equal to its default (`0`, `false`, empty) is **not written** at all: a `LobbyCreate` costs 3 bytes (2-byte
   envelope tag for field 34, 1-byte length 0).
 - Fields may appear in any order and unknown fields are skipped, so a peer may add fields without breaking older ones.
-- Protobuf has no 8- or 16-bit integers: fields documented with a smaller range (`u8`, `i16`) are carried as
-  `uint32`/`sint32` and range-checked on reception.
+- Protobuf has no 8-bit integers: fields documented with a smaller range (0–255) are carried as `uint32` and
+  range-checked on reception. `float` and `fixed32` always take 4 bytes.
 
 ---
 
@@ -98,7 +97,7 @@ Sent right after the library delivers its own `Welcome` (`ClientId` + token). St
 
 | Field     | # | Type     | Description                                             |
 |-----------|---|----------|---------------------------------------------------------|
-| `version` | 1 | `uint32` | Client protocol version, MUST be `PROTOCOL_VERSION` (1) |
+| `version` | 1 | `uint32` | Client protocol version, MUST be `PROTOCOL_VERSION` (2) |
 
 On a version mismatch, the server closes the connection without sending `Welcome`. The client MUST send `Hello`
 within 5 seconds of connecting: past that, the server closes the connection (messages other than `Hello` do not reset
@@ -260,13 +259,29 @@ UDP payloads MUST NOT exceed **1192 bytes** (1200-byte datagram minus the 8-byte
 
 Sent every client tick (~60 Hz). A lost datagram is replaced by the next one.
 
-| Field      | # | Type     | Description                                            |
-|------------|---|----------|--------------------------------------------------------|
-| `sequence` | 1 | `uint32` | Increases with every input (wrapping)                  |
-| `buttons`  | 2 | `uint32` | Bitmask, see [Appendix B](#appendix-b--button-bitmask) |
+| Field      | # | Type                 | Description                                                    |
+|------------|---|----------------------|----------------------------------------------------------------|
+| `sequence` | 1 | `uint32`             | Increases with every input (wrapping)                          |
+| —          | 2 | —                    | Reserved: v1 `buttons` bitmask, never reuse                    |
+| `held`     | 3 | repeated `fixed32`   | Action ids of the buttons held down, at most 16                |
+| `axes`     | 4 | repeated `AxisValue` | Axis actions whose value is not 0, at most 8                   |
 
-Typical size: **6 bytes** (`0A 04 08 xx 10 yy`). Inputs already applied or older than the last applied one are
-dropped by the server.
+**`AxisValue`**
+
+| Field    | # | Type      | Description            |
+|----------|---|-----------|------------------------|
+| `action` | 1 | `fixed32` | Action id              |
+| `value`  | 2 | `float`   | In [-1, 1], finite     |
+
+The protocol carries **actions, not keys**. An action id is the FNV-1a hash of the action's name, the same value as
+the engine's `input::ActionId` (`input::makeActionId("shoot")`). The game declares its actions in its `ActionMapping`
+(R-Type: `shoot`, `move_x`, `move_y`, see `client/src/input/RTypeBindings.cpp`), so another game sends its own
+actions without any protocol change, and rebinding keys or using a gamepad changes nothing on the wire. Ids are
+`fixed32` because a hash is uniformly spread: as a varint it would take 5 bytes most of the time.
+
+Sizes: **4 bytes** when idle, **10** with one button held, **34** for R-Type's busiest input (shooting while moving
+diagonally: 1 button + 2 axes), about 2 KB/s per player at 60 Hz. Inputs already applied or older than the last applied
+one are dropped by the server.
 
 ### `WorldState` (2)
 
@@ -286,20 +301,33 @@ the server has not applied yet.
 
 **`EntityState`**
 
-| Field       | # | Type         | Description                                                 |
-|-------------|---|--------------|-------------------------------------------------------------|
-| `entity_id` | 1 | `uint32`     | Stable for the entity's whole life                          |
-| `type`      | 2 | `EntityType` | See [Appendix A](#appendix-a--entity-types)                 |
-| `subtype`   | 3 | `uint32`     | 0–255, type-specific variant (player index, enemy model...) |
-| `x`         | 4 | `sint32`     | X position in pixels, int16 range (0 = left edge)           |
-| `y`         | 5 | `sint32`     | Y position in pixels, int16 range (0 = top edge)            |
-| `health`    | 6 | `uint32`     | 0–255; 0 means the entity died this tick                    |
-| `flags`     | 7 | `uint32`     | 0–255; bit 0 alive, bit 1 shooting, bits 2–7 reserved       |
+| Field       | #  | Type      | Description                                               |
+|-------------|----|-----------|-----------------------------------------------------------|
+| `entity_id` | 1  | `uint32`  | Stable for the entity's whole life                        |
+| —           | 2  | —         | Reserved: v1 R-Type `EntityType` enum, never reuse        |
+| `subtype`   | 3  | `uint32`  | 0–255, game-defined variant of the kind                   |
+| —           | 4  | —         | Reserved: v1 int16 pixel `x`, never reuse                 |
+| —           | 5  | —         | Reserved: v1 int16 pixel `y`, never reuse                 |
+| `health`    | 6  | `uint32`  | 0–255; 0 means the entity died this tick                  |
+| `flags`     | 7  | `uint32`  | 0–255; game-defined bits                                  |
+| `x`         | 8  | `float`   | X position in world units, same as `Transform::x`; finite |
+| `y`         | 9  | `float`   | Y position in world units, same as `Transform::y`; finite |
+| `kind`      | 10 | `fixed32` | FNV-1a hash of the entity's prefab name                   |
+
+The protocol knows **no entity kind**: like input actions, kinds are the game's own. `kind` is the 32-bit FNV-1a hash
+of the name of the prefab the entity was spawned from (`protocol::makeEntityKind("alien_scout")`, the same algorithm
+as `input::makeActionId()`). The client maps each kind to its sprite or prefab; `subtype` and `flags` carry whatever the
+game needs, see [Appendix A](#appendix-a--r-type-entity-conventions) for R-Type. A kind the client does not know is
+not an error: it is up to the game to skip or show a placeholder.
+
+Positions are sent as the engine stores them (`Transform` is in `float` world units): no conversion, no lost
+sub-pixel precision for the client's interpolation.
 
 An entity with `health = 0` is sent exactly **once** (the tick it died), so that clients can play a death animation.
 
-**Size:** a snapshot header costs about 8 bytes and an entity about 19 bytes for on-screen values (at most 27; zero
-fields are omitted), so a datagram holds about 60 entities, and at least 43 in the worst case. The sender MUST keep the
+**Size:** a snapshot header costs about 8 bytes and an entity about 26 bytes for typical values (at most 32; zero
+fields are omitted, `kind`, `x` and `y` always take 5 bytes each), so a datagram holds about 45 entities, and at least 36 in
+the worst case. The sender MUST keep the
 whole snapshot within 1192 bytes; the encoder does not split snapshots (the server logs and skips an oversized one).
 
 ---
@@ -312,14 +340,13 @@ payload MUST be dropped silently — when:
 - the payload is empty or larger than 64 KiB;
 - protobuf parsing fails (truncated varint, length past the end, invalid wire type, invalid UTF-8 in `text`);
 - the envelope carries no message, or a message this build does not know;
-- an enum holds an unknown value (`EntityType`, `RoomState`, `GameOverReason`);
-- a number is outside its documented range (`subtype`, `health`, `flags` > 255; `x`/`y` outside int16; `udp_port`
+- an enum holds an unknown value (`RoomState`, `GameOverReason`);
+- a float is NaN or infinite (`x`, `y`, an axis `value`), or an axis `value` is outside [-1, 1];
+- a number is outside its documented range (`subtype`, `health`, `flags` > 255; `udp_port`
   of 0 or > 65535; `max_players` of 0 or > 4; a room `player_count` > `max_players`; `GameStart.player_count` of 0
   or > 4; `player_index` >= `player_count`);
-- a list is longer than its maximum (`rooms` > 256; `slots`, `player_scores` > 4);
+- a list is longer than its maximum (`rooms` > 256; `slots`, `player_scores` > 4; `held` > 16; `axes` > 8);
 - a chat `text` is empty or longer than 256 bytes.
-
-Reserved `buttons` bits (5–31) are cleared, not rejected.
 
 Phase and channel checks (a message valid but received in the wrong phase or on the wrong channel) are done by the
 game, after decoding. The server currently enforces:
@@ -335,7 +362,7 @@ Lobby and in-game phase checks come with the lobby implementation.
 
 ## 9. Why Protocol Buffers
 
-- **Binary and compact.** Varints make the common case small (6-byte inputs) without a hand-written bit packer.
+- **Binary and compact.** Varints make the common case small (4-byte idle inputs) without a hand-written bit packer.
 - **Robust parsing.** The protobuf parser is fuzzed upstream; our code only adds range checks. No manual offsets, no
   out-of-bounds reads.
 - **Evolution.** New fields and messages are backward compatible: older peers skip unknown fields. The fixed-layout
@@ -346,45 +373,28 @@ Lobby and in-game phase checks come with the lobby implementation.
   format can change without touching the client or the server.
 
 The cost is a dependency (`protobuf-cpp`, built by xmake) and bigger snapshots than the former fixed 12-byte entity
-layout (about 19 bytes per entity), which is acceptable within one 1192-byte datagram.
+layout (about 26 bytes per entity with float positions and a prefab hash), which is acceptable within one 1192-byte datagram.
 
 ---
 
-## Appendix A — Entity Types
+## Appendix A — R-Type Entity Conventions
 
-| Value | Name                         | Description                                                 |
-|-------|------------------------------|-------------------------------------------------------------|
-| `0`   | `ENTITY_TYPE_PLAYER`         | Player-controlled spaceship. `subtype` = player index (0–3) |
-| `1`   | `ENTITY_TYPE_ENEMY`          | Bydos enemy unit. `subtype` = enemy model ID                |
-| `2`   | `ENTITY_TYPE_PLAYER_MISSILE` | Missile fired by a player. `subtype` = player index         |
-| `3`   | `ENTITY_TYPE_ENEMY_MISSILE`  | Missile fired by an enemy. `subtype` = 0                    |
-| `4`   | `ENTITY_TYPE_POWERUP`        | Powerup collectible. `subtype` = powerup type               |
+How R-Type fills the game-defined fields of `EntityState`. Another game defines its own.
 
----
-
-## Appendix B — Button Bitmask
-
-Used in `PlayerInput.buttons`.
-
-| Bit  | Mask   | Name    | Description                               |
-|------|--------|---------|-------------------------------------------|
-| 0    | `0x01` | `UP`    | Move up                                   |
-| 1    | `0x02` | `DOWN`  | Move down                                 |
-| 2    | `0x04` | `LEFT`  | Move left                                 |
-| 3    | `0x08` | `RIGHT` | Move right                                |
-| 4    | `0x10` | `SHOOT` | Fire                                      |
-| 5–31 | —      | —       | Reserved: MUST be 0, cleared on reception |
-
-Several bits can be set at once (e.g. `0x09` = UP + RIGHT).
+| Field     | R-Type use                                                                                         |
+|-----------|----------------------------------------------------------------------------------------------------|
+| `kind`    | `makeEntityKind(<prefab name>)`: `alien_scout`, `missile`, `obstacle`, `player_bullet`, `power_up` |
+| `subtype` | Player index (0–3) of a player ship or a player bullet, 0 otherwise                                 |
+| `flags`   | Bit 0: alive. Bit 1: shooting. Bits 2–7: reserved, 0                                               |
 
 ---
 
-## Appendix C — Message Summary
+## Appendix B — Message Summary
 
 | #    | Message            | Dir   | Channel    | Typical size (bytes)       |
 |------|--------------------|-------|------------|----------------------------|
-| `1`  | `PlayerInput`      | C → S | Unreliable | 6                          |
-| `2`  | `WorldState`       | S → C | Unreliable | ~8 + 19 per entity (≤1192) |
+| `1`  | `PlayerInput`      | C → S | Unreliable | 4–34                       |
+| `2`  | `WorldState`       | S → C | Unreliable | ~8 + 26 per entity (≤1192) |
 | `16` | `Hello`            | C → S | Reliable   | 5                          |
 | `17` | `Welcome`          | S → C | Reliable   | 6                          |
 | `32` | `LobbyListRequest` | C → S | Reliable   | 3                          |
