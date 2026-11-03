@@ -15,9 +15,7 @@
 
 namespace systems {
 
-void AnimationPlugin::build(engine::PluginBuilder& builder) {
-    builder.require<render::RenderPlugin>();
-}
+void AnimationPlugin::build(engine::PluginBuilder& builder) { builder.require<render::RenderPlugin>(); }
 
 void AnimationPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) {
     AnimationSystem::update(engine.registry(), time.deltaTime);

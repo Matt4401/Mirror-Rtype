@@ -10,25 +10,26 @@
 #include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
 #include "components/Renderable.hpp"
+#include "components/RigidBody2D.hpp"
 #include "components/ShipInput.hpp"
 #include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
+#include "core/services/IInputService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
-#include "components/RigidBody2D.hpp"
-#include "core/services/IInputService.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
@@ -64,13 +65,14 @@ struct StarLayer {
     ecs::TextureId texId = ecs::NO_TEXTURE;
 };
 
-void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::TextureId mediumId,
-                    ecs::TextureId largeId) {
-    const std::array<StarLayer, 3> layers{{
-        {.count = 80, .speed = 25.0F, .color = COLOR_STAR_SMALL, .layer = -3, .texId = smallId},
-        {.count = 40, .speed = 60.0F, .color = COLOR_STAR_MEDIUM, .layer = -2, .texId = mediumId},
-        {.count = 20, .speed = 120.0F, .color = COLOR_STAR_LARGE, .layer = -1, .texId = largeId},
-    }};
+void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::TextureId mediumId, ecs::TextureId largeId) {
+    const std::array<StarLayer, 3> layers{
+        {
+            {.count = 80, .speed = 25.0F, .color = COLOR_STAR_SMALL, .layer = -3, .texId = smallId},
+            {.count = 40, .speed = 60.0F, .color = COLOR_STAR_MEDIUM, .layer = -2, .texId = mediumId},
+            {.count = 20, .speed = 120.0F, .color = COLOR_STAR_LARGE, .layer = -1, .texId = largeId},
+        },
+    };
 
     int seed = 0;
     for (const auto& def : layers) {
@@ -226,28 +228,30 @@ void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*ti
     for (const auto& pos : spawnPositions) {
         const ecs::Entity bullet = engine.registry().spawnEntity();
         engine.registry().addComponent<ecs::Transform>(
-            bullet,
-            ecs::Transform{.x = pos.x + 40.0F, .y = pos.y, .scaleX = 1.5F, .scaleY = 1.5F});
-        engine.registry().addComponent<ecs::Renderable>(
-            bullet, ecs::Renderable{
-                        .textureId = _bulletTexId,
-                        .sourceRect = {.x = 0, .y = 0, .width = 32, .height = 32},
-                        .origin = {.x = 0.5F, .y = 0.5F},
-                        .tint = COLOR_WHITE,
-                        .layer = 3,
-                    });
-        engine.registry().addComponent<ecs::AnimationComponent>(
-            bullet, ecs::AnimationComponent{
-                        .frameWidth = 32, .frameHeight = 32, .frameCount = 4,
-                        .startX = 0, .startY = 0, .frameDuration = 0.015F, .loop = false,
-                    });
-        engine.registry().addComponent<ecs::RigidBody2D>(
-            bullet, ecs::RigidBody2D{
-                        .bodyType = ecs::BodyType::Dynamic,
-                        .velocityX = PLAYER_BULLET_SPEED,
-                        .fixedRotation = true,
-                        .bullet = true,
-                    });
+            bullet, ecs::Transform{.x = pos.x + 40.0F, .y = pos.y, .scaleX = 1.5F, .scaleY = 1.5F});
+        engine.registry().addComponent<ecs::Renderable>(bullet,
+                                                        ecs::Renderable{
+                                                            .textureId = _bulletTexId,
+                                                            .sourceRect = {.x = 0, .y = 0, .width = 32, .height = 32},
+                                                            .origin = {.x = 0.5F, .y = 0.5F},
+                                                            .tint = COLOR_WHITE,
+                                                            .layer = 3,
+                                                        });
+        engine.registry().addComponent<ecs::AnimationComponent>(bullet, ecs::AnimationComponent{
+                                                                            .frameWidth = 32,
+                                                                            .frameHeight = 32,
+                                                                            .frameCount = 4,
+                                                                            .startX = 0,
+                                                                            .startY = 0,
+                                                                            .frameDuration = 0.015F,
+                                                                            .loop = false,
+                                                                        });
+        engine.registry().addComponent<ecs::RigidBody2D>(bullet, ecs::RigidBody2D{
+                                                                     .bodyType = ecs::BodyType::Dynamic,
+                                                                     .velocityX = PLAYER_BULLET_SPEED,
+                                                                     .fixedRotation = true,
+                                                                     .bullet = true,
+                                                                 });
         engine.registry().addComponent<PlayerBullet>(bullet, PlayerBullet{});
     }
 }
