@@ -21,6 +21,24 @@ struct UiAnchor {
 
     /** @brief Pixel offset applied after the anchor, on the Y axis. */
     float offsetY = 0.0F;
+
+    /**
+     * @brief Horizontal pivot of the element in [0, 1].
+     *
+     * 0 = element's left edge aligns to the anchor point (default).
+     * 0.5 = element's horizontal center aligns to the anchor point.
+     * 1 = element's right edge aligns to the anchor point.
+     */
+    float pivotX = 0.0F;
+
+    /**
+     * @brief Vertical pivot of the element in [0, 1].
+     *
+     * 0 = element's top edge aligns to the anchor point (default).
+     * 0.5 = element's vertical center aligns to the anchor point.
+     * 1 = element's bottom edge aligns to the anchor point.
+     */
+    float pivotY = 0.0F;
 };
 
 }  // namespace ui

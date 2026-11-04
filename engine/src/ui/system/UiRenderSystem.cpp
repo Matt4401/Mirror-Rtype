@@ -25,25 +25,31 @@ void UiRenderSystem::collect(ecs::Registry& registry) {
     const auto screenW = static_cast<float>(GetScreenWidth());
     const auto screenH = static_cast<float>(GetScreenHeight());
 
-    const auto resolve = [screenW, screenH](const UiAnchor& anchor) -> std::pair<float, float> {
-        return {(anchor.anchorX * screenW) + anchor.offsetX, (anchor.anchorY * screenH) + anchor.offsetY};
+    const auto resolve = [screenW, screenH](const UiAnchor& anchor, float elemW,
+                                            float elemH) -> std::pair<float, float> {
+        return {(anchor.anchorX * screenW) + anchor.offsetX - (anchor.pivotX * elemW),
+                (anchor.anchorY * screenH) + anchor.offsetY - (anchor.pivotY * elemH)};
     };
 
     registry.runSystem<UiAnchor, UiRect>(
         [this, &resolve](ecs::Entity entity, const UiAnchor& anchor, const UiRect& rect) {
-            auto [x, y] = resolve(anchor);
+            auto [x, y] = resolve(anchor, rect.width, rect.height);
             _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = rect});
         });
 
     registry.runSystem<UiAnchor, UiText>(
         [this, &resolve](ecs::Entity entity, const UiAnchor& anchor, const UiText& text) {
-            auto [x, y] = resolve(anchor);
+            const Font* stored = _fonts->get(text.fontId);
+            const Font font = (stored != nullptr) ? *stored : GetFontDefault();
+            const float spacing = text.fontSize / 10.0F;
+            const Vector2 measured = MeasureTextEx(font, text.text.c_str(), text.fontSize, spacing);
+            auto [x, y] = resolve(anchor, measured.x, measured.y);
             _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = text});
         });
 
     registry.runSystem<UiAnchor, UiProgressBar>(
         [this, &resolve](ecs::Entity entity, const UiAnchor& anchor, const UiProgressBar& bar) {
-            auto [x, y] = resolve(anchor);
+            auto [x, y] = resolve(anchor, bar.width, bar.height);
             _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = bar});
         });
 }

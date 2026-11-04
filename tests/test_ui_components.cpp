@@ -44,8 +44,10 @@ TEST(UiAnchor, WorksAsEcsComponent) {
     EXPECT_EQ(registry.getComponents<ui::UiAnchor>().get(entity).offsetY, -8.0F);
 }
 
-static std::pair<float, float> resolveAnchor(const ui::UiAnchor& anchor, float screenW, float screenH) {
-    return {(anchor.anchorX * screenW) + anchor.offsetX, (anchor.anchorY * screenH) + anchor.offsetY};
+static std::pair<float, float> resolveAnchor(const ui::UiAnchor& anchor, float screenW, float screenH,
+                                              float elemW = 0.0F, float elemH = 0.0F) {
+    return {(anchor.anchorX * screenW) + anchor.offsetX - (anchor.pivotX * elemW),
+            (anchor.anchorY * screenH) + anchor.offsetY - (anchor.pivotY * elemH)};
 }
 
 TEST(UiAnchorResolution, TopLeftCorner) {
@@ -56,12 +58,20 @@ TEST(UiAnchorResolution, TopLeftCorner) {
     EXPECT_FLOAT_EQ(y, 0.0F);
 }
 
-TEST(UiAnchorResolution, BottomRightCorner) {
+TEST(UiAnchorResolution, BottomRightCornerNoPivot) {
     const ui::UiAnchor anchor{.anchorX = 1.0F, .anchorY = 1.0F};
     auto [x, y] = resolveAnchor(anchor, 1920.0F, 1080.0F);
 
     EXPECT_FLOAT_EQ(x, 1920.0F);
     EXPECT_FLOAT_EQ(y, 1080.0F);
+}
+
+TEST(UiAnchorResolution, BottomRightCornerWithPivot) {
+    const ui::UiAnchor anchor{.anchorX = 1.0F, .anchorY = 1.0F, .pivotX = 1.0F, .pivotY = 1.0F};
+    auto [x, y] = resolveAnchor(anchor, 1920.0F, 1080.0F, 200.0F, 40.0F);
+
+    EXPECT_FLOAT_EQ(x, 1920.0F - 200.0F);
+    EXPECT_FLOAT_EQ(y, 1080.0F - 40.0F);
 }
 
 TEST(UiAnchorResolution, CenterWithOffset) {
@@ -70,6 +80,21 @@ TEST(UiAnchorResolution, CenterWithOffset) {
 
     EXPECT_FLOAT_EQ(x, 910.0F);
     EXPECT_FLOAT_EQ(y, 550.0F);
+}
+
+TEST(UiAnchorResolution, CenterPivotCentersElement) {
+    const ui::UiAnchor anchor{.anchorX = 0.5F, .anchorY = 0.5F, .pivotX = 0.5F, .pivotY = 0.5F};
+    auto [x, y] = resolveAnchor(anchor, 1920.0F, 1080.0F, 200.0F, 40.0F);
+
+    EXPECT_FLOAT_EQ(x, 960.0F - 100.0F);
+    EXPECT_FLOAT_EQ(y, 540.0F - 20.0F);
+}
+
+TEST(UiAnchor, DefaultPivotIsZero) {
+    const ui::UiAnchor anchor;
+
+    EXPECT_EQ(anchor.pivotX, 0.0F);
+    EXPECT_EQ(anchor.pivotY, 0.0F);
 }
 
 TEST(UiRect, DefaultValues) {
