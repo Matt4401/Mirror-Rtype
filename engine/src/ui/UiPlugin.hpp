@@ -12,17 +12,20 @@
 
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/time/Time.hpp"
 #include "ui/font/FontStore.hpp"
+#include "ui/system/UiButtonSystem.hpp"
 #include "ui/system/UiRenderSystem.hpp"
 
 namespace ui {
 
 /**
- * @brief Engine plugin driving HUD rendering via UiRenderSystem.
+ * @brief Engine plugin driving HUD rendering and button interaction.
  *
- * Owns a FontStore and a UiRenderSystem. Runs UiRenderSystem::update()
+ * Owns a FontStore, a UiRenderSystem, and a UiButtonSystem. Runs
+ * UiButtonSystem::update() in the update phase and UiRenderSystem::update()
  * in the render phase, after the standard RenderPlugin pass.
- * Requires RenderPlugin (window must be alive for font and texture operations).
+ * Requires RenderPlugin and IWindowService.
  */
 class UiPlugin final : public engine::IPlugin {
   public:
@@ -51,7 +54,7 @@ class UiPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "UiPlugin"; }
 
     /**
-     * @brief Declares dependency on RenderPlugin.
+     * @brief Declares dependency on RenderPlugin and IWindowService.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
@@ -61,6 +64,13 @@ class UiPlugin final : public engine::IPlugin {
      * @param engine Reference to host Engine.
      */
     void init(engine::Engine& engine) override;
+
+    /**
+     * @brief Runs UiButtonSystem to update button interaction states.
+     * @param engine Reference to host Engine.
+     * @param time   Current frame time (unused).
+     */
+    void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
      * @brief Runs the UI render pass after the main render pass.
@@ -79,6 +89,8 @@ class UiPlugin final : public engine::IPlugin {
     std::unique_ptr<FontStore> _fonts;
     /** @brief Owned UI render system; valid after init(). */
     std::unique_ptr<UiRenderSystem> _uiRenderSystem;
+    /** @brief Button interaction system. */
+    UiButtonSystem _buttonSystem;
 };
 
 }  // namespace ui

@@ -3,6 +3,7 @@
 #include <variant>
 
 #include "ecs/Entity.hpp"
+#include "ui/components/UiButton.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
@@ -26,7 +27,7 @@ struct UiDrawItem {
     float screenY = 0.0F;
 
     /** @brief The drawable component copied from the entity. */
-    std::variant<UiRect, UiText, UiProgressBar> drawable;
+    std::variant<UiRect, UiText, UiProgressBar, UiButton> drawable;
 };
 
 }  // namespace ui

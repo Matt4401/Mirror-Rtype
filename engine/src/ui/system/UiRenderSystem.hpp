@@ -76,6 +76,14 @@ class UiRenderSystem {
      */
     static void drawProgressBar(float x, float y, const UiProgressBar& bar);
 
+    /**
+     * @brief Draws a single `UiButton` at the given screen position.
+     * @param x Resolved screen X in pixels.
+     * @param y Resolved screen Y in pixels.
+     * @param btn Component to draw.
+     */
+    void drawButton(float x, float y, const UiButton& btn) const;
+
     /** @brief Resolves font identifiers. */
     const FontStore* _fonts;
 

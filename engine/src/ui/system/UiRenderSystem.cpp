@@ -7,6 +7,7 @@
 #include <variant>
 
 #include "ui/components/UiAnchor.hpp"
+#include "ui/components/UiButton.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
@@ -15,9 +16,7 @@ namespace ui {
 
 static constexpr std::size_t INITIAL_QUEUE_CAPACITY = 64;
 
-UiRenderSystem::UiRenderSystem(const FontStore& fonts) : _fonts(&fonts) {
-    _queue.reserve(INITIAL_QUEUE_CAPACITY);
-}
+UiRenderSystem::UiRenderSystem(const FontStore& fonts) : _fonts(&fonts) { _queue.reserve(INITIAL_QUEUE_CAPACITY); }
 
 void UiRenderSystem::collect(ecs::Registry& registry) {
     _queue.clear();
@@ -52,6 +51,12 @@ void UiRenderSystem::collect(ecs::Registry& registry) {
             auto [x, y] = resolve(anchor, bar.width, bar.height);
             _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = bar});
         });
+
+    registry.runSystem<UiAnchor, UiButton>(
+        [this, &resolve](ecs::Entity entity, const UiAnchor& anchor, const UiButton& btn) {
+            auto [x, y] = resolve(anchor, btn.width, btn.height);
+            _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = btn});
+        });
 }
 
 void UiRenderSystem::update(ecs::Registry& registry) {
@@ -70,6 +75,8 @@ void UiRenderSystem::draw() const {
                     drawText(item.screenX, item.screenY, drawable);
                 } else if constexpr (std::is_same_v<T, UiProgressBar>) {
                     drawProgressBar(item.screenX, item.screenY, drawable);
+                } else if constexpr (std::is_same_v<T, UiButton>) {
+                    drawButton(item.screenX, item.screenY, drawable);
                 }
             },
             item.drawable);
@@ -83,8 +90,13 @@ void UiRenderSystem::drawRect(float x, float y, const UiRect& rect) {
     }
     if (rect.borderThickness > 0.0F && rect.borderColor.a > 0) {
         const Color border{
-            .r = rect.borderColor.r, .g = rect.borderColor.g, .b = rect.borderColor.b, .a = rect.borderColor.a,};
-        DrawRectangleLinesEx({.x = x, .y = y, .width = rect.width, .height = rect.height}, rect.borderThickness, border);
+            .r = rect.borderColor.r,
+            .g = rect.borderColor.g,
+            .b = rect.borderColor.b,
+            .a = rect.borderColor.a,
+        };
+        DrawRectangleLinesEx({.x = x, .y = y, .width = rect.width, .height = rect.height}, rect.borderThickness,
+                             border);
     }
 }
 
@@ -97,6 +109,29 @@ void UiRenderSystem::drawProgressBar(float x, float y, const UiProgressBar& bar)
         const float ratio = std::clamp((bar.value - bar.min) / range, 0.0F, 1.0F);
         const Color fg{.r = bar.foreground.r, .g = bar.foreground.g, .b = bar.foreground.b, .a = bar.foreground.a};
         DrawRectangleV({.x = x, .y = y}, {.x = bar.width * ratio, .y = bar.height}, fg);
+    }
+}
+
+void UiRenderSystem::drawButton(float x, float y, const UiButton& btn) const {
+    const ecs::Rgba* bgPtr = &btn.colorIdle;
+    if (btn.state == UiButtonState::Pressed) {
+        bgPtr = &btn.colorPressed;
+    } else if (btn.state == UiButtonState::Hovered) {
+        bgPtr = &btn.colorHovered;
+    }
+    const ecs::Rgba& bg = *bgPtr;
+    DrawRectangleV({.x = x, .y = y}, {.x = btn.width, .y = btn.height},
+                   Color{.r = bg.r, .g = bg.g, .b = bg.b, .a = bg.a});
+
+    if (!btn.label.empty()) {
+        const Font* stored = _fonts->get(ui::NO_FONT);
+        const Font font = (stored != nullptr) ? *stored : GetFontDefault();
+        const float spacing = btn.fontSize / 10.0F;
+        const Vector2 measured = MeasureTextEx(font, btn.label.c_str(), btn.fontSize, spacing);
+        const float tx = x + ((btn.width - measured.x) * 0.5F);
+        const float ty = y + ((btn.height - measured.y) * 0.5F);
+        const Color tc{.r = btn.colorText.r, .g = btn.colorText.g, .b = btn.colorText.b, .a = btn.colorText.a};
+        DrawTextEx(font, btn.label.c_str(), {.x = tx, .y = ty}, btn.fontSize, spacing, tc);
     }
 }
 
