@@ -3,23 +3,23 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
 namespace rtype::protocol {
 
-/** @brief Protocol version sent in `Hello`; bumped on every breaking change of `rtype.proto`. */
-inline constexpr std::uint32_t PROTOCOL_VERSION = 1;
 /**
- * @brief Transport-level id of the R-Type protocol (`NetworkConfig::protocolId`), ASCII "RTYP".
+ * @brief Protocol version sent in `Hello`; bumped on every breaking change of `rtype.proto`.
  *
- * Checked by the engine's transport before `Hello`: a client of another game is refused before reaching the game.
- * Unlike `PROTOCOL_VERSION`, it never changes.
+ * Version 2: `PlayerInput` carries the game's action ids instead of a fixed button bitmask, and `EntityState`
+ * positions are floats in world units instead of int16 pixels.
  */
+inline constexpr std::uint32_t PROTOCOL_VERSION = 2;
+
 inline constexpr std::uint32_t TRANSPORT_PROTOCOL_ID = 0x50595452;
 /** @brief TCP and UDP port the server listens on when none is given. */
 inline constexpr std::uint16_t DEFAULT_PORT = 4242;
-
 /** @brief Maximum number of players in a room (player slots, scores). */
 inline constexpr std::size_t MAX_PLAYERS = 4;
 /** @brief Maximum number of rooms in one `LobbyList`. */
@@ -31,20 +31,19 @@ inline constexpr std::size_t MAX_MESSAGE_SIZE = std::size_t{64} * 1024;
 /** @brief Largest encoded message that fits in one UDP datagram (1200 bytes minus the 8-byte library header). */
 inline constexpr std::size_t MAX_UNRELIABLE_SIZE = 1192;
 
-/** @brief `PlayerInput::buttons` bit: move up. */
-inline constexpr std::uint8_t BUTTON_UP = 0x01;
-/** @brief `PlayerInput::buttons` bit: move down. */
-inline constexpr std::uint8_t BUTTON_DOWN = 0x02;
-/** @brief `PlayerInput::buttons` bit: move left. */
-inline constexpr std::uint8_t BUTTON_LEFT = 0x04;
-/** @brief `PlayerInput::buttons` bit: move right. */
-inline constexpr std::uint8_t BUTTON_RIGHT = 0x08;
-/** @brief `PlayerInput::buttons` bit: fire. */
-inline constexpr std::uint8_t BUTTON_SHOOT = 0x10;
+/** @brief Maximum number of button actions held in one `PlayerInput`. */
+inline constexpr std::size_t MAX_INPUT_BUTTONS = 16;
+/** @brief Maximum number of axis actions in one `PlayerInput`. */
+inline constexpr std::size_t MAX_INPUT_AXES = 8;
 
-/** @brief Every defined button bit (`BUTTON_UP` to `BUTTON_SHOOT`); the others are reserved and cleared by `decode()`.
+/**
+ * @brief Id of an input action: the FNV-1a hash of its name, the same value as the engine's `input::ActionId`
+ * (`input::makeActionId("shoot")`).
+ *
+ * The protocol does not depend on the engine: it carries the ids without knowing what they mean, so any game can
+ * send its own actions.
  */
-inline constexpr auto BUTTONS_MASK = static_cast<std::uint8_t>(0x1F);
+using ActionId = std::uint32_t;
 
 /** @brief C -> S: first message of the client, starts version negotiation. */
 struct Hello {
@@ -178,44 +177,72 @@ struct Chat {
     bool operator==(const Chat&) const = default;
 };
 
-/** @brief C -> S over UDP: controls held by the player during one client tick. */
+/** @brief Value of one axis action during a client tick. */
+struct AxisValue {
+    /** @brief Axis action. */
+    ActionId action = 0;
+    /** @brief Value of the axis, in [-1, 1]. */
+    float value = 0.0F;
+    bool operator==(const AxisValue&) const = default;
+};
+
+/**
+ * @brief C -> S over UDP: state of the player's actions during one client tick.
+ *
+ * Built from the client's `input::InputState`. The actions are the game's own: the protocol only carries their ids.
+ */
 struct PlayerInput {
     /** @brief Increases with every input; late or duplicated inputs are dropped by the server. */
     std::uint32_t sequence = 0;
-    /** @brief Bitmask of `BUTTON_*`. */
-    std::uint8_t buttons = 0;
+    /** @brief Button actions held down during this tick, at most `MAX_INPUT_BUTTONS`. */
+    std::vector<ActionId> held;
+    /** @brief Axis actions whose value is not 0, at most `MAX_INPUT_AXES`. */
+    std::vector<AxisValue> axes;
     bool operator==(const PlayerInput&) const = default;
 };
 
-/** @brief Kind of entity in a `WorldState`. */
-enum class EntityType : std::uint8_t {
-    Player = 0,
-    Enemy = 1,
-    PlayerMissile = 2,
-    EnemyMissile = 3,
-    Powerup = 4,
-};
+/**
+ * @brief Kind of an entity in a `WorldState`: the FNV-1a hash of its prefab name (see `makeEntityKind()`).
+ *
+ * The protocol knows no entity kind: each game sends its own prefabs, and the client picks the sprite from the kind.
+ */
+using EntityKind = std::uint32_t;
 
-/** @brief `EntityState::flags` bit: the entity is alive. */
-inline constexpr std::uint8_t ENTITY_ALIVE = 0x01;
-/** @brief `EntityState::flags` bit: the entity is shooting. */
-inline constexpr std::uint8_t ENTITY_SHOOTING = 0x02;
+/**
+ * @brief Computes the kind of the entities spawned from a prefab: the 32-bit FNV-1a hash of its name.
+ *
+ * Same algorithm as the engine's `input::makeActionId()`, so that both sides compute the same value without sharing a
+ * table. Usable at compile time: `constexpr auto MISSILE = makeEntityKind("missile");`.
+ *
+ * @param prefab Prefab name, e.g. "alien_scout".
+ * @return Kind to put in `EntityState::kind`.
+ */
+constexpr EntityKind makeEntityKind(const std::string_view prefab) noexcept {
+    constexpr std::uint32_t OFFSET_BASIS = 0x811C9DC5;
+    constexpr std::uint32_t PRIME = 0x01000193;
+    std::uint32_t hash = OFFSET_BASIS;
+    for (const char c : prefab) {
+        hash ^= static_cast<std::uint8_t>(c);
+        hash *= PRIME;
+    }
+    return hash;
+}
 
 /** @brief State of one entity in a `WorldState`. */
 struct EntityState {
     /** @brief Id of the entity, stable for its whole life. */
     std::uint32_t entityId = 0;
-    /** @brief Kind of entity. */
-    EntityType type = EntityType::Player;
-    /** @brief Type-specific variant (player index, enemy model...). */
+    /** @brief Kind of entity: hash of its prefab name, see `makeEntityKind()`. */
+    EntityKind kind = 0;
+    /** @brief Game-defined variant of the kind (R-Type: player index of a ship). */
     std::uint8_t subtype = 0;
-    /** @brief X position in pixels (0 = left edge). */
-    std::int16_t x = 0;
-    /** @brief Y position in pixels (0 = top edge). */
-    std::int16_t y = 0;
+    /** @brief X position in world units, same as `Transform::x`. */
+    float x = 0.0F;
+    /** @brief Y position in world units, same as `Transform::y`. */
+    float y = 0.0F;
     /** @brief Health points; 0 means the entity died this tick (sent once). */
     std::uint8_t health = 0;
-    /** @brief Bitmask of `ENTITY_*` flags. */
+    /** @brief Game-defined bits (the protocol gives them no meaning). */
     std::uint8_t flags = 0;
     bool operator==(const EntityState&) const = default;
 };

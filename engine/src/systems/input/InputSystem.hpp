@@ -8,6 +8,10 @@ namespace input {
 class InputState;
 }
 
+namespace engine {
+class IWindowService;
+}
+
 namespace systems {
 
 /**
@@ -30,10 +34,11 @@ class InputSystem {
     /**
      * @brief Polls inputs, updates matching InputState components, and publishes transition events.
      *
+     * @param window Window service sampling hardware devices.
      * @param registry ECS registry containing entities and resources.
      * @param eventBus Optional event bus to publish InputActionEvent on state transitions.
      */
-    void update(ecs::Registry& registry, ecs::EventBus* eventBus = nullptr);
+    void update(const engine::IWindowService& window, ecs::Registry& registry, ecs::EventBus* eventBus = nullptr);
 
     /** @brief Gets mutable reference to the internal action mapping configuration. */
     [[nodiscard]] input::ActionMapping& mapping() noexcept { return _mapping; }
@@ -55,7 +60,7 @@ class InputSystem {
 
   private:
     /** @brief Updates an individual InputState instance against hardware bindings and publishes events. */
-    void updateState(input::InputState& state, ecs::EventBus* eventBus);
+    void updateState(const engine::IWindowService& window, input::InputState& state, ecs::EventBus* eventBus);
 
     /** @brief Active input action mapping configuration. */
     input::ActionMapping _mapping;

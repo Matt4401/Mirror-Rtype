@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -16,6 +17,14 @@ namespace rtype::server {
 
 /** @brief Maximum number of players in one room. */
 inline constexpr std::uint8_t MAX_PLAYERS_PER_ROOM = 4;
+
+/**
+ * @brief Time a connected client has to send its `Hello`: past it, the client is kicked.
+ *
+ * Without it, a peer that opens the TCP connection and stays silent would hold its slot forever (the network layer
+ * only times out clients whose UDP channel is open, which happens after the handshake).
+ */
+inline constexpr std::chrono::milliseconds HANDSHAKE_TIMEOUT{std::chrono::seconds(5)};
 
 /**
  * @brief Identifier of a room.
@@ -40,8 +49,10 @@ class ServerManager {
      * The network is injected: `main()` passes `ecs::net::createServer()`, a test can pass a mock.
      *
      * @param network Network server, owned by the ServerManager.
+     * @param handshakeTimeout Time a connected client has to send its `Hello` before being kicked.
      */
-    explicit ServerManager(std::unique_ptr<ecs::net::INetworkServer> network);
+    explicit ServerManager(std::unique_ptr<ecs::net::INetworkServer> network,
+                           std::chrono::milliseconds handshakeTimeout = HANDSHAKE_TIMEOUT);
     /** @brief Default destructor. */
     ~ServerManager() = default;
 
@@ -82,6 +93,8 @@ class ServerManager {
     void onReliableMessage(ClientId client, const protocol::Message& message);
     /** @brief A message received over UDP: only inputs, from a client in a room. */
     void onUnreliableMessage(ClientId client, const protocol::Message& message);
+    /** @brief Kicks the connected clients that did not send their `Hello` within the handshake timeout. */
+    void expireHandshakes();
     /** @brief Encodes a message and sends it to one client. */
     void send(ClientId client, const protocol::Message& message, ecs::net::Channel channel) const;
 
@@ -115,6 +128,10 @@ class ServerManager {
     std::unordered_map<ClientId, RoomId> _roomOf;
     /** @brief Clients whose `Hello` was accepted; any other message from a client not in this set is dropped. */
     std::unordered_set<ClientId> _handshaken;
+    /** @brief Connection time of each connected client that has not completed its handshake yet. */
+    std::unordered_map<ClientId, std::chrono::steady_clock::time_point> _pendingHandshakes;
+    /** @brief Time a connected client has to send its `Hello`. */
+    std::chrono::milliseconds _handshakeTimeout;
     /** @brief Id given to the next room created. */
     RoomId _nextRoomId = 1;
     /** @brief Loop flag, cleared by `stop()`. */

@@ -11,8 +11,8 @@ The project is structured into three primary tiers:
     - **`engine_events`**: Decoupled message passing interface (`EventBus`).
     - **`engine_scripting`**: Embedded Wren virtual machine, runtime scripting system (`ScriptSystem`), and
       `ScriptPlugin`.
-    - **`engine_render` & `engine_input`**: Raylib-backed windowing, rendering, and spatial input sampling plugins
-      (`RenderPlugin`, `InputPlugin`).
+    - **`engine_render` **: Raylib-backed windowing and rendering (`RenderPlugin`), which also translates engine input codes for its backend.
+   - **`engine_input`**: Backend-agnostic input mapping (`InputPlugin`) sampling hardware through `IWindowService`.
     - **`engine_physics`**: Box2D rigid body simulation plugin (`PhysicsPlugin`).
     - **`engine_network`**: Transport interfaces (`INetworkServer`, `INetworkClient`), `NetworkConfig`, and the network
       ECS helpers (`NetworkEntityMap`, input queue). No Asio.

@@ -63,13 +63,14 @@ Table of Contents
 
 2.1.  Notation
 
-   uint32, sint32, bool, string, enum
+   uint32, sint32, fixed32, float, bool, string, enum
                   Protocol Buffers scalar types, encoded as defined
                   by the protobuf wire format (varints, zigzag for
-                  sint32, length-prefixed strings and messages).
-   u8, i16        Logical range of a field carried as uint32 or
-                  sint32 (protobuf has no 8- or 16-bit integers).
-                  The receiver MUST reject a value outside the range.
+                  sint32, 4 little-endian bytes for fixed32 and float,
+                  length-prefixed strings and messages).
+   u8             Logical range of a field carried as uint32
+                  (protobuf has no 8-bit integers).  The receiver
+                  MUST reject a value outside the range.
    #N             Protobuf field number N.
 
    "Reserved" bits MUST be set to 0 by the sender and MUST be ignored
@@ -146,16 +147,29 @@ Table of Contents
 
 4.  Protocol Versioning
 
-   The protocol version is PROTOCOL_VERSION = 1.  It is carried by the
+   The protocol version is PROTOCOL_VERSION = 2.  It is carried by the
    Hello message only; other messages carry no header.
+
+   Version history:
+
+      1   First Protocol Buffers version.
+      2   The protocol carries no R-Type knowledge: PlayerInput sends
+          the game's action ids (held buttons and axis values) instead
+          of a fixed button bitmask, EntityState sends the hash of the
+          entity's prefab name (kind) instead of an R-Type entity type
+          enum, and its positions are floats in world units instead of
+          int16 pixels.  Field 2 of PlayerInput and fields 2, 4, 5 of
+          EntityState are reserved.
 
    Version negotiation:
 
-   (1) The client sends Hello with version set to 1.
+   (1) The client sends Hello with version set to 2.
    (2) The server rejects any Hello whose version differs by closing
        the TCP connection.
-   (3) Once the server sends Welcome, both sides agree on version 1
+   (3) Once the server sends Welcome, both sides agree on version 2
        for the session.
+   (4) The client MUST send Hello within 5 seconds of the TCP
+       connection.  Otherwise the server closes the connection.
 
    Compatible changes do NOT bump the version: adding a field to a
    message, or adding a new message to the Envelope.  Older receivers
@@ -234,8 +248,9 @@ Table of Contents
    o  The Envelope has no message set, or a message unknown to the
       receiver.
    o  An enum field holds an unknown value.
-   o  A field value is outside its defined range, or a repeated field
-      is longer than its defined maximum (see packets.md Section 8).
+   o  A field value is outside its defined range, a float is NaN or
+      infinite, or a repeated field is longer than its defined
+      maximum (see packets.md Section 8).
 
    Malformed packets MUST be silently dropped.  The receiver MUST NOT
    close the connection or send an error reply.  This prevents a

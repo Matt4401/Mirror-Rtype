@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <ranges>
 #include <unordered_map>
+#include <vector>
 
 #include "components/InputBuffer.hpp"
 #include "ecs/Entity.hpp"
@@ -13,6 +14,7 @@
 #include "events/EventBus.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/NetworkEntityMap.hpp"
+#include "input/ActionId.hpp"
 
 namespace rtype::server {
 
@@ -22,12 +24,21 @@ inline constexpr std::size_t MAX_PENDING_INPUTS = ecs::DEFAULT_MAX_PENDING_INPUT
 /** @brief Network id of a player: the transport's peer id. */
 using ClientId = ecs::net::PeerId;
 
+/** @brief Value of one axis action during an input. */
+struct AxisInput {
+    /** @brief Axis action, e.g. `input::makeActionId("move_x")`. */
+    input::ActionId action = 0;
+    /** @brief Value of the axis, in [-1, 1]. */
+    float value = 0.0F;
+};
+
 /**
  * @brief Decoded input of one player.
  *
  * Converted from `protocol::PlayerInput` by the `ServerManager`, so that the room does not depend on the protocol.
  * It is the engine's generic network input, stored in the `ecs::InputBuffer` of the player's entity.
  */
+
 using PlayerInput = ecs::NetInput;
 
 /**

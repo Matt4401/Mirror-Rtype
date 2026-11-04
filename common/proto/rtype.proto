@@ -113,28 +113,32 @@ message Chat {
 
 // ---- In-game (UDP) ------------------------------------------------------------------------------------------------
 
+// Value of one axis action during a client tick.
+message AxisValue {
+    fixed32 action = 1;  // action id (FNV-1a hash of the action name): fixed32, a hash is rarely shorter as a varint
+    float value = 2;     // -1 to 1, finite
+}
+
 // C -> S, unreliable, every client tick. Inputs with sequence <= the last one received are dropped.
+// Actions are the game's own (declared in its ActionMapping): the protocol does not know what they mean.
 message PlayerInput {
+    reserved 2;  // v1 `buttons` bitmask (R-Type keys only), replaced by `held` and `axes`
     uint32 sequence = 1;
-    uint32 buttons = 2;  // bitmask, see BUTTON_* in Messages.hpp; bits 5-31 must be 0
+    repeated fixed32 held = 3;     // action ids of the buttons held down, at most MAX_INPUT_BUTTONS
+    repeated AxisValue axes = 4;   // non-zero axes, at most MAX_INPUT_AXES
 }
 
-enum EntityType {
-    ENTITY_TYPE_PLAYER = 0;
-    ENTITY_TYPE_ENEMY = 1;
-    ENTITY_TYPE_PLAYER_MISSILE = 2;
-    ENTITY_TYPE_ENEMY_MISSILE = 3;
-    ENTITY_TYPE_POWERUP = 4;
-}
-
+// Kinds, subtypes and flags are the game's own: the protocol carries them without knowing what they mean.
 message EntityState {
     uint32 entity_id = 1;
-    EntityType type = 2;
-    uint32 subtype = 3;  // 0-255
-    sint32 x = 4;        // pixels, int16 range (zigzag: small negatives stay small)
-    sint32 y = 5;        // pixels, int16 range
+    reserved 2;          // v1 R-Type `EntityType` enum, replaced by `kind`
+    uint32 subtype = 3;  // 0-255, game-defined variant of the kind (R-Type: player index of a ship)
+    reserved 4, 5;       // v1 int16 pixel positions, replaced by the float x and y
     uint32 health = 6;   // 0-255, 0 = died this tick (sent once)
-    uint32 flags = 7;    // 0-255, bit 0 alive, bit 1 shooting
+    uint32 flags = 7;    // 0-255, game-defined bits
+    float x = 8;         // world units, same as the engine Transform; finite
+    float y = 9;         // world units; finite
+    fixed32 kind = 10;   // FNV-1a hash of the entity's prefab name, see makeEntityKind() in Messages.hpp
 }
 
 // S -> C, unreliable, every server step. Snapshots with tick <= the last one received are dropped.
