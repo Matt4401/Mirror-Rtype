@@ -3,22 +3,33 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <vector>
 
 namespace ecs {
 
 /** @brief Default maximum number of inputs kept in an `InputBuffer`. */
 inline constexpr std::size_t DEFAULT_MAX_PENDING_INPUTS = 8;
 
+/** @brief Value of one axis action during a network input. */
+struct NetAxis {
+    /** @brief Game-defined axis action id (e.g. an `input::ActionId` such as `makeActionId("move_x")`). */
+    std::uint32_t action = 0;
+    /** @brief Value of the axis, in [-1, 1]. */
+    float value = 0.0F;
+};
+
 /**
  * @brief One input received from a remote peer.
  *
- * `actions` is an opaque bitmask: its meaning (up, shoot...) is defined by the game.
+ * Actions are opaque ids: their meaning (up, shoot...) is defined by the game, usually `input::ActionId` hashes.
  */
 struct NetInput {
     /** @brief Increases with every input sent by the peer; used to drop late inputs and for reconciliation. */
     std::uint32_t sequence = 0;
-    /** @brief Game-defined bitmask of the actions held during this input. */
-    std::uint16_t actions = 0;
+    /** @brief Game-defined ids of the button actions held during this input. */
+    std::vector<std::uint32_t> held;
+    /** @brief Axis actions whose value is not 0 during this input. */
+    std::vector<NetAxis> axes;
 };
 
 /**

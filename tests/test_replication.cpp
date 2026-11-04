@@ -68,7 +68,7 @@ bool get(const Bytes& in, std::size_t& offset, T& value) {
  * depends on the engine.
  *
  * Snapshot: `['S'][tick u32][last u32][count u16]` then `count` times `[id u32][kind u16][x f32][y f32]`.
- * Input: `['I'][sequence u32][actions u16]`.
+ * Input: `['I'][sequence u32][held count u8]` then `count` times `[action u32]` (axes are not encoded).
  */
 class TestCodec final : public ecs::net::IReplicationCodec {
   public:
@@ -111,9 +111,15 @@ class TestCodec final : public ecs::net::IReplicationCodec {
     std::optional<NetInput> decodeInput(const Bytes& data) override {
         std::size_t offset = 1;
         NetInput input;
-        if (data.empty() || data[0] != INPUT_TAG || !get(data, offset, input.sequence) ||
-            !get(data, offset, input.actions)) {
+        std::uint8_t count = 0;
+        if (data.empty() || data[0] != INPUT_TAG || !get(data, offset, input.sequence) || !get(data, offset, count)) {
             return std::nullopt;
+        }
+        input.held.resize(count);
+        for (std::uint32_t& action : input.held) {
+            if (!get(data, offset, action)) {
+                return std::nullopt;
+            }
         }
         return input;
     }
@@ -121,7 +127,10 @@ class TestCodec final : public ecs::net::IReplicationCodec {
     Bytes encodeInput(const NetInput& input) override {
         Bytes out{INPUT_TAG};
         put(out, input.sequence);
-        put(out, input.actions);
+        put(out, static_cast<std::uint8_t>(input.held.size()));
+        for (const std::uint32_t action : input.held) {
+            put(out, action);
+        }
         return out;
     }
 
@@ -260,8 +269,9 @@ TEST(ReceiveInput, QueuesTheInputOfTheOwnedEntityOnly) {
     const ecs::Entity mine = spawnPlayer(registry, 3);
     const ecs::Entity other = spawnPlayer(registry, 4);
 
-    EXPECT_TRUE(ecs::net::receiveInput(registry, 3, {.sequence = 1, .actions = 2}));
-    EXPECT_FALSE(ecs::net::receiveInput(registry, 9, {.sequence = 1, .actions = 2})) << "peer without entity";
+    EXPECT_TRUE(ecs::net::receiveInput(registry, 3, {.sequence = 1, .held = {2}, .axes = {}}));
+    EXPECT_FALSE(ecs::net::receiveInput(registry, 9, {.sequence = 1, .held = {2}, .axes = {}}))
+        << "peer without entity";
 
     EXPECT_EQ(registry.getComponents<ecs::InputBuffer>().get(mine).pending.size(), 1U);
     EXPECT_TRUE(registry.getComponents<ecs::InputBuffer>().get(other).pending.empty());
@@ -274,14 +284,14 @@ TEST(ServerReplication, AppliesOneReceivedInputPerStep) {
     server.engine.eventBus().subscribe<ecs::net::InputApplied>(
         [&](const ecs::net::InputApplied& ev) { applied.push_back(ev); });
 
-    server.source->data(3, server.codec->encodeInput({.sequence = 1, .actions = 5}));
-    server.source->data(3, server.codec->encodeInput({.sequence = 2, .actions = 6}));
+    server.source->data(3, server.codec->encodeInput({.sequence = 1, .held = {5}, .axes = {}}));
+    server.source->data(3, server.codec->encodeInput({.sequence = 2, .held = {6}, .axes = {}}));
     server.source->data(3, {0xFF, 0x00});  // garbage: ignored
     server.engine.step(DT);
 
     ASSERT_EQ(applied.size(), 1U);
     EXPECT_EQ(applied[0].entity, player);
-    EXPECT_EQ(applied[0].input.actions, 5);
+    EXPECT_EQ(applied[0].input.held, std::vector<std::uint32_t>{5});
     EXPECT_FALSE(applied[0].replayed);
     EXPECT_FLOAT_EQ(applied[0].deltaTime, server.engine.fixedDeltaTime());
 
@@ -297,7 +307,7 @@ TEST(ServerReplication, SendsOneSnapshotPerOwnerAfterTheSteps) {
     const ecs::Entity enemy = server.registry().spawnEntity();
     ecs::net::replicate(server.registry(), enemy, 2);
 
-    server.source->data(3, server.codec->encodeInput({.sequence = 10, .actions = 0}));
+    server.source->data(3, server.codec->encodeInput({.sequence = 10, .held = {}, .axes = {}}));
     server.engine.step(DT);
 
     ASSERT_EQ(server.service->sent.size(), 2U) << "one per peer owning an entity, none for the enemy";
@@ -462,12 +472,12 @@ TEST(ClientReplication, SendsAndPredictsLocalInputs) {
     std::vector<ecs::net::InputApplied> applied;
     client.engine.eventBus().subscribe<ecs::net::InputApplied>([&](const auto& ev) { applied.push_back(ev); });
 
-    client.engine.eventBus().publish(ecs::net::LocalInput{.input = {.sequence = 1, .actions = 4}});
+    client.engine.eventBus().publish(ecs::net::LocalInput{.input = {.sequence = 1, .held = {4}, .axes = {}}});
 
     ASSERT_EQ(client.service->sent.size(), 1U);
     EXPECT_EQ(client.service->sent[0].peer, ecs::net::SERVER_PEER);
     EXPECT_EQ(client.service->sent[0].channel, Channel::Unreliable);
-    EXPECT_EQ(client.codec->decodeInput(client.service->sent[0].data)->actions, 4);
+    EXPECT_EQ(client.codec->decodeInput(client.service->sent[0].data)->held, std::vector<std::uint32_t>{4});
     ASSERT_EQ(applied.size(), 1U);
     EXPECT_EQ(applied[0].entity, ship);
     EXPECT_FALSE(applied[0].replayed);
@@ -478,10 +488,10 @@ TEST(ClientReplication, ReconcilesWithTheServer) {
     Server server;
     Client client;
     const ecs::Entity serverShip = spawnPlayer(server.registry(), 3);
-    // Same movement on both sides: each input moves the ship by its actions.
+    // Same movement on both sides: each input moves the ship by its number of held actions.
     auto move = [](ecs::Registry& registry) {
         return [&registry](const ecs::net::InputApplied& ev) {
-            registry.getComponents<ecs::Transform>().get(ev.entity).x += static_cast<float>(ev.input.actions);
+            registry.getComponents<ecs::Transform>().get(ev.entity).x += static_cast<float>(ev.input.held.size());
         };
     };
     server.engine.eventBus().subscribe<ecs::net::InputApplied>(move(server.registry()));
@@ -496,7 +506,7 @@ TEST(ClientReplication, ReconcilesWithTheServer) {
 
     // Three inputs predicted locally; the server only receives and applies the first one.
     for (std::uint32_t seq = 1; seq <= 3; ++seq) {
-        client.engine.eventBus().publish(ecs::net::LocalInput{.input = {.sequence = seq, .actions = 1}});
+        client.engine.eventBus().publish(ecs::net::LocalInput{.input = {.sequence = seq, .held = {1}, .axes = {}}});
     }
     EXPECT_FLOAT_EQ(client.registry().getComponents<ecs::Transform>().get(ship).x, 3.0F);
     server.source->data(3, client.service->sent.at(0).data);
@@ -522,7 +532,7 @@ TEST(ClientReplication, ShutdownUnsubscribes) {
     Client client;
     client.engine.shutdown();
 
-    client.engine.eventBus().publish(ecs::net::LocalInput{.input = {.sequence = 1, .actions = 0}});
+    client.engine.eventBus().publish(ecs::net::LocalInput{.input = {.sequence = 1, .held = {}, .axes = {}}});
 
     EXPECT_TRUE(client.service->sent.empty());
 }

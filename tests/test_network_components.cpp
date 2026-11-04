@@ -14,7 +14,9 @@
 
 namespace {
 
-ecs::NetInput input(const std::uint32_t sequence) { return ecs::NetInput{.sequence = sequence, .actions = 0}; }
+ecs::NetInput input(const std::uint32_t sequence) {
+    return ecs::NetInput{.sequence = sequence, .held = {}, .axes = {}};
+}
 
 /** @brief Pops every pending input and returns the last processed sequence. */
 std::uint32_t drain(ecs::InputBuffer& buffer) {
