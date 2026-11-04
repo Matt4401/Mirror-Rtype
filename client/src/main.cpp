@@ -9,6 +9,7 @@
 #include <iostream>
 
 #include "RTypeGamePlugin.hpp"
+#include "audio/AudioPlugin.hpp"
 #include "core/Engine.hpp"
 #include "input/InputPlugin.hpp"
 #include "prefabs/PrefabPlugin.hpp"
@@ -22,6 +23,7 @@ int main() {
         engine::Engine engine;
         engine.addPlugin<render::RenderPlugin>()
             .addPlugin<input::InputPlugin>()
+            .addPlugin<audio::AudioPlugin>()
             .addPlugin<systems::PhysicsPlugin>()
             .addPlugin<systems::AnimationPlugin>()
             .addPlugin<prefabs::PrefabPlugin>()
