@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -13,10 +14,12 @@
 #include "net/INetworkClient.hpp"
 #include "net/INetworkEventSource.hpp"
 #include "net/INetworkManager.hpp"
+#include "net/INetworkServer.hpp"
 #include "net/INetworkService.hpp"
 #include "net/NetworkEntityMap.hpp"
 #include "net/NetworkEvents.hpp"
 #include "net/NetworkPlugin.hpp"
+#include "net/PeerGroupConnection.hpp"
 
 namespace {
 
@@ -71,6 +74,22 @@ class FakeClient final : public ecs::net::INetworkClient {
     std::vector<Bytes> sent;
     std::vector<NetworkEvent> next;
     bool running = true;
+};
+
+/** @brief Server transport recording what it is asked to send. */
+class FakeServer final : public ecs::net::INetworkServer {
+  public:
+    bool start(std::uint16_t /*port*/) override { return true; }
+    void send(const PeerId peer, const Bytes& /*data*/, Channel /*channel*/) override { sentTo.push_back(peer); }
+    void broadcast(const Bytes& /*data*/, Channel /*channel*/) override { ++broadcasts; }
+    void kick(const PeerId peer) override { kicked.push_back(peer); }
+    std::vector<NetworkEvent> poll() override { return {}; }
+    void stop() override {}
+    [[nodiscard]] bool isRunning() const override { return true; }
+
+    std::vector<PeerId> sentTo;
+    std::vector<PeerId> kicked;
+    int broadcasts = 0;
 };
 
 class NetworkPluginTest : public ::testing::Test {
@@ -239,6 +258,54 @@ TEST(ClientConnection, FeedsTheNetworkPlugin) {
 
     EXPECT_EQ(packets, 1);
     EXPECT_EQ(client->sent, std::vector<Bytes>{{4}});
+}
+
+TEST(PeerGroupConnection, OnlyReachesThePeersOfTheGroup) {
+    FakeServer server;
+    engine::PeerGroupConnection group(server);
+    group.addPeer(1);
+    group.addPeer(2);
+
+    group.send(1, {7}, Channel::Reliable);
+    group.send(3, {7}, Channel::Reliable);
+    group.kick(3);
+    group.kick(2);
+    EXPECT_EQ(server.sentTo, std::vector<PeerId>{1});
+    EXPECT_EQ(server.kicked, std::vector<PeerId>{2});
+
+    server.sentTo.clear();
+    group.broadcast({7}, Channel::Unreliable);
+    std::ranges::sort(server.sentTo);
+    EXPECT_EQ(server.sentTo, (std::vector<PeerId>{1, 2}));
+    EXPECT_EQ(server.broadcasts, 0) << "the transport's broadcast would reach every group";
+}
+
+TEST(PeerGroupConnection, RemovedPeerIsNoLongerReachable) {
+    FakeServer server;
+    engine::PeerGroupConnection group(server);
+    group.addPeer(1);
+    group.removePeer(1);
+
+    group.send(1, {7}, Channel::Reliable);
+    group.broadcast({7}, Channel::Reliable);
+    group.push({.type = EventType::Data, .peer = 1, .data = {7}, .channel = Channel::Unreliable});
+
+    EXPECT_TRUE(server.sentTo.empty());
+    EXPECT_TRUE(group.poll().empty());
+}
+
+TEST(PeerGroupConnection, HandsOutTheEventsOfItsPeersOnce) {
+    FakeServer server;
+    engine::PeerGroupConnection group(server);
+    group.addPeer(1);
+
+    group.push({.type = EventType::Data, .peer = 1, .data = {7}, .channel = Channel::Unreliable});
+    group.push({.type = EventType::Data, .peer = 2, .data = {8}, .channel = Channel::Unreliable});
+
+    const auto events = group.poll();
+    ASSERT_EQ(events.size(), 1U);
+    EXPECT_EQ(events[0].data, Bytes{7});
+    EXPECT_TRUE(group.poll().empty());
 }
 
 int main(int argc, char** argv) {
