@@ -4,6 +4,7 @@
  */
 
 #include <algorithm>
+#include <memory>
 #include <string>
 
 #include "components/ScriptComponent.hpp"
@@ -66,15 +67,18 @@ void ScriptSystem::forwardCollisions(ecs::EventBus& bus) {
     if (!_cachedMethodHandles.contains(ON_COLLISION_SIGNATURE)) {
         _cachedMethodHandles[ON_COLLISION_SIGNATURE] = _vm.makeCallHandle(ON_COLLISION_SIGNATURE);
     }
-    _collisionBus = &bus;
-    _collisionToken = bus.subscribe<events::CollisionBeginEvent>([this](const events::CollisionBeginEvent& event) {
-        // Each side is checked right before its call: the first script may destroy either entity.
-        forwardCollision(event.entityA, event.entityB);
-        forwardCollision(event.entityB, event.entityA);
+    if (!_collisionTarget) {
+        _collisionTarget = std::make_unique<ScriptSystem*>(this);
+    }
+    ScriptSystem* const* target = _collisionTarget.get();
+    _collisionToken = bus.subscribe<events::CollisionBeginEvent>([target](const events::CollisionBeginEvent& event) {
+        (*target)->forwardCollision(event.entityA, event.entityB);
+        (*target)->forwardCollision(event.entityB, event.entityA);
     });
+    _collisionBus = &bus;
 }
 
-void ScriptSystem::stopForwardingCollisions() noexcept {
+void ScriptSystem::stopForwardingCollisions() {
     if (_collisionBus != nullptr) {
         _collisionBus->unsubscribe<events::CollisionBeginEvent>(_collisionToken);
         _collisionBus = nullptr;

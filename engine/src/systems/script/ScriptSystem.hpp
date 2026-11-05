@@ -6,6 +6,7 @@
 #pragma once
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -64,14 +65,14 @@ class ScriptSystem {
      * @brief Move constructor transferring VM, handles, sleeping fibers, and watched files.
      * @param other Rvalue reference to source ScriptSystem.
      */
-    ScriptSystem(ScriptSystem&& other);
+    ScriptSystem(ScriptSystem&& other) noexcept;
 
     /**
      * @brief Move assignment operator transferring VM, handles, sleeping fibers, and watched files.
      * @param other Rvalue reference to source ScriptSystem.
      * @return Reference to this system.
      */
-    ScriptSystem& operator=(ScriptSystem&& other);
+    ScriptSystem& operator=(ScriptSystem&& other) noexcept;
 
     /**
      * @brief Initializes the ScriptSystem, registers core bindings, and loads built-in modules.
@@ -125,8 +126,11 @@ class ScriptSystem {
      */
     void forwardCollisions(ecs::EventBus& bus);
 
-    /** @brief Unsubscribes the collision forwarding set up by `forwardCollisions`, if any. Safe to call twice. */
-    void stopForwardingCollisions() noexcept;
+    /**
+     * @brief Unsubscribes the collision forwarding set up by `forwardCollisions`, if any. Safe to call twice.
+     * @throws std::bad_alloc `EventBus::unsubscribe` rebuilds the listener list.
+     */
+    void stopForwardingCollisions();
 
     /**
      * @brief Returns a reference to the embedded WrenVM wrapper.
@@ -319,6 +323,13 @@ class ScriptSystem {
     ecs::EventBus* _collisionBus = nullptr;
     /** @brief Subscription token of the collision forwarding. */
     ecs::EventBus::EventToken _collisionToken = 0;
+    /**
+     * @brief Heap slot holding the system that receives the forwarded collisions.
+     *
+     * The bus callback reads the system through this slot instead of capturing `this`, so a move only redirects the
+     * slot to the new instance. It never touches the bus, which allocates, and the moves stay `noexcept`.
+     */
+    std::unique_ptr<ScriptSystem*> _collisionTarget;
 
     /** @brief Cache of pre-compiled method call handles indexed by signature. */
     std::unordered_map<std::string, scripting::detail::UniqueWrenHandle> _cachedMethodHandles;

@@ -995,6 +995,40 @@ TEST(Scripting, StopForwardingCollisionsUnsubscribes) {
     EXPECT_EQ(readGetter(fx.scriptSystem, e2, "hits"), 0.0);
 }
 
+TEST(Scripting, CollisionForwardingFollowsAMove) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    systems::ScriptSystem moved(std::move(fx.scriptSystem));
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+    EXPECT_EQ(readGetter(moved, e1, "hits"), 1.0);
+    EXPECT_EQ(readGetter(moved, e2, "hits"), 1.0);
+}
+
+TEST(Scripting, CollisionForwardingFollowsAMoveAssignment) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    {
+        // The target forwards on the same bus: after the assignment, each contact must be delivered exactly once.
+        systems::ScriptSystem target;
+        target.init(fx.registry, fx.bus);
+        target.forwardCollisions(fx.bus);
+        target = std::move(fx.scriptSystem);
+        fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+        EXPECT_EQ(readGetter(target, e1, "hits"), 1.0);
+        EXPECT_EQ(readGetter(target, e2, "hits"), 1.0);
+    }
+    // Both systems are gone: publishing must not reach a dangling slot.
+    EXPECT_NO_FATAL_FAILURE(fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2}));
+}
+
 TEST(Scripting, CollisionForwardingStopsWithTheSystem) {
     ecs::Registry registry;
     ecs::EventBus bus;
