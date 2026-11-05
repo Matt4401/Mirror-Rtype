@@ -75,7 +75,7 @@ void Box2DContactListener::record(b2Contact& contact, bool begin) {
         pending.pointY = point.y;
         pending.hasContactPoint = true;
     }
-    _pending.push_back(pending);
+    _pending.emplace_back(pending);
 }
 
 }  // namespace physics::detail
