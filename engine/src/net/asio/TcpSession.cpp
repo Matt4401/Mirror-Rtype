@@ -68,18 +68,18 @@ void TcpSession::readBody(const std::uint32_t size) {
 }
 
 void TcpSession::deliver(Bytes payload) {
-    if (_closing) {
+    if (_closing || _flushing) {
         return;
     }
     _onMessage(_id, static_cast<wire::MessageKind>(_header[4]), std::move(payload));
     // The owner may have closed the session (invalid kind, kick...): stop reading in that case.
-    if (!_closing) {
+    if (!_closing && !_flushing) {
         readHeader();
     }
 }
 
 void TcpSession::send(const wire::MessageKind kind, const Bytes& payload) {
-    if (_closing) {
+    if (_closing || _flushing) {
         return;
     }
     if (payload.size() > _limits.maxPayload) {
@@ -118,6 +118,8 @@ void TcpSession::write() {
                           self->_writeQueue.pop_front();
                           if (!self->_writeQueue.empty()) {
                               self->write();
+                          } else if (self->_flushing) {
+                              self->close();
                           }
                       });
 }
@@ -137,6 +139,14 @@ void TcpSession::close() {
     }
     _closing = true;
     asio::post(_socket.get_executor(), [self = shared_from_this()] { self->closeNow(); });
+}
+
+void TcpSession::closeAfterFlush() {
+    if (_writeQueue.empty()) {
+        close();
+        return;
+    }
+    _flushing = true;
 }
 
 void TcpSession::closeNow() {

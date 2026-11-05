@@ -99,7 +99,8 @@ Sent right after the library delivers its own `Welcome` (`PeerId` + token). Star
 |-----------|---|----------|---------------------------------------------------------|
 | `version` | 1 | `uint32` | Client protocol version, MUST be `PROTOCOL_VERSION` (2) |
 
-On a version mismatch, the server closes the connection without sending `Welcome`. The client MUST send `Hello`
+On a version mismatch, the server does not send `Welcome`: the transport tells the client why with a `Refused` frame
+(see [transport.md](transport.md)), then closes the connection. The client MUST send `Hello`
 within 5 seconds of connecting: past that, the server closes the connection (messages other than `Hello` do not reset
 the timer).
 

@@ -5,6 +5,7 @@
 #include <asio/connect.hpp>  // IWYU pragma: keep
 #include <asio/error.hpp>
 #include <asio/executor_work_guard.hpp>
+#include <asio/ip/address.hpp>
 #include <asio/ip/tcp.hpp>
 #include <asio/ip/udp.hpp>
 #include <asio/post.hpp>
@@ -34,7 +35,12 @@ namespace ecs::net::detail {
 using wire::MessageKind;
 
 NetworkClient::NetworkClient(const NetworkConfig& config)
-    : _config(config), _work(asio::make_work_guard(_io)), _udpSocket(_io), _udpTimer(_io) {}
+    : _config(config),
+      _work(asio::make_work_guard(_io)),
+      _resolver(_io),
+      _connecting(_io),
+      _udpSocket(_io),
+      _udpTimer(_io) {}
 
 NetworkClient::~NetworkClient() { NetworkClient::stop(); }
 
@@ -44,20 +50,53 @@ bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
         return false;
     }
 
-    asio::ip::tcp::socket socket(_io);
-    try {
-        asio::ip::tcp::resolver resolver(_io);
-        // NOLINTNEXTLINE(misc-include-cleaner): false positive, the public header asio/connect.hpp is included
-        asio::connect(socket, resolver.resolve(host, std::to_string(port)));
-        _serverAddress = socket.remote_endpoint().address();
-    } catch (asio::system_error& e) {
-        rtype::log::error(LOG_TAG, "cannot connect to ", host, ':', port, ": ", e.what());
-        _state = State::Idle;
-        return false;
-    }
+    // Resolving and connecting can take minutes when the host does not answer: both run on the network thread.
+    _resolver.async_resolve(host, std::to_string(port),
+                            [this](const std::error_code ec, const asio::ip::tcp::resolver::results_type& hosts) {
+                                onResolved(ec, hosts);
+                            });
 
+    _thread = std::thread([this] { _io.run(); });
+    return true;
+}
+
+void NetworkClient::onResolved(const std::error_code ec, const asio::ip::tcp::resolver::results_type& hosts) {
+    // stop() may have run first: a resolution already finished is not cancelled, and connecting now would reopen the
+    // socket it closed, leaving a session nobody closes.
+    if (_state.load() != State::Running) {
+        return;
+    }
+    if (ec) {
+        onConnectFailed(ec);
+        return;
+    }
+    // NOLINTNEXTLINE(misc-include-cleaner): false positive, the public header asio/connect.hpp is included
+    asio::async_connect(_connecting, hosts, [this](const std::error_code error, const asio::ip::tcp::endpoint& server) {
+        if (_state.load() != State::Running) {
+            return;
+        }
+        if (error) {
+            onConnectFailed(error);
+        } else {
+            onTcpConnected(server.address());
+        }
+    });
+}
+
+void NetworkClient::onConnectFailed(const std::error_code ec) {
+    if (ec == asio::error::operation_aborted) {
+        return;
+    }
+    rtype::log::error(LOG_TAG, "cannot connect to the server: ", ec.message());
+    _disconnectReason = DisconnectReason::Unreachable;
+    _state = State::Stopped;
+    _events.push({.type = EventType::Disconnected, .peer = 0, .data = {}, .channel = Channel::Reliable});
+}
+
+void NetworkClient::onTcpConnected(const asio::ip::address& server) {
+    _serverAddress = server;
     _tcp = std::make_shared<TcpSession>(
-        std::move(socket), 0,
+        std::move(_connecting), 0,
         TcpSession::Limits{.maxPayload = _config.maxReliablePayload, .maxQueueBytes = _config.maxReliableQueueBytes},
         [this](PeerId, const MessageKind kind, Bytes payload) { onTcpMessage(kind, std::move(payload)); },
         [this](const PeerId peer) {
@@ -71,9 +110,6 @@ bool NetworkClient::connect(const std::string& host, const std::uint16_t port) {
     Bytes handshake(wire::HANDSHAKE_SIZE);
     wire::writeU32(std::span(handshake).first<4>(), _config.protocolId);
     _tcp->send(MessageKind::Handshake, handshake);
-
-    _thread = std::thread([this] { _io.run(); });
-    return true;
 }
 
 void NetworkClient::onTcpMessage(const MessageKind kind, Bytes payload) {
@@ -91,6 +127,11 @@ void NetworkClient::onTcpMessage(const MessageKind kind, Bytes payload) {
             _token = wire::readU32(std::span(payload).subspan<4, 4>());
             _welcomed = true;
             _events.push({.type = EventType::Connected, .peer = 0, .data = {}, .channel = Channel::Reliable});
+            break;
+        case MessageKind::Refused:
+            _disconnectReason = wire::readRefusal(payload);
+            rtype::log::warning(LOG_TAG, "refused by the server");
+            _tcp->close();
             break;
         default:
             _tcp->close();
@@ -207,7 +248,9 @@ void NetworkClient::send(const Bytes& data, const Channel channel) {
 
     asio::post(_io, [this, data, channel] {
         if (channel == Channel::Reliable) {
-            _tcp->send(MessageKind::Data, data);
+            if (_tcp) {
+                _tcp->send(MessageKind::Data, data);
+            }
             return;
         }
         if (_udpSocket.is_open()) {
@@ -224,7 +267,13 @@ void NetworkClient::stop() {
     if (previous == State::Running) {
         asio::post(_io, [this] {
             closeUdpNow();
-            _tcp->close();
+            // Cancels a connection attempt still in progress.
+            _resolver.cancel();
+            std::error_code ignored;
+            std::ignore = _connecting.close(ignored);
+            if (_tcp) {
+                _tcp->close();
+            }
         });
     }
     _work.reset();

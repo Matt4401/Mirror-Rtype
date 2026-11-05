@@ -125,9 +125,23 @@ Afterwards:
 | Client crash / network loss | TCP closed, or no valid UDP packet for 5 s while UDP is open           | `Disconnected` event                           |
 | Server shutdown             | `asio::signal_set` (SIGINT / SIGTERM)                                  | Clients notified over TCP, sockets closed      |
 | Server unreachable          | No UDP packet from the server for 5 s while UDP is open, or TCP closed | Client-side `Disconnected` event               |
-| Server full                 | More than 64 clients: the server closes the new connection             | Client-side `Disconnected` without `Connected` |
-| Other game                  | `Handshake` with another `protocolId`                                  | Client-side `Disconnected` without `Connected` |
+| Server not reachable        | Name not resolved or TCP connection failed                             | Client-side `Disconnected` without `Connected` |
+| Server full                 | More than 64 clients: the server sends `Refused`, then closes          | Client-side `Disconnected` without `Connected` |
+| Other game                  | `Handshake` with another `protocolId`: the server sends `Refused`      | Client-side `Disconnected` without `Connected` |
+| Other game version          | The game refuses the peer in its own handshake: `Refused` is sent      | `Disconnected` on both sides                   |
 | Peer not reading TCP        | More than 1 MiB waiting in its write queue                             | Session closed, `Disconnected` event           |
+
+`connect()` never blocks: it returns at once, and the attempt runs on the network thread. Its outcome is an event,
+`Connected` or `Disconnected`. After `Disconnected`, `INetworkClient::disconnectReason()` tells the game why:
+
+| `DisconnectReason`     | Meaning                                                                        | On the wire |
+|------------------------|--------------------------------------------------------------------------------|-------------|
+| `0` `ConnectionLost`   | No explanation: network loss, crash, kick, timeout                             | Never sent  |
+| `1` `ProtocolMismatch` | The server runs another game (`protocolId`) or another version of its protocol | `Refused`   |
+| `2` `ServerFull`       | The server already has `maxPeers` connections                                  | `Refused`   |
+| `3` `Unreachable`      | The name cannot be resolved or the TCP connection fails                        | Never sent  |
+
+The reason is best effort: if the connection breaks before `Refused` is read, the client reports `ConnectionLost`.
 
 While UDP is open, each side's library sends an empty **keepalive** datagram when it has sent nothing for 1 s. Silence
 on UDP therefore always means a connection problem, never an idle player or a paused game, and the timeout does not
@@ -155,6 +169,7 @@ TCP `kind` values:
 | `2` `UdpOpen`   | client → server | Empty                                                |
 | `3` `UdpClose`  | client → server | Empty                                                |
 | `4` `Handshake` | client → server | `[protocolId u32]`, MUST be the client's first frame |
+| `5` `Refused`   | server → client | `[reason u8]`, the last frame before the server closes; an unknown reason reads as `ConnectionLost` |
 
 `protocolId` identifies the game, not its version: R-Type uses `0x50595452` (the bytes `RTYP` on the wire,
 `protocol::TRANSPORT_PROTOCOL_ID`). Version negotiation stays in the game's own `Hello` / `Welcome` messages.
@@ -170,9 +185,10 @@ Rules enforced by the library:
 - `send()` refuses a TCP payload larger than 64 KiB. A received frame announcing more than 64 KiB, or a `kind` not
   allowed in its direction, closes the session.
 - More than 1 MiB waiting to be written to one peer closes its session: the peer is not reading anymore.
-- The server accepts at most 64 simultaneous connections; any other one is closed right away.
-- A connection whose first frame is not a valid `Handshake` with the server's `protocolId`, or that sends none within
-  5 s, is closed without the game being told.
+- The server accepts at most 64 simultaneous connections; any other one receives `Refused (ServerFull)` and is closed
+  right away.
+- A connection whose first frame is not a valid `Handshake`, or that sends none within 5 s, is closed without the game
+  being told. A `Handshake` with another `protocolId` receives `Refused (ProtocolMismatch)` first.
 - The numbers above (64 connections, 64 KiB, 1 MiB, 250 ms, 1 s, 5 s) are `NetworkConfig` defaults: a game may change
   them. The 1200-byte datagram limit is fixed.
 - Only **valid** datagrams update a client's `lastSeen`.

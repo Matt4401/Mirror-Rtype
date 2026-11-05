@@ -33,6 +33,16 @@ class INetworkServer : public INetworkManager {
      * @param peer Peer to disconnect.
      */
     virtual void kick(PeerId peer) = 0;
+    /**
+     * @brief Tells a peer why it is refused, then closes its connection. Thread-safe.
+     *
+     * The client reads the reason from `INetworkClient::disconnectReason()`. A transport that cannot carry a reason
+     * just kicks the peer.
+     *
+     * @param peer Peer to disconnect.
+     * @param reason Why it is refused, see `DisconnectReason`.
+     */
+    virtual void refuse(const PeerId peer, DisconnectReason /*reason*/) { kick(peer); }
 };
 
 }  // namespace ecs::net

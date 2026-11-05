@@ -11,16 +11,22 @@ namespace ecs::net {
 class INetworkClient : public INetworkManager {
   public:
     /**
-     * @brief Connects over TCP and starts the transport handshake. Blocks until the TCP connection is made.
+     * @brief Starts connecting in the background and returns at once: a slow server never blocks the caller.
      *
-     * A `Connected` event follows once the server accepted the handshake (same `NetworkConfig::protocolId`);
-     * a `Disconnected` event follows instead if it refused it.
+     * A `Connected` event follows once the server accepted the transport handshake (same
+     * `NetworkConfig::protocolId`). A `Disconnected` event follows instead if the server cannot be reached or refuses
+     * the connection, and `disconnectReason()` says why. A client that failed cannot connect again: create another one.
      *
      * @param host Server name or address.
      * @param port Server TCP port.
-     * @return False if the server cannot be reached or the client was already started.
+     * @return False if the client was already started.
      */
     virtual bool connect(const std::string& host, std::uint16_t port) = 0;
+    /**
+     * @brief Tells why the connection ended, to show it to the player. Thread-safe.
+     * @return The reason; only meaningful after a `Disconnected` event.
+     */
+    [[nodiscard]] virtual DisconnectReason disconnectReason() const = 0;
     /**
      * @brief Opens the unreliable channel to the server. Only valid after `Connected`.
      * @param port Server UDP port (sent by the game's own handshake).
@@ -30,7 +36,7 @@ class INetworkClient : public INetworkManager {
     /** @brief Closes the unreliable channel; the connection itself stays open. */
     virtual void closeUdp() = 0;
     /**
-     * @brief Sends a message to the server. Thread-safe; dropped if the payload is too large.
+     * @brief Sends a message to the server. Thread-safe; dropped if the payload is too large or if not connected.
      * @param data Payload.
      * @param channel Delivery guarantee; `Unreliable` is dropped while UDP is closed.
      */

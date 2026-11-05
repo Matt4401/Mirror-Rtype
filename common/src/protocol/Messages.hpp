@@ -17,6 +17,12 @@ namespace rtype::protocol {
  */
 inline constexpr std::uint32_t PROTOCOL_VERSION = 2;
 
+/**
+ * @brief Value of `ecs::net::NetworkConfig::protocolId` for R-Type: the bytes `RTYP` on the wire (little-endian u32).
+ *
+ * It identifies the game, not its version: a peer announcing another id is refused during the transport handshake,
+ * before `Hello` is even sent. `PROTOCOL_VERSION` is what changes with the format of the messages.
+ */
 inline constexpr std::uint32_t TRANSPORT_PROTOCOL_ID = 0x50595452;
 /** @brief TCP and UDP port the server listens on when none is given. */
 inline constexpr std::uint16_t DEFAULT_PORT = 4242;

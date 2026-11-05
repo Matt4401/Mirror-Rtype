@@ -31,6 +31,16 @@ namespace ecs::net::detail {
 
 using wire::MessageKind;
 
+namespace {
+
+/** @brief Sends the last frame of a session, which tells the client why it is closed, then closes the session. */
+void closeWithReason(TcpSession& session, const DisconnectReason reason) {
+    session.send(MessageKind::Refused, Bytes{static_cast<std::uint8_t>(reason)});
+    session.closeAfterFlush();
+}
+
+}  // namespace
+
 NetworkServer::NetworkServer(const NetworkConfig& config)
     : _config(config), _work(asio::make_work_guard(_io)), _acceptor(_io), _udpSocket(_io), _udpTimer(_io) {}
 
@@ -93,8 +103,7 @@ void NetworkServer::accept() {
         }
         if (!ec && _peers.size() >= _config.maxPeers) {
             rtype::log::warning(LOG_TAG, "server full (", _config.maxPeers, " peers): connection refused");
-            std::error_code ignored;
-            std::ignore = socket.close(ignored);
+            refuseConnection(std::move(socket));
         } else if (!ec) {
             const PeerId id = _nextId++;
             std::error_code endpointError;
@@ -124,6 +133,15 @@ void NetworkServer::accept() {
         }
         accept();
     });
+}
+
+void NetworkServer::refuseConnection(asio::ip::tcp::socket socket) {
+    // Not in `_peers`, and never read: its pending write keeps it alive until it is closed.
+    const auto tcp = std::make_shared<TcpSession>(
+        std::move(socket), 0,
+        TcpSession::Limits{.maxPayload = _config.maxReliablePayload, .maxQueueBytes = _config.maxReliableQueueBytes},
+        [](PeerId, MessageKind, const Bytes&) {}, [](PeerId) {});
+    closeWithReason(*tcp, DisconnectReason::ServerFull);
 }
 
 void NetworkServer::onTcpMessage(const PeerId peer, const MessageKind kind, Bytes payload) {
@@ -177,7 +195,7 @@ void NetworkServer::onHandshake(PeerInfo& info, const Bytes& payload) {
     if (protocolId != _config.protocolId) {
         rtype::log::warning(LOG_TAG, "peer ", info.id, " speaks protocol ", protocolId, " instead of ",
                             _config.protocolId, ": disconnected");
-        info.tcp->close();
+        closeWithReason(*info.tcp, DisconnectReason::ProtocolMismatch);
         return;
     }
 
@@ -207,6 +225,14 @@ void NetworkServer::kick(const PeerId peer) {
     asio::post(_io, [this, peer] {
         if (const auto it = _peers.find(peer); it != _peers.end()) {
             it->second.tcp->close();
+        }
+    });
+}
+
+void NetworkServer::refuse(const PeerId peer, const DisconnectReason reason) {
+    asio::post(_io, [this, peer, reason] {
+        if (const auto it = _peers.find(peer); it != _peers.end()) {
+            closeWithReason(*it->second.tcp, reason);
         }
     });
 }

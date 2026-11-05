@@ -50,26 +50,46 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     void send(wire::MessageKind kind, const Bytes& payload = {});
     /** @brief Closes the connection; `onClose` is called later, from the network thread. */
     void close();
+    /** @brief Closes the connection once the queued frames are written; nothing is sent or delivered until then. */
+    void closeAfterFlush();
 
   private:
+    /** @brief Reads the header of the next frame. */
     void readHeader();
+    /** @brief Reads the payload announced by the header. @param size Length of the payload. */
     void readBody(std::uint32_t size);
+    /** @brief Hands a complete frame to `onMessage`, then reads the next one. @param payload Payload of the frame. */
     void deliver(Bytes payload);
+    /** @brief Writes the oldest queued frame, then the next ones. */
     void write();
+    /** @brief Closes the session after a read or write error. @param ec The error. */
     void onError(std::error_code ec);
+    /** @brief Closes the socket and calls `onClose`. */
     void closeNow();
 
+    /** @brief The connection. */
     asio::ip::tcp::socket _socket;
+    /** @brief Peer id passed back to the handlers. */
     PeerId _id;
+    /** @brief Size limits. */
     Limits _limits;
+    /** @brief Frame handler. */
     MessageHandler _onMessage;
+    /** @brief Close handler. */
     CloseHandler _onClose;
 
+    /** @brief Header of the frame being read. */
     std::array<std::uint8_t, wire::TCP_HEADER_SIZE> _header{};
+    /** @brief Payload of the frame being read. */
     Bytes _body;
+    /** @brief Frames waiting to be written, oldest first. */
     std::deque<Bytes> _writeQueue;
+    /** @brief Total size of `_writeQueue`. */
     std::size_t _queuedBytes = 0;
+    /** @brief True once `close()` was called. */
     bool _closing = false;
+    /** @brief True once `closeAfterFlush()` was called, until the queue is written. */
+    bool _flushing = false;
 };
 
 }  // namespace ecs::net::detail

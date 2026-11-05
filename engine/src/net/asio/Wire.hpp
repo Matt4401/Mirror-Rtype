@@ -24,6 +24,8 @@ enum class MessageKind : std::uint8_t {
     UdpClose = 3,
     /** @brief Client → server, first frame: `[protocolId u32]`. */
     Handshake = 4,
+    /** @brief Server → client, last frame: `[reason u8]`, the connection is about to be closed. */
+    Refused = 5,
 };
 
 /** @brief TCP frame header: `[payload length u32][kind u8]`. */
@@ -32,6 +34,23 @@ inline constexpr std::size_t TCP_HEADER_SIZE = 5;
 inline constexpr std::size_t WELCOME_SIZE = 8;
 /** @brief Size of the `Handshake` payload: `[protocolId u32]`. */
 inline constexpr std::size_t HANDSHAKE_SIZE = 4;
+
+/** @brief Size of the `Refused` payload: `[reason u8]`. */
+inline constexpr std::size_t REFUSED_SIZE = 1;
+
+/**
+ * @brief Reads the payload of a `Refused` frame (untrusted).
+ * @param payload Received payload.
+ * @return The reason; `ConnectionLost` if the payload is malformed or the reason is not one a server can send.
+ */
+inline DisconnectReason readRefusal(const Bytes& payload) {
+    if (payload.size() != REFUSED_SIZE) {
+        return DisconnectReason::ConnectionLost;
+    }
+    const auto reason = static_cast<DisconnectReason>(payload.front());
+    const bool known = reason == DisconnectReason::ProtocolMismatch || reason == DisconnectReason::ServerFull;
+    return known ? reason : DisconnectReason::ConnectionLost;
+}
 
 /** @brief Writes a little-endian u32. */
 inline void writeU32(const std::span<std::uint8_t, 4> out, const std::uint32_t value) {

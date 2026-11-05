@@ -30,6 +30,7 @@ namespace {
 
 using ecs::net::Bytes;
 using ecs::net::Channel;
+using ecs::net::DisconnectReason;
 using ecs::net::EventType;
 using ecs::net::NetworkConfig;
 using ecs::net::NetworkEvent;
@@ -125,6 +126,7 @@ TEST(Transport, OtherProtocolIsRefusedBeforeTheGameSeesIt) {
     const auto clientEvents = pollUntil(*client, [](const auto& e) { return has(e, EventType::Disconnected); });
     EXPECT_TRUE(has(clientEvents, EventType::Disconnected));
     EXPECT_FALSE(has(clientEvents, EventType::Connected));
+    EXPECT_EQ(client->disconnectReason(), DisconnectReason::ProtocolMismatch);
 
     // The server never announced the peer: no Connected, and no Disconnected either.
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -150,6 +152,114 @@ TEST(Transport, SilentConnectionIsClosedAfterHandshakeTimeout) {
 
     EXPECT_TRUE(serverClosesRawConnection(PORT, {}));
     EXPECT_TRUE(server->poll().empty());
+}
+
+TEST(Transport, FullServerTellsTheClientWhy) {
+    constexpr std::uint16_t PORT = 47315;
+    const auto server = ecs::net::createServer({.protocolId = GAME_A, .maxPeers = 1});
+    ASSERT_TRUE(server->start(PORT));
+    const auto first = ecs::net::createClient({.protocolId = GAME_A});
+    ASSERT_TRUE(first->connect("127.0.0.1", PORT));
+    ASSERT_TRUE(
+        has(pollUntil(*first, [](const auto& e) { return has(e, EventType::Connected); }), EventType::Connected));
+
+    const auto second = ecs::net::createClient({.protocolId = GAME_A});
+    ASSERT_TRUE(second->connect("127.0.0.1", PORT));
+
+    const auto events = pollUntil(*second, [](const auto& e) { return has(e, EventType::Disconnected); });
+    EXPECT_TRUE(has(events, EventType::Disconnected));
+    EXPECT_FALSE(has(events, EventType::Connected));
+    EXPECT_EQ(second->disconnectReason(), DisconnectReason::ServerFull);
+}
+
+TEST(Transport, RefusedPeerLearnsTheReasonAfterConnecting) {
+    constexpr std::uint16_t PORT = 47316;
+    const auto server = ecs::net::createServer({.protocolId = GAME_A});
+    ASSERT_TRUE(server->start(PORT));
+    const auto client = ecs::net::createClient({.protocolId = GAME_A});
+    ASSERT_TRUE(client->connect("127.0.0.1", PORT));
+    const auto serverEvents = pollUntil(*server, [](const auto& e) { return has(e, EventType::Connected); });
+    ASSERT_TRUE(has(serverEvents, EventType::Connected));
+
+    server->refuse(serverEvents.front().peer, DisconnectReason::ProtocolMismatch);
+
+    const auto events = pollUntil(*client, [](const auto& e) { return has(e, EventType::Disconnected); });
+    EXPECT_TRUE(has(events, EventType::Disconnected));
+    EXPECT_EQ(client->disconnectReason(), DisconnectReason::ProtocolMismatch);
+}
+
+TEST(Transport, LostConnectionHasNoSpecialReason) {
+    constexpr std::uint16_t PORT = 47317;
+    const auto server = ecs::net::createServer({.protocolId = GAME_A});
+    ASSERT_TRUE(server->start(PORT));
+    const auto client = ecs::net::createClient({.protocolId = GAME_A});
+    ASSERT_TRUE(client->connect("127.0.0.1", PORT));
+    const auto serverEvents = pollUntil(*server, [](const auto& e) { return has(e, EventType::Connected); });
+    ASSERT_TRUE(has(serverEvents, EventType::Connected));
+
+    server->kick(serverEvents.front().peer);
+
+    const auto events = pollUntil(*client, [](const auto& e) { return has(e, EventType::Disconnected); });
+    EXPECT_TRUE(has(events, EventType::Disconnected));
+    EXPECT_EQ(client->disconnectReason(), DisconnectReason::ConnectionLost);
+}
+
+TEST(Transport, UnreachableServerIsReportedByAnEvent) {
+    constexpr std::uint16_t CLOSED_PORT = 47318;
+    const auto client = ecs::net::createClient({.protocolId = GAME_A});
+
+    ASSERT_TRUE(client->connect("127.0.0.1", CLOSED_PORT));
+
+    const auto events = pollUntil(*client, [](const auto& e) { return has(e, EventType::Disconnected); });
+    EXPECT_TRUE(has(events, EventType::Disconnected));
+    EXPECT_FALSE(has(events, EventType::Connected));
+    EXPECT_EQ(client->disconnectReason(), DisconnectReason::Unreachable);
+    EXPECT_FALSE(client->isRunning());
+}
+
+TEST(Transport, ConnectDoesNotBlockAndCanBeCancelled) {
+    // Reserved for documentation (RFC 5737): nothing answers there, so the attempt stays pending or fails on its own.
+    const std::string blackHole = "192.0.2.1";
+    const auto client = ecs::net::createClient({.protocolId = GAME_A});
+
+    const auto before = std::chrono::steady_clock::now();
+    ASSERT_TRUE(client->connect(blackHole, 47319));
+    client->send(Bytes{1}, Channel::Reliable);  // dropped: not connected yet
+    client->stop();
+
+    EXPECT_LT(std::chrono::steady_clock::now() - before, WAIT);
+}
+
+TEST(Transport, StopRightAfterConnectNeverHangs) {
+    constexpr std::uint16_t PORT = 47321;
+    constexpr int ATTEMPTS = 200;
+    const auto server = ecs::net::createServer({.protocolId = GAME_A});
+    ASSERT_TRUE(server->start(PORT));
+
+    // stop() can run before, during or after the resolution and the connection: every order must let it join.
+    auto stopped = std::async(std::launch::async, [] {
+        for (int attempt = 0; attempt < ATTEMPTS; ++attempt) {
+            const auto client = ecs::net::createClient({.protocolId = GAME_A});
+            client->connect("127.0.0.1", PORT);
+            if (attempt % 2 == 0) {
+                std::this_thread::yield();
+            }
+            client->stop();
+        }
+    });
+
+    ASSERT_EQ(stopped.wait_for(std::chrono::seconds(30)), std::future_status::ready);
+    stopped.get();
+}
+
+TEST(Transport, ConnectingTwiceIsRefused) {
+    constexpr std::uint16_t PORT = 47320;
+    const auto server = ecs::net::createServer({.protocolId = GAME_A});
+    ASSERT_TRUE(server->start(PORT));
+    const auto client = ecs::net::createClient({.protocolId = GAME_A});
+
+    EXPECT_TRUE(client->connect("127.0.0.1", PORT));
+    EXPECT_FALSE(client->connect("127.0.0.1", PORT));
 }
 
 int main(int argc, char** argv) {

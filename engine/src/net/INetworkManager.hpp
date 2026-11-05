@@ -14,7 +14,12 @@ using Bytes = std::vector<std::uint8_t>;
 enum class EventType : std::uint8_t {
     /** @brief A peer finished the transport handshake: it can now send and receive. */
     Connected,
-    /** @brief A peer is gone (closed, crashed, timed out, kicked). Never sent for a peer that was not `Connected`. */
+    /**
+     * @brief A peer is gone (closed, crashed, timed out, kicked).
+     *
+     * A server never sends it for a peer that was not `Connected`. A client also sends it when its connection attempt
+     * fails: `INetworkClient::disconnectReason()` says why.
+     */
     Disconnected,
     /** @brief A peer sent a game message. */
     Data,
@@ -26,6 +31,18 @@ enum class Channel : std::uint8_t {
     Reliable,
     /** @brief Fast, may be lost, duplicated or reordered (UDP). */
     Unreliable,
+};
+
+/** @brief Why a client lost its connection, see `INetworkClient::disconnectReason()`. */
+enum class DisconnectReason : std::uint8_t {
+    /** @brief The connection ended without explanation from the server: network loss, crash, kick, timeout... */
+    ConnectionLost = 0,
+    /** @brief The server runs another game or another version of its protocol. */
+    ProtocolMismatch = 1,
+    /** @brief The server already has `NetworkConfig::maxPeers` connections. */
+    ServerFull = 2,
+    /** @brief The server could not be reached: decided by the client, never sent by a server. */
+    Unreachable = 3,
 };
 
 /** @brief Lifecycle state of a transport. */

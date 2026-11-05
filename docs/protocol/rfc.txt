@@ -164,7 +164,8 @@ Table of Contents
    Version negotiation:
 
    (1) The client sends Hello with version set to 2.
-   (2) The server rejects any Hello whose version differs by closing
+   (2) The server rejects any Hello whose version differs: the
+       transport sends a Refused frame (ProtocolMismatch), then closes
        the TCP connection.
    (3) Once the server sends Welcome, both sides agree on version 2
        for the session.
@@ -286,7 +287,8 @@ Table of Contents
    else, whose protocol id differs, or which sends no Handshake within
    5 seconds is closed by the transport layer; the game layer is never
    notified of it, so a client of another game or a port scanner
-   never reaches the Envelope decoder.
+   never reaches the Envelope decoder.  A wrong protocol id, or a full
+   server, is first answered with a Refused frame telling why.
 
 8.2.  Input Validation
 

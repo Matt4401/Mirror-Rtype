@@ -107,9 +107,9 @@ void ServerManager::onReliableMessage(const ClientId client, const protocol::Mes
         }
         if (hello->version != protocol::PROTOCOL_VERSION) {
             log::info(LOG_TAG, "client ", client, " uses protocol version ", hello->version, " (expected ",
-                      protocol::PROTOCOL_VERSION, "): kicked");
+                      protocol::PROTOCOL_VERSION, "): refused");
             _pendingHandshakes.erase(client);
-            _network->kick(client);
+            _network->refuse(client, ecs::net::DisconnectReason::ProtocolMismatch);
             return;
         }
         _pendingHandshakes.erase(client);
