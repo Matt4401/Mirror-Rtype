@@ -34,6 +34,7 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
 - `shared/src/` — header-only interfaces shared by client/server (e.g. `INetworkServer`)
 - `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`src/protocol/`), protobuf types stay
   private
+- `game/src/` — `rtype_game`: R-Type code shared by server and client (replication codec, ship movement)
 - `server/src/`, `client/src/` — the R-Type game executables
 - `scripts/` — Wren scripts (`scripts/core/*.wren`) + tooling scripts
 - `tests/` — GoogleTest binaries, one `target` per suite in `tests/xmake.lua`
