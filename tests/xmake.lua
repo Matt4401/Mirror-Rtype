@@ -151,3 +151,12 @@ target("test_server_manager")
     add_files("server/ServerManagerTests.cpp", "../server/src/ServerManager.cpp", "../server/src/Room.cpp")
     add_includedirs("../server/src")
     add_tests("test_server_manager")
+
+target("test_client_collisions")
+    set_kind("binary")
+    add_deps("engine_core", "engine_events", "engine_physics", "engine_prefabs", "rtype_collision")
+    add_packages("gtest")
+    add_files("client/ShotHitRuleTests.cpp", "../client/src/gameplay/ShotHitRule.cpp",
+              "../client/src/prefabs/ClientBullet.cpp", "../client/src/prefabs/ClientEnemy.cpp")
+    add_includedirs("../client/src")
+    add_tests("test_client_collisions")

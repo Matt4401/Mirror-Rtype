@@ -9,11 +9,13 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "collision/CollisionRouter.hpp"
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
@@ -27,10 +29,12 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
+#include "gameplay/ShotHitRule.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
 #include "prefabs/ClientBullet.hpp"
+#include "prefabs/ClientEnemy.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/PrefabPlugin.hpp"
@@ -49,6 +53,14 @@ constexpr float MIN_X = 32.0F;
 constexpr float MAX_X = 1248.0F;
 constexpr float MIN_Y = 32.0F;
 constexpr float MAX_Y = 688.0F;
+/** @brief Seconds between two enemy spawns. */
+constexpr float ENEMY_SPAWN_INTERVAL = 1.2F;
+/** @brief Spawn abscissa of the enemies, just past the right edge. */
+constexpr float ENEMY_SPAWN_X = SCENE_WIDTH + 48.0F;
+/** @brief Spawn heights, cycled through so the waves are deterministic. */
+constexpr std::array<float, 6> ENEMY_SPAWN_HEIGHTS{160.0F, 420.0F, 280.0F, 560.0F, 220.0F, 480.0F};
+/** @brief Margin past the screen edges after which bullets and enemies are destroyed. */
+constexpr float OFFSCREEN_MARGIN = 64.0F;
 constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
@@ -95,7 +107,7 @@ void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::Textur
     }
 }
 
-void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId, ecs::TextureId bydosTexId) {
+void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId) {
     registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
 
     const ecs::Entity player = registry.spawnEntity();
@@ -118,28 +130,6 @@ void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId, ecs::Text
                                                            });
     registry.addComponent<client::ShipInput>(player, client::ShipInput{.playerIndex = 0, .speed = 350.0F});
     registry.addComponent<InputState>(player, InputState{.playerIndex = 0, .actions = {}});
-
-    constexpr int BYDOS_FRAME_W = 33;
-    constexpr int BYDOS_FRAME_H = 36;
-    const ecs::Entity bydos = registry.spawnEntity();
-    registry.addComponent<ecs::Transform>(bydos,
-                                          ecs::Transform{.x = 900.0F, .y = 300.0F, .scaleX = 2.0F, .scaleY = 2.0F});
-    registry.addComponent<ecs::Renderable>(
-        bydos, ecs::Renderable{
-                   .textureId = bydosTexId,
-                   .sourceRect = {.x = 0, .y = 0, .width = BYDOS_FRAME_W, .height = BYDOS_FRAME_H},
-                   .origin = {.x = 0.5F, .y = 0.5F},
-                   .tint = COLOR_WHITE,
-                   .layer = 2,
-               });
-    registry.addComponent<ecs::AnimationComponent>(bydos, ecs::AnimationComponent{
-                                                              .frameWidth = BYDOS_FRAME_W,
-                                                              .frameHeight = BYDOS_FRAME_H,
-                                                              .frameCount = 8,
-                                                              .startX = 0,
-                                                              .startY = 0,
-                                                              .frameDuration = 0.12F,
-                                                          });
 }
 
 void movePlayer(ecs::Registry& registry, float deltaTime) {
@@ -157,11 +147,17 @@ void movePlayer(ecs::Registry& registry, float deltaTime) {
         });
 }
 
-void killOffscreenBullets(ecs::Registry& registry) {
+void killOffscreenEntities(ecs::Registry& registry) {
     std::vector<ecs::Entity> toDestroy;
     registry.runSystem<ecs::Transform, client::prefabs::ClientBullet>(
         [&toDestroy](ecs::Entity entity, const ecs::Transform& transform, client::prefabs::ClientBullet& /*tag*/) {
-            if (transform.x > SCENE_WIDTH + 64.0F) {
+            if (transform.x > SCENE_WIDTH + OFFSCREEN_MARGIN) {
+                toDestroy.push_back(entity);
+            }
+        });
+    registry.runSystem<ecs::Transform, client::prefabs::ClientEnemy>(
+        [&toDestroy](ecs::Entity entity, const ecs::Transform& transform, client::prefabs::ClientEnemy& /*tag*/) {
+            if (transform.x < -OFFSCREEN_MARGIN) {
                 toDestroy.push_back(entity);
             }
         });
@@ -203,6 +199,10 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
         client::prefabs::CLIENT_BULLET_PREFAB, client::prefabs::buildClientBullet,
         {{"textureId", static_cast<std::int64_t>(_bulletTexId)}, {"scaleX", 1.5F}, {"scaleY", 1.5F}});
 
+    engine.getPlugin<::prefabs::PrefabPlugin>().manager().registerPrefab(
+        client::prefabs::CLIENT_ENEMY_PREFAB, client::prefabs::buildClientEnemy,
+        {{"textureId", static_cast<std::int64_t>(_bydosTexId)}, {"scaleX", 2.0F}, {"scaleY", 2.0F}});
+
     _starSmallId = load("sprites/star_small.png");
     _starMediumId = load("sprites/star_medium.png");
     _starLargeId = load("sprites/star_large.png");
@@ -212,12 +212,31 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     }
 
     spawnStarfield(engine.registry(), _starSmallId, _starMediumId, _starLargeId);
-    spawnDemoScene(engine.registry(), _shipTexId, _bydosTexId);
+    spawnDemoScene(engine.registry(), _shipTexId);
+
+    _collisionRouter = std::make_unique<rtype::server::collision::CollisionRouter>(engine.eventBus());
+    _shotHitRule = std::make_unique<gameplay::ShotHitRule>(engine.eventBus(), engine.registry());
+}
+
+void RTypeGamePlugin::shutdown(engine::Engine& /*engine*/) {
+    _shotHitRule.reset();
+    _collisionRouter.reset();
 }
 
 void RTypeGamePlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) {
     movePlayer(engine.registry(), time.deltaTime);
-    killOffscreenBullets(engine.registry());
+
+    _enemySpawnTimer -= time.deltaTime;
+    if (_enemySpawnTimer <= 0.0F) {
+        _enemySpawnTimer += ENEMY_SPAWN_INTERVAL;
+        const float y = ENEMY_SPAWN_HEIGHTS.at(_enemiesSpawned % ENEMY_SPAWN_HEIGHTS.size());
+        ++_enemiesSpawned;
+        engine.service<::prefabs::PrefabManager>().spawn(client::prefabs::CLIENT_ENEMY_PREFAB, _commandBuffer,
+                                                         {{"x", ENEMY_SPAWN_X}, {"y", y}});
+        _commandBuffer.flush(engine.registry());
+    }
+
+    killOffscreenEntities(engine.registry());
 }
 
 void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
