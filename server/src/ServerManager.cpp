@@ -75,10 +75,11 @@ void ServerManager::onConnected(const ClientId client) {
 }
 
 void ServerManager::onDisconnected(const ClientId client) {
-    // Can arrive without onConnected (connection lost before being ready): leaveRoom() then does nothing.
-    leaveRoom(client);
+    // Forgotten first: leaveRoom() pushes the list of rooms, which this client must not receive.
     _handshaken.erase(client);
     _pendingHandshakes.erase(client);
+    // Can arrive without onConnected (connection lost before being ready): leaveRoom() then does nothing.
+    leaveRoom(client);
     log::info(LOG_TAG, "client ", client, " disconnected");
 }
 
@@ -121,12 +122,22 @@ void ServerManager::onReliableMessage(const ClientId client, const protocol::Mes
         leaveRoom(client);
         return;
     }
-    // TODO(protocol): lobby messages, e.g.:
-    // LobbyListRequest -> LobbyList
-    // LobbyCreate / LobbyJoin -> joinRoom(client), then LobbyUpdate to the room
-    // LobbyReady -> when every player of the room is ready: room.start(), then GameStart to each player
-    // Chat -> fill clientId, then send to the other players of the room
-    log::debug(LOG_TAG, "client ", client, " sent an unhandled message (index ", message.index(), ")");
+    if (isInGame(client)) {
+        // TODO(protocol): Chat -> fill clientId, then send to the other players of the room (also valid in the lobby).
+        log::debug(LOG_TAG, "client ", client, " sent a message out of phase (index ", message.index(), "): dropped");
+        return;
+    }
+    if (std::holds_alternative<protocol::LobbyListRequest>(message)) {
+        send(client, lobbyList(), ecs::net::Channel::Reliable);
+    } else if (std::holds_alternative<protocol::LobbyCreate>(message)) {
+        onLobbyCreate(client);
+    } else if (const auto* join = std::get_if<protocol::LobbyJoin>(&message)) {
+        onLobbyJoin(client, join->roomId);
+    } else if (const auto* ready = std::get_if<protocol::LobbyReady>(&message)) {
+        onLobbyReady(client, ready->ready);
+    } else {
+        log::debug(LOG_TAG, "client ", client, " sent an unhandled message (index ", message.index(), ")");
+    }
 }
 
 void ServerManager::onUnreliableData(const ClientId client, const ecs::net::Bytes& data) {
@@ -170,32 +181,46 @@ void ServerManager::advanceRooms() {
     }
 }
 
-std::optional<RoomId> ServerManager::joinRoom(const ClientId client) {
-    if (const auto current = roomOf(client)) {
-        return current;
+void ServerManager::onLobbyCreate(const ClientId client) {
+    if (roomOf(client) || _rooms.size() >= protocol::MAX_ROOMS) {
+        log::debug(LOG_TAG, "client ", client, " cannot create a room: dropped");
+        return;
     }
+    const RoomId id = _nextRoomId++;
+    Room& room = _rooms.try_emplace(id, *_network, MAX_PLAYERS_PER_ROOM).first->second;
+    room.addPlayer(client);
+    _roomOf[client] = id;
+    log::debug(LOG_TAG, "client ", client, " created room ", id);
+    sendLobbyUpdate(id, room);
+    broadcastLobbyList();
+}
 
-    std::optional<RoomId> open;
-    for (const auto& [id, room] : _rooms) {
-        if (!room.isPlaying() && !room.isFull()) {
-            open = id;
-            break;
-        }
-    }
-    const RoomId id = open.value_or(_nextRoomId);
-    if (!open) {
-        _rooms.try_emplace(_nextRoomId++, *_network, MAX_PLAYERS_PER_ROOM);
-        log::debug(LOG_TAG, "room ", id, " created");
-    }
-
-    Room& room = _rooms.at(id);
-    if (!room.addPlayer(client)) {
-        return std::nullopt;
+void ServerManager::onLobbyJoin(const ClientId client, const RoomId id) {
+    const auto it = _rooms.find(id);
+    if (roomOf(client) || it == _rooms.end() || !it->second.addPlayer(client)) {
+        log::debug(LOG_TAG, "client ", client, " cannot join room ", id, ": dropped");
+        return;
     }
     _roomOf[client] = id;
-    log::debug(LOG_TAG, "client ", client, " joined room ", id, " (", room.players().size(), '/',
+    log::debug(LOG_TAG, "client ", client, " joined room ", id, " (", it->second.players().size(), '/',
                static_cast<int>(MAX_PLAYERS_PER_ROOM), " players)");
-    return id;
+    sendLobbyUpdate(id, it->second);
+    broadcastLobbyList();
+}
+
+void ServerManager::onLobbyReady(const ClientId client, const bool ready) {
+    const auto id = roomOf(client);
+    if (!id) {
+        log::debug(LOG_TAG, "client ", client, " is not in a room: LobbyReady dropped");
+        return;
+    }
+    const auto it = _rooms.find(*id);
+    if (it == _rooms.end()) {
+        return;
+    }
+    it->second.setReady(client, ready);
+    sendLobbyUpdate(*id, it->second);
+    startIfReady(*id, it->second);
 }
 
 void ServerManager::leaveRoom(const ClientId client) {
@@ -205,20 +230,88 @@ void ServerManager::leaveRoom(const ClientId client) {
     }
     _roomOf.erase(client);
 
-    const auto room = _rooms.find(*id);
-    if (room == _rooms.end()) {
+    const auto it = _rooms.find(*id);
+    if (it == _rooms.end()) {
         return;
     }
-    room->second.removePlayer(client);
+    Room& room = it->second;
+    room.removePlayer(client);
     log::debug(LOG_TAG, "client ", client, " left room ", *id);
-    const auto left = protocol::encode(protocol::PlayerLeft{.clientId = client});
-    for (const ClientId other : room->second.players()) {
-        _network->send(other, left, ecs::net::Channel::Reliable);
-    }
-    if (room->second.isEmpty()) {
-        _rooms.erase(room);
+    if (room.isEmpty()) {
+        _rooms.erase(it);
         log::debug(LOG_TAG, "room ", *id, " destroyed (empty)");
+        broadcastLobbyList();
+        return;
     }
+    const auto left = protocol::encode(protocol::PlayerLeft{.clientId = client});
+    for (const RoomPlayer& other : room.players()) {
+        _network->send(other.client, left, ecs::net::Channel::Reliable);
+    }
+    if (!room.isPlaying()) {
+        sendLobbyUpdate(*id, room);
+        startIfReady(*id, room);
+    }
+    broadcastLobbyList();
+}
+
+void ServerManager::startIfReady(const RoomId id, Room& room) {
+    if (room.isPlaying() || !room.isEveryoneReady()) {
+        return;
+    }
+    room.start();
+    log::info(LOG_TAG, "room ", id, " started with ", room.players().size(), " players");
+    const auto count = static_cast<std::uint8_t>(room.players().size());
+    std::uint8_t index = 0;
+    for (const RoomPlayer& player : room.players()) {
+        send(player.client, protocol::GameStart{.roomId = id, .playerIndex = index, .playerCount = count},
+             ecs::net::Channel::Reliable);
+        ++index;
+    }
+    broadcastLobbyList();
+}
+
+void ServerManager::sendLobbyUpdate(const RoomId id, const Room& room) const {
+    protocol::LobbyUpdate update{.roomId = id, .slots = {}};
+    update.slots.reserve(room.players().size());
+    for (const RoomPlayer& player : room.players()) {
+        update.slots.push_back({.clientId = player.client, .ready = player.ready});
+    }
+    const auto bytes = protocol::encode(update);
+    for (const RoomPlayer& player : room.players()) {
+        _network->send(player.client, bytes, ecs::net::Channel::Reliable);
+    }
+}
+
+protocol::LobbyList ServerManager::lobbyList() const {
+    protocol::LobbyList list;
+    list.rooms.reserve(_rooms.size());
+    for (const auto& [id, room] : _rooms) {
+        list.rooms.push_back({
+            .roomId = id,
+            .playerCount = static_cast<std::uint8_t>(room.players().size()),
+            .maxPlayers = MAX_PLAYERS_PER_ROOM,
+            .state = room.isPlaying() ? protocol::RoomState::InGame : protocol::RoomState::Waiting,
+        });
+    }
+    return list;
+}
+
+void ServerManager::broadcastLobbyList() const {
+    const auto bytes = protocol::encode(lobbyList());
+    for (const ClientId client : _handshaken) {
+        if (!isInGame(client)) {
+            _network->send(client, bytes, ecs::net::Channel::Reliable);
+        }
+    }
+}
+
+bool ServerManager::isInGame(const ClientId client) const {
+    const auto id = roomOf(client);
+    if (!id) {
+        return false;
+    }
+    const auto it = _rooms.find(*id);
+    return it != _rooms.end() && it->second.isPlaying();
 }
 
 std::optional<RoomId> ServerManager::roomOf(const ClientId client) const {

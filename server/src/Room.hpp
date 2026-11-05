@@ -3,8 +3,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <ranges>
-#include <unordered_map>
+#include <span>
+#include <vector>
 
 #include "components/InputBuffer.hpp"
 #include "core/Engine.hpp"
@@ -23,6 +23,16 @@ inline constexpr std::size_t MAX_PENDING_INPUTS = ecs::DEFAULT_MAX_PENDING_INPUT
 
 /** @brief Network id of a player: the transport's peer id. */
 using ClientId = ecs::net::PeerId;
+
+/** @brief One player of a room. */
+struct RoomPlayer {
+    /** @brief Network id of the player. */
+    ClientId client = 0;
+    /** @brief Ship of the player; its network state is in its components. */
+    ecs::Entity entity = 0;
+    /** @brief Ready state in the lobby. */
+    bool ready = false;
+};
 
 /**
  * @brief One game: its own `engine::Engine` and its players.
@@ -75,10 +85,21 @@ class Room {
     void onPacket(ClientId player, const ecs::net::Bytes& data);
 
     /**
+     * @brief Sets the ready state of a player. Does nothing once the game has started, or if the player is not here.
+     * @param player Network id of the player.
+     * @param ready New ready state.
+     */
+    void setReady(ClientId player, bool ready);
+
+    /** @brief True when the room has at least one player and all of them are ready. */
+    [[nodiscard]] bool isEveryoneReady() const;
+
+    /**
      * @brief Starts the game: no player can join anymore, and `advance()` runs the simulation.
      *
-     * Resets the room's clock, so that the game time (`tickCount`, `totalElapsedTime`) starts at 0 now, whatever how
-     * long the room waited for its players.
+     * Each player's index becomes its position in `players()`, without holes whoever left the lobby, and its ship goes
+     * to its spawn point. Resets the room's clock, so that the game time (`tickCount`, `totalElapsedTime`) starts at 0
+     * now, whatever how long the room waited for its players.
      */
     void start();
 
@@ -98,11 +119,11 @@ class Room {
     /** @brief True when the last player has left: the `ServerManager` then destroys the room. */
     [[nodiscard]] bool isEmpty() const { return _players.empty(); }
     /**
-     * @brief Network ids of the players in this room (lazy view, no allocation).
+     * @brief Players of this room, in join order.
      *
-     * The view is invalidated if a player is added or removed while iterating over it.
+     * The span is invalidated if a player is added or removed while iterating over it.
      */
-    [[nodiscard]] auto players() const { return _players | std::views::keys; }
+    [[nodiscard]] std::span<const RoomPlayer> players() const { return _players; }
 
     /**
      * @brief Sequence number of the last input applied for a player, sent in snapshots for client reconciliation.
@@ -117,9 +138,6 @@ class Room {
     [[nodiscard]] const ecs::Registry& registry() const { return _engine.registry(); }
 
   private:
-    /** @brief Smallest player index no player of the room uses: it stays stable when another player leaves. */
-    [[nodiscard]] std::uint8_t freePlayerIndex() const;
-
     /** @brief Maximum number of players. */
     std::uint8_t _maxPlayers;
     /** @brief True once the game has started. */
@@ -128,8 +146,8 @@ class Room {
     std::shared_ptr<engine::PeerGroupConnection> _connection;
     /** @brief Engine of this game: ECS world, event bus, clock and plugins. */
     engine::Engine _engine;
-    /** @brief Entity controlled by each player of the room; its network state is in its components. */
-    std::unordered_map<ClientId, ecs::Entity> _players;
+    /** @brief Players of the room, in join order: at most `_maxPlayers`, so looking one up is a short scan. */
+    std::vector<RoomPlayer> _players;
 };
 
 }  // namespace rtype::server
