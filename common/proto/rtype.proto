@@ -141,11 +141,15 @@ message EntityState {
     fixed32 kind = 10;   // FNV-1a hash of the entity's prefab name, see makeEntityKind() in Messages.hpp
 }
 
-// S -> C, unreliable, every server step. Snapshots with tick <= the last one received are dropped.
+// S -> C, unreliable, every server step. Parts with tick < the last one received are dropped. A snapshot too large for
+// one datagram is split: each part holds some of the entities, and a client removes the entities absent from a
+// snapshot only once it has received all its parts.
 message WorldState {
     uint32 tick = 1;
     uint32 last_processed_input = 2;  // sequence of the last input of this client applied by the server
     repeated EntityState entities = 3;
+    uint32 part_index = 4;            // below part_count
+    uint32 part_count = 5;            // up to MAX_SNAPSHOT_PARTS; 0 means 1 (not sent for an unsplit snapshot)
 }
 
 // ---- Envelope -----------------------------------------------------------------------------------------------------

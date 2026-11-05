@@ -98,6 +98,9 @@ void fill(pb::Envelope& envelope, const WorldState& message) {
     auto* out = envelope.mutable_world_state();
     out->set_tick(message.tick);
     out->set_last_processed_input(message.lastProcessedInput);
+    out->set_part_index(message.partIndex);
+    // Not sent for an unsplit snapshot, by far the most common one: 2 bytes saved per datagram.
+    out->set_part_count(message.partCount == 1 ? 0 : message.partCount);
     out->mutable_entities()->Reserve(static_cast<int>(message.entities.size()));
     for (const auto& [entityId, kind, subtype, x, y, health, flags] : message.entities) {
         auto* entity = out->add_entities();
@@ -213,7 +216,15 @@ std::optional<Message> read(const pb::PlayerInput& in) {
 }
 
 std::optional<Message> read(const pb::WorldState& in) {
-    WorldState out{.tick = in.tick(), .lastProcessedInput = in.last_processed_input(), .entities = {}};
+    const std::uint32_t partCount = in.part_count() == 0 ? 1 : in.part_count();
+    if (partCount > MAX_SNAPSHOT_PARTS || in.part_index() >= partCount) {
+        return std::nullopt;
+    }
+    WorldState out{.tick = in.tick(),
+                   .lastProcessedInput = in.last_processed_input(),
+                   .entities = {},
+                   .partIndex = in.part_index(),
+                   .partCount = partCount};
     out.entities.reserve(static_cast<std::size_t>(in.entities_size()));
     for (const auto& entity : in.entities()) {
         const auto subtype = narrow<std::uint8_t>(entity.subtype());

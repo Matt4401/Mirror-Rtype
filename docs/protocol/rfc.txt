@@ -147,7 +147,7 @@ Table of Contents
 
 4.  Protocol Versioning
 
-   The protocol version is PROTOCOL_VERSION = 2.  It is carried by the
+   The protocol version is PROTOCOL_VERSION = 3.  It is carried by the
    Hello message only; other messages carry no header.
 
    Version history:
@@ -160,14 +160,18 @@ Table of Contents
           enum, and its positions are floats in world units instead of
           int16 pixels.  Field 2 of PlayerInput and fields 2, 4, 5 of
           EntityState are reserved.
+      3   A WorldState can be one part of a snapshot too large for one
+          datagram (part_index, part_count).  A client removes the
+          entities absent from a snapshot only once it has received
+          all its parts.
 
    Version negotiation:
 
-   (1) The client sends Hello with version set to 2.
+   (1) The client sends Hello with the version it implements.
    (2) The server rejects any Hello whose version differs: the
        transport sends a Refused frame (ProtocolMismatch), then closes
        the TCP connection.
-   (3) Once the server sends Welcome, both sides agree on version 2
+   (3) Once the server sends Welcome, both sides agree on that version
        for the session.
    (4) The client MUST send Hello within 5 seconds of the TCP
        connection.  Otherwise the server closes the connection.

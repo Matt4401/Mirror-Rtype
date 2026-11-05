@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -16,6 +17,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "net/INetworkManager.hpp"
+#include "net/NetworkConfig.hpp"
 #include "net/NetworkEntityMap.hpp"
 #include "net/SnapshotApplier.hpp"
 #include "protocol/Messages.hpp"
@@ -143,8 +145,8 @@ TEST(ReplicationCodec, WritesAnEntityAndTheAcknowledgementOfEachPeer) {
     codec.beginSnapshot(11);
     codec.writeEntity(registry, entity, 4, ecs::Replicated{KIND});
 
-    const auto first = decodeWorld(codec.encodeSnapshot(100));
-    const auto second = decodeWorld(codec.encodeSnapshot(200));
+    const auto first = decodeWorld(codec.encodeSnapshot(100).at(0));
+    const auto second = decodeWorld(codec.encodeSnapshot(200).at(0));
     EXPECT_EQ(first.tick, 11U);
     EXPECT_EQ(first.lastProcessedInput, 100U);
     EXPECT_EQ(second.lastProcessedInput, 200U);
@@ -168,7 +170,7 @@ TEST(ReplicationCodec, BeginSnapshotForgetsThePreviousEntities) {
     codec.writeEntity(registry, entity, 4, ecs::Replicated{KIND});
     codec.beginSnapshot(2);
 
-    EXPECT_TRUE(decodeWorld(codec.encodeSnapshot(0)).entities.empty());
+    EXPECT_TRUE(decodeWorld(codec.encodeSnapshot(0).at(0)).entities.empty());
 }
 
 TEST(ReplicationCodec, SkipsAnEntityWithANonFinitePosition) {
@@ -182,18 +184,59 @@ TEST(ReplicationCodec, SkipsAnEntityWithANonFinitePosition) {
     codec.writeEntity(registry, broken, 1, ecs::Replicated{KIND});
     codec.writeEntity(registry, valid, 2, ecs::Replicated{KIND});
 
-    const auto world = decodeWorld(codec.encodeSnapshot(0));
+    const auto world = decodeWorld(codec.encodeSnapshot(0).at(0));
     ASSERT_EQ(world.entities.size(), 1U) << "otherwise clients would reject the whole snapshot";
     EXPECT_EQ(world.entities[0].entityId, 2U);
 }
 
-TEST(ReplicationCodec, TooLargeSnapshotIsNotEncoded) {
+TEST(ReplicationCodec, LargeSnapshotIsSplitIntoDatagrams) {
+    ReplicationCodec codec;
+    ecs::Registry registry;
+    const ecs::Entity entity = registry.spawnEntity();
+    constexpr std::uint32_t ENTITIES = 200;
+
+    codec.beginSnapshot(7);
+    for (std::uint32_t id = 1; id <= ENTITIES; ++id) {
+        codec.writeEntity(registry, entity, id, ecs::Replicated{KIND});
+    }
+    const auto parts = codec.encodeSnapshot(4);
+
+    ASSERT_EQ(parts.size(), 6U) << "36 entities per part";
+    std::vector<std::uint32_t> ids;
+    for (std::size_t index = 0; index < parts.size(); ++index) {
+        EXPECT_LE(parts.at(index).size(), ecs::net::MAX_UNRELIABLE_PAYLOAD);
+        const auto header = codec.decodeSnapshot(parts.at(index));
+        ASSERT_TRUE(header.has_value());
+        EXPECT_EQ(header->tick, 7U);
+        EXPECT_EQ(header->lastProcessedInput, 4U);
+        EXPECT_EQ(header->partIndex, index);
+        EXPECT_EQ(header->partCount, parts.size());
+        for (const auto& state : decodeWorld(parts.at(index)).entities) {
+            ids.push_back(state.entityId);
+        }
+    }
+    ASSERT_EQ(ids.size(), ENTITIES) << "every entity is in exactly one part";
+    EXPECT_TRUE(std::ranges::is_sorted(ids));
+}
+
+TEST(ReplicationCodec, EmptyWorldIsOnePart) {
+    ReplicationCodec codec;
+
+    codec.beginSnapshot(1);
+    const auto parts = codec.encodeSnapshot(0);
+
+    ASSERT_EQ(parts.size(), 1U) << "the client must learn that its entities are gone";
+    EXPECT_TRUE(decodeWorld(parts.front()).entities.empty());
+}
+
+TEST(ReplicationCodec, SnapshotBeyondTheLastPartIsNotEncoded) {
     ReplicationCodec codec;
     ecs::Registry registry;
     const ecs::Entity entity = registry.spawnEntity();
 
     codec.beginSnapshot(1);
-    for (std::uint32_t id = 1; id <= 200; ++id) {
+    const auto tooMany = (protocol::MAX_ENTITIES_PER_PART * protocol::MAX_SNAPSHOT_PARTS) + 1;
+    for (std::uint32_t id = 1; id <= tooMany; ++id) {
         codec.writeEntity(registry, entity, id, ecs::Replicated{KIND});
     }
 

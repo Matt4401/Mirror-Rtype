@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "components/InputBuffer.hpp"
 #include "components/Replicated.hpp"
@@ -59,11 +60,11 @@ class ReplicationCodec final : public ecs::net::IReplicationCodec {
     void writeEntity(const ecs::Registry& registry, ecs::Entity entity, std::uint32_t id,
                      const ecs::Replicated& replicated) override;
     /**
-     * @brief Encodes the snapshot for one peer.
-     * @param lastProcessedInput Sequence of the last input of this peer applied by the server.
-     * @return The payload; empty, after logging an error, if it does not fit in a datagram.
+     * @brief Encodes the snapshot, in as many parts as needed (`protocol::MAX_ENTITIES_PER_PART` entities each).
+     * @param lastProcessedInput Sequence of the last input of the peer applied by the server.
+     * @return The parts; nothing if the snapshot needs more than `protocol::MAX_SNAPSHOT_PARTS` parts.
      */
-    [[nodiscard]] ecs::net::Bytes encodeSnapshot(std::uint32_t lastProcessedInput) override;
+    [[nodiscard]] std::vector<ecs::net::Bytes> encodeSnapshot(std::uint32_t lastProcessedInput) override;
     /**
      * @brief Reads an input.
      * @param data Untrusted payload.

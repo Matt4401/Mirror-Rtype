@@ -97,7 +97,7 @@ Sent right after the library delivers its own `Welcome` (`PeerId` + token). Star
 
 | Field     | # | Type     | Description                                             |
 |-----------|---|----------|---------------------------------------------------------|
-| `version` | 1 | `uint32` | Client protocol version, MUST be `PROTOCOL_VERSION` (2) |
+| `version` | 1 | `uint32` | Client protocol version, MUST be `PROTOCOL_VERSION` (3) |
 
 On a version mismatch, the server does not send `Welcome`: the transport tells the client why with a `Refused` frame
 (see [transport.md](transport.md)), then closes the connection. The client MUST send `Hello`
@@ -288,14 +288,22 @@ one are dropped by the server.
 
 **Direction:** Server → Client · **Channel:** Unreliable · **Phase:** In-game
 
-Sent after each server step. The client renders the most recent snapshot; older ones (by `tick`, with wrapping) MUST be
-dropped.
+Sent after each server step. The client renders the most recent snapshot; parts of older ones (by `tick`, with wrapping)
+MUST be dropped.
+
+A snapshot too large for one datagram is split into several `WorldState`, the **parts** of the snapshot, each one holding
+at most `MAX_ENTITIES_PER_PART` (36) entities, with the same `tick` and `last_processed_input`. A client applies each part
+when it arrives, and ignores a part it already has. It MUST NOT remove an entity absent from a snapshot before it has
+received all its parts: a lost part may have carried that entity. A world with no entity is still sent, as one empty part.
+A snapshot needing more than `MAX_SNAPSHOT_PARTS` (64) parts, about 2300 entities, is not sent.
 
 | Field                  | # | Type                   | Description                                    |
 |------------------------|---|------------------------|------------------------------------------------|
 | `tick`                 | 1 | `uint32`               | Server step of the snapshot (wrapping)         |
 | `last_processed_input` | 2 | `uint32`               | `sequence` of this client's last applied input |
-| `entities`             | 3 | repeated `EntityState` | Entities of the room                           |
+| `entities`             | 3 | repeated `EntityState` | Entities of this part of the snapshot          |
+| `part_index`           | 4 | `uint32`               | Index of this part, below `part_count`         |
+| `part_count`           | 5 | `uint32`               | Number of parts; `0` (not sent) means 1        |
 
 `last_processed_input` lets the client reconcile its prediction: it snaps to the server state and replays the inputs
 the server has not applied yet.
@@ -395,7 +403,7 @@ How R-Type fills the game-defined fields of `EntityState`. Another game defines 
 | #    | Message            | Dir   | Channel    | Typical size (bytes)       |
 |------|--------------------|-------|------------|----------------------------|
 | `1`  | `PlayerInput`      | C → S | Unreliable | 4–34                       |
-| `2`  | `WorldState`       | S → C | Unreliable | ~8 + 26 per entity (≤1192) |
+| `2`  | `WorldState`       | S → C | Unreliable | ~8 + 26 per entity (≤1192, split beyond) |
 | `16` | `Hello`            | C → S | Reliable   | 5                          |
 | `17` | `Welcome`          | S → C | Reliable   | 6                          |
 | `32` | `LobbyListRequest` | C → S | Reliable   | 3                          |
