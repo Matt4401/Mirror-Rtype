@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 #include "components/Collider2D.hpp"
 #include "components/RigidBody2D.hpp"
@@ -15,13 +16,16 @@
 #include "ecs/ComponentType.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "events/EventBus.hpp"
 #include "systems/physics/PhysicsConstants.hpp"
+#include "systems/physics/PhysicsEvents.hpp"
 #include "systems/physics/PhysicsHelpers.hpp"
 
 namespace systems {
 
-PhysicsSystem::PhysicsSystem(ecs::Registry& registry)
+PhysicsSystem::PhysicsSystem(ecs::Registry& registry, ecs::EventBus* events)
     : _registry(&registry),
+      _events(events),
       _world(b2Vec2_zero),
       _destroyListenerId(_registry->addDestroyListener([this](ecs::Entity entity) { destroyBody(entity); })),
       _rigidBodyRemoveListenerId(
@@ -29,7 +33,9 @@ PhysicsSystem::PhysicsSystem(ecs::Registry& registry)
               if (componentType == ecs::getComponentTypeId<ecs::RigidBody2D>()) {
                   destroyBody(entity);
               }
-          })) {}
+          })) {
+    _world.SetContactListener(&_contacts);
+}
 
 PhysicsSystem::~PhysicsSystem() {
     _registry->removeDestroyListener(_destroyListenerId);
@@ -67,6 +73,13 @@ void PhysicsSystem::update(float fixedDt) {
             rigidBody.velocityX = velocity.x * physics::PPM;
             rigidBody.velocityY = velocity.y * physics::PPM;
         });
+
+    if (_events != nullptr) {
+        for (const CollisionEvent& collision : _contacts.began) {
+            _events->publish(collision);
+        }
+    }
+    _contacts.began.clear();
 }
 
 b2Body* PhysicsSystem::createBody(ecs::Entity entity, const ecs::Transform& transform,
@@ -80,6 +93,9 @@ b2Body* PhysicsSystem::createBody(ecs::Entity entity, const ecs::Transform& tran
     bodyDef.angularDamping = rigidBody.angularDamping;
     bodyDef.fixedRotation = rigidBody.fixedRotation;
     bodyDef.bullet = rigidBody.bullet;
+    bodyDef.userData.pointer = static_cast<std::uintptr_t>(entity);
+    // A Transform can move a body at any time without waking it: asleep, it would not detect static colliders anymore.
+    bodyDef.allowSleep = false;
 
     b2Body* body = _world.CreateBody(&bodyDef);
     _bodies.emplace(entity, body);
@@ -88,7 +104,7 @@ b2Body* PhysicsSystem::createBody(ecs::Entity entity, const ecs::Transform& tran
 }
 
 void PhysicsSystem::synchronizeBody(ecs::Entity entity, ecs::Transform& transform, ecs::RigidBody2D& rigidBody) {
-    auto it = _bodies.find(entity);
+    const auto it = _bodies.find(entity);
     if (it == _bodies.end()) {
         createBody(entity, transform, rigidBody);
         return;

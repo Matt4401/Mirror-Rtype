@@ -55,7 +55,7 @@ target("engine_physics")
     set_kind("static")
     add_files("systems/physics/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core")
+    add_deps("engine_core", "engine_events")
     add_packages("box2d", {public = true})
 
 target("engine_all")

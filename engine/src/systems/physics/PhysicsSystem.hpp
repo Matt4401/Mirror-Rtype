@@ -11,21 +11,27 @@
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "events/EventBus.hpp"
+#include "systems/physics/ContactRecorder.hpp"
 
 namespace systems {
 
 /**
  * @brief Advances Box2D bodies and synchronizes them with ECS transforms.
  *
- * The registry passed to the constructor must outlive this system.
+ * The registry and the event bus passed to the constructor must outlive this system.
+ *
+ * Each `update()` publishes one `CollisionEvent` per contact that began during the step, once Box2D has finished: the
+ * handlers can kill entities.
  */
 class PhysicsSystem {
   public:
     /**
      * @brief Constructs physics system and hooks lifecycle listeners on registry.
      * @param registry Target ECS registry holding physics entities.
+     * @param events Optional event bus to publish collision events on; `nullptr` to ignore them.
      */
-    explicit PhysicsSystem(ecs::Registry& registry);
+    explicit PhysicsSystem(ecs::Registry& registry, ecs::EventBus* events = nullptr);
 
     /** @brief Cleans up Box2D world and detaches lifecycle listeners. */
     ~PhysicsSystem();
@@ -63,6 +69,12 @@ class PhysicsSystem {
 
     /** @brief Pointer to target ECS registry. */
     ecs::Registry* _registry;
+
+    /** @brief Bus the collisions are published on, or `nullptr` to ignore them. */
+    ecs::EventBus* _events;
+
+    /** @brief Contact listener of `_world`; declared before it, so that it outlives it. */
+    ContactRecorder _contacts;
 
     /** @brief Box2D physical simulation world. */
     b2World _world;
