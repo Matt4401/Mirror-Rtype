@@ -9,6 +9,7 @@
 #include <variant>
 #include <vector>
 
+#include "ClientOptions.hpp"
 #include "components/Interpolated.hpp"
 #include "components/Predicted.hpp"
 #include "components/Transform.hpp"
@@ -19,12 +20,13 @@
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
 #include "net/ClientConnection.hpp"
+#include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/NetworkEntityMap.hpp"
 #include "net/NetworkPlugin.hpp"
+#include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
-#include "net/ReplicationPlugins.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
 
@@ -37,7 +39,8 @@ using ecs::net::NetworkEvent;
 namespace protocol = rtype::protocol;
 namespace game = rtype::game;
 
-constexpr float DT = 1.0F / 60.0F;
+// A power of two: exact in binary, so that adding it to the fake clock makes exactly one step due.
+constexpr float DT = 1.0F / 64.0F;
 constexpr std::uint16_t UDP_PORT = 4242;
 constexpr std::uint32_t ROOM = 7;
 constexpr std::uint32_t MY_SHIP = 10;
@@ -52,9 +55,10 @@ class FakeClient final : public ecs::net::INetworkClient {
     };
 
     bool connect(const std::string& /*host*/, std::uint16_t /*port*/) override { return true; }
+    [[nodiscard]] ecs::net::DisconnectReason disconnectReason() const override { return reason; }
     bool openUdp(const std::uint16_t port) override {
         udpPort = port;
-        return true;
+        return udpOpens;
     }
     void closeUdp() override {}
     void send(const Bytes& data, const Channel channel) override { sent.push_back({.data = data, .channel = channel}); }
@@ -65,18 +69,28 @@ class FakeClient final : public ecs::net::INetworkClient {
     std::vector<Sent> sent;
     std::vector<NetworkEvent> next;
     std::optional<std::uint16_t> udpPort;
+    bool udpOpens = true;
+    ecs::net::DisconnectReason reason = ecs::net::DisconnectReason::ConnectionLost;
 };
 
 class RTypeNetworkPluginTest : public ::testing::Test {
   protected:
     RTypeNetworkPluginTest() {
-        const auto connection = std::make_shared<engine::ClientConnection>(transport);
+        engine.setFixedDeltaTime(DT);
+        const auto connection = std::make_shared<ecs::net::ClientConnection>(transport);
         engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection);
         engine.addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
         engine.addPlugin<client::RTypeNetworkPlugin>(transport);
+        engine.addPlugin<client::PlayerControlPlugin>();
         engine.init();
         inputEntity = engine.registry().spawnEntity();
         engine.registry().addComponent(inputEntity, ::input::InputState{.playerIndex = 0, .actions = {}});
+    }
+
+    /** @brief Lets one fixed step of time elapse, and runs the engine. */
+    void step() {
+        now += static_cast<double>(DT);
+        engine.advance();
     }
 
     /** @brief The server sends a message; the client handles it during the frame this runs. */
@@ -85,7 +99,7 @@ class RTypeNetworkPluginTest : public ::testing::Test {
                                    .peer = ecs::net::SERVER_PEER,
                                    .data = protocol::encode(message),
                                    .channel = channel});
-        engine.step(DT);
+        step();
     }
 
     /** @brief Messages of one type the client sent, oldest first. */
@@ -103,7 +117,7 @@ class RTypeNetworkPluginTest : public ::testing::Test {
 
     void pressReady() {
         actions()[client::input::ACTION_READY].justPressed = true;
-        engine.step(DT);
+        step();
         actions()[client::input::ACTION_READY].justPressed = false;
     }
 
@@ -125,8 +139,9 @@ class RTypeNetworkPluginTest : public ::testing::Test {
         return engine.registry().getResource<ecs::net::NetworkEntityMap>().entityOf(id).value();
     }
 
+    double now = 0.0;
     std::shared_ptr<FakeClient> transport = std::make_shared<FakeClient>();
-    engine::Engine engine;
+    engine::Engine engine{[this]() -> double { return now; }};
     ecs::Entity inputEntity = 0;
 };
 
@@ -136,7 +151,7 @@ class RTypeNetworkPluginTest : public ::testing::Test {
 
 TEST_F(RTypeNetworkPluginTest, SaysHelloOnceConnected) {
     transport->next.push_back({.type = EventType::Connected, .peer = 0, .data = {}, .channel = Channel::Reliable});
-    engine.step(DT);
+    step();
 
     ASSERT_EQ(sentMessages<protocol::Hello>().size(), 1U);
     EXPECT_EQ(sentMessages<protocol::Hello>()[0].version, protocol::PROTOCOL_VERSION);
@@ -166,6 +181,26 @@ TEST_F(RTypeNetworkPluginTest, StopsTheEngineWhenTheServerIsLost) {
     engine.run();  // returns only because the plugin stops the loop
 
     EXPECT_FALSE(engine.isRunning());
+    EXPECT_TRUE(engine.getPlugin<client::RTypeNetworkPlugin>().failed());
+}
+
+TEST_F(RTypeNetworkPluginTest, ANormalSessionDidNotFail) {
+    receive(protocol::Welcome{.udpPort = UDP_PORT});
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+
+    EXPECT_FALSE(engine.getPlugin<client::RTypeNetworkPlugin>().failed());
+}
+
+TEST_F(RTypeNetworkPluginTest, StopsTheEngineAndSendsNoInputWhenUdpCannotBeOpened) {
+    transport->udpOpens = false;
+    receive(protocol::Welcome{.udpPort = UDP_PORT});
+    transport->sent.clear();
+
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+    step();
+
+    EXPECT_TRUE(engine.getPlugin<client::RTypeNetworkPlugin>().failed());
+    EXPECT_TRUE(sentMessages<protocol::PlayerInput>().empty()) << "the game must not start without UDP";
 }
 
 TEST_F(RTypeNetworkPluginTest, LeavesOnShutdown) {
@@ -238,7 +273,7 @@ TEST_F(RTypeNetworkPluginTest, ReadyKeyDoesNothingOutsideARoomOrInGame) {
 // --- In game ---------------------------------------------------------------------------------------------------------
 
 TEST_F(RTypeNetworkPluginTest, SendsNoInputBeforeTheGameStarts) {
-    engine.step(DT);
+    step();
 
     EXPECT_TRUE(sentMessages<protocol::PlayerInput>().empty());
 }
@@ -251,17 +286,18 @@ TEST_F(RTypeNetworkPluginTest, SendsTheActionsOfEachStepOverUdp) {
     actions()[client::input::ACTION_READY].held = true;
     actions()[::input::makeActionId("charge_weapon")].held = false;
 
-    engine.step(DT);
-    engine.step(DT);
+    // Each step also sends the inputs not acknowledged yet: the last one sent is the input of the step.
+    step();
+    const auto first = sentMessages<protocol::PlayerInput>().back();
+    step();
+    const auto second = sentMessages<protocol::PlayerInput>().back();
 
-    const auto inputs = sentMessages<protocol::PlayerInput>();
-    ASSERT_EQ(inputs.size(), 2U);
-    EXPECT_EQ(inputs[1].sequence, inputs[0].sequence + 1);
-    EXPECT_EQ(inputs[0].held, std::vector<protocol::ActionId>{::input::makeActionId("shoot")})
+    EXPECT_EQ(second.sequence, first.sequence + 1);
+    EXPECT_EQ(first.held, std::vector<protocol::ActionId>{::input::makeActionId("shoot")})
         << "ready is not a game input";
-    ASSERT_EQ(inputs[0].axes.size(), 1U);
-    EXPECT_EQ(inputs[0].axes[0].action, game::ACTION_MOVE_X);
-    EXPECT_FLOAT_EQ(inputs[0].axes[0].value, -1.0F);
+    ASSERT_EQ(first.axes.size(), 1U);
+    EXPECT_EQ(first.axes[0].action, game::ACTION_MOVE_X);
+    EXPECT_FLOAT_EQ(first.axes[0].value, -1.0F);
     EXPECT_EQ(transport->sent[0].channel, Channel::Unreliable);
 }
 
@@ -283,10 +319,49 @@ TEST_F(RTypeNetworkPluginTest, LocalShipMovesAtOnceAndOnlyIt) {
     const float mine = transforms.get(entityOf(MY_SHIP)).x;
     const float other = transforms.get(entityOf(OTHER_SHIP)).x;
 
-    engine.step(DT);
+    step();
 
     EXPECT_FLOAT_EQ(transforms.get(entityOf(MY_SHIP)).x, mine + (game::SHIP_SPEED * DT));
     EXPECT_FLOAT_EQ(transforms.get(entityOf(OTHER_SHIP)).x, other);
+}
+
+// --- Command line ----------------------------------------------------------------------------------------------------
+
+namespace {
+
+/** @brief Runs `parseOptions()` on arguments given as strings. */
+std::optional<client::ClientOptions> parse(std::vector<std::string> args) {
+    std::vector<char*> argv;
+    argv.reserve(args.size());
+    for (std::string& arg : args) {
+        argv.push_back(arg.data());
+    }
+    return client::parseOptions(argv);
+}
+
+}  // namespace
+
+TEST(ClientOptions, HasDefaults) {
+    const auto options = parse({"r-type_client"});
+
+    ASSERT_TRUE(options.has_value());
+    EXPECT_EQ(options->host, "127.0.0.1");
+    EXPECT_EQ(options->port, protocol::DEFAULT_PORT);
+}
+
+TEST(ClientOptions, ReadsTheHostAndThePort) {
+    const auto options = parse({"r-type_client", "example.org", "5000"});
+
+    ASSERT_TRUE(options.has_value());
+    EXPECT_EQ(options->host, "example.org");
+    EXPECT_EQ(options->port, 5000);
+}
+
+TEST(ClientOptions, RefusesAnInvalidPortOrTooManyArguments) {
+    EXPECT_FALSE(parse({"r-type_client", "host", "0"}).has_value());
+    EXPECT_FALSE(parse({"r-type_client", "host", "65536"}).has_value());
+    EXPECT_FALSE(parse({"r-type_client", "host", "42abc"}).has_value());
+    EXPECT_FALSE(parse({"r-type_client", "host", "1", "extra"}).has_value());
 }
 
 int main(int argc, char** argv) {

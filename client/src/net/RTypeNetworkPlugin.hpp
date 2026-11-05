@@ -10,21 +10,18 @@
 #include "events/EventBus.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/NetworkEvents.hpp"
-#include "net/ReplicationEvents.hpp"
 #include "protocol/Messages.hpp"
 
 namespace client {
 
 /**
- * @brief R-Type side of the client's network: the session with the server, and what replication leaves to the game.
+ * @brief The session with the server: `Hello`, then `Welcome`, then the lobby.
  *
- * - Session: `Hello`, then `Welcome`; the client joins the first room waiting for players, or creates one if there is
- *   none, and the `ready` action toggles its ready state until `GameStart`, which opens UDP.
- * - In game: once per fixed step, sends the state of the `input::InputState` of player 0 as `ecs::net::LocalInput`.
- * - Replicated entities: the ship of this player is `ecs::Predicted`, moved by `InputApplied` like on the server; the
- *   others are `ecs::Interpolated`.
+ * The client joins the first room waiting for players, or creates one if there is none, and the `ready` action toggles
+ * its ready state until `GameStart`, which opens UDP and publishes `GameStarted`.
  *
- * It draws nothing and needs no window, so it runs in tests. If the server is lost, it stops the engine.
+ * It draws nothing and needs no window, so it runs in tests. If the connection fails or ends, or if UDP cannot be
+ * opened, it logs why and stops the engine.
  */
 class RTypeNetworkPlugin final : public engine::IPlugin {
   public:
@@ -47,17 +44,10 @@ class RTypeNetworkPlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Subscribes to the network and replication events.
+     * @brief Subscribes to the network events.
      * @param engine Host engine.
      */
     void init(engine::Engine& engine) override;
-
-    /**
-     * @brief Sends the input of this step, once the game has started.
-     * @param engine Host engine.
-     * @param time Time of this step.
-     */
-    void fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
      * @brief Toggles the ready state when the `ready` action is pressed in a room.
@@ -72,7 +62,15 @@ class RTypeNetworkPlugin final : public engine::IPlugin {
      */
     void shutdown(engine::Engine& engine) override;
 
+    /** @brief True if the engine was stopped because of the network, and not by the player. */
+    [[nodiscard]] bool failed() const noexcept { return _failed; }
+
   private:
+    /**
+     * @brief The connection could not be made or is gone: says why and stops the engine.
+     * @param engine Host engine.
+     */
+    void onDisconnected(engine::Engine& engine);
     /**
      * @brief Handles a reliable message; snapshots and inputs belong to the replication plugin.
      * @param engine Host engine.
@@ -90,11 +88,11 @@ class RTypeNetworkPlugin final : public engine::IPlugin {
      */
     void chooseRoom(engine::Engine& engine, const rtype::protocol::LobbyList& list) const;
     /**
-     * @brief The ship of this player becomes `ecs::Predicted`, every other replicated entity `ecs::Interpolated`.
+     * @brief The game starts: opens UDP and publishes `GameStarted`, or stops the engine if UDP cannot be opened.
      * @param engine Host engine.
-     * @param event The new entity.
+     * @param start The message of the server.
      */
-    void onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const;
+    void onGameStart(engine::Engine& engine, const rtype::protocol::GameStart& start);
     /**
      * @brief Encodes and sends a message to the server, on the reliable channel.
      * @param engine Host engine.
@@ -108,22 +106,18 @@ class RTypeNetworkPlugin final : public engine::IPlugin {
     std::uint16_t _udpPort = 0;
     /** @brief Room of this client, once the server has confirmed it. */
     std::optional<std::uint32_t> _room;
-    /** @brief Received when the game starts: gives the index of this player's ship. */
-    std::optional<rtype::protocol::GameStart> _gameStart;
+    /** @brief True once the game has started. */
+    bool _inGame = false;
     /** @brief Ready state last sent to the server. */
     bool _ready = false;
-    /** @brief Sequence of the last input sent. */
-    std::uint32_t _sequence = 0;
+    /** @brief True if the engine was stopped because of the network. */
+    bool _failed = false;
     /** @brief Subscription to `PeerConnected`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _connected;
     /** @brief Subscription to `PeerDisconnected`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _disconnected;
     /** @brief Subscription to `PacketReceived`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _packets;
-    /** @brief Subscription to `ReplicatedEntitySpawned`, while initialized. */
-    std::optional<ecs::EventBus::EventToken> _spawned;
-    /** @brief Subscription to `InputApplied`, while initialized. */
-    std::optional<ecs::EventBus::EventToken> _inputs;
 };
 
 }  // namespace client

@@ -36,6 +36,7 @@
 #include "net/NetworkEvents.hpp"
 #include "net/NetworkFactory.hpp"
 #include "net/NetworkPlugin.hpp"
+#include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "protocol/Messages.hpp"
@@ -59,6 +60,7 @@ class GameClient {
         engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
         engine.addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
         engine.addPlugin<client::RTypeNetworkPlugin>(_transport);
+        engine.addPlugin<client::PlayerControlPlugin>();
         engine.eventBus().subscribe<ecs::net::PacketReceived>([this](const ecs::net::PacketReceived& packet) {
             const auto message = protocol::decode(packet.data);
             if (packet.channel != Channel::Reliable || !message) {

@@ -21,6 +21,7 @@ void setupCommonActions(::input::ActionMapping& mapping) {
 
     mapping.registerAction("ready", ::input::ActionType::Button);
     mapping.bindKey("ready", engine::Key::R);
+    mapping.bindGamepadButton("ready", engine::GamepadButton::MiddleRight);
 }
 
 }  // namespace

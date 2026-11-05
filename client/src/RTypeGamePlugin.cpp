@@ -192,7 +192,7 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     ecs::Registry& registry = engine.registry();
     spawnStarfield(registry, _starSmallId, _starMediumId, _starLargeId);
     registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
-    // The local player's actions, read here for the bullets and by RTypeNetworkPlugin for the server. The ship is not
+    // The local player's actions, read here for the bullets and by the network plugins for the server. The ship is not
     // spawned here: it comes from the snapshots of the server, like every other entity of the game.
     registry.addComponent<InputState>(registry.spawnEntity(), InputState{.playerIndex = 0, .actions = {}});
 
