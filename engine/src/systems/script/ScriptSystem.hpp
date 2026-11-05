@@ -64,14 +64,14 @@ class ScriptSystem {
      * @brief Move constructor transferring VM, handles, sleeping fibers, and watched files.
      * @param other Rvalue reference to source ScriptSystem.
      */
-    ScriptSystem(ScriptSystem&& other) noexcept;
+    ScriptSystem(ScriptSystem&& other);
 
     /**
      * @brief Move assignment operator transferring VM, handles, sleeping fibers, and watched files.
      * @param other Rvalue reference to source ScriptSystem.
      * @return Reference to this system.
      */
-    ScriptSystem& operator=(ScriptSystem&& other) noexcept;
+    ScriptSystem& operator=(ScriptSystem&& other);
 
     /**
      * @brief Initializes the ScriptSystem, registers core bindings, and loads built-in modules.
@@ -117,13 +117,16 @@ class ScriptSystem {
      * @brief Forwards `events::CollisionBeginEvent` to the `onCollision(other)` method of both entities' scripts.
      *
      * Only scripts whose `ScriptComponent::hasCollision` is set are called. A contact is skipped for a side when
-     * either entity is already queued for destruction this frame (`Entity.destroy()`), so a script never hits an
-     * entity that another script just destroyed. Script mutations stay deferred through the command buffer.
-     * Calling it again moves the subscription to `bus`.
+     * either entity is dead (killed by an earlier subscriber) or already queued for destruction this frame
+     * (`Entity.destroy()`), so a script never hits an entity that another system or script just destroyed. Script
+     * mutations stay deferred through the command buffer. Calling it again moves the subscription to `bus`.
      *
      * @param bus The EventBus receiving the physics contact events.
      */
     void forwardCollisions(ecs::EventBus& bus);
+
+    /** @brief Unsubscribes the collision forwarding set up by `forwardCollisions`, if any. Safe to call twice. */
+    void stopForwardingCollisions() noexcept;
 
     /**
      * @brief Returns a reference to the embedded WrenVM wrapper.
@@ -195,22 +198,21 @@ class ScriptSystem {
 
   private:
     /**
-     * @brief Calls `signature` (a one-argument method) on the script instance of `target`, passing `arg` as an
-     * `Entity` (or as a number when `core/Entity` is not loaded). Does nothing if the instance or handle is missing.
+     * @brief Calls `signature` (a one-argument method) on the script instance of `target`, passing `arg` wrapped in an
+     * `Entity` (or as the raw number when `core/Entity` is not loaded). Does nothing if the instance or handle is
+     * missing.
      * @param target Entity whose script instance receives the call.
      * @param signature Cached method signature (e.g. "onCollision(_)").
-     * @param arg Entity passed as the argument.
+     * @param arg Numeric argument, kept as a `double` so values that are not entity ids are not truncated.
      */
-    void invokeEntityMethod(ecs::Entity target, std::string const& signature, ecs::Entity arg);
+    void invokeEntityMethod(ecs::Entity target, std::string const& signature, double arg);
 
     /** @brief Whether an entity is queued for destruction by a script this frame. */
     [[nodiscard]] bool isPendingDestroy(ecs::Entity e) const noexcept;
 
-    /** @brief Calls `onCollision(other)` on `target` if it opted in and neither entity is pending destruction. */
+    /** @brief Calls `onCollision(other)` on `target` if it opted in and both entities are alive and not pending
+     * destruction. */
     void forwardCollision(ecs::Entity target, ecs::Entity other);
-
-    /** @brief Unsubscribes the collision forwarding, if any. */
-    void stopForwardingCollisions() noexcept;
 
     /**
      * @brief Registers built-in engine foreign functions and classes with the VM.

@@ -86,7 +86,7 @@ struct PhysicsSystem::Impl {
     std::unordered_map<ecs::Entity, b2Vec2> colliderScales;
     BodySerial nextSerial = 1;
     std::size_t destroyListenerId;
-    std::size_t rigidBodyRemoveListenerId;
+    std::size_t componentRemoveListenerId;
 };
 
 PhysicsSystem::Impl::Impl(ecs::Registry& registry, ecs::EventBus& bus)
@@ -94,9 +94,10 @@ PhysicsSystem::Impl::Impl(ecs::Registry& registry, ecs::EventBus& bus)
       bus(&bus),
       world(b2Vec2_zero),
       destroyListenerId(registry.addDestroyListener([this](ecs::Entity entity) { destroyBody(entity); })),
-      rigidBodyRemoveListenerId(
+      componentRemoveListenerId(
           registry.addComponentRemoveListener([this](ecs::Entity entity, ecs::ComponentTypeId componentType) {
-              if (componentType == ecs::getComponentTypeId<ecs::RigidBody2D>()) {
+              if (componentType == ecs::getComponentTypeId<ecs::RigidBody2D>() ||
+                  componentType == ecs::getComponentTypeId<ecs::Transform>()) {
                   destroyBody(entity);
               }
           })) {
@@ -106,7 +107,7 @@ PhysicsSystem::Impl::Impl(ecs::Registry& registry, ecs::EventBus& bus)
 
 PhysicsSystem::Impl::~Impl() {
     registry->removeDestroyListener(destroyListenerId);
-    registry->removeComponentRemoveListener(rigidBodyRemoveListenerId);
+    registry->removeComponentRemoveListener(componentRemoveListenerId);
     listener.setSuppressed(true);
     world.SetContactListener(nullptr);
 }

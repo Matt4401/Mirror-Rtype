@@ -174,6 +174,23 @@ TEST(PhysicsSystem, RemovingRigidBodyDestroysBody) {
     EXPECT_EQ(physicsSystem.bodyCount(), 0U);
 }
 
+TEST(PhysicsSystem, RemovingTransformDestroysBody) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    systems::PhysicsSystem physicsSystem(registry, bus);
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent<ecs::Transform>(entity, ecs::Transform{});
+    registry.addComponent<ecs::RigidBody2D>(entity, ecs::RigidBody2D{});
+
+    physicsSystem.update(FIXED_DT);
+    ASSERT_EQ(physicsSystem.bodyCount(), 1U);
+
+    // Without its Transform the body is no longer synchronized: it must not stay in the world and keep colliding.
+    registry.removeComponent<ecs::Transform>(entity);
+
+    EXPECT_EQ(physicsSystem.bodyCount(), 0U);
+}
+
 constexpr std::uint16_t SHOT = 0x0001;
 constexpr std::uint16_t TARGET = 0x0002;
 constexpr std::uint16_t OTHER = 0x0004;

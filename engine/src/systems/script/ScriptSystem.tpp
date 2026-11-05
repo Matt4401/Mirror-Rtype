@@ -7,7 +7,6 @@
 #include <string>
 #include <utility>
 
-#include "ecs/Entity.hpp"
 #include "systems/script/ScriptSystem.hpp"
 
 namespace systems {
@@ -23,7 +22,7 @@ void ScriptSystem::registerEventForwarding(ecs::EventBus& bus, std::string const
     bus.subscribe<EventType>(
         [this, signature, extractor = std::forward<ArgExtractor>(extractor)](const EventType& event) {
             auto [targetEntity, argEntity] = extractor(event);
-            invokeEntityMethod(targetEntity, signature, static_cast<ecs::Entity>(argEntity));
+            invokeEntityMethod(targetEntity, signature, static_cast<double>(argEntity));
         });
 }
 

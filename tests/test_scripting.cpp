@@ -968,6 +968,33 @@ TEST(Scripting, CollisionForwardingSkipsPendingDestroy) {
     EXPECT_FALSE(fx.registry.isAlive(victim));
 }
 
+TEST(Scripting, CollisionForwardingSkipsDeadEntities) {
+    CollisionFixture fx;
+    const ecs::Entity survivor = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity victim = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    // A C++ rule handled the contact first and killed the victim: the survivor must not see a dead entity.
+    fx.registry.killEntity(victim);
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = survivor, .entityB = victim});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, survivor, "hits"), 0.0);
+}
+
+TEST(Scripting, StopForwardingCollisionsUnsubscribes) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    fx.scriptSystem.stopForwardingCollisions();
+    fx.scriptSystem.stopForwardingCollisions();  // idempotent, as ScriptPlugin::shutdown then the destructor call it
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, e1, "hits"), 0.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, e2, "hits"), 0.0);
+}
+
 TEST(Scripting, CollisionForwardingStopsWithTheSystem) {
     ecs::Registry registry;
     ecs::EventBus bus;

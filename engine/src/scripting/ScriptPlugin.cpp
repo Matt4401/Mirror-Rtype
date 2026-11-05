@@ -24,6 +24,6 @@ void ScriptPlugin::update(engine::Engine& /*engine*/, const ecs::time::Time& tim
     _scriptSystem.update(time.deltaTime);
 }
 
-void ScriptPlugin::shutdown(engine::Engine& /*engine*/) {}
+void ScriptPlugin::shutdown(engine::Engine& /*engine*/) { _scriptSystem.stopForwardingCollisions(); }
 
 }  // namespace scripting

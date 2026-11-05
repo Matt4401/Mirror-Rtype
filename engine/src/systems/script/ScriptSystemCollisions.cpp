@@ -22,7 +22,7 @@ const std::string ON_COLLISION_SIGNATURE = "onCollision(_)";
 
 }  // namespace
 
-void ScriptSystem::invokeEntityMethod(ecs::Entity target, std::string const& signature, ecs::Entity arg) {
+void ScriptSystem::invokeEntityMethod(ecs::Entity target, std::string const& signature, double arg) {
     auto itInst = _instanceHandles.find(target);
     if (itInst == _instanceHandles.end()) {
         return;
@@ -35,13 +35,13 @@ void ScriptSystem::invokeEntityMethod(ecs::Entity target, std::string const& sig
 
     scripting::detail::UniqueWrenHandle argObj;
     if (_vm.hasVariable("core/Entity", "Entity")) {
-        argObj = _vm.newInstanceWithHandle(_newHandle, "core/Entity", "Entity", static_cast<double>(arg));
+        argObj = _vm.newInstanceWithHandle(_newHandle, "core/Entity", "Entity", arg);
     }
 
     if (argObj) {
         _vm.call(itMethod->second, itInst->second.get(), argObj.get());
     } else {
-        _vm.call(itMethod->second, itInst->second.get(), static_cast<double>(arg));
+        _vm.call(itMethod->second, itInst->second.get(), arg);
     }
 }
 
@@ -54,10 +54,11 @@ void ScriptSystem::forwardCollision(ecs::Entity target, ecs::Entity other) {
         !_registry->getComponents<ecs::ScriptComponent>().get(target).hasCollision) {
         return;
     }
-    if (isPendingDestroy(target) || isPendingDestroy(other)) {
+    if (!_registry->isAlive(target) || !_registry->isAlive(other) || isPendingDestroy(target) ||
+        isPendingDestroy(other)) {
         return;
     }
-    invokeEntityMethod(target, ON_COLLISION_SIGNATURE, other);
+    invokeEntityMethod(target, ON_COLLISION_SIGNATURE, static_cast<double>(other));
 }
 
 void ScriptSystem::forwardCollisions(ecs::EventBus& bus) {

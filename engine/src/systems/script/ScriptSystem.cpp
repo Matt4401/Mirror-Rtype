@@ -27,7 +27,7 @@ ScriptSystem::~ScriptSystem() {
     releaseActiveHandles();
 }
 
-ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
+ScriptSystem::ScriptSystem(ScriptSystem&& other)
     : _registry(other._registry),
       _bus(other._bus),
       _commandBuffer(std::move(other._commandBuffer)),
@@ -54,7 +54,7 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
     }
 }
 
-ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
+ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) {
     if (this != &other) {
         releaseActiveHandles();
         _registry = other._registry;

@@ -46,7 +46,6 @@ void buildClientBullet(ecs::Entity e, ecs::Registry& registry, ::prefabs::Prefab
                                                    .bodyType = ecs::BodyType::Dynamic,
                                                    .velocityX = speed,
                                                    .fixedRotation = true,
-                                                   .bullet = true,
                                                });
     registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
                                                   .halfWidth = 8.0F,

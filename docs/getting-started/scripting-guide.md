@@ -113,8 +113,10 @@ registry.addComponent<ScriptComponent>(entity, ScriptComponent{
 Wren cannot check whether a class defines a method, so the flag is required. Without it, every contact would raise a runtime error for scripts that don't handle collisions.
 
 * `other` is the `Entity` that was hit. `other.destroy()` is deferred through the command buffer and applied at the end of the script update. It is never applied during the collision callback.
+* A contact is skipped for a script when either entity is already dead, for example killed by a C++ rule that handled the same contact first.
 * An entity queued for destruction is ignored until it is actually destroyed. Once the first script destroys `other`, `other`'s own `onCollision` is not called, and neither are its later contacts in the same frame. This means a projectile can't hit twice.
 * Only the start of a contact is forwarded. Subscribe to `events::CollisionEndEvent` in C++ if you need the end.
+* **Known limitation:** a script is instantiated during `ScriptSystem::update`, while physics runs in the fixed update. An entity that is spawned already overlapping another collider can start its contact before its script exists, and that first `onCollision` is lost. It is not replayed later. Spawn such entities away from what they should hit, or handle the case in C++.
 
 ### Example: Reactive Defense Drone with Lifecycle Hooks
 

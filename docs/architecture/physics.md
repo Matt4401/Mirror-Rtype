@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`systems::PhysicsSystem` integrates the ECS with [Box2D](https://box2d.org/). It creates and owns one Box2D body for each entity that has both `ecs::Transform` and `ecs::RigidBody2D`, advances the Box2D world at a fixed rate, and writes the resulting position, rotation, and velocity back to the ECS.
+`systems::PhysicsSystem` integrates the ECS with [Box2D](https://box2d.org/). It creates and owns one Box2D body for each entity that has both `ecs::Transform` and `ecs::RigidBody2D` (removing either one destroys the body), advances the Box2D world at a fixed rate, and writes the resulting position, rotation, and velocity back to the ECS.
 
 The system belongs to `engine/src/systems/physics/`. It is independent of rendering and can therefore run on both the client and the headless server.
 
@@ -127,9 +127,10 @@ Guarantees:
 
 - **Published after the step.** Box2D reports contacts while the world is locked: the system buffers them and publishes once `Step` and the transform write-back are over. Subscribers may kill, spawn, or modify entities. Contacts caused by those changes are published on the next update.
 - **No stale entities.** Each Box2D body has a serial number that is never reused. A contact is dropped if one of its entities was killed by an earlier subscriber, or if its id was recycled for a new entity in the meantime. If a subscriber kills an entity, that entity's other contacts from the same step are dropped.
-- **No end event on destruction.** When a body is destroyed (entity killed, `RigidBody2D` removed), its contacts end silently. To react to that, listen to the registry destruction.
+- **No end event on destruction.** When a body is destroyed (entity killed, `RigidBody2D` or `Transform` removed), its contacts end silently. To react to that, listen to the registry destruction.
 - **No allocation in steady state.** The listener (`systems/physics/detail/Box2DContactListener`, private to the module) records plain structs into a reserved vector (`physics::INITIAL_CONTACT_CAPACITY`). The system swaps it with a second reserved vector before publishing, so neither buffer is reallocated once it reaches its high-water mark. `test_physics` checks that a warmed-up update with contacts makes no heap allocation.
 - **Scripts.** `ScriptPlugin` forwards `CollisionBeginEvent` to `onCollision(other)` on both entities' scripts, if they set `ScriptComponent::hasCollision` (see the [scripting guide](../getting-started/scripting-guide.md)).
+- **Sensors are not swept.** Box2D 2.4 runs continuous collision (`RigidBody2D::bullet`) for solid fixtures only. A sensor is tested for overlap once per step, so a sensor projectile that moves further than the combined width of the two colliders in one step can pass through without a contact. At 60 Hz, a 700 px/s shot moves about 12 px per step. Keep fast projectiles slow enough or their colliders wide enough, or use a solid collider when tunneling matters. `bullet = true` has no effect on a sensor.
 - Removing a `Collider2D`, or changing the transform scale (which rebuilds the fixture), ends the fixture's contacts normally. A scale change can therefore produce an end/begin pair.
 
 ## Creating a Physical Entity
