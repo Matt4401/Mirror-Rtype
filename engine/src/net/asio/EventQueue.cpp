@@ -1,12 +1,12 @@
-#include "EventQueue.hpp"
+#include "net/asio/EventQueue.hpp"
 
 #include <mutex>
 #include <utility>
 #include <vector>
 
-#include "Network/INetworkManager.hpp"
+#include "net/INetworkManager.hpp"
 
-namespace rtype::net::queue {
+namespace ecs::net::detail {
 
 void EventQueue::push(NetworkEvent event) {
     const std::scoped_lock lock(_mutex);
@@ -22,4 +22,4 @@ std::vector<NetworkEvent> EventQueue::popAll() {
     return events;
 }
 
-}  // namespace rtype::net::queue
+}  // namespace ecs::net::detail

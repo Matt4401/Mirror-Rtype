@@ -28,7 +28,8 @@ layout of each packet is specified in the [Protocol RFC](rfc.md) and [Packets](p
 | Message                    | Phase             | Channel            | Transport | Reason                                            |
 |----------------------------|-------------------|--------------------|-----------|---------------------------------------------------|
 | Handshake, version check   | Before game       | Reliable           | TCP       | Must arrive                                       |
-| Session token, `ClientId`  | Connection        | Internal (library) | TCP       | Required to bind the UDP address                  |
+| Transport handshake        | Connection        | Internal (library) | TCP       | Refuses peers of another game (`protocolId`)      |
+| Session token, `PeerId`    | Connection        | Internal (library) | TCP       | Required to bind the UDP address                  |
 | Lobby (rooms, ready state) | Before game       | Reliable           | TCP       | Must arrive in order                              |
 | Game start                 | Before game       | Reliable           | TCP       | Must arrive                                       |
 | UDP open / close           | Game start / over | Internal (library) | TCP       | Starts / stops the server's UDP timeout           |
@@ -58,8 +59,10 @@ sequenceDiagram
     participant S as Server
     Note over C, S: TCP phase — Reliable
     C ->> S: TCP connect
-    Note right of S: assign ClientId, generate token<br/>push Connected
-    S ->> C: [lib] Welcome (ClientId, token)
+    Note right of S: assign PeerId, generate token
+    C ->> S: [lib] Handshake (protocolId)
+    Note right of S: check protocolId<br/>push Connected
+    S ->> C: [lib] Welcome (PeerId, token)
     Note left of C: push Connected
     C ->> S: HELLO (protocol version)
     S ->> C: WELCOME (UDP port, ...)
@@ -69,12 +72,12 @@ sequenceDiagram
     C ->> S: [lib] UdpOpen (TCP)
     Note right of S: udpOpen = true<br/>5 s timeout starts
     loop every 250 ms until the server answers
-        C ->> S: [lib] bind [ClientId][token] (UDP, empty payload)
+        C ->> S: [lib] bind [PeerId][token] (UDP, empty payload)
     end
     Note right of S: validate token<br/>record the client's endpoint
     S ->> C: [lib] keepalive (UDP, empty): acts as an ack
     loop every tick
-        C ->> S: [ClientId][token] PLAYER_INPUT
+        C ->> S: [PeerId][token] PLAYER_INPUT
         S ->> C: WORLD_STATE
     end
     Note over C, S: TCP phase — Reliable
@@ -87,17 +90,22 @@ sequenceDiagram
 ### Binding TCP and UDP to one player
 
 This is done entirely by the network library. The game only sees `Connected`, `Data` and `Disconnected` events, all
-carrying the same `ClientId` for one player.
+carrying the same `PeerId` for one player.
 
-1. A TCP connection is accepted. The server assigns a `ClientId`, generates a random session token
-   (`std::random_device`, 32 bits), pushes `Connected`, and sends an internal `Welcome (ClientId, token)` frame.
+1. A TCP connection is accepted. The server assigns a `PeerId` and generates a random session token
+   (`std::random_device`, 32 bits), but does not announce the peer yet. The client library sends an internal
+   `Handshake (protocolId)` frame as soon as TCP is connected.
+2. The server compares `protocolId` with its own `NetworkConfig::protocolId`. If it differs, if the first frame is not a
+   `Handshake`, or if no `Handshake` arrives within `handshakeTimeout` (5 s), the connection is closed and the game
+   never
+   hears about it. Otherwise the server pushes `Connected` and sends an internal `Welcome (PeerId, token)` frame.
    When the client library receives `Welcome`, it pushes `Connected`: from then on `openUdp()` can be called.
-2. When the game calls `openUdp(port)`, the client library sends an internal `UdpOpen` frame over TCP, then an empty
+3. When the game calls `openUdp(port)`, the client library sends an internal `UdpOpen` frame over TCP, then an empty
    **bind** datagram, resent every 250 ms until it receives anything from the server.
-3. Every datagram from the client starts with `[ClientId][token]`. The server accepts it only if the client exists, the
+4. Every datagram from the client starts with `[PeerId][token]`. The server accepts it only if the client exists, the
    token matches, and UDP is open for this client. It then records the datagram's source endpoint. The first time, it
    answers with an empty datagram, which stops the client's resends.
-4. When the game calls `closeUdp()`, the client library sends an internal `UdpClose` frame over TCP and closes UDP.
+5. When the game calls `closeUdp()`, the client library sends an internal `UdpClose` frame over TCP and closes UDP.
 
 Afterwards:
 
@@ -118,6 +126,7 @@ Afterwards:
 | Server shutdown             | `asio::signal_set` (SIGINT / SIGTERM)                                  | Clients notified over TCP, sockets closed      |
 | Server unreachable          | No UDP packet from the server for 5 s while UDP is open, or TCP closed | Client-side `Disconnected` event               |
 | Server full                 | More than 64 clients: the server closes the new connection             | Client-side `Disconnected` without `Connected` |
+| Other game                  | `Handshake` with another `protocolId`                                  | Client-side `Disconnected` without `Connected` |
 | Peer not reading TCP        | More than 1 MiB waiting in its write queue                             | Session closed, `Disconnected` event           |
 
 While UDP is open, each side's library sends an empty **keepalive** datagram when it has sent nothing for 1 s. Silence
@@ -131,7 +140,7 @@ depend on how often the game sends. In the lobby (UDP closed), only TCP closing 
 | Transport            | Message boundaries                     | Framing added by the library                                    |
 |----------------------|----------------------------------------|-----------------------------------------------------------------|
 | TCP                  | Not preserved (byte stream)            | `[length u32][kind u8][payload]`, the length counts the payload |
-| UDP, client → server | Preserved (one datagram = one message) | `[ClientId u32][token u32][payload]`                            |
+| UDP, client → server | Preserved (one datagram = one message) | `[PeerId u32][token u32][payload]`                              |
 | UDP, server → client | Preserved (one datagram = one message) | None: `[payload]`                                               |
 
 All integers added by the library are **little-endian**. The payload is the game's message, one serialized protobuf
@@ -139,12 +148,16 @@ All integers added by the library are **little-endian**. The payload is the game
 
 TCP `kind` values:
 
-| `kind`         | Direction       | Payload                          |
-|----------------|-----------------|----------------------------------|
-| `0` `Data`     | both            | Game message, handed to the game |
-| `1` `Welcome`  | server → client | `[ClientId u32][token u32]`      |
-| `2` `UdpOpen`  | client → server | Empty                            |
-| `3` `UdpClose` | client → server | Empty                            |
+| `kind`          | Direction       | Payload                                              |
+|-----------------|-----------------|------------------------------------------------------|
+| `0` `Data`      | both            | Game message, handed to the game                     |
+| `1` `Welcome`   | server → client | `[PeerId u32][token u32]`                            |
+| `2` `UdpOpen`   | client → server | Empty                                                |
+| `3` `UdpClose`  | client → server | Empty                                                |
+| `4` `Handshake` | client → server | `[protocolId u32]`, MUST be the client's first frame |
+
+`protocolId` identifies the game, not its version: R-Type uses `0x50595452` (the bytes `RTYP` on the wire,
+`protocol::TRANSPORT_PROTOCOL_ID`). Version negotiation stays in the game's own `Hello` / `Welcome` messages.
 
 Rules enforced by the library:
 
@@ -152,12 +165,16 @@ Rules enforced by the library:
   library header, so the game payload is limited to **1192 bytes** in both directions. `send()` refuses larger payloads.
 - An **empty** UDP payload is a keepalive: it is never handed to the game, and `send()` refuses empty unreliable
   payloads.
-- A client datagram shorter than 8 bytes, longer than 1200 bytes, with an unknown `ClientId`, a wrong token, or received
+- A client datagram shorter than 8 bytes, longer than 1200 bytes, with an unknown `PeerId`, a wrong token, or received
   while UDP is closed for this client is dropped.
 - `send()` refuses a TCP payload larger than 64 KiB. A received frame announcing more than 64 KiB, or a `kind` not
   allowed in its direction, closes the session.
 - More than 1 MiB waiting to be written to one peer closes its session: the peer is not reading anymore.
 - The server accepts at most 64 simultaneous connections; any other one is closed right away.
+- A connection whose first frame is not a valid `Handshake` with the server's `protocolId`, or that sends none within
+  5 s, is closed without the game being told.
+- The numbers above (64 connections, 64 KiB, 1 MiB, 250 ms, 1 s, 5 s) are `NetworkConfig` defaults: a game may change
+  them. The 1200-byte datagram limit is fixed.
 - Only **valid** datagrams update a client's `lastSeen`.
 
 Rules enforced by the game protocol layer:

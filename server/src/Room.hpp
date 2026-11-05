@@ -2,53 +2,44 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <ranges>
 #include <unordered_map>
-#include <vector>
 
-#include "Network/INetworkManager.hpp"
+#include "components/InputBuffer.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
-#include "input/ActionId.hpp"
+#include "net/INetworkManager.hpp"
 
 namespace rtype::server {
 
 /** @brief Maximum number of inputs queued per player; when exceeded, the oldest one is dropped. */
-inline constexpr std::size_t MAX_PENDING_INPUTS = 8;
+inline constexpr std::size_t MAX_PENDING_INPUTS = ecs::DEFAULT_MAX_PENDING_INPUTS;
 
-using net::ClientId;
+/** @brief Network id of a player: the transport's peer id. */
+using ClientId = ecs::net::PeerId;
 
-/** @brief Value of one axis action during an input. */
-struct AxisInput {
-    /** @brief Axis action, e.g. `input::makeActionId("move_x")`. */
-    input::ActionId action = 0;
-    /** @brief Value of the axis, in [-1, 1]. */
-    float value = 0.0F;
-};
+/** @brief Value of one axis action during an input: the engine's generic network axis. */
+using AxisInput = ecs::NetAxis;
 
 /**
  * @brief Decoded input of one player.
  *
  * Converted from `protocol::PlayerInput` by the `ServerManager`, so that the room does not depend on the protocol.
+ * It is the engine's generic network input, stored in the `ecs::InputBuffer` of the player's entity.
  */
-struct PlayerInput {
-    /** @brief Increases with every input sent by the client; used to drop late inputs and for reconciliation. */
-    std::uint32_t sequence = 0;
-    /** @brief Button actions held during this input, e.g. `input::makeActionId("shoot")`. */
-    std::vector<input::ActionId> held;
-    /** @brief Axis actions whose value is not 0 during this input. */
-    std::vector<AxisInput> axes;
-};
+using PlayerInput = ecs::NetInput;
 
 /**
  * @brief One game: its own ECS world and its players.
  *
  * Each room owns its `ecs::Registry` and `ecs::EventBus`, so games are isolated from each other: the systems of a
  * room never see the entities of another one.
+ *
+ * The network state of a player lives in the ECS: its entity carries `ecs::NetworkOwner`, `ecs::NetworkId` and
+ * `ecs::InputBuffer`, and the `ecs::net::NetworkEntityMap` resource maps network ids to entities.
  *
  * A room knows neither the network nor the protocol: it receives decoded inputs and exposes its state, and the
  * `ServerManager` encodes and sends it. It can be tested without any socket.
@@ -139,21 +130,11 @@ class Room {
     [[nodiscard]] const ecs::Registry& registry() const { return _registry; }
 
   private:
-    /** @brief Per-player data that is not part of the ECS world. */
-    struct Player {
-        /** @brief Entity controlled by the player. */
-        ecs::Entity entity = 0;
-        /** @brief Inputs not applied yet, sorted by sequence (oldest first). */
-        std::deque<PlayerInput> pendingInputs;
-        /** @brief Sequence number of the last applied input. */
-        std::uint32_t lastProcessedInput = 0;
-    };
-
     /**
      * @brief One fixed simulation step: applies one pending input per player, then the systems.
      * @param registry ECS world of the room; holds the `ecs::time::Time` resource of this step.
      */
-    void step(ecs::Registry& registry);
+    static void step(ecs::Registry& registry);
 
     /** @brief Maximum number of players. */
     std::uint8_t _maxPlayers;
@@ -167,8 +148,8 @@ class Room {
     ecs::Registry _registry;
     /** @brief Event bus of this game, shared by its systems (and the ScriptSystem, once added). */
     ecs::EventBus _events;
-    /** @brief Players of the room, by network id. */
-    std::unordered_map<ClientId, Player> _players;
+    /** @brief Entity controlled by each player of the room; its network state is in its components. */
+    std::unordered_map<ClientId, ecs::Entity> _players;
 };
 
 }  // namespace rtype::server

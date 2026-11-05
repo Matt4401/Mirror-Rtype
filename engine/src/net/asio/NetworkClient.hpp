@@ -14,17 +14,21 @@
 #include <thread>
 #include <vector>
 
-#include "EventQueue.hpp"
-#include "Network/INetworkClient.hpp"
-#include "Network/INetworkManager.hpp"
-#include "Wire.hpp"
-#include "session/TcpSession.hpp"
+#include "net/INetworkClient.hpp"
+#include "net/INetworkManager.hpp"
+#include "net/NetworkConfig.hpp"
+#include "net/asio/EventQueue.hpp"
+#include "net/asio/TcpSession.hpp"
+#include "net/asio/Wire.hpp"
 
-namespace rtype::net::client {
+namespace ecs::net::detail {
 
+/** @brief Asio implementation of `INetworkClient`: one network thread, one TCP connection, optional UDP. */
 class NetworkClient : public INetworkClient {
   public:
-    explicit NetworkClient();
+    /** @brief Creates a disconnected client. @param config Valid transport settings. */
+    explicit NetworkClient(const NetworkConfig& config);
+    /** @brief Disconnects and joins the network thread. */
     ~NetworkClient() override;
     NetworkClient(const NetworkClient&) = delete;
     NetworkClient& operator=(const NetworkClient&) = delete;
@@ -48,15 +52,17 @@ class NetworkClient : public INetworkClient {
     void onUdpTick();
     void closeUdpNow();
 
+    NetworkConfig _config;
+
     asio::io_context _io;
     asio::executor_work_guard<asio::io_context::executor_type> _work;
     std::thread _thread;
     std::atomic<State> _state{State::Idle};
 
-    std::shared_ptr<session::TcpSession> _tcp;
+    std::shared_ptr<TcpSession> _tcp;
     asio::ip::address _serverAddress;
     bool _welcomed = false;
-    ClientId _clientId = 0;
+    PeerId _peerId = 0;
     std::uint32_t _token = 0;
 
     asio::ip::udp::socket _udpSocket;
@@ -68,7 +74,7 @@ class NetworkClient : public INetworkClient {
     std::chrono::steady_clock::time_point _lastUdpReceived;
     bool _udpBound = false;
 
-    queue::EventQueue _events;
+    EventQueue _events;
 };
 
-}  // namespace rtype::net::client
+}  // namespace ecs::net::detail

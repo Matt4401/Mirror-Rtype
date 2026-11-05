@@ -3,7 +3,8 @@
 The client and the server, layer by layer, and what travels between them.
 
 !!! note "Status"
-The `network/` library, the `shared/` interfaces and the ECS core of `engine/` (registry, clock) exist.
+The engine transport (`engine_network` interfaces, `engine_network_asio` implementation) and the ECS core of `engine/`
+(registry, clock) exist.
 `ServerManager` and `Room` exist as a skeleton. The protocol (`common/`: `rtype.proto` and its codec) exists and the
 server decodes inputs and sends snapshots; the lobby and the gameplay systems describe the planned design.
 
@@ -13,7 +14,7 @@ server decodes inputs and sends snapshots; the lobby and the gameplay systems de
 |-----------------|----------------------|----------------------------------------------|
 | Game            | `client/`, `server/` | game logic, rendering, lobby, game sessions  |
 | Protocol        | `common/`            | Protobuf: messages ↔ bytes                   |
-| Network library | `network/` (Asio)    | byte transport, TCP + UDP                    |
+| Network library | `engine/src/net/`    | byte transport, TCP + UDP (Asio in `asio/`)  |
 | Shared engine   | `engine/`            | ECS, `applyInput()`, identical on both sides |
 
 ---
@@ -63,35 +64,31 @@ flowchart LR
     end
 
     K --> B --> P -->|updates| W -->|read by| R
-    B -->|"InputState + seq"| CP
-    CP -->|"WorldState → reconciliation"| W
+    B -->|" InputState + seq "| CP
+    CP -->|" WorldState → reconciliation "| W
     CP -->|bytes| CI
-    CI -->|"asio::post"| CT
-    CQ -->|"poll()"| CI
-
-    SQ -->|"poll()"| SI
+    CI -->|" asio::post "| CT
+    CQ -->|" poll() "| CI
+    SQ -->|" poll() "| SI
     SI -->|events| SP -->|decoded messages| SH
-    SH -->|"lobby · chat"| L
+    SH -->|" lobby · chat "| L
     SH -->|input| RM
-    L -->|"creates"| RM
-    RM -->|"snapshot (tick, lastProcessedSeq)"| SP
+    L -->|" creates "| RM
+    RM -->|" snapshot (tick, lastProcessedSeq) "| SP
     SP -->|bytes| SI
-    SI -->|"asio::post"| ST
-
-    CT <==>|"TCP :4242 · Welcome, lobby, chat, UdpOpen/Close"| ST
-    CU ==>|"UDP · input every tick"| SU
-    SU ==>|"UDP · world state every tick"| CU
-
-    P -.-|"same applyInput · engine/"| RM
-    CP -.-|"same .proto · common/"| SP
-
-    classDef game fill:#ffffff,stroke:#8d99a8,color:#18212c
-    classDef proto fill:#fff2df,stroke:#b0640a,color:#18212c
-    classDef net fill:#e2f4f1,stroke:#0d7a70,color:#18212c
-    classDef eng fill:#efeafd,stroke:#6a4cc0,color:#18212c
-    class K,B,W,R,SH,L,RM game
-    class CP,SP proto
-    class CI,CQ,CT,CU,CTM,SI,ST,SU,SQ,SC net
+    SI -->|" asio::post "| ST
+    CT <==>|" TCP :4242 · Welcome, lobby, chat, UdpOpen/Close "| ST
+    CU ==>|" UDP · input every tick "| SU
+    SU ==>|" UDP · world state every tick "| CU
+    P -.-|" same applyInput · engine/ "| RM
+    CP -.-|" same .proto · common/ "| SP
+    classDef game fill: #ffffff, stroke: #8d99a8, color: #18212c
+    classDef proto fill: #fff2df, stroke: #b0640a, color: #18212c
+    classDef net fill: #e2f4f1, stroke: #0d7a70, color: #18212c
+    classDef eng fill: #efeafd, stroke: #6a4cc0, color: #18212c
+    class K, B, W, R, SH, L, RM game
+    class CP, SP proto
+    class CI, CQ, CT, CU, CTM, SI, ST, SU, SQ, SC net
     class P eng
 ```
 
@@ -151,19 +148,20 @@ All library integers are **little-endian**.
  \__ library (5 bytes) __/ \__________________ game ______________/
 ```
 
-| `kind`       | Direction | Meaning                                   |
-|--------------|-----------|-------------------------------------------|
-| `0` Data     | both      | payload handed to the game                |
-| `1` Welcome  | S → C     | `[ClientId u32][token u32]`               |
-| `2` UdpOpen  | C → S     | the client opened UDP, the timeout starts |
-| `3` UdpClose | C → S     | the client closed UDP, no more timeout    |
-| other        | —         | protocol violation: the session is closed |
+| `kind`        | Direction | Meaning                                   |
+|---------------|-----------|-------------------------------------------|
+| `0` Data      | both      | payload handed to the game                |
+| `1` Welcome   | S → C     | `[PeerId u32][token u32]`                 |
+| `2` UdpOpen   | C → S     | the client opened UDP, the timeout starts |
+| `3` UdpClose  | C → S     | the client closed UDP, no more timeout    |
+| `4` Handshake | C → S     | `[protocolId u32]`, first frame           |
+| other         | —         | protocol violation: the session is closed |
 
 ### UDP client → server
 
 ```
 +--------------+--------------+------------------------------------+
-| ClientId     | token        | Protobuf payload                   |
+| PeerId       | token        | Protobuf payload                   |
 | u32          | u32          | 1 to 1192 bytes (empty = keepalive)|
 +--------------+--------------+------------------------------------+
  \______ library (8 bytes) __/ \______________ game _______________/
@@ -195,17 +193,17 @@ sequenceDiagram
     participant SL as Server · library
     participant SJ as Server · Room
     Note over CJ: readInput → InputState
-    CJ->>CJ: applyInput (prediction), keeps seq 42 pending
-    CJ->>CL: send(encodeInput 42, Unreliable)
-    CL->>SL: UDP [id][token][Input 42]
-    SL->>SL: token OK and udpOpen, lastSeen = now
-    SL-->>SJ: poll → Data(id, bytes)
-    SJ->>SJ: decode, onInput: pendingInput, lastReceived = 42
+    CJ ->> CJ: applyInput (prediction), keeps seq 42 pending
+    CJ ->> CL: send(encodeInput 42, Unreliable)
+    CL ->> SL: UDP [id][token][Input 42]
+    SL ->> SL: token OK and udpOpen, lastSeen = now
+    SL -->> SJ: poll → Data(id, bytes)
+    SJ ->> SJ: decode, onInput: pendingInput, lastReceived = 42
     Note over SJ: next tick: update() applies the input + systems
-    SJ->>SL: send(WorldState: tick, lastProcessed = 42, entities)
-    SL->>CL: UDP [WorldState]
-    CL-->>CJ: poll → Data
-    CJ->>CJ: position = server's, drop seq ≤ 42, replay 43, 44…
+    SJ ->> SL: send(WorldState: tick, lastProcessed = 42, entities)
+    SL ->> CL: UDP [WorldState]
+    CL -->> CJ: poll → Data
+    CJ ->> CJ: position = server's, drop seq ≤ 42, replay 43, 44…
 ```
 
 The server never answers "yes" or "no" to an input. The answer is the `lastProcessed` field in the world state: the
@@ -219,32 +217,33 @@ client snaps to the server's position and replays the inputs the server has not 
 sequenceDiagram
     participant C as Client
     participant S as Server
-    C->>S: TCP connect
-    S->>C: Welcome [ClientId, token] (library)
-    Note over C,S: Connected event on both sides
-    C->>S: lobby messages (Data, TCP)
-    S->>C: GAME_START (Data, TCP)
-    C->>S: UdpOpen (library, TCP): the 5 s timeout starts
+    C ->> S: TCP connect
+    C ->> S: Handshake [protocolId] (library)
+    S ->> C: Welcome [PeerId, token] (library)
+    Note over C, S: Connected event on both sides
+    C ->> S: lobby messages (Data, TCP)
+    S ->> C: GAME_START (Data, TCP)
+    C ->> S: UdpOpen (library, TCP): the 5 s timeout starts
     loop every 250 ms until something is received from the server
-        C->>S: empty UDP datagram [id][token]
+        C ->> S: empty UDP datagram [id][token]
     end
     loop every tick
-        C->>S: UDP input
-        S->>C: UDP world state
+        C ->> S: UDP input
+        S ->> C: UDP world state
     end
-    Note over C,S: 1 s of silence → empty keepalive · 5 s → disconnection
-    S->>C: GAME_OVER (Data, TCP)
-    C->>S: UdpClose (library, TCP): no more timeout, late datagrams dropped
-    Note over C,S: back to the lobby over TCP
-    C->>S: TCP close
-    Note over C,S: Disconnected event
+    Note over C, S: 1 s of silence → empty keepalive · 5 s → disconnection
+    S ->> C: GAME_OVER (Data, TCP)
+    C ->> S: UdpClose (library, TCP): no more timeout, late datagrams dropped
+    Note over C, S: back to the lobby over TCP
+    C ->> S: TCP close
+    Note over C, S: Disconnected event
 ```
 
-Everything marked "library" is handled by `network/` alone. The game only sees `Connected`, `Data` and
+Everything marked "library" is handled by the engine transport alone. The game only sees `Connected`, `Data` and
 `Disconnected`.
 
-A `Disconnected` can arrive **without** a `Connected` if the connection fails before `Welcome` (server full, network
-loss).
+On the client, a `Disconnected` can arrive **without** a `Connected` if the connection fails before `Welcome` (server
+full, other `protocolId`, network loss). The server only announces a peer once its handshake is accepted.
 
 ---
 
@@ -254,29 +253,29 @@ loss).
 flowchart LR
     CLIENT["r-type_client"] --> ENGINE
     CLIENT --> COMMON
-    CLIENT --> SHARED
+    CLIENT --> IFACE
     CLIENT --> RAY["raylib"]
     SERVER["r-type_server"] --> ENGINE
     SERVER --> COMMON
-    SERVER --> SHARED
+    SERVER --> IFACE
     CLIENT -.->|links| NET
     SERVER -.->|links| NET
-    NET["network/ · static library"] --> SHARED["shared/ · INetwork*"]
+    NET["engine_network_asio · static library"] --> IFACE["engine_network · INetwork*, NetworkConfig"]
     NET --> ASIO["asio"]
     COMMON["common/ · .proto + codec"] --> PB["protobuf"]
     ENGINE["engine/ · ECS, applyInput"]
 ```
 
-The executables only include the `shared/` interfaces. `network/` is only linked, so no Asio type ever reaches game
-code.
+The executables only include the `engine_network` interfaces. `engine_network_asio` is only linked, so no Asio type ever
+reaches game code.
 
 ---
 
 ## Boundaries not to cross
 
-| Rule                                        | Why                                                                                         |
-|---------------------------------------------|---------------------------------------------------------------------------------------------|
-| **`network/` never reads game data**        | It adds and strips its own bytes (length, kind, id, token) and never depends on `common/`.  |
-| **`common/` knows nothing about Asio**      | The protocol turns messages into bytes and back. It does not know how they travel.          |
-| **`engine/` knows neither raylib nor Asio** | The server runs without a screen, and `applyInput` must give the same result on both sides. |
-| **Only one thread touches the sockets**     | The game goes through `asio::post` and `poll()`. No mutex in game code.                     |
+| Rule                                              | Why                                                                                        |
+|---------------------------------------------------|--------------------------------------------------------------------------------------------|
+| **The transport never reads game data**           | It adds and strips its own bytes (length, kind, id, token) and never depends on `common/`. |
+| **`common/` knows nothing about Asio**            | The protocol turns messages into bytes and back. It does not know how they travel.         |
+| **Engine headers expose neither raylib nor Asio** | Both stay in their module's `.cpp` / private headers (`net/asio/`, `render/`).             |
+| **Only one thread touches the sockets**           | The game goes through `asio::post` and `poll()`. No mutex in game code.                    |

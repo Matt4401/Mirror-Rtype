@@ -21,10 +21,8 @@ option("tests", {default = false, showmenu = true, description = "Build tests"})
 includes("xmake/common.lua")
 
 includes("log/*/xmake.lua")
-includes("shared/*/xmake.lua")
 includes("common/xmake.lua")
 includes("engine/*/xmake.lua")
-includes("network/*/xmake.lua")
 includes("server/*/xmake.lua")
 if has_config("graphics") then
     includes("client/*/xmake.lua")

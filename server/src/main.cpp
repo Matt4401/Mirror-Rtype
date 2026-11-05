@@ -12,9 +12,10 @@
 #include <span>
 
 #include "Logger.hpp"
-#include "Network/NetworkFactory.hpp"
 #include "ServerManager.hpp"
+#include "net/NetworkFactory.hpp"
 #include "parsing/Parsing.hpp"
+#include "protocol/Messages.hpp"
 
 namespace {
 constexpr int EXIT_ERROR = 84;
@@ -40,7 +41,7 @@ int main(int ac, char** av) {
     rtype::log::setVerbose(options->logs);
     rtype::log::setColored(options->colors);
 
-    rtype::server::ServerManager server(rtype::net::createServer());
+    rtype::server::ServerManager server(ecs::net::createServer({.protocolId = rtype::protocol::TRANSPORT_PROTOCOL_ID}));
 
     g_server = &server;
     std::signal(SIGINT, onSignal);

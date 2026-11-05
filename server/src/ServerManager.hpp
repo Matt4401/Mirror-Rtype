@@ -8,9 +8,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
-#include "Network/INetworkManager.hpp"
-#include "Network/INetworkServer.hpp"
 #include "Room.hpp"
+#include "net/INetworkManager.hpp"
+#include "net/INetworkServer.hpp"
 #include "protocol/Messages.hpp"
 
 namespace rtype::server {
@@ -46,12 +46,12 @@ class ServerManager {
     /**
      * @brief Creates the server around a network implementation.
      *
-     * The network is injected: `main()` passes `net::createServer()`, a test can pass a mock.
+     * The network is injected: `main()` passes `ecs::net::createServer()`, a test can pass a mock.
      *
      * @param network Network server, owned by the ServerManager.
      * @param handshakeTimeout Time a connected client has to send its `Hello` before being kicked.
      */
-    explicit ServerManager(std::unique_ptr<net::server::INetworkServer> network,
+    explicit ServerManager(std::unique_ptr<ecs::net::INetworkServer> network,
                            std::chrono::milliseconds handshakeTimeout = HANDSHAKE_TIMEOUT);
     /** @brief Default destructor. */
     ~ServerManager() = default;
@@ -88,7 +88,7 @@ class ServerManager {
     /** @brief A client is gone. Can arrive without `onConnected()` (connection lost before being ready). */
     void onDisconnected(ClientId client);
     /** @brief A game message: decodes it and routes it; invalid payloads are dropped. */
-    void onData(ClientId client, net::Channel channel, const net::Bytes& data);
+    void onData(ClientId client, ecs::net::Channel channel, const ecs::net::Bytes& data);
     /** @brief A message received over TCP: handshake, lobby, chat, leave. */
     void onReliableMessage(ClientId client, const protocol::Message& message);
     /** @brief A message received over UDP: only inputs, from a client in a room. */
@@ -96,7 +96,7 @@ class ServerManager {
     /** @brief Kicks the connected clients that did not send their `Hello` within the handshake timeout. */
     void expireHandshakes();
     /** @brief Encodes a message and sends it to one client. */
-    void send(ClientId client, const protocol::Message& message, net::Channel channel) const;
+    void send(ClientId client, const protocol::Message& message, ecs::net::Channel channel) const;
 
     /** @brief Lets each room run the steps due on its own clock, and sends a snapshot for each room that stepped. */
     void advanceRooms();
@@ -114,7 +114,7 @@ class ServerManager {
     [[nodiscard]] std::optional<RoomId> roomOf(ClientId client) const;
 
     /** @brief Network server, polled and sent to on the game thread only. */
-    std::unique_ptr<net::server::INetworkServer> _network;
+    std::unique_ptr<ecs::net::INetworkServer> _network;
     /** @brief Port the server listens on (TCP and UDP), sent to clients in `Welcome`. */
     std::uint16_t _port = 0;
     /**
