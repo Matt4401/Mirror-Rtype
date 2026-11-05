@@ -29,7 +29,7 @@ target("engine_scripting")
     set_kind("static")
     add_files("scripting/**.cpp", "systems/script/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core", "engine_events", "engine_input")
+    add_deps("engine_core", "engine_events", "engine_input", "engine_prefabs")
     add_packages("wren", {public = true})
 
 -- Network interfaces (transport, config) and replication building blocks (input queue, network id map).

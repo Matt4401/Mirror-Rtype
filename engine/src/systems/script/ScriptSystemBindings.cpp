@@ -4,6 +4,7 @@
  */
 
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -12,6 +13,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "input/InputState.hpp"
+#include "prefabs/PrefabManager.hpp"
 #include "scripting/CoreModules.hpp"
 #include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
@@ -54,13 +56,12 @@ void engineSpawnPrefab(scripting::ForeignCall& call) {
         return;
     }
 
-    std::string const name(*prefabName);
-    double const posX = *x;
-    double const posY = *y;
-    scriptSystem->getCommandBuffer().deferSpawn(
-        [name, posX, posY]([[maybe_unused]] ecs::Entity e, [[maybe_unused]] ecs::Registry& reg) {
-            // Placeholder prefab spawner
-        });
+    auto const* manager = scriptSystem->getPrefabManager();
+    if (manager == nullptr) {
+        std::cerr << "[ScriptSystem] Engine.spawnPrefab(\"" << *prefabName << "\"): no PrefabManager set\n";
+        return;
+    }
+    (void)manager->spawn(*prefabName, scriptSystem->getCommandBuffer(), {{"x", *x}, {"y", *y}});
 }
 
 /**
