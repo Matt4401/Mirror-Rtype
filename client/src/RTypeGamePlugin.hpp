@@ -5,20 +5,22 @@
 
 #pragma once
 
+#include <optional>
 #include <string_view>
 
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/CommandBuffer.hpp"
+#include "events/EventBus.hpp"
+#include "net/ReplicationEvents.hpp"
 
 namespace client {
 
 /**
- * @brief Concrete game plugin for R-Type client demonstration.
+ * @brief What the R-Type client shows: textures, input bindings, starfield and the sprites of replicated entities.
  *
- * Loads textures, builds the demo scene (animated ship, bydos, parallax starfield),
- * and drives player movement, shooting, and bullet cleanup each frame.
+ * The game itself runs on the server: ships come from its snapshots through `RTypeNetworkPlugin`.
  */
 class RTypeGamePlugin final : public engine::IPlugin {
   public:
@@ -53,13 +55,13 @@ class RTypeGamePlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Loads textures, configures action bindings, and spawns the initial demo scene.
+     * @brief Loads textures, configures action bindings, and spawns the starfield, the camera and the local input.
      * @param engine Reference to host Engine.
      */
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Fixed simulation update: moves player and bullets, kills off-screen bullets.
+     * @brief Fixed simulation update: kills off-screen bullets.
      * @param engine Reference to host Engine.
      * @param time Fixed simulation timing information.
      */
@@ -72,7 +74,22 @@ class RTypeGamePlugin final : public engine::IPlugin {
      */
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
+    /**
+     * @brief Unsubscribes from the replication events.
+     * @param engine Reference to host Engine.
+     */
+    void shutdown(engine::Engine& engine) override;
+
   private:
+    /**
+     * @brief Gives a new replicated entity the sprite of its kind; a kind this client does not know stays invisible.
+     * @param engine Reference to host Engine.
+     * @param event The new entity.
+     */
+    void onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const;
+
+    /** @brief Subscription to `ReplicatedEntitySpawned`, while initialized. */
+    std::optional<ecs::EventBus::EventToken> _spawned;
     /** @brief Texture identifier for the player ship spritesheet. */
     ecs::TextureId _shipTexId = ecs::NO_TEXTURE;
     /** @brief Texture identifier for the Bydos enemy spritesheet. */

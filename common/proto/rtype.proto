@@ -22,7 +22,7 @@ message Hello {
     uint32 version = 1;
 }
 
-// S -> C, reliable. Answer to Hello: the client then opens UDP on this port.
+// S -> C, reliable. Answer to Hello: the UDP port the client opens when the game starts (GameStart).
 message Welcome {
     uint32 udp_port = 1;  // 1-65535
 }
