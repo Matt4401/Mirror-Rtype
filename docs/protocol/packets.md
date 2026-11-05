@@ -128,7 +128,8 @@ No field. Asks for a `LobbyList`.
 
 **Direction:** Server → Client · **Channel:** Reliable · **Phase:** Lobby
 
-Answer to `LobbyListRequest`, also pushed whenever a room is created, changed or destroyed.
+Answer to `LobbyListRequest`, also pushed to every client in the lobby phase whenever a room is created, destroyed, or
+changes its number of players or its state.
 
 | Field   | # | Type                 | Description                     |
 |---------|---|----------------------|---------------------------------|
@@ -147,7 +148,8 @@ Answer to `LobbyListRequest`, also pushed whenever a room is created, changed or
 
 **Direction:** Client → Server · **Channel:** Reliable · **Phase:** Lobby
 
-No field. Creates a room and joins it; the server then broadcasts an updated `LobbyList`.
+No field. Creates a room and joins it; the server then sends a `LobbyUpdate` and broadcasts an updated `LobbyList`.
+Ignored if the client is already in a room, or if the server already has 256 rooms (`MAX_ROOMS`).
 
 ### `LobbyJoin` (35)
 
@@ -157,7 +159,7 @@ No field. Creates a room and joins it; the server then broadcasts an updated `Lo
 |-----------|---|----------|--------------|
 | `room_id` | 1 | `uint32` | Room to join |
 
-Ignored if the room is full or already in game.
+Ignored if the client is already in a room, or if the room is unknown, full or already in game.
 
 ### `LobbyReady` (36)
 
@@ -167,7 +169,8 @@ Ignored if the room is full or already in game.
 |---------|---|--------|----------------------------|
 | `ready` | 1 | `bool` | `true` when ready to start |
 
-The server starts the game when every player of the room is ready.
+Ignored if the client is not in a room. The server starts the game when every player of the room is ready, which can
+also happen when the last player who was not ready leaves.
 
 ### `LobbyUpdate` (37)
 
@@ -203,7 +206,8 @@ Only occupied slots are sent: the number of players is `slots` size.
 | `player_index` | 2 | `uint32` | Ship controlled by this client, in `[0, player_count)` |
 | `player_count` | 3 | `uint32` | Number of players in the game (1–4)                    |
 
-The client then opens UDP and switches to the in-game phase. `player_index` is stable for the whole game.
+The client then opens UDP and switches to the in-game phase. `player_index` is the position of the player in join
+order among those present at the start, and is stable for the whole game: it does not change when another player leaves.
 
 ### `GameOver` (49)
 
@@ -363,9 +367,11 @@ game, after decoding. The server currently enforces:
 - before a successful `Hello`, every other message (reliable or unreliable) is dropped;
 - a second `Hello` from the same client is dropped (no second `Welcome`);
 - a client that sends no valid `Hello` within 5 seconds of connecting is kicked;
-- over UDP, only `PlayerInput` is accepted, and only from a client in a room.
+- over UDP, only `PlayerInput` is accepted, and only from a client in a room that has started;
+- during a game, lobby messages (`LobbyListRequest`, `LobbyCreate`, `LobbyJoin`, `LobbyReady`) are dropped;
+- `LobbyCreate` and `LobbyJoin` are dropped from a client already in a room, and `LobbyReady` from a client in none.
 
-Lobby and in-game phase checks come with the lobby implementation.
+`Chat` is not implemented yet: the server drops it.
 
 ---
 

@@ -7,7 +7,6 @@
 #include <exception>
 #include <memory>
 #include <mutex>
-#include <ranges>
 #include <thread>
 #include <utility>
 
@@ -69,25 +68,23 @@ Room::~Room() {
 }
 
 bool Room::addPlayer(const ClientId player) {
-    if (_playing || isFull() || _players.contains(player)) {
+    if (_playing || isFull() || std::ranges::contains(_players, player, &RoomPlayer::client)) {
         return false;
     }
     ecs::Registry& registry = _engine.registry();
-    const std::uint8_t index = freePlayerIndex();
     const ecs::Entity entity = registry.spawnEntity();
     ecs::net::replicate(registry, entity, game::KIND_PLAYER_SHIP);
     registry.addComponent(entity, ecs::NetworkOwner{player});
     registry.addComponent(entity, ecs::InputBuffer{.capacity = MAX_PENDING_INPUTS});
-    registry.addComponent(entity, game::EntityNetState{.subtype = index});
-    registry.addComponent(
-        entity, ecs::Transform{.x = SPAWN_X, .y = SPAWN_FIRST_Y + (SPAWN_SPACING_Y * static_cast<float>(index))});
+    registry.addComponent(entity, game::EntityNetState{});
+    registry.addComponent(entity, ecs::Transform{});
     _connection->addPeer(player);
-    _players.emplace(player, entity);
+    _players.push_back({.client = player, .entity = entity});
     return true;
 }
 
 void Room::removePlayer(const ClientId player) {
-    const auto it = _players.find(player);
+    const auto it = std::ranges::find(_players, player, &RoomPlayer::client);
     if (it == _players.end()) {
         return;
     }
@@ -95,10 +92,19 @@ void Room::removePlayer(const ClientId player) {
     {
         const std::scoped_lock lock(_mutex);
         // NetworkPlugin releases the network id of a killed entity.
-        _engine.registry().killEntity(it->second);
+        _engine.registry().killEntity(it->entity);
     }
     _players.erase(it);
 }
+
+void Room::setReady(const ClientId player, const bool ready) {
+    const auto it = std::ranges::find(_players, player, &RoomPlayer::client);
+    if (!_playing && it != _players.end()) {
+        it->ready = ready;
+    }
+}
+
+bool Room::isEveryoneReady() const { return !_players.empty() && std::ranges::all_of(_players, &RoomPlayer::ready); }
 
 void Room::onPacket(const ClientId player, const ecs::net::Bytes& data) {
     if (!_playing) {
@@ -109,6 +115,15 @@ void Room::onPacket(const ClientId player, const ecs::net::Bytes& data) {
 }
 
 void Room::start() {
+    ecs::Registry& registry = _engine.registry();
+    std::uint8_t index = 0;
+    for (const RoomPlayer& player : _players) {
+        registry.getComponents<game::EntityNetState>().get(player.entity).subtype = index;
+        auto& transform = registry.getComponents<ecs::Transform>().get(player.entity);
+        transform.x = SPAWN_X;
+        transform.y = SPAWN_FIRST_Y + (SPAWN_SPACING_Y * static_cast<float>(index));
+        ++index;
+    }
     _playing = true;
     _engine.clock().reset();
 }
@@ -135,23 +150,12 @@ void Room::runInBackground() {
 }
 
 std::uint32_t Room::lastProcessedInput(const ClientId player) const {
-    const auto it = _players.find(player);
+    const auto it = std::ranges::find(_players, player, &RoomPlayer::client);
     if (it == _players.end()) {
         return 0;
     }
     const std::scoped_lock lock(_mutex);
-    return registry().getComponents<ecs::InputBuffer>().get(it->second).lastProcessed;
-}
-
-std::uint8_t Room::freePlayerIndex() const {
-    std::uint8_t index = 0;
-    const auto isTaken = [&](const ecs::Entity entity) {
-        return registry().getComponents<game::EntityNetState>().get(entity).subtype == index;
-    };
-    while (std::ranges::any_of(_players | std::views::values, isTaken)) {
-        ++index;
-    }
-    return index;
+    return registry().getComponents<ecs::InputBuffer>().get(it->entity).lastProcessed;
 }
 
 }  // namespace rtype::server
