@@ -37,7 +37,8 @@ struct SleepingFiber {
  *
  * Responsibilities:
  * - Instantiates `ScriptComponent` instances when entities are spawned (`onSpawn()`).
- * - Dispatches engine events (`CollisionEvent`, etc.) directly to magic script methods (`onCollision(otherId)`).
+ * - Dispatches engine events (`events::CollisionBeginEvent`, etc.) directly to magic script methods
+ * (`onCollision(otherId)`).
  * - Manages asynchronous coroutines via `Engine.wait(seconds)`.
  * - Executes optional `update(dt)` loop for entities opting in via `hasUpdate = true`.
  * - Flushes deferred ECS mutations safely using an internal `CommandBuffer`.
@@ -113,6 +114,18 @@ class ScriptSystem {
     void registerEventForwarding(ecs::EventBus& bus, std::string const& methodName, ArgExtractor&& extractor);
 
     /**
+     * @brief Forwards `events::CollisionBeginEvent` to the `onCollision(other)` method of both entities' scripts.
+     *
+     * Only scripts whose `ScriptComponent::hasCollision` is set are called. A contact is skipped for a side when
+     * either entity is already queued for destruction this frame (`Entity.destroy()`), so a script never hits an
+     * entity that another script just destroyed. Script mutations stay deferred through the command buffer.
+     * Calling it again moves the subscription to `bus`.
+     *
+     * @param bus The EventBus receiving the physics contact events.
+     */
+    void forwardCollisions(ecs::EventBus& bus);
+
+    /**
      * @brief Returns a reference to the embedded WrenVM wrapper.
      */
     [[nodiscard]] scripting::WrenVM& getVm() noexcept;
@@ -181,6 +194,24 @@ class ScriptSystem {
     void addBinderReplay(std::function<void(scripting::WrenVM&)> callback);
 
   private:
+    /**
+     * @brief Calls `signature` (a one-argument method) on the script instance of `target`, passing `arg` as an
+     * `Entity` (or as a number when `core/Entity` is not loaded). Does nothing if the instance or handle is missing.
+     * @param target Entity whose script instance receives the call.
+     * @param signature Cached method signature (e.g. "onCollision(_)").
+     * @param arg Entity passed as the argument.
+     */
+    void invokeEntityMethod(ecs::Entity target, std::string const& signature, ecs::Entity arg);
+
+    /** @brief Whether an entity is queued for destruction by a script this frame. */
+    [[nodiscard]] bool isPendingDestroy(ecs::Entity e) const noexcept;
+
+    /** @brief Calls `onCollision(other)` on `target` if it opted in and neither entity is pending destruction. */
+    void forwardCollision(ecs::Entity target, ecs::Entity other);
+
+    /** @brief Unsubscribes the collision forwarding, if any. */
+    void stopForwardingCollisions() noexcept;
+
     /**
      * @brief Registers built-in engine foreign functions and classes with the VM.
      * @param vm Target WrenVM instance.
@@ -281,6 +312,11 @@ class ScriptSystem {
     scripting::detail::UniqueWrenHandle _onSpawnHandle;
     /** @brief Call handle for resuming suspended fibers (`call()`). */
     scripting::detail::UniqueWrenHandle _fiberCallHandle;
+
+    /** @brief Bus the collision forwarding is subscribed to, or nullptr. */
+    ecs::EventBus* _collisionBus = nullptr;
+    /** @brief Subscription token of the collision forwarding. */
+    ecs::EventBus::EventToken _collisionToken = 0;
 
     /** @brief Cache of pre-compiled method call handles indexed by signature. */
     std::unordered_map<std::string, scripting::detail::UniqueWrenHandle> _cachedMethodHandles;

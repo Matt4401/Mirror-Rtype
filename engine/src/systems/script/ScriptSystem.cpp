@@ -22,7 +22,10 @@ namespace systems {
 
 ScriptSystem::ScriptSystem() = default;
 
-ScriptSystem::~ScriptSystem() { releaseActiveHandles(); }
+ScriptSystem::~ScriptSystem() {
+    stopForwardingCollisions();
+    releaseActiveHandles();
+}
 
 ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
     : _registry(other._registry),
@@ -44,6 +47,11 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _reloadCheckTimer(other._reloadCheckTimer),
       _hotReloadEnabled(other._hotReloadEnabled) {
     _vm.setUserContext(this);
+    // The subscription captures `other`: move it to this instance.
+    if (ecs::EventBus* collisionBus = other._collisionBus) {
+        other.stopForwardingCollisions();
+        forwardCollisions(*collisionBus);
+    }
 }
 
 ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
@@ -68,6 +76,11 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _reloadCheckTimer = other._reloadCheckTimer;
         _hotReloadEnabled = other._hotReloadEnabled;
         _vm.setUserContext(this);
+        stopForwardingCollisions();
+        if (ecs::EventBus* collisionBus = other._collisionBus) {
+            other.stopForwardingCollisions();
+            forwardCollisions(*collisionBus);
+        }
     }
     return *this;
 }
