@@ -3,11 +3,14 @@
 This document explains how the networking layer is designed, why it is designed this way, and how the server and the
 client use it.
 
-It covers the **architecture** of the network library only. Related pages:
+It covers the **architecture** of the network module of the engine: the transport, and how it plugs into the ECS. Related
+pages:
+
+- [Add the Network to a Game](../getting-started/networked-game.md): the checklist for a game using this module.
 
 - [Network Transport & Connection](../protocol/transport.md): which messages use which channel, connection lifecycle,
   framing and validation.
-- [Protocol RFC](../protocol/rfc.md) and [Packets](../protocol/packets.md): byte layout of each packet.
+- [Protocol RFC](../protocol/rfc.txt) and [Packets](../protocol/packets.md): byte layout of each packet.
 - [Network comparative study](../comparative-study/network.md): why Asio and why this architecture.
 
 ---
@@ -20,8 +23,10 @@ It covers the **architecture** of the network library only. Related pages:
 4. [Public API](#4-public-api)
 5. [Internal design](#5-internal-design)
 6. [Threading model](#6-threading-model)
-7. [Using the library](#7-using-the-library)
-8. [Pitfalls](#8-pitfalls)
+7. [Plugging into the engine](#7-plugging-into-the-engine)
+8. [Replication](#8-replication)
+9. [Using the transport directly](#9-using-the-transport-directly)
+10. [Pitfalls](#10-pitfalls)
 
 ---
 
@@ -70,7 +75,7 @@ transport without depending on R-Type code:
 
 | Target                | Kind           | Folder                 | Content                                                      | Depends on                      |
 |-----------------------|----------------|------------------------|--------------------------------------------------------------|---------------------------------|
-| `engine_network`      | static library | `engine/src/net/`      | Interfaces, types, `NetworkConfig`, replication helpers      | `engine_core`                   |
+| `engine_network`      | static library | `engine/src/net/`      | Interfaces, plugins, replication systems, `NetworkConfig`    | `engine_core`                   |
 | `engine_network_asio` | static library | `engine/src/net/asio/` | Asio implementation of the interfaces, `createServer/Client` | `engine_network`, `log`, `asio` |
 
 ```
@@ -80,8 +85,19 @@ engine/src/net/                      # target "engine_network": must not include
 ├── INetworkClient.hpp               # ecs::net::INetworkClient
 ├── NetworkConfig.hpp                # NetworkConfig, isValid(), MAX_UNRELIABLE_PAYLOAD
 ├── NetworkFactory.hpp               # createServer() / createClient(), defined in engine_network_asio
-├── InputQueue.hpp/.cpp              # replication helpers (see the ECS components)
-└── NetworkEntityMap.hpp/.cpp
+├── NetworkPlugin.hpp/.cpp            # transport events -> EventBus, registers INetworkService
+├── NetworkEvents.hpp                 # PeerConnected, PeerDisconnected, PacketReceived
+├── INetworkService.hpp               # what systems send through, in the Mediator
+├── INetworkEventSource.hpp           # where NetworkPlugin reads its events from
+├── ClientConnection.hpp/.cpp         # client transport -> service + event source
+├── PeerGroupConnection.hpp/.cpp      # server transport shared by several engines -> service + event source
+├── ReplicationPlugins.hpp/.cpp       # ServerReplicationPlugin, ClientReplicationPlugin, SnapshotState
+├── ReplicationSystems.hpp/.cpp       # the systems, as free functions
+├── ReplicationEvents.hpp             # InputApplied, LocalInput, ReplicatedEntitySpawned / Despawned
+├── IReplicationCodec.hpp             # wire format, provided by the game
+├── SnapshotApplier.hpp/.cpp          # what a codec writes a snapshot through
+├── InputQueue.hpp/.cpp               # pushInput / popInput on an InputBuffer
+└── NetworkEntityMap.hpp/.cpp         # network id <-> local entity
 engine/src/net/asio/                 # target "engine_network_asio": Asio is used only here (namespace ecs::net::detail)
 ├── NetworkServer.hpp/.cpp
 ├── NetworkClient.hpp/.cpp
@@ -99,8 +115,8 @@ Both targets export `engine/src/` as a public include directory, so a header is 
 
 ### Why two targets
 
-- `engine_network` contains only abstract classes, plain types and Asio-free helpers. Code that depends on it (game
-  logic, tests using a mock network) never pulls in Asio.
+- `engine_network` contains abstract classes, plain types, plugins and systems, all free of Asio. Code that depends on it
+  (game logic, tests using a mock network) never pulls in Asio.
 - `engine_network_asio` is the only target linked against Asio. Changing the implementation (another transport, another
   library) does not touch `engine_network` or the game code. Only the executables that open sockets link it.
 
@@ -384,7 +400,109 @@ Network thread (Asio)                     Game thread (fixed tick)
 
 ---
 
-## 7. Using the library
+## 7. Plugging into the engine
+
+`NetworkPlugin` connects a transport to the engine loop. It never sees the transport itself, only two interfaces, so it
+works with a fake in tests:
+
+| Interface                       | Role                                                       | Used by                                |
+|---------------------------------|------------------------------------------------------------|----------------------------------------|
+| `ecs::net::INetworkEventSource` | `poll()`: the events received since the last frame         | `NetworkPlugin::preUpdate`             |
+| `engine::INetworkService`       | `send()`, `broadcast()`, `kick()`, resolved in the Mediator | Any system, without knowing the plugin |
+
+| Stage       | What the plugin does                                                                                       |
+|-------------|------------------------------------------------------------------------------------------------------------|
+| `init`      | Registers the service, creates the `NetworkEntityMap` resource, listens for killed entities to free their id |
+| `preUpdate` | Publishes each event on the `EventBus`: `PeerConnected`, `PeerDisconnected`, `PacketReceived`              |
+| `shutdown`  | Removes the listener and the service                                                                       |
+
+Two adapters provide both interfaces:
+
+- **`ClientConnection`** wraps a client transport. The only peer is `SERVER_PEER`.
+- **`PeerGroupConnection`** gives one engine a part of a server transport. A transport has one event queue for all its
+  peers, so the code that owns it polls it once and routes each event with `push()`. In the other direction, `broadcast()`
+  sends to the peers of the group and never calls the transport's own `broadcast()`, which would reach every group.
+
+---
+
+## 8. Replication
+
+The server is authoritative: clients send inputs, and it sends back what happened. `engine_network` handles when to send,
+to whom, and what a client does with the result. The game provides the bytes (`IReplicationCodec`) and the meaning of an
+input (`InputApplied`), so the engine knows nothing about the game.
+
+Plugins require `NetworkPlugin` instead of being a mode of it, so that the transport stays usable without replication.
+
+### Components
+
+| Component      | Side   | Role                                                                                    |
+|----------------|--------|-----------------------------------------------------------------------------------------|
+| `NetworkId`    | Both   | Id shared by every machine: local entity numbers differ and are recycled                |
+| `Replicated`   | Both   | The entity is in the snapshots; `kind` (32 bits) is defined by the game                 |
+| `NetworkOwner` | Server | Peer that controls the entity and receives snapshots                                    |
+| `InputBuffer`  | Server | Inputs not applied yet, sorted, deduplicated and bounded; `lastProcessed` is sent back  |
+| `Predicted`    | Client | Local entity: moved at once, then reconciled; keeps the unacknowledged inputs           |
+| `Interpolated` | Client | Other entities: their `Transform` moves between the last two snapshots                  |
+
+### Server, one frame
+
+```
+preUpdate    NetworkPlugin publishes PacketReceived
+               -> codec.decodeInput, then pushInput in the InputBuffer of the entity the sender owns
+fixedUpdate  (0 to N times) popInput on each InputBuffer -> InputApplied -> the game moves the entity
+update       if a step ran: writeEntity for each NetworkId + Replicated entity,
+             then encodeSnapshot(lastProcessed) and send() for each owning peer, over UDP
+```
+
+One input per entity and per step, like the client's prediction, so both sides advance at the same pace. Snapshots are
+sent in `update`, after every fixed step of the frame: several catch-up steps give one snapshot.
+
+### Client, one frame
+
+```
+preUpdate    NetworkPlugin publishes PacketReceived
+               -> codec.decodeSnapshot; nothing if invalid, or not newer than the last one applied
+               -> codec.applySnapshot, through the SnapshotApplier
+               -> ReplicatedEntitySpawned for the new entities
+               -> ReplicatedEntityDespawned, then kill, for the entities absent from the snapshot
+               -> reconciliation of the Predicted entities
+fixedUpdate  the game publishes LocalInput -> encodeInput, send(), InputApplied on Predicted entities
+update       Interpolated entities move toward their last snapshot
+```
+
+Decoding is split in two so that a stale snapshot is dropped before it touches the registry.
+
+### Prediction and reconciliation
+
+Waiting for the server would add a round trip of delay to every key press, so the local entity moves at once. Then each
+snapshot corrects it. With inputs moving a ship by 1:
+
+1. The client sends and applies inputs 1, 2 and 3: locally, `x` = 3.
+2. The server has only received input 1: its snapshot says `x` = 1, `lastProcessedInput` = 1.
+3. The client sets `x` to 1, drops input 1 from the history, and replays 2 and 3 (`InputApplied{.replayed = true}`): `x` = 3.
+
+If the server computed something else, the ship ends up where it should without any special case. This only works if
+**both sides run the same function** on `InputApplied`: R-Type shares `applyShipInput` through `rtype_game`.
+
+### Interpolation
+
+Snapshots arrive irregularly, and some are lost. For an `Interpolated` entity, a snapshot does not overwrite the
+`Transform`: what is displayed becomes `from`, the snapshot becomes `to`, and the entity moves between them over
+(ticks since the previous snapshot) × `Engine::fixedDeltaTime()`. This assumes that the server and the client use the same
+fixed step. The first snapshot is applied at once, so that an entity does not slide in from the origin.
+
+### Safety
+
+- Events are published **after** iterating over the components, never during it: a handler may spawn or kill entities.
+- The codec validates everything it decodes, and an id of 0 is refused by `SnapshotApplier::entity()`.
+- A snapshot larger than `MAX_UNRELIABLE_PAYLOAD` is not sent. Its entities are not lost: the next snapshot carries them if
+  it fits. A snapshot is complete, not a delta, so this limits the entities of a world (about 45 with R-Type's format).
+
+---
+
+## 9. Using the transport directly
+
+The plugins above are the normal way to use the network. The transport can also be used alone, without an engine.
 
 ### Server
 
@@ -441,7 +559,7 @@ without sockets.
 
 ---
 
-## 8. Pitfalls
+## 10. Pitfalls
 
 | Pitfall                                                                             | Consequence                                       | Fix                                                                      |
 |-------------------------------------------------------------------------------------|---------------------------------------------------|--------------------------------------------------------------------------|
@@ -461,3 +579,8 @@ without sockets.
 | Client of another game (or a port scanner) connecting                               | Garbage reaches the game's decoder                | `Handshake` with `protocolId` checked before the game sees the peer      |
 | Windows: datagram bigger than the receive buffer                                    | `message_size` error logged for each packet       | Ignore `message_size` like `connection_reset` and restart the receive    |
 | `start()` / `connect()` after `stop()`                                              | Returns `true` but nothing runs                   | Three-state `Idle` / `Running` / `Stopped`, single-use objects           |
+| Publishing an event while iterating over components                                 | A handler killing an entity skips others or crashes | Collect during `runSystem`, publish after                               |
+| Different code moving the entity on the client and the server                       | The predicted entity jumps at every snapshot      | One function on `InputApplied`, shared by both sides                     |
+| One server transport `broadcast()` used by a room                                   | The snapshot reaches the players of other rooms   | `PeerGroupConnection` sends to its own peers only                        |
+| Payloads pushed to an engine that does not advance                                  | The queue grows without limit                     | Drop them until it runs, like `Room::onPacket`                           |
+| Codec shared between engines                                                        | A snapshot mixes the entities of two worlds       | One codec instance per engine                                            |
