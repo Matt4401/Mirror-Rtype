@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -129,6 +130,54 @@ class ServerManagerTest : public ::testing::Test {
         }));
     }
 
+    /** @brief Messages of one type sent to a client, oldest first. Call with the mutex held (inside `waitFor`). */
+    template <typename Message>
+    static std::vector<Message> received(const NetworkState& network, const ClientId client) {
+        std::vector<Message> messages;
+        for (const Sent& sent : network.sent) {
+            const auto decoded = protocol::decode(sent.data);
+            if (sent.client == client && decoded && std::holds_alternative<Message>(*decoded)) {
+                messages.push_back(std::get<Message>(*decoded));
+            }
+        }
+        return messages;
+    }
+
+    /** @brief Waits until a client received at least `count` messages of one type, and returns the last one. */
+    template <typename Message>
+    std::optional<Message> waitForMessage(const ClientId client, const std::size_t count = 1) {
+        std::optional<Message> last;
+        waitFor([&](const NetworkState& network) {
+            const auto messages = received<Message>(network, client);
+            if (messages.size() < count) {
+                return false;
+            }
+            last = messages.back();
+            return true;
+        });
+        return last;
+    }
+
+    /** @brief Connects a client and waits for its `Welcome`. */
+    void connect(const ClientId client) {
+        message(client, protocol::Hello{});
+        ASSERT_TRUE(waitFor([client](const NetworkState& network) { return welcomes(network, client) == 1; }));
+    }
+
+    /** @brief Creates a room with `owner` in it, and returns its id. */
+    rtype::server::RoomId createRoom(const ClientId owner) {
+        message(owner, protocol::LobbyCreate{});
+        const auto update = waitForMessage<protocol::LobbyUpdate>(owner);
+        return update ? update->roomId : 0;
+    }
+
+    /** @brief Number of messages of one type sent to a client so far. */
+    template <typename Message>
+    std::size_t countOf(const ClientId client) {
+        const std::scoped_lock lock(state->mutex);
+        return received<Message>(*state, client).size();
+    }
+
     /**
      * @brief Waits until every event pushed so far has been handled.
      *
@@ -161,6 +210,8 @@ class HandshakeTimeoutTest : public ServerManagerTest {
 };
 
 constexpr ClientId CLIENT = 1;
+constexpr ClientId OTHER = 2;
+constexpr ClientId THIRD = 3;
 
 }  // namespace
 
@@ -275,6 +326,281 @@ TEST_F(HandshakeTimeoutTest, DisconnectionCancelsTheTimeout) {
 
     const std::scoped_lock lock(state->mutex);
     EXPECT_TRUE(state->kicked.empty());
+}
+
+// --- Lobby -----------------------------------------------------------------------------------------------------------
+
+TEST_F(ServerManagerTest, ListIsEmptyWithoutRooms) {
+    connect(CLIENT);
+    message(CLIENT, protocol::LobbyListRequest{});
+
+    const auto list = waitForMessage<protocol::LobbyList>(CLIENT);
+    ASSERT_TRUE(list.has_value());
+    EXPECT_TRUE(list->rooms.empty());
+}
+
+TEST_F(ServerManagerTest, LobbyMessagesBeforeHelloAreDropped) {
+    message(CLIENT, protocol::LobbyCreate{});
+    message(CLIENT, protocol::LobbyListRequest{});
+    sync();
+
+    EXPECT_EQ(countOf<protocol::LobbyUpdate>(CLIENT), 0U);
+    EXPECT_EQ(countOf<protocol::LobbyList>(CLIENT), 0U);
+}
+
+TEST_F(ServerManagerTest, CreatingARoomPutsTheClientInIt) {
+    connect(CLIENT);
+    connect(OTHER);
+    message(CLIENT, protocol::LobbyCreate{});
+
+    const auto update = waitForMessage<protocol::LobbyUpdate>(CLIENT);
+    ASSERT_TRUE(update.has_value());
+    EXPECT_NE(update->roomId, 0U);
+    EXPECT_EQ(update->slots, (std::vector<protocol::PlayerSlot>{{.clientId = CLIENT, .ready = false}}));
+
+    const auto list = waitForMessage<protocol::LobbyList>(OTHER);
+    ASSERT_TRUE(list.has_value()) << "every client in the lobby is told";
+    ASSERT_EQ(list->rooms.size(), 1U);
+    EXPECT_EQ(list->rooms[0], (protocol::RoomEntry{.roomId = update->roomId,
+                                                   .playerCount = 1,
+                                                   .maxPlayers = rtype::server::MAX_PLAYERS_PER_ROOM,
+                                                   .state = protocol::RoomState::Waiting}));
+}
+
+TEST_F(ServerManagerTest, ClientInARoomCannotCreateOrJoinAnother) {
+    connect(CLIENT);
+    connect(OTHER);
+    const auto first = createRoom(CLIENT);
+    const auto second = createRoom(OTHER);
+
+    message(CLIENT, protocol::LobbyCreate{});
+    message(CLIENT, protocol::LobbyJoin{.roomId = second});
+    sync();
+
+    EXPECT_EQ(countOf<protocol::LobbyUpdate>(CLIENT), 1U);
+    EXPECT_NE(first, second);
+}
+
+TEST_F(ServerManagerTest, JoinKeepsTheJoinOrderAndTellsTheRoom) {
+    connect(CLIENT);
+    connect(OTHER);
+    const auto id = createRoom(CLIENT);
+
+    message(OTHER, protocol::LobbyJoin{.roomId = id});
+
+    const std::vector<protocol::PlayerSlot> expected{{.clientId = CLIENT, .ready = false},
+                                                     {.clientId = OTHER, .ready = false}};
+    const auto forOther = waitForMessage<protocol::LobbyUpdate>(OTHER);
+    ASSERT_TRUE(forOther.has_value());
+    EXPECT_EQ(forOther->slots, expected);
+    const auto forOwner = waitForMessage<protocol::LobbyUpdate>(CLIENT, 2);
+    ASSERT_TRUE(forOwner.has_value());
+    EXPECT_EQ(forOwner->slots, expected);
+}
+
+TEST_F(ServerManagerTest, JoiningAnUnknownRoomIsIgnored) {
+    connect(CLIENT);
+    message(CLIENT, protocol::LobbyJoin{.roomId = 999});
+    sync();
+
+    EXPECT_EQ(countOf<protocol::LobbyUpdate>(CLIENT), 0U);
+}
+
+TEST_F(ServerManagerTest, JoiningAFullRoomIsIgnored) {
+    const ClientId late = 50;
+    connect(CLIENT);
+    const auto id = createRoom(CLIENT);
+    for (ClientId client = 10; client < 10 + rtype::server::MAX_PLAYERS_PER_ROOM - 1; ++client) {
+        connect(client);
+        message(client, protocol::LobbyJoin{.roomId = id});
+        ASSERT_TRUE(waitForMessage<protocol::LobbyUpdate>(client).has_value());
+    }
+
+    connect(late);
+    message(late, protocol::LobbyJoin{.roomId = id});
+    sync();
+
+    EXPECT_EQ(countOf<protocol::LobbyUpdate>(late), 0U);
+}
+
+TEST_F(ServerManagerTest, LobbyMessagesOverUdpAreDropped) {
+    connect(CLIENT);
+    message(CLIENT, protocol::LobbyCreate{}, Channel::Unreliable);
+    sync();
+
+    EXPECT_EQ(countOf<protocol::LobbyUpdate>(CLIENT), 0U);
+}
+
+TEST_F(ServerManagerTest, ReadyOutsideARoomIsDropped) {
+    connect(CLIENT);
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    sync();
+
+    EXPECT_EQ(countOf<protocol::LobbyUpdate>(CLIENT), 0U);
+    EXPECT_EQ(countOf<protocol::GameStart>(CLIENT), 0U);
+}
+
+TEST_F(ServerManagerTest, GameStartsWhenEveryoneIsReady) {
+    connect(CLIENT);
+    connect(OTHER);
+    const auto id = createRoom(CLIENT);
+    message(OTHER, protocol::LobbyJoin{.roomId = id});
+    ASSERT_TRUE(waitForMessage<protocol::LobbyUpdate>(OTHER).has_value());
+
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    const auto update = waitForMessage<protocol::LobbyUpdate>(OTHER, 2);
+    ASSERT_TRUE(update.has_value());
+    EXPECT_TRUE(update->slots[0].ready);
+    EXPECT_FALSE(update->slots[1].ready);
+    EXPECT_EQ(countOf<protocol::GameStart>(CLIENT), 0U);
+
+    message(OTHER, protocol::LobbyReady{.ready = true});
+    const auto first = waitForMessage<protocol::GameStart>(CLIENT);
+    const auto second = waitForMessage<protocol::GameStart>(OTHER);
+    ASSERT_TRUE(first.has_value());
+    ASSERT_TRUE(second.has_value());
+    EXPECT_EQ(*first, (protocol::GameStart{.roomId = id, .playerIndex = 0, .playerCount = 2}));
+    EXPECT_EQ(*second, (protocol::GameStart{.roomId = id, .playerIndex = 1, .playerCount = 2}));
+}
+
+TEST_F(ServerManagerTest, CancellingReadyPreventsTheStart) {
+    connect(CLIENT);
+    connect(OTHER);
+    const auto id = createRoom(CLIENT);
+    message(OTHER, protocol::LobbyJoin{.roomId = id});
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    message(CLIENT, protocol::LobbyReady{.ready = false});
+    message(OTHER, protocol::LobbyReady{.ready = true});
+    sync();
+
+    EXPECT_EQ(countOf<protocol::GameStart>(CLIENT), 0U);
+    EXPECT_EQ(countOf<protocol::GameStart>(OTHER), 0U);
+}
+
+TEST_F(ServerManagerTest, StartedRoomIsListedInGameAndCannotBeJoined) {
+    connect(CLIENT);
+    connect(OTHER);
+    const auto id = createRoom(CLIENT);
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    ASSERT_TRUE(waitForMessage<protocol::GameStart>(CLIENT).has_value());
+
+    message(OTHER, protocol::LobbyJoin{.roomId = id});
+    message(OTHER, protocol::LobbyListRequest{});
+    sync();
+
+    EXPECT_EQ(countOf<protocol::LobbyUpdate>(OTHER), 0U);
+    const auto list = waitForMessage<protocol::LobbyList>(OTHER);
+    ASSERT_TRUE(list.has_value());
+    ASSERT_EQ(list->rooms.size(), 1U);
+    EXPECT_EQ(list->rooms[0].state, protocol::RoomState::InGame);
+}
+
+TEST_F(ServerManagerTest, LeavingTellsTheOthersAndDestroysTheEmptyRoom) {
+    connect(CLIENT);
+    connect(OTHER);
+    connect(THIRD);
+    const auto id = createRoom(CLIENT);
+    message(OTHER, protocol::LobbyJoin{.roomId = id});
+    ASSERT_TRUE(waitForMessage<protocol::LobbyUpdate>(OTHER).has_value());
+
+    message(OTHER, protocol::Leave{});
+    const auto left = waitForMessage<protocol::PlayerLeft>(CLIENT);
+    ASSERT_TRUE(left.has_value());
+    EXPECT_EQ(left->clientId, OTHER);
+    const auto update = waitForMessage<protocol::LobbyUpdate>(CLIENT, 3);
+    ASSERT_TRUE(update.has_value());
+    EXPECT_EQ(update->slots, (std::vector<protocol::PlayerSlot>{{.clientId = CLIENT, .ready = false}}));
+
+    message(CLIENT, protocol::Leave{});
+    sync();
+    message(THIRD, protocol::LobbyListRequest{});
+    sync();
+    const std::scoped_lock lock(state->mutex);
+    EXPECT_TRUE(received<protocol::LobbyList>(*state, THIRD).back().rooms.empty());
+}
+
+TEST_F(ServerManagerTest, DepartureOfTheLastUnreadyPlayerStartsTheGame) {
+    connect(CLIENT);
+    connect(OTHER);
+    const auto id = createRoom(CLIENT);
+    message(OTHER, protocol::LobbyJoin{.roomId = id});
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    ASSERT_TRUE(waitForMessage<protocol::LobbyUpdate>(OTHER, 2).has_value());
+
+    push(EventType::Disconnected, OTHER);
+
+    const auto start = waitForMessage<protocol::GameStart>(CLIENT);
+    ASSERT_TRUE(start.has_value());
+    EXPECT_EQ(*start, (protocol::GameStart{.roomId = id, .playerIndex = 0, .playerCount = 1}));
+}
+
+// --- In game ---------------------------------------------------------------------------------------------------------
+
+TEST_F(ServerManagerTest, StartedRoomSendsSnapshotsAndAppliesInputs) {
+    connect(CLIENT);
+    createRoom(CLIENT);
+    message(CLIENT, protocol::PlayerInput{.sequence = 1, .held = {}, .axes = {}}, Channel::Unreliable);
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    ASSERT_TRUE(waitForMessage<protocol::GameStart>(CLIENT).has_value());
+
+    const auto first = waitForMessage<protocol::WorldState>(CLIENT);
+    ASSERT_TRUE(first.has_value());
+    ASSERT_EQ(first->entities.size(), 1U);
+    EXPECT_EQ(first->lastProcessedInput, 0U) << "the input sent before the start is dropped";
+
+    message(CLIENT, protocol::PlayerInput{.sequence = 5, .held = {SHOOT}, .axes = {}}, Channel::Unreliable);
+    EXPECT_TRUE(waitFor([](const NetworkState& network) {
+        const auto snapshots = received<protocol::WorldState>(network, CLIENT);
+        return !snapshots.empty() && snapshots.back().lastProcessedInput == 5;
+    }));
+}
+
+TEST_F(ServerManagerTest, LobbyMessagesInGameAreDropped) {
+    connect(CLIENT);
+    createRoom(CLIENT);
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    ASSERT_TRUE(waitForMessage<protocol::GameStart>(CLIENT).has_value());
+    const auto updates = countOf<protocol::LobbyUpdate>(CLIENT);
+    const auto lists = countOf<protocol::LobbyList>(CLIENT);
+
+    message(CLIENT, protocol::LobbyReady{.ready = false});
+    message(CLIENT, protocol::LobbyCreate{});
+    message(CLIENT, protocol::LobbyListRequest{});
+    sync();
+
+    EXPECT_EQ(countOf<protocol::LobbyUpdate>(CLIENT), updates);
+    EXPECT_EQ(countOf<protocol::LobbyList>(CLIENT), lists);
+    EXPECT_EQ(countOf<protocol::GameStart>(CLIENT), 1U);
+}
+
+TEST_F(ServerManagerTest, SnapshotsStayInTheirRoom) {
+    connect(CLIENT);
+    connect(OTHER);
+    createRoom(CLIENT);
+    createRoom(OTHER);
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+
+    ASSERT_TRUE(waitForMessage<protocol::WorldState>(CLIENT).has_value());
+    EXPECT_EQ(countOf<protocol::WorldState>(OTHER), 0U) << "the room of OTHER has not started";
+}
+
+TEST_F(ServerManagerTest, CrashOfAPlayerDoesNotStopTheGameOfTheOthers) {
+    connect(CLIENT);
+    connect(OTHER);
+    const auto id = createRoom(CLIENT);
+    message(OTHER, protocol::LobbyJoin{.roomId = id});
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    message(OTHER, protocol::LobbyReady{.ready = true});
+    ASSERT_TRUE(waitForMessage<protocol::GameStart>(OTHER).has_value());
+
+    push(EventType::Disconnected, OTHER);
+    ASSERT_TRUE(waitForMessage<protocol::PlayerLeft>(CLIENT).has_value());
+    const auto seen = countOf<protocol::WorldState>(CLIENT);
+
+    ASSERT_TRUE(waitForMessage<protocol::WorldState>(CLIENT, seen + 1).has_value());
+    const auto snapshot = waitForMessage<protocol::WorldState>(CLIENT, seen + 1);
+    ASSERT_TRUE(snapshot.has_value());
+    EXPECT_EQ(snapshot->entities.size(), 1U) << "the ship of the player who left is gone";
 }
 
 int main(int argc, char** argv) {

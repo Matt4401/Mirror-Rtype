@@ -297,7 +297,7 @@ TEST(Room, SnapshotsStayInsideTheRoom) {
     EXPECT_EQ(network.snapshotsOf(PLAYER)[0].entities.size(), 1U) << "only the entities of this room";
 }
 
-TEST(Room, PlayersKeepTheirIndexWhenAnotherOneLeaves) {
+TEST(Room, PlayerIndicesHaveNoHoleWhoeverLeftTheLobby) {
     FakeServer network;
     double now = 0.0;
     Room room(network, 3, FIXED_DT, [&now] { return now; });
@@ -305,19 +305,52 @@ TEST(Room, PlayersKeepTheirIndexWhenAnotherOneLeaves) {
     room.addPlayer(2);
     room.addPlayer(3);
     room.removePlayer(1);
-    room.addPlayer(4);  // takes the free index of player 1
     room.start();
     now += static_cast<double>(FIXED_DT);
     room.advance();
 
-    std::vector<int> indices;
     // Kept in a variable: a range-for over a member of a temporary only keeps it alive from GCC 15 on (P2718).
     const auto snapshots = network.snapshotsOf(2);
+    std::vector<int> indices;
     for (const auto& entity : snapshots.at(0).entities) {
         indices.push_back(entity.subtype);
     }
     std::ranges::sort(indices);
-    EXPECT_EQ(indices, (std::vector<int>{0, 1, 2}));
+    EXPECT_EQ(indices, (std::vector<int>{0, 1})) << "GameStart requires player_index < player_count";
+    ASSERT_EQ(room.players().size(), 2U);
+    EXPECT_EQ(room.players()[0].client, 2U) << "join order";
+    EXPECT_EQ(room.players()[1].client, 3U);
+}
+
+TEST(Room, EveryoneMustBeReady) {
+    FakeServer network;
+    Room room(network, 3);
+    EXPECT_FALSE(room.isEveryoneReady()) << "an empty room never starts";
+
+    room.addPlayer(1);
+    room.addPlayer(2);
+    room.setReady(1, true);
+    EXPECT_FALSE(room.isEveryoneReady());
+    room.setReady(2, true);
+    EXPECT_TRUE(room.isEveryoneReady());
+    room.setReady(1, false);
+    EXPECT_FALSE(room.isEveryoneReady());
+    room.setReady(42, true);  // unknown player: ignored
+    EXPECT_FALSE(room.isEveryoneReady());
+
+    room.setReady(1, true);
+    room.removePlayer(2);
+    EXPECT_TRUE(room.isEveryoneReady());
+}
+
+TEST(Room, CannotJoinTwiceOrOnceStarted) {
+    FakeServer network;
+    Room room(network, 3);
+
+    EXPECT_TRUE(room.addPlayer(1));
+    EXPECT_FALSE(room.addPlayer(1));
+    room.start();
+    EXPECT_FALSE(room.addPlayer(2));
 }
 
 int main(int argc, char** argv) {
