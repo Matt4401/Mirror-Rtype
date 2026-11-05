@@ -67,14 +67,14 @@ bool get(const Bytes& in, std::size_t& offset, T& value) {
  * @brief Smallest codec a game could write, without protobuf nor any R-Type type: it proves that the replication only
  * depends on the engine.
  *
- * Snapshot: `['S'][tick u32][last u32][count u16]` then `count` times `[id u32][kind u16][x f32][y f32]`.
+ * Snapshot: `['S'][tick u32][last u32][count u16]` then `count` times `[id u32][kind u32][x f32][y f32]`.
  * Input: `['I'][sequence u32][held count u8]` then `count` times `[action u32]` (axes are not encoded).
  */
 class TestCodec final : public ecs::net::IReplicationCodec {
   public:
     struct Entry {
         std::uint32_t id;
-        std::uint16_t kind;
+        std::uint32_t kind;
         float x;
         float y;
     };
@@ -260,7 +260,7 @@ TEST(Replicate, GivesANetworkIdAndAKind) {
 
     EXPECT_NE(id, 0U);
     EXPECT_EQ(registry.getComponents<ecs::NetworkId>().get(entity).value, id);
-    EXPECT_EQ(registry.getComponents<ecs::Replicated>().get(entity).kind, 7);
+    EXPECT_EQ(registry.getComponents<ecs::Replicated>().get(entity).kind, 7U);
     EXPECT_EQ(registry.getResource<ecs::net::NetworkEntityMap>().entityOf(id), entity);
 }
 
@@ -372,7 +372,7 @@ TEST(ClientReplication, CreatesUpdatesAndRemovesEntities) {
     ASSERT_EQ(spawned.size(), 2U);
     const auto local = clientEntity(client, enemyId);
     ASSERT_TRUE(local.has_value());
-    EXPECT_EQ(client.registry().getComponents<ecs::Replicated>().get(*local).kind, 2);
+    EXPECT_EQ(client.registry().getComponents<ecs::Replicated>().get(*local).kind, 2U);
     EXPECT_FLOAT_EQ(client.registry().getComponents<ecs::Transform>().get(*local).x, 50.0F);
     EXPECT_FLOAT_EQ(client.registry().getComponents<ecs::Transform>().get(*local).y, 20.0F);
 
