@@ -45,7 +45,7 @@ void NetworkPlugin::preUpdate(engine::Engine& engine) {
                 engine.eventBus().publish(PeerDisconnected{peer});
                 break;
             case EventType::Data:
-                engine.eventBus().publish(PacketReceived{peer, channel, std::move(data)});
+                engine.eventBus().publish(PacketReceived{.peer = peer, .channel = channel, .data = std::move(data)});
                 break;
         }
     }

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <iterator>
 #include <optional>
+#include <utility>
 
 #include "components/InputBuffer.hpp"
 
@@ -28,7 +29,7 @@ std::optional<NetInput> popInput(InputBuffer& buffer) {
     if (buffer.pending.empty()) {
         return std::nullopt;
     }
-    const NetInput input = buffer.pending.front();
+    NetInput input = std::move(buffer.pending.front());
     buffer.pending.pop_front();
     buffer.lastProcessed = input.sequence;
     return input;

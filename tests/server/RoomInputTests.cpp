@@ -309,8 +309,10 @@ TEST(Room, PlayerIndicesHaveNoHoleWhoeverLeftTheLobby) {
     now += static_cast<double>(FIXED_DT);
     room.advance();
 
+    // Kept in a variable: a range-for over a member of a temporary only keeps it alive from GCC 15 on (P2718).
+    const auto snapshots = network.snapshotsOf(2);
     std::vector<int> indices;
-    for (const auto& entity : network.snapshotsOf(2).at(0).entities) {
+    for (const auto& entity : snapshots.at(0).entities) {
         indices.push_back(entity.subtype);
     }
     std::ranges::sort(indices);

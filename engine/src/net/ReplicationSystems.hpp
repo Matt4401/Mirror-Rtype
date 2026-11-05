@@ -11,6 +11,7 @@
 #include "net/INetworkManager.hpp"
 #include "net/INetworkService.hpp"
 #include "net/IReplicationCodec.hpp"
+#include "net/SnapshotApplier.hpp"
 
 // Systems of the replication plugins, as free functions so that they can run (and be tested) without a plugin.
 namespace ecs::net {
