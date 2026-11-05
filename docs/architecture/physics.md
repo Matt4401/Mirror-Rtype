@@ -6,6 +6,8 @@
 
 The system belongs to `engine/src/systems/physics/`. It is independent of rendering and can therefore run on both the client and the headless server.
 
+Box2D is a private implementation detail of the `engine_physics` module: `PhysicsSystem.hpp` hides it behind a pimpl, and the `box2d` package is not exported to the targets that depend on the module. No public engine header includes Box2D, so the backend can change (for example to Box2D v3) without touching game code.
+
 ## Components
 
 ### `ecs::Transform`
@@ -40,6 +42,9 @@ Before each simulation step, changes made directly to these fields reposition th
 | `Static` | Immovable level geometry. |
 | `Kinematic` | Moved by its configured velocity, unaffected by forces. |
 | `Dynamic` | Fully simulated body affected by collisions and forces. |
+
+!!! warning "At least one Dynamic body per contact"
+    Box2D only creates a contact when at least one of the two bodies is `Dynamic`. Two `Kinematic` bodies, or a `Kinematic` and a `Static` body, never collide and never produce a contact event. A body moved through its `Transform` that must detect `Kinematic` bodies (such as the R-Type player ship) should be `Dynamic` with a sensor collider: it detects contacts and the solver never pushes it.
 
 `maxLinearSpeed` is enforced before every Box2D step. When a configured velocity exceeds the limit, `PhysicsSystem` clamps it and writes the clamped pixel-per-second values back to `RigidBody2D`.
 
@@ -78,7 +83,7 @@ Call `update` only from a fixed-timestep simulation loop, typically using `ecs::
 
 ```cpp
 ecs::time::Clock clock;
-systems::PhysicsSystem physics(registry);
+systems::PhysicsSystem physics(registry, bus);
 
 while (running) {
     clock.tick(ecs::time::DEFAULT_FIXED_DT, [&](const ecs::time::Time& time) {
@@ -93,6 +98,39 @@ Each successful `update(fixedDt)` performs these operations in order:
 2. Creates a fixture for a newly eligible `Collider2D`.
 3. Advances Box2D using 8 velocity iterations and 3 position iterations.
 4. Copies each body's position, angle, and linear velocity back to its ECS components.
+5. Publishes the contact events recorded during the step (see below).
+
+## Contact Events
+
+The system publishes two events, declared in `events/PhysicsEvents.hpp`, on the `ecs::EventBus` given to its constructor (`Engine::eventBus()` when it runs through `PhysicsPlugin`):
+
+| Event | Published when |
+|-------|----------------|
+| `events::CollisionBeginEvent` | Two fixtures start touching (or overlapping, for sensors). |
+| `events::CollisionEndEvent` | Two fixtures stop touching. |
+
+These are the `CollisionEnterEvent` / `CollisionExitEvent` of issue #30. The names follow Box2D's `BeginContact` / `EndContact`.
+
+Both carry `entityA`, `entityB`, their `categoryA`/`categoryB` (`Collider2D::categoryBits`), and `isSensor` (true when one of the two colliders is a sensor). The order of A and B is unspecified: tell them apart with the categories. Only pairs accepted by the category/mask filter produce events.
+
+`CollisionBeginEvent` also carries the impact. It has `normalX`/`normalY` (a unit vector from A to B) and `pointX`/`pointY` (the average contact point, in pixels), and these are valid when `hasContactPoint` is true. It is false for sensor contacts, because Box2D only tests sensors for overlap and builds no contact manifold for them. `CollisionEndEvent` has no impact data, because the fixtures no longer touch.
+
+```cpp
+bus.subscribe<events::CollisionBeginEvent>([&](const events::CollisionBeginEvent& contact) {
+    if ((contact.categoryA | contact.categoryB) & BULLET) {
+        // ...
+    }
+});
+```
+
+Guarantees:
+
+- **Published after the step.** Box2D reports contacts while the world is locked: the system buffers them and publishes once `Step` and the transform write-back are over. Subscribers may kill, spawn, or modify entities. Contacts caused by those changes are published on the next update.
+- **No stale entities.** Each Box2D body has a serial number that is never reused. A contact is dropped if one of its entities was killed by an earlier subscriber, or if its id was recycled for a new entity in the meantime. If a subscriber kills an entity, that entity's other contacts from the same step are dropped.
+- **No end event on destruction.** When a body is destroyed (entity killed, `RigidBody2D` removed), its contacts end silently. To react to that, listen to the registry destruction.
+- **No allocation in steady state.** The listener (`systems/physics/detail/Box2DContactListener`, private to the module) records plain structs into a reserved vector (`physics::INITIAL_CONTACT_CAPACITY`). The system swaps it with a second reserved vector before publishing, so neither buffer is reallocated once it reaches its high-water mark. `test_physics` checks that a warmed-up update with contacts makes no heap allocation.
+- **Scripts.** `ScriptPlugin` forwards `CollisionBeginEvent` to `onCollision(other)` on both entities' scripts, if they set `ScriptComponent::hasCollision` (see the [scripting guide](../getting-started/scripting-guide.md)).
+- Removing a `Collider2D`, or changing the transform scale (which rebuilds the fixture), ends the fixture's contacts normally. A scale change can therefore produce an end/begin pair.
 
 ## Creating a Physical Entity
 
