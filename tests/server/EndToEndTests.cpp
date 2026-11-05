@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <asio/io_context.hpp>
+#include <asio/ip/address.hpp>
+#include <asio/ip/tcp.hpp>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -8,7 +11,9 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <thread>
+#include <tuple>
 #include <variant>
 
 #include "ServerManager.hpp"
@@ -21,6 +26,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "net/ClientConnection.hpp"
+#include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/NetworkEntityMap.hpp"
@@ -28,7 +34,6 @@
 #include "net/NetworkFactory.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "net/ReplicationEvents.hpp"
-#include "net/ReplicationPlugins.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
 
@@ -46,7 +51,7 @@ constexpr auto DEADLINE = std::chrono::seconds(10);
 /** @brief What a game client does: one engine, the network plugins, and the lobby handled on `PacketReceived`. */
 class GameClient {
   public:
-    GameClient() : _connection(std::make_shared<engine::ClientConnection>(_transport)) {
+    GameClient() : _connection(std::make_shared<ecs::net::ClientConnection>(_transport)) {
         engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
         engine.addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
 
@@ -139,7 +144,7 @@ class GameClient {
 
     std::shared_ptr<ecs::net::INetworkClient> _transport =
         ecs::net::createClient({.protocolId = protocol::TRANSPORT_PROTOCOL_ID});
-    std::shared_ptr<engine::ClientConnection> _connection;
+    std::shared_ptr<ecs::net::ClientConnection> _connection;
 };
 
 /** @brief Runs the real server on its own thread, with the real transport. */
@@ -159,16 +164,21 @@ class EndToEndTest : public ::testing::Test {
     EndToEndTest(EndToEndTest&&) = delete;
     EndToEndTest& operator=(EndToEndTest&&) = delete;
 
-    /** @brief Connects a client, retrying while the server thread has not bound its port yet. */
+    /** @brief Waits until the server thread has bound its port, then connects: a client that failed cannot retry. */
     static bool connect(GameClient& client) {
+        asio::io_context io;
+        const asio::ip::tcp::endpoint server(asio::ip::make_address("127.0.0.1"), PORT);
         const auto deadline = std::chrono::steady_clock::now() + DEADLINE;
-        while (!client.connect()) {
+        std::error_code error;
+        do {
             if (std::chrono::steady_clock::now() > deadline) {
                 return false;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-        return true;
+            asio::ip::tcp::socket probe(io);
+            std::ignore = probe.connect(server, error);
+        } while (error);
+        return client.connect();
     }
 
     /** @brief Runs the clients' engines until `done` holds, or the deadline expires. */

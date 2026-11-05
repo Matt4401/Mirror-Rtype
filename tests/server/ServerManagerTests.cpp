@@ -536,6 +536,26 @@ TEST_F(ServerManagerTest, DepartureOfTheLastUnreadyPlayerStartsTheGame) {
 
 // --- In game ---------------------------------------------------------------------------------------------------------
 
+TEST_F(ServerManagerTest, DepartureThatStartsTheGameSendsTheListOfRoomsOnce) {
+    const ClientId observer = 30;
+    const ClientId leaver = 31;
+    connect(observer);
+    connect(CLIENT);
+    connect(leaver);
+    const auto id = createRoom(CLIENT);
+    message(leaver, protocol::LobbyJoin{.roomId = id});
+    ASSERT_TRUE(waitForMessage<protocol::LobbyUpdate>(leaver).has_value());
+    message(CLIENT, protocol::LobbyReady{.ready = true});
+    sync();
+    const std::size_t listsBefore = countOf<protocol::LobbyList>(observer);
+
+    message(leaver, protocol::Leave{});
+
+    ASSERT_TRUE(waitForMessage<protocol::GameStart>(CLIENT).has_value());
+    sync();
+    EXPECT_EQ(countOf<protocol::LobbyList>(observer), listsBefore + 1);
+}
+
 TEST_F(ServerManagerTest, StartedRoomSendsSnapshotsAndAppliesInputs) {
     connect(CLIENT);
     createRoom(CLIENT);
