@@ -38,8 +38,7 @@ using RoomId = std::uint32_t;
  * @brief Owns the network and the rooms, and runs the server loop on the game thread.
  *
  * Each loop iteration: poll the network once and route the events to the rooms, then let each room advance on its own
- * clock, and send a snapshot for each room that ran at least one step. It holds no game logic: that lives in the rooms
- * (ECS).
+ * clock (each room sends its own snapshots). It holds no game logic: that lives in the rooms (ECS).
  */
 class ServerManager {
   public:
@@ -87,21 +86,19 @@ class ServerManager {
     void onConnected(ClientId client);
     /** @brief A client is gone. Can arrive without `onConnected()` (connection lost before being ready). */
     void onDisconnected(ClientId client);
-    /** @brief A game message: decodes it and routes it; invalid payloads are dropped. */
+    /** @brief A game payload: decodes it if it is reliable, or routes it to the client's room if it is unreliable. */
     void onData(ClientId client, ecs::net::Channel channel, const ecs::net::Bytes& data);
     /** @brief A message received over TCP: handshake, lobby, chat, leave. */
     void onReliableMessage(ClientId client, const protocol::Message& message);
-    /** @brief A message received over UDP: only inputs, from a client in a room. */
-    void onUnreliableMessage(ClientId client, const protocol::Message& message);
+    /** @brief A payload received over UDP: handed to the room of the client, which decodes it. */
+    void onUnreliableData(ClientId client, const ecs::net::Bytes& data);
     /** @brief Kicks the connected clients that did not send their `Hello` within the handshake timeout. */
     void expireHandshakes();
     /** @brief Encodes a message and sends it to one client. */
     void send(ClientId client, const protocol::Message& message, ecs::net::Channel channel) const;
 
-    /** @brief Lets each room run the steps due on its own clock, and sends a snapshot for each room that stepped. */
+    /** @brief Lets each room run the steps due on its own clock. */
     void advanceRooms();
-    /** @brief Sends the room's latest state to each of its players. */
-    void sendSnapshot(const Room& room) const;
 
     /**
      * @brief Puts a client in an open room, or in a new one.
@@ -121,7 +118,8 @@ class ServerManager {
      * @brief Rooms in progress or waiting for players, by id.
      *
      * Stored by value: an `unordered_map` never moves its elements, even when it grows, so a `Room` (neither copyable
-     * nor movable) is built in place with `try_emplace`.
+     * nor movable) is built in place with `try_emplace`. Declared after `_network`, which rooms send through: they
+     * are destroyed first.
      */
     std::unordered_map<RoomId, Room> _rooms;
     /** @brief Room of each client in a room: routes inputs and disconnections. */
