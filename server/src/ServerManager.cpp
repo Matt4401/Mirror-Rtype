@@ -11,9 +11,10 @@
 
 #include "LogTag.hpp"
 #include "Logger.hpp"
-#include "Network/INetworkManager.hpp"
-#include "Network/INetworkServer.hpp"
 #include "Room.hpp"
+#include "net/INetworkManager.hpp"
+#include "net/INetworkServer.hpp"
+#include "net/NetworkConfig.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
 
@@ -26,7 +27,7 @@ constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
 
 }  // namespace
 
-ServerManager::ServerManager(std::unique_ptr<net::server::INetworkServer> network,
+ServerManager::ServerManager(std::unique_ptr<ecs::net::INetworkServer> network,
                              const std::chrono::milliseconds handshakeTimeout)
     : _network(std::move(network)), _handshakeTimeout(handshakeTimeout) {}
 
@@ -53,16 +54,19 @@ bool ServerManager::run(const std::uint16_t port) {
 
 void ServerManager::stop() { _running = false; }
 
+// The engine's transport refuses larger datagrams: every snapshot that passes this check can be sent.
+static_assert(protocol::MAX_UNRELIABLE_SIZE <= ecs::net::MAX_UNRELIABLE_PAYLOAD);
+
 void ServerManager::handleEvents() {
     for (const auto& [type, client, data, channel] : _network->poll()) {
         switch (type) {
-            case net::EventType::Connected:
+            case ecs::net::EventType::Connected:
                 onConnected(client);
                 break;
-            case net::EventType::Disconnected:
+            case ecs::net::EventType::Disconnected:
                 onDisconnected(client);
                 break;
-            case net::EventType::Data:
+            case ecs::net::EventType::Data:
                 onData(client, channel, data);
                 break;
         }
@@ -82,13 +86,13 @@ void ServerManager::onDisconnected(const ClientId client) {
     log::info(LOG_TAG, "client ", client, " disconnected");
 }
 
-void ServerManager::onData(const ClientId client, const net::Channel channel, const net::Bytes& data) {
+void ServerManager::onData(const ClientId client, const ecs::net::Channel channel, const ecs::net::Bytes& data) {
     const auto message = protocol::decode(data);
     if (!message) {
         log::debug(LOG_TAG, "client ", client, " sent an invalid payload of ", data.size(), " bytes: dropped");
         return;
     }
-    if (channel == net::Channel::Reliable) {
+    if (channel == ecs::net::Channel::Reliable) {
         onReliableMessage(client, *message);
     } else {
         onUnreliableMessage(client, *message);
@@ -110,7 +114,7 @@ void ServerManager::onReliableMessage(const ClientId client, const protocol::Mes
         }
         _pendingHandshakes.erase(client);
         _handshaken.insert(client);
-        send(client, protocol::Welcome{.udpPort = _port}, net::Channel::Reliable);
+        send(client, protocol::Welcome{.udpPort = _port}, ecs::net::Channel::Reliable);
         return;
     }
     if (!_handshaken.contains(client)) {
@@ -169,7 +173,8 @@ void ServerManager::expireHandshakes() {
     });
 }
 
-void ServerManager::send(const ClientId client, const protocol::Message& message, const net::Channel channel) const {
+void ServerManager::send(const ClientId client, const protocol::Message& message,
+                         const ecs::net::Channel channel) const {
     _network->send(client, protocol::encode(message), channel);
 }
 
@@ -194,7 +199,7 @@ void ServerManager::sendSnapshot(const Room& room) const {
             log::error(LOG_TAG, "snapshot of ", bytes.size(), " bytes does not fit in a datagram: not sent");
             return;
         }
-        _network->send(player, bytes, net::Channel::Unreliable);
+        _network->send(player, bytes, ecs::net::Channel::Unreliable);
     }
 }
 
@@ -241,7 +246,7 @@ void ServerManager::leaveRoom(const ClientId client) {
     log::debug(LOG_TAG, "client ", client, " left room ", *id);
     const auto left = protocol::encode(protocol::PlayerLeft{.clientId = client});
     for (const ClientId other : room->second.players()) {
-        _network->send(other, left, net::Channel::Reliable);
+        _network->send(other, left, ecs::net::Channel::Reliable);
     }
     if (room->second.isEmpty()) {
         _rooms.erase(room);

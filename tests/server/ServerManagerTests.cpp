@@ -12,19 +12,19 @@
 #include <variant>
 #include <vector>
 
-#include "Network/INetworkManager.hpp"
-#include "Network/INetworkServer.hpp"
 #include "ServerManager.hpp"
+#include "net/INetworkManager.hpp"
+#include "net/INetworkServer.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
 
 namespace {
 
-using rtype::net::Bytes;
-using rtype::net::Channel;
-using rtype::net::ClientId;
-using rtype::net::EventType;
-using rtype::net::NetworkEvent;
+using ecs::net::Bytes;
+using ecs::net::Channel;
+using ecs::net::EventType;
+using ecs::net::NetworkEvent;
+using ClientId = ecs::net::PeerId;
 using rtype::server::ServerManager;
 namespace protocol = rtype::protocol;
 
@@ -51,7 +51,7 @@ struct NetworkState {
 };
 
 /** @brief In-memory network: the test pushes events, the server polls them and its sends are recorded. */
-class FakeNetwork : public rtype::net::server::INetworkServer {
+class FakeNetwork : public ecs::net::INetworkServer {
   public:
     explicit FakeNetwork(std::shared_ptr<NetworkState> state) : _state(std::move(state)) {}
 
@@ -99,7 +99,7 @@ class ServerManagerTest : public ::testing::Test {
 
     void push(const EventType type, const ClientId client, Bytes data = {}, const Channel channel = Channel::Reliable) {
         const std::scoped_lock lock(state->mutex);
-        state->incoming.push_back({.type = type, .client = client, .data = std::move(data), .channel = channel});
+        state->incoming.push_back({.type = type, .peer = client, .data = std::move(data), .channel = channel});
     }
 
     void message(const ClientId client, const protocol::Message& msg, const Channel channel = Channel::Reliable) {

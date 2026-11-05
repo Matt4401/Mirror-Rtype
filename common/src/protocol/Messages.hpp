@@ -17,6 +17,9 @@ namespace rtype::protocol {
  */
 inline constexpr std::uint32_t PROTOCOL_VERSION = 2;
 
+inline constexpr std::uint32_t TRANSPORT_PROTOCOL_ID = 0x50595452;
+/** @brief TCP and UDP port the server listens on when none is given. */
+inline constexpr std::uint16_t DEFAULT_PORT = 4242;
 /** @brief Maximum number of players in a room (player slots, scores). */
 inline constexpr std::size_t MAX_PLAYERS = 4;
 /** @brief Maximum number of rooms in one `LobbyList`. */
