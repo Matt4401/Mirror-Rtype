@@ -90,7 +90,13 @@ class AudioPlugin final : public engine::IPlugin {
     /** @brief Gets the active AudioSystem, or nullptr if uninitialized. */
     [[nodiscard]] systems::AudioSystem* audioSystem() noexcept { return _system.get(); }
 
-    /** @brief Gets the active backend, or nullptr if uninitialized. */
+    /**
+     * @brief Gets the owned backend, or nullptr when none is owned.
+     *
+     * An injected backend is owned for the plugin lifetime, so a non-null result does not mean the plugin is
+     * initialized. A settings-built backend is created by `init()` and released by `shutdown()`. If `init()` throws,
+     * the backend remains owned.
+     */
     [[nodiscard]] IAudioBackend* backend() noexcept { return _backend.get(); }
 
   private:
