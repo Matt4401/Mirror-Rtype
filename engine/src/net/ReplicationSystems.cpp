@@ -7,6 +7,7 @@
 #include <numbers>
 #include <optional>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "components/InputBuffer.hpp"
@@ -77,12 +78,12 @@ std::optional<ecs::Entity> findOwnedEntity(ecs::Registry& registry, const PeerId
     return found;
 }
 
-bool receiveInput(ecs::Registry& registry, const PeerId peer, const NetInput& input) {
+bool receiveInput(ecs::Registry& registry, const PeerId peer, NetInput input) {
     const auto entity = findOwnedEntity(registry, peer);
     if (!entity) {
         return false;
     }
-    return pushInput(registry.getComponents<ecs::InputBuffer>().get(*entity), input);
+    return pushInput(registry.getComponents<ecs::InputBuffer>().get(*entity), std::move(input));
 }
 
 void applyInputs(ecs::Registry& registry, ecs::EventBus& events, const float deltaTime) {

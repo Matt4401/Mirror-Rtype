@@ -40,10 +40,10 @@ std::uint32_t replicate(ecs::Registry& registry, ecs::Entity entity, std::uint32
  * @brief Server: queues an input in the `InputBuffer` of the entity controlled by the peer.
  * @param registry Server world.
  * @param peer Sender of the input.
- * @param input Decoded input.
+ * @param input Decoded input, moved into the queue.
  * @return False if the peer controls no entity or the input was dropped (late, duplicated).
  */
-bool receiveInput(ecs::Registry& registry, PeerId peer, const NetInput& input);
+bool receiveInput(ecs::Registry& registry, PeerId peer, NetInput input);
 
 /**
  * @brief Server, once per fixed step: takes one pending input per entity and publishes it as `InputApplied`.

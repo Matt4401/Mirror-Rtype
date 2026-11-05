@@ -29,8 +29,8 @@ void ServerReplicationPlugin::build(engine::PluginBuilder& builder) { builder.re
 
 void ServerReplicationPlugin::init(engine::Engine& engine) {
     _packets = engine.eventBus().subscribe<PacketReceived>([this, &engine](const PacketReceived& packet) {
-        if (const auto input = _codec->decodeInput(packet.data)) {
-            receiveInput(engine.registry(), packet.peer, *input);
+        if (auto input = _codec->decodeInput(packet.data)) {
+            receiveInput(engine.registry(), packet.peer, std::move(*input));
         }
     });
 }
