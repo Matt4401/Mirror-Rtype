@@ -2,81 +2,87 @@
 
 ## 1. Overview
 
-The R-Type client executable (`r-type_client`) is built as a lightweight, declarative application on top of the generic game engine. Rather than writing a procedural game loop with hardcoded subsystem dependencies, the client bootstraps the central `engine::Engine` and registers modular plugins.
+The R-Type client executable (`r-type_client`) is built on the generic game engine. It does not simulate the game: the
+server does. The client sends the player's input, predicts the local ship, and displays what the server's snapshots say.
 
 ```mermaid
 flowchart TD
     Main["client/src/main.cpp"] --> Engine["engine::Engine"]
     Engine --> RenderPlugin["render::RenderPlugin (Raylib)"]
     Engine --> InputPlugin["input::InputPlugin"]
-    Engine --> PhysicsPlugin["systems::PhysicsPlugin (Box2D)"]
+    Engine --> NetworkPlugin["ecs::net::NetworkPlugin"]
+    Engine --> Replication["ecs::net::ClientReplicationPlugin"]
+    Engine --> NetPlugin["client::RTypeNetworkPlugin"]
     Engine --> GamePlugin["client::RTypeGamePlugin"]
 
-    GamePlugin -->|"Input Polling & Binding"| InputPlugin
-    GamePlugin -->|"Renderable & Transform ECS"| RenderPlugin
-    GamePlugin -->|"RigidBody2D & Collider2D"| PhysicsPlugin
+    NetPlugin -->|"session, inputs, Predicted / Interpolated"| Replication
+    Replication -->|"ReplicatedEntitySpawned"| GamePlugin
+    GamePlugin -->|"sprites"| RenderPlugin
+    InputPlugin -->|"InputState"| NetPlugin
 ```
 
 ---
 
-## 2. Declarative Entry Point (`main.cpp`)
+## 2. Entry Point (`main.cpp`)
 
-The client entry point initializes the engine, registers all required graphical and gameplay plugins, and launches the managed game loop:
+`r-type_client [host] [port]`, by default `127.0.0.1` and port 4242. It exits with code 84 if the arguments are invalid or
+the server cannot be reached. Once connected, it builds the engine:
 
 ```cpp
-#include <exception>
-#include <iostream>
-
-#include "RTypeGamePlugin.hpp"
-#include "core/Engine.hpp"
-#include "input/InputPlugin.hpp"
-#include "render/RenderPlugin.hpp"
-#include "render/window/WindowConfig.hpp"
-#include "systems/physics/PhysicsPlugin.hpp"
-
-int main() {
-    try {
-        engine::Engine engine;
-        engine.addPlugin<render::RenderPlugin>(render::WindowConfig{})
-            .addPlugin<input::InputPlugin>()
-            .addPlugin<systems::PhysicsPlugin>()
-            .addPlugin<client::RTypeGamePlugin>();
-
-        engine.run();
-    } catch (const std::exception& error) {
-        std::cerr << "client error: " << error.what() << '\n';
-        return 1;
-    }
-    return 0;
+const std::shared_ptr<ecs::net::INetworkClient> transport =
+    ecs::net::createClient({.protocolId = rtype::protocol::TRANSPORT_PROTOCOL_ID});
+if (!transport->connect(options->host, options->port)) {
+    // error message, exit code 84
 }
+const auto connection = std::make_shared<engine::ClientConnection>(transport);
+
+engine::Engine engine;
+engine.addPlugin<render::RenderPlugin>()
+    .addPlugin<input::InputPlugin>()
+    .addPlugin<systems::PhysicsPlugin>()
+    .addPlugin<systems::AnimationPlugin>()
+    .addPlugin<prefabs::PrefabPlugin>()
+    .addPlugin<scripting::ScriptPlugin>()
+    .addPlugin<ecs::net::NetworkPlugin>(connection, connection)
+    .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rtype::game::ReplicationCodec>())
+    .addPlugin<client::RTypeNetworkPlugin>(transport)
+    .addPlugin<client::RTypeGamePlugin>();
+
+engine.run();
 ```
 
 ---
 
-## 3. The Game Logic Plugin (`RTypeGamePlugin`)
+## 3. The Game Plugins
 
-All gameplay rules, entity templates, and input bindings for the client demonstration are encapsulated within `client::RTypeGamePlugin`:
+The client splits what needs a window from what does not, so that the network logic runs in tests.
 
-- **Dependency Declaration (`build`)**:
+### `RTypeNetworkPlugin`: the session with the server
 
-  ```cpp
-  void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
-      builder.require<render::RenderPlugin>();
-      builder.require<::input::InputPlugin>();
-      builder.require<systems::PhysicsPlugin>();
-      builder.optionally<scripting::ScriptPlugin>();
-  }
-  ```
+No window and no rendering (`client/src/net/`, tested by `test_client_network` and `test_server_e2e`).
 
-- **Initialization (`init`)**:
-  - Populates standard physical bindings (WASD, i.e. ZQSD on AZERTY keyboards, arrow keys + Space) via `client::input::setupDefaultBindings()` on the `IInputService`.
-  - Spawns the initial demo scene (`spawnDemoScene`): player ship, static obstacle, dynamic background projectiles, and camera.
-- **Fixed Timestep Tick (`fixedUpdate`)**:
-  - Updates ship movement (`movePlayer`).
-  - Advances player bullets and obstacle projectiles (`movePlayerBullets`, `moveProjectiles`).
-  - Advances Box2D physics bodies.
-- **Variable Frame Tick (`update`)**:
-  - Checks discrete weapon trigger actions (`handlePlayerShoot`) and spawns projectile entities.
+- **Session:** sends `Hello` when connected. On `LobbyList`, while it is in no room, it joins the first room waiting for
+  players, or creates one. If the room started in the meantime, the join is refused, and the server pushes a new list
+  because the room changed: the client tries again from it.
+- **Ready:** the `ready` action (key R) toggles the ready state while in a room.
+- **Game start:** `GameStart` gives the player's index and opens UDP on the port received in `Welcome`.
+- **In game:** once per fixed step, publishes `ecs::net::LocalInput` with the actions held and the axes of the local
+  `InputState`. The `ready` action is not a game input and is not sent.
+- **Replicated entities:** the ship whose `subtype` is the player's index becomes `ecs::Predicted`, and every other entity
+  `ecs::Interpolated`. On `InputApplied`, it moves the entity with `rtype::game::applyShipInput`, the same function as the
+  server.
+- **Connection lost:** stops the engine.
+
+### `RTypeGamePlugin`: what is on screen
+
+- **Initialization (`init`):** loads textures, applies the bindings (`client::input::setupDefaultBindings`), spawns the
+  starfield, the camera and the entity holding the local `InputState`. It spawns no ship: ships come from the server.
+- **Sprites:** on `ReplicatedEntitySpawned`, gives the entity the sprite of its `kind`, using `subtype` to choose the row of
+  the ship spritesheet, so that players can tell their ships apart. A kind the client does not know stays invisible.
+- **Shots (`update`):** spawns a bullet in front of the `Predicted` ship. The server does not simulate shots yet, so these
+  bullets only exist on this client.
+
+There is no lobby screen yet, because the engine cannot draw text: the state of the lobby is printed in the terminal.
 
 ---
 
@@ -84,7 +90,7 @@ All gameplay rules, entity templates, and input bindings for the client demonstr
 
 1. **Input Pipeline**:
    - `input::InputPlugin` queries hardware input state (keyboard, gamepad) once per frame in `preUpdate`, before the fixed-timestep ticks.
-   - Updates matching `InputState` ECS components on controllable entities.
+   - Updates the `InputState` components of the local player, read by the game plugins.
    - Dispatches transition events (`InputActionEvent`) through the `EventBus`.
 2. **Rendering Pipeline**:
    - `render::RenderPlugin` collects entities possessing both `ecs::Transform` and `ecs::Renderable`.

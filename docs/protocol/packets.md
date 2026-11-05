@@ -89,6 +89,10 @@ Standard protobuf wire format. Main consequences:
 
 ## 3. Handshake
 
+Before any of these messages, the network library runs its own handshake: its first frame carries a 32-bit `protocolId`
+that identifies the game (R-Type: `0x50595452`, `TRANSPORT_PROTOCOL_ID`), and a peer announcing another one is refused
+before the game sees it. See [Transport & Connection](transport.md#3-framing-and-validation).
+
 ### `Hello` (16)
 
 **Direction:** Client → Server · **Channel:** Reliable · **Phase:** Handshake
@@ -112,7 +116,7 @@ the timer).
 |------------|---|----------|---------------------------------------------------|
 | `udp_port` | 1 | `uint32` | Server UDP port (1–65535), same as TCP by default |
 
-After receiving it, the client calls `openUdp(udp_port)` on the network library.
+The client keeps this port, and calls `openUdp(udp_port)` on the network library at `GameStart`.
 
 ---
 
@@ -206,7 +210,7 @@ Only occupied slots are sent: the number of players is `slots` size.
 | `player_index` | 2 | `uint32` | Ship controlled by this client, in `[0, player_count)` |
 | `player_count` | 3 | `uint32` | Number of players in the game (1–4)                    |
 
-The client then opens UDP and switches to the in-game phase. `player_index` is the position of the player in join
+The client then opens UDP on the port received in `Welcome` and switches to the in-game phase. `player_index` is the position of the player in join
 order among those present at the start, and is stable for the whole game: it does not change when another player leaves.
 
 ### `GameOver` (49)

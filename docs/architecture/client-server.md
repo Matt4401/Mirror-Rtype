@@ -3,19 +3,18 @@
 The client and the server, layer by layer, and what travels between them.
 
 !!! note "Status"
-The engine transport (`engine_network` interfaces, `engine_network_asio` implementation) and the ECS core of `engine/`
-(registry, clock) exist.
-`ServerManager` and `Room` exist as a skeleton. The protocol (`common/`: `rtype.proto` and its codec) exists and the
-server decodes inputs and sends snapshots; the lobby and the gameplay systems describe the planned design.
+    Everything on this page exists and is covered by `test_server_e2e`, which runs the real server and clients over
+    loopback sockets. The simulation is limited to ship movement: see [Server Architecture](server.md).
 
 **Layers**
 
-| Layer           | Folder               | Role                                         |
-|-----------------|----------------------|----------------------------------------------|
-| Game            | `client/`, `server/` | game logic, rendering, lobby, game sessions  |
-| Protocol        | `common/`            | Protobuf: messages ↔ bytes                   |
-| Network library | `engine/src/net/`    | byte transport, TCP + UDP (Asio in `asio/`)  |
-| Shared engine   | `engine/`            | ECS, `applyInput()`, identical on both sides |
+| Layer           | Folder               | Role                                                   |
+|-----------------|----------------------|--------------------------------------------------------|
+| Game            | `client/`, `server/` | rendering, lobby, game sessions                        |
+| Shared game     | `game/`              | replication codec, `applyShipInput()`, same on both sides |
+| Protocol        | `common/`            | Protobuf: messages ↔ bytes                             |
+| Network         | `engine/src/net/`    | plugins and replication; byte transport in `asio/`     |
+| Shared engine   | `engine/`            | ECS, clock, plugins                                    |
 
 ---
 
@@ -28,11 +27,11 @@ flowchart LR
         subgraph CG["Game thread · 60 Hz loop"]
             direction TB
             K["Keyboard<br/>raylib IsKeyDown()"]
-            B["Bindings → InputState<br/>key → action → bitmask"]
-            P["Prediction: applyInput()<br/>engine/"]
+            B["Bindings → InputState<br/>key → action"]
+            P["Prediction: applyShipInput()<br/>game/"]
             W["Client ECS World<br/>local player predicted · others interpolated"]
             R["RenderSystem<br/>reads the ECS · draws"]
-            CP["Protocol · common/<br/>encodeInput · decodeWorldState"]
+            CP["ReplicationCodec · game/<br/>encodeInput · decodeSnapshot"]
             CI["INetworkClient<br/>send · poll · openUdp"]
         end
         subgraph CN["Network thread · NetworkClient"]
@@ -49,10 +48,10 @@ flowchart LR
         subgraph SG["Game thread · ServerManager::run"]
             direction TB
             SI["INetworkServer<br/>poll · send · broadcast · kick"]
-            SP["Protocol · common/<br/>decode Envelope · encodeSnapshot"]
+            SP["ReplicationCodec · game/<br/>decodeInput · encodeSnapshot"]
             SH["ServerManager::handleEvents<br/>Connected · Disconnected · Data"]
-            L["Lobby<br/>rooms · ready · GAME_START"]
-            RM["Room · one per game · own Clock<br/>onInput · advance · snapshots"]
+            L["Lobby<br/>rooms · ready · GameStart"]
+            RM["Room · one per game · own Engine<br/>onPacket · advance · snapshots"]
         end
         subgraph SN["Network thread · NetworkServer"]
             direction TB
@@ -70,9 +69,9 @@ flowchart LR
     CI -->|" asio::post "| CT
     CQ -->|" poll() "| CI
     SQ -->|" poll() "| SI
-    SI -->|events| SP -->|decoded messages| SH
-    SH -->|" lobby · chat "| L
-    SH -->|input| RM
+    SI -->|events| SH
+    SH -->|" lobby "| L
+    SH -->|" UDP bytes "| SP -->|input| RM
     L -->|" creates "| RM
     RM -->|" snapshot (tick, lastProcessedSeq) "| SP
     SP -->|bytes| SI
@@ -80,8 +79,8 @@ flowchart LR
     CT <==>|" TCP :4242 · Welcome, lobby, chat, UdpOpen/Close "| ST
     CU ==>|" UDP · input every tick "| SU
     SU ==>|" UDP · world state every tick "| CU
-    P -.-|" same applyInput · engine/ "| RM
-    CP -.-|" same .proto · common/ "| SP
+    P -.-|" same applyShipInput · game/ "| RM
+    CP -.-|" same codec · game/ "| SP
     classDef game fill: #ffffff, stroke: #8d99a8, color: #18212c
     classDef proto fill: #fff2df, stroke: #b0640a, color: #18212c
     classDef net fill: #e2f4f1, stroke: #0d7a70, color: #18212c
@@ -104,22 +103,21 @@ Key points:
 
 - **A key press never touches the screen directly.** It becomes an `InputState`, which is used twice: by the
   prediction (ECS) and by the protocol (network). Rendering only reads the ECS.
-- **`Room` knows nothing about the network.** It receives already-decoded inputs and produces snapshots, so it can
-  be tested without any socket.
+- **`Room` sees no socket.** It goes through `PeerGroupConnection` and the replication plugins, so it can be tested with a
+  fake transport.
 - **Only `common/` knows about Protobuf.** Changing the format only touches that layer.
 
 ### One server loop iteration
 
-Each room owns its own [`ecs::time::Clock`](clock.md): rooms are independent games, each with its own game time and
-rate. The `ServerManager` runs them all on the game thread, one loop iteration about every millisecond:
+Each room owns its own `engine::Engine`, and so its own [`ecs::time::Clock`](clock.md): rooms are independent games, each
+with its own game time and rate. The `ServerManager` runs them all on the game thread, one loop iteration about every millisecond:
 
-1. `poll()` the network once and route the events: lobby messages, inputs stored in the player's room. This is the
-   only place that reads the network: it has one event queue for every player.
-2. `room.advance()` for each room: the room's clock runs the steps that are due (60 Hz by default, `DEFAULT_FIXED_DT`).
-   Each step applies `applyInput` for each player, then the ECS systems with `time.deltaTime`.
-3. For each room that ran at least one step: a snapshot → `send()` to each of its players, numbered with the room's
-   `time().tickCount`.
-4. Sleep 1 ms.
+1. `poll()` the network once and route the events: lobby messages decoded here, UDP payloads handed to the player's room.
+   This is the only place that reads the network: it has one event queue for every player.
+2. `room.advance()` for each room: the room's engine runs one frame. Its clock runs the steps that are due (60 Hz by
+   default, `DEFAULT_FIXED_DT`). Each step applies one input per player, then the ECS systems with `time.deltaTime`.
+   If at least one step ran, `ServerReplicationPlugin` sends a snapshot to each player of the room, numbered with the tick.
+3. Sleep 1 ms.
 
 - `Room::start()` resets the room's clock: the game time (`tickCount`, `totalElapsedTime`) starts at 0 when the game
   starts, however long the room waited for its players. A waiting room does not step.
@@ -192,14 +190,14 @@ sequenceDiagram
     participant CL as Client · library
     participant SL as Server · library
     participant SJ as Server · Room
-    Note over CJ: readInput → InputState
-    CJ ->> CJ: applyInput (prediction), keeps seq 42 pending
+    Note over CJ: InputState → LocalInput
+    CJ ->> CJ: applyShipInput (prediction), keeps seq 42 in Predicted
     CJ ->> CL: send(encodeInput 42, Unreliable)
     CL ->> SL: UDP [id][token][Input 42]
     SL ->> SL: token OK and udpOpen, lastSeen = now
-    SL -->> SJ: poll → Data(id, bytes)
-    SJ ->> SJ: decode, onInput: pendingInput, lastReceived = 42
-    Note over SJ: next tick: update() applies the input + systems
+    SL -->> SJ: poll → ServerManager → onPacket(id, bytes)
+    SJ ->> SJ: decodeInput, pushInput in the InputBuffer
+    Note over SJ: next step: popInput → InputApplied → applyShipInput
     SJ ->> SL: send(WorldState: tick, lastProcessed = 42, entities)
     SL ->> CL: UDP [WorldState]
     CL -->> CJ: poll → Data
@@ -221,8 +219,10 @@ sequenceDiagram
     C ->> S: Handshake [protocolId] (library)
     S ->> C: Welcome [PeerId, token] (library)
     Note over C, S: Connected event on both sides
+    C ->> S: Hello (Data, TCP)
+    S ->> C: Welcome [udp_port] (Data, TCP)
     C ->> S: lobby messages (Data, TCP)
-    S ->> C: GAME_START (Data, TCP)
+    S ->> C: GameStart (Data, TCP)
     C ->> S: UdpOpen (library, TCP): the 5 s timeout starts
     loop every 250 ms until something is received from the server
         C ->> S: empty UDP datagram [id][token]
@@ -232,7 +232,7 @@ sequenceDiagram
         S ->> C: UDP world state
     end
     Note over C, S: 1 s of silence → empty keepalive · 5 s → disconnection
-    S ->> C: GAME_OVER (Data, TCP)
+    S ->> C: GameOver (Data, TCP), not sent by the server yet
     C ->> S: UdpClose (library, TCP): no more timeout, late datagrams dropped
     Note over C, S: back to the lobby over TCP
     C ->> S: TCP close
@@ -252,18 +252,18 @@ full, other `protocolId`, network loss). The server only announces a peer once i
 ```mermaid
 flowchart LR
     CLIENT["r-type_client"] --> ENGINE
-    CLIENT --> COMMON
-    CLIENT --> IFACE
+    CLIENT --> GAME
     CLIENT --> RAY["raylib"]
     SERVER["r-type_server"] --> ENGINE
-    SERVER --> COMMON
-    SERVER --> IFACE
+    SERVER --> GAME
+    GAME["rtype_game · codec, applyShipInput"] --> COMMON
+    GAME --> IFACE
     CLIENT -.->|links| NET
     SERVER -.->|links| NET
-    NET["engine_network_asio · static library"] --> IFACE["engine_network · INetwork*, NetworkConfig"]
+    NET["engine_network_asio · static library"] --> IFACE["engine_network · interfaces, plugins, replication"]
     NET --> ASIO["asio"]
     COMMON["common/ · .proto + codec"] --> PB["protobuf"]
-    ENGINE["engine/ · ECS, applyInput"]
+    ENGINE["engine/ · ECS, clock, plugins"]
 ```
 
 The executables only include the `engine_network` interfaces. `engine_network_asio` is only linked, so no Asio type ever
@@ -277,5 +277,7 @@ reaches game code.
 |---------------------------------------------------|--------------------------------------------------------------------------------------------|
 | **The transport never reads game data**           | It adds and strips its own bytes (length, kind, id, token) and never depends on `common/`. |
 | **`common/` knows nothing about Asio**            | The protocol turns messages into bytes and back. It does not know how they travel.         |
+| **`common/` does not depend on the engine**       | What needs both the protocol and the ECS lives in `game/`.                                 |
+| **The engine knows nothing about R-Type**         | It only sees `IReplicationCodec` and `InputApplied`: the game gives the bytes and meaning. |
 | **Engine headers expose neither raylib nor Asio** | Both stay in their module's `.cpp` / private headers (`net/asio/`, `render/`).             |
 | **Only one thread touches the sockets**           | The game goes through `asio::post` and `poll()`. No mutex in game code.                    |
