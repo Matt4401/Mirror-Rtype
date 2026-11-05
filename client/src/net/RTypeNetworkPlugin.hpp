@@ -10,6 +10,7 @@
 #include "events/EventBus.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/NetworkEvents.hpp"
+#include "net/ReplicationEvents.hpp"
 #include "protocol/Messages.hpp"
 
 namespace client {
@@ -17,8 +18,8 @@ namespace client {
 /**
  * @brief R-Type side of the client's network: the session with the server, and what replication leaves to the game.
  *
- * - Session: `Hello`, then `Welcome` opens UDP; the client joins the first room waiting for players, or creates one if
- *   there is none, and the `ready` action toggles its ready state until `GameStart`.
+ * - Session: `Hello`, then `Welcome`; the client joins the first room waiting for players, or creates one if there is
+ *   none, and the `ready` action toggles its ready state until `GameStart`, which opens UDP.
  * - In game: once per fixed step, sends the state of the `input::InputState` of player 0 as `ecs::net::LocalInput`.
  * - Replicated entities: the ship of this player is `ecs::Predicted`, moved by `InputApplied` like on the server; the
  *   others are `ecs::Interpolated`.
@@ -29,7 +30,7 @@ class RTypeNetworkPlugin final : public engine::IPlugin {
   public:
     /**
      * @brief Creates the plugin.
-     * @param transport Client transport, already connected or about to be: UDP is opened on it after `Welcome`.
+     * @param transport Client transport, already connected or about to be: UDP is opened on it at `GameStart`.
      */
     explicit RTypeNetworkPlugin(std::shared_ptr<ecs::net::INetworkClient> transport);
 
@@ -89,13 +90,11 @@ class RTypeNetworkPlugin final : public engine::IPlugin {
      */
     void chooseRoom(engine::Engine& engine, const rtype::protocol::LobbyList& list) const;
     /**
-     * @brief Gives `ecs::Predicted` to the ship of this player, if both the ship and `GameStart` have arrived.
-     *
-     * Called when either arrives: a snapshot (UDP) can overtake `GameStart` (TCP).
-     *
+     * @brief The ship of this player becomes `ecs::Predicted`, every other replicated entity `ecs::Interpolated`.
      * @param engine Host engine.
+     * @param event The new entity.
      */
-    void markLocalShip(engine::Engine& engine) const;
+    void onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const;
     /**
      * @brief Encodes and sends a message to the server, on the reliable channel.
      * @param engine Host engine.
@@ -105,6 +104,8 @@ class RTypeNetworkPlugin final : public engine::IPlugin {
 
     /** @brief Client transport, to open UDP. */
     std::shared_ptr<ecs::net::INetworkClient> _transport;
+    /** @brief UDP port of the server, received in `Welcome`; UDP is opened on it at `GameStart`. */
+    std::uint16_t _udpPort = 0;
     /** @brief Room of this client, once the server has confirmed it. */
     std::optional<std::uint32_t> _room;
     /** @brief Received when the game starts: gives the index of this player's ship. */

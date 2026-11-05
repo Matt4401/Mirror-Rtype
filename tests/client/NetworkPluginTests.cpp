@@ -143,18 +143,21 @@ TEST_F(RTypeNetworkPluginTest, SaysHelloOnceConnected) {
     EXPECT_EQ(transport->sent[0].channel, Channel::Reliable);
 }
 
-TEST_F(RTypeNetworkPluginTest, WelcomeOpensUdpAndAsksForTheRooms) {
+TEST_F(RTypeNetworkPluginTest, WelcomeAsksForTheRoomsAndUdpWaitsForTheGameStart) {
     receive(protocol::Welcome{.udpPort = UDP_PORT});
 
-    EXPECT_EQ(transport->udpPort, UDP_PORT);
+    EXPECT_FALSE(transport->udpPort.has_value()) << "the RFC opens UDP at GameStart";
     EXPECT_EQ(sentMessages<protocol::LobbyListRequest>().size(), 1U);
+
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+    EXPECT_EQ(transport->udpPort, UDP_PORT);
 }
 
 TEST_F(RTypeNetworkPluginTest, IgnoresMalformedAndUnreliableMessages) {
     transport->next.push_back({.type = EventType::Data, .peer = 0, .data = {0xFF, 0x13}, .channel = Channel::Reliable});
     receive(protocol::Welcome{.udpPort = UDP_PORT}, Channel::Unreliable);
 
-    EXPECT_FALSE(transport->udpPort.has_value()) << "Welcome is only valid on the reliable channel";
+    EXPECT_TRUE(sentMessages<protocol::LobbyListRequest>().empty()) << "Welcome is only valid on the reliable channel";
 }
 
 TEST_F(RTypeNetworkPluginTest, StopsTheEngineWhenTheServerIsLost) {
@@ -270,16 +273,6 @@ TEST_F(RTypeNetworkPluginTest, LocalShipIsPredictedAndTheOthersInterpolated) {
     EXPECT_TRUE(registry.hasComponent<ecs::Predicted>(entityOf(MY_SHIP)));
     EXPECT_FALSE(registry.hasComponent<ecs::Predicted>(entityOf(OTHER_SHIP)));
     EXPECT_TRUE(registry.hasComponent<ecs::Interpolated>(entityOf(OTHER_SHIP)));
-}
-
-TEST_F(RTypeNetworkPluginTest, SnapshotOvertakingGameStartStillMarksTheLocalShip) {
-    receive(twoShips(1), Channel::Unreliable);
-    EXPECT_FALSE(engine.registry().hasComponent<ecs::Predicted>(entityOf(OTHER_SHIP)));
-
-    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 1, .playerCount = 2});
-
-    EXPECT_TRUE(engine.registry().hasComponent<ecs::Predicted>(entityOf(OTHER_SHIP)));
-    EXPECT_FALSE(engine.registry().hasComponent<ecs::Predicted>(entityOf(MY_SHIP)));
 }
 
 TEST_F(RTypeNetworkPluginTest, LocalShipMovesAtOnceAndOnlyIt) {

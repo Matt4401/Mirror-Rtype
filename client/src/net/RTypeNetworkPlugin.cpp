@@ -6,13 +6,11 @@
 #include <ranges>
 #include <utility>
 #include <variant>
-#include <vector>
 
 #include "Logger.hpp"
 #include "components/InputBuffer.hpp"
 #include "components/Interpolated.hpp"
 #include "components/Predicted.hpp"
-#include "components/Replicated.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
@@ -79,14 +77,9 @@ void RTypeNetworkPlugin::init(engine::Engine& engine) {
         });
     _packets = events.subscribe<ecs::net::PacketReceived>(
         [this, &engine](const ecs::net::PacketReceived& packet) { onPacket(engine, packet); });
+    // UDP only opens at GameStart, so a snapshot never arrives before the index of this player's ship is known.
     _spawned = events.subscribe<ecs::net::ReplicatedEntitySpawned>(
-        [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) {
-            markLocalShip(engine);
-            ecs::Registry& registry = engine.registry();
-            if (!registry.hasComponent<ecs::Predicted>(event.entity)) {
-                registry.addComponent(event.entity, ecs::Interpolated{});
-            }
-        });
+        [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) { onEntitySpawned(engine, event); });
     // Same movement as the server: the prediction and the replay after a snapshot compute what the server computes.
     _inputs = events.subscribe<ecs::net::InputApplied>([&engine](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = engine.registry();
@@ -106,9 +99,7 @@ void RTypeNetworkPlugin::onPacket(engine::Engine& engine, const ecs::net::Packet
         return;
     }
     if (const auto* welcome = std::get_if<protocol::Welcome>(&*message)) {
-        if (!_transport->openUdp(welcome->udpPort)) {
-            log::error(LOG_TAG, "cannot open UDP on port ", welcome->udpPort);
-        }
+        _udpPort = welcome->udpPort;
         sendMessage(engine, protocol::LobbyListRequest{});
     } else if (const auto* list = std::get_if<protocol::LobbyList>(&*message)) {
         chooseRoom(engine, *list);
@@ -123,7 +114,9 @@ void RTypeNetworkPlugin::onPacket(engine::Engine& engine, const ecs::net::Packet
         log::info(LOG_TAG, "game started: player ", static_cast<int>(start->playerIndex) + 1, " of ",
                   static_cast<int>(start->playerCount));
         _gameStart = *start;
-        markLocalShip(engine);
+        if (!_transport->openUdp(_udpPort)) {
+            log::error(LOG_TAG, "cannot open UDP on port ", _udpPort);
+        }
     } else if (const auto* left = std::get_if<protocol::PlayerLeft>(&*message)) {
         log::info(LOG_TAG, "player ", left->clientId, " left");
     }
@@ -143,21 +136,15 @@ void RTypeNetworkPlugin::chooseRoom(engine::Engine& engine, const protocol::Lobb
     }
 }
 
-void RTypeNetworkPlugin::markLocalShip(engine::Engine& engine) const {
-    if (!_gameStart) {
-        return;
-    }
+void RTypeNetworkPlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const {
     ecs::Registry& registry = engine.registry();
-    std::vector<ecs::Entity> local;
-    registry.runSystem<ecs::Replicated, rtype::game::EntityNetState>(
-        [&](const ecs::Entity entity, const ecs::Replicated& replicated, const rtype::game::EntityNetState& state) {
-            if (replicated.kind == rtype::game::KIND_PLAYER_SHIP && state.subtype == _gameStart->playerIndex &&
-                !registry.hasComponent<ecs::Predicted>(entity)) {
-                local.push_back(entity);
-            }
-        });
-    for (const ecs::Entity entity : local) {
-        registry.addComponent(entity, ecs::Predicted{});
+    const bool isLocalShip =
+        _gameStart && event.kind == rtype::game::KIND_PLAYER_SHIP &&
+        registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype == _gameStart->playerIndex;
+    if (isLocalShip) {
+        registry.addComponent(event.entity, ecs::Predicted{});
+    } else {
+        registry.addComponent(event.entity, ecs::Interpolated{});
     }
 }
 
