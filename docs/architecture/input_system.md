@@ -22,8 +22,8 @@ flowchart TD
     end
 
     subgraph ClientLayer["Game Layer (client/)"]
-        Bindings["RTypeBindings\n(move_x, move_y, shoot, charge_weapon)"]
-        Ship["Player Entity\n(ShipInput + InputState)"]
+        Bindings["RTypeBindings\n(move_x, move_y, shoot, charge_weapon, ready)"]
+        Ship["Local Input Entity\n(InputState, read by RTypeNetworkPlugin)"]
     end
 
     subgraph EngineLayer["Engine Subsystem (engine_input)"]
