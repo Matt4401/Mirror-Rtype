@@ -57,7 +57,7 @@ float lerpAngle(const float from, const float to, const float alpha) {
 
 }  // namespace
 
-std::uint32_t replicate(ecs::Registry& registry, const ecs::Entity entity, const std::uint16_t kind) {
+std::uint32_t replicate(ecs::Registry& registry, const ecs::Entity entity, const std::uint32_t kind) {
     auto& map = registry.hasResource<NetworkEntityMap>() ? registry.getResource<NetworkEntityMap>()
                                                          : registry.emplaceResource<NetworkEntityMap>();
     const std::uint32_t id = map.assign(entity);
@@ -129,7 +129,7 @@ void despawnMissing(ecs::Registry& registry, ecs::EventBus& events, const Snapsh
     std::vector<ReplicatedEntityDespawned> missing;
     registry.runSystem<ecs::NetworkId>([&](const ecs::Entity entity, const ecs::NetworkId& id) {
         if (!applier.contains(entity)) {
-            const std::uint16_t kind = registry.hasComponent<ecs::Replicated>(entity)
+            const std::uint32_t kind = registry.hasComponent<ecs::Replicated>(entity)
                                            ? registry.getComponents<ecs::Replicated>().get(entity).kind
                                            : 0;
             missing.push_back({.entity = entity, .id = id.value, .kind = kind});

@@ -19,7 +19,7 @@ struct SpawnedEntity {
     /** @brief Its network id. */
     std::uint32_t id = 0;
     /** @brief Its game-defined kind. */
-    std::uint16_t kind = 0;
+    std::uint32_t kind = 0;
 };
 
 /**
@@ -45,7 +45,7 @@ class SnapshotApplier {
      * @param kind Game-defined kind, used when the entity is created.
      * @return The entity, or nothing if `id` is 0 (invalid).
      */
-    [[nodiscard]] std::optional<ecs::Entity> entity(std::uint32_t id, std::uint16_t kind);
+    [[nodiscard]] std::optional<ecs::Entity> entity(std::uint32_t id, std::uint32_t kind);
 
     /**
      * @brief Writes the server position of an entity.

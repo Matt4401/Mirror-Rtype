@@ -43,7 +43,7 @@ TEST(NetworkComponents, WorkAsEcsComponents) {
     const ecs::Entity entity = registry.spawnEntity();
     registry.emplaceComponent<ecs::NetworkId>(entity, 7U);
     registry.emplaceComponent<ecs::NetworkOwner>(entity, 3U);
-    registry.emplaceComponent<ecs::Replicated>(entity, static_cast<std::uint16_t>(2));
+    registry.emplaceComponent<ecs::Replicated>(entity, static_cast<std::uint32_t>(2));
     registry.emplaceComponent<ecs::InputBuffer>(entity);
 
     int visited = 0;

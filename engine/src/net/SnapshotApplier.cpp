@@ -17,7 +17,7 @@ namespace ecs::net {
 SnapshotApplier::SnapshotApplier(ecs::Registry& registry, NetworkEntityMap& map, const float interval)
     : _registry(&registry), _map(&map), _interval(interval) {}
 
-std::optional<ecs::Entity> SnapshotApplier::entity(const std::uint32_t id, const std::uint16_t kind) {
+std::optional<ecs::Entity> SnapshotApplier::entity(const std::uint32_t id, const std::uint32_t kind) {
     if (id == 0) {
         return std::nullopt;
     }
