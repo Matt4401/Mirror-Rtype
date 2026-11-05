@@ -1,19 +1,58 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <string>
 #include <variant>
 
+#include "core/services/IWindowService.hpp"
 #include "ecs/Registry.hpp"
+#include "events/EventBus.hpp"
+#include "events/UiEvents.hpp"
 #include "ui/components/FontId.hpp"
 #include "ui/components/UiAnchor.hpp"
+#include "ui/components/UiButton.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
+#include "ui/system/UiButtonSystem.hpp"
 #include "ui/system/UiDrawItem.hpp"
 
-TEST(FontId, NoFontSentinelIsZero) {
-    EXPECT_EQ(ui::NO_FONT, 0U);
+namespace {
+
+struct FakeWindow : engine::IWindowService {
+    int w = 1920;
+    int h = 1080;
+    float mx = 0.0F;
+    float my = 0.0F;
+    bool leftDown = false;
+
+    [[nodiscard]] bool shouldClose() const noexcept override { return false; }
+    void beginFrame() override {}
+    void endFrame() override {}
+    [[nodiscard]] int width() const noexcept override { return w; }
+    [[nodiscard]] int height() const noexcept override { return h; }
+    [[nodiscard]] bool isKeyDown(engine::Key) const noexcept override { return false; }
+    [[nodiscard]] bool isGamepadAvailable(int) const noexcept override { return false; }
+    [[nodiscard]] bool isGamepadButtonDown(int, engine::GamepadButton) const noexcept override { return false; }
+    [[nodiscard]] float gamepadAxis(int, engine::GamepadAxis) const noexcept override { return 0.0F; }
+    [[nodiscard]] bool isMouseButtonDown(engine::MouseButton btn) const noexcept override {
+        return btn == engine::MouseButton::Left && leftDown;
+    }
+    [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return {.x = mx, .y = my}; }
+    [[nodiscard]] float mouseWheelDelta() const noexcept override { return 0.0F; }
+};
+
+static ecs::Entity makeButton(ecs::Registry& reg, float ancX, float ancY, float w = 120.0F, float h = 36.0F,
+                              const std::string& action = "click") {
+    const ecs::Entity e = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(e, ui::UiAnchor{.anchorX = ancX, .anchorY = ancY});
+    reg.addComponent<ui::UiButton>(e, ui::UiButton{.width = w, .height = h, .action = action});
+    return e;
 }
+
+}  // namespace
+
+TEST(FontId, NoFontSentinelIsZero) { EXPECT_EQ(ui::NO_FONT, 0U); }
 
 TEST(UiAnchor, DefaultValues) {
     const ui::UiAnchor anchor;
@@ -45,7 +84,7 @@ TEST(UiAnchor, WorksAsEcsComponent) {
 }
 
 static std::pair<float, float> resolveAnchor(const ui::UiAnchor& anchor, float screenW, float screenH,
-                                              float elemW = 0.0F, float elemH = 0.0F) {
+                                             float elemW = 0.0F, float elemH = 0.0F) {
     return {(anchor.anchorX * screenW) + anchor.offsetX - (anchor.pivotX * elemW),
             (anchor.anchorY * screenH) + anchor.offsetY - (anchor.pivotY * elemH)};
 }
@@ -215,6 +254,125 @@ TEST(UiDrawItem, HoldsUiProgressBar) {
 
     ASSERT_TRUE(std::holds_alternative<ui::UiProgressBar>(item.drawable));
     EXPECT_EQ(std::get<ui::UiProgressBar>(item.drawable).value, 75.0F);
+}
+
+TEST(UiButton, DefaultValues) {
+    const ui::UiButton btn;
+
+    EXPECT_EQ(btn.state, ui::UiButtonState::Idle);
+    EXPECT_EQ(btn.width, 120.0F);
+    EXPECT_EQ(btn.height, 36.0F);
+    EXPECT_TRUE(btn.label.empty());
+    EXPECT_TRUE(btn.action.empty());
+}
+
+TEST(UiButton, WorksAsEcsComponent) {
+    ecs::Registry registry;
+    const ecs::Entity entity = registry.spawnEntity();
+
+    registry.addComponent<ui::UiButton>(entity, ui::UiButton{.action = "fire"});
+
+    ASSERT_TRUE(registry.hasComponent<ui::UiButton>(entity));
+    EXPECT_EQ(registry.getComponents<ui::UiButton>().get(entity).action, "fire");
+}
+
+TEST(UiButtonSystem, IdleToHoveredWhenMouseEnters) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F);
+
+    win.mx = 60.0F;
+    win.my = 18.0F;
+    ui::UiButtonSystem::update(reg, win, bus);
+
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Hovered);
+}
+
+TEST(UiButtonSystem, HoveredToIdleWhenMouseLeaves) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F);
+    reg.getComponents<ui::UiButton>().get(e).state = ui::UiButtonState::Hovered;
+
+    win.mx = 999.0F;
+    win.my = 999.0F;
+    ui::UiButtonSystem::update(reg, win, bus);
+
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Idle);
+}
+
+TEST(UiButtonSystem, HoveredToPressedOnMouseDown) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F);
+    reg.getComponents<ui::UiButton>().get(e).state = ui::UiButtonState::Hovered;
+
+    win.mx = 60.0F;
+    win.my = 18.0F;
+    win.leftDown = true;
+    ui::UiButtonSystem::update(reg, win, bus);
+
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Pressed);
+}
+
+TEST(UiButtonSystem, PressedToHoveredAndEventOnRelease) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F, 120.0F, 36.0F, "shoot");
+    reg.getComponents<ui::UiButton>().get(e).state = ui::UiButtonState::Pressed;
+
+    std::string capturedAction;
+    bus.subscribe<ui::UiButtonClickedEvent>([&](const ui::UiButtonClickedEvent& ev) { capturedAction = ev.action; });
+
+    win.mx = 60.0F;
+    win.my = 18.0F;
+    win.leftDown = false;
+    ui::UiButtonSystem::update(reg, win, bus);
+
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Hovered);
+    EXPECT_EQ(capturedAction, "shoot");
+}
+
+TEST(UiButtonSystem, PressedToIdleAndEventWhenReleasedOutside) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F, 120.0F, 36.0F, "quit");
+    reg.getComponents<ui::UiButton>().get(e).state = ui::UiButtonState::Pressed;
+
+    std::string capturedAction;
+    bus.subscribe<ui::UiButtonClickedEvent>([&](const ui::UiButtonClickedEvent& ev) { capturedAction = ev.action; });
+
+    win.mx = 999.0F;
+    win.my = 999.0F;
+    win.leftDown = false;
+    ui::UiButtonSystem::update(reg, win, bus);
+
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Idle);
+    EXPECT_EQ(capturedAction, "quit");
+}
+
+TEST(UiButtonSystem, NoEventWhenStillPressed) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F);
+    reg.getComponents<ui::UiButton>().get(e).state = ui::UiButtonState::Pressed;
+
+    bool fired = false;
+    bus.subscribe<ui::UiButtonClickedEvent>([&](const ui::UiButtonClickedEvent&) { fired = true; });
+
+    win.mx = 60.0F;
+    win.my = 18.0F;
+    win.leftDown = true;
+    ui::UiButtonSystem::update(reg, win, bus);
+
+    EXPECT_FALSE(fired);
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Pressed);
 }
 
 int main(int argc, char** argv) {
