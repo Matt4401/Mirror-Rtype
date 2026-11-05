@@ -14,7 +14,6 @@
 #include "Room.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
-#include "net/NetworkConfig.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
 
@@ -54,9 +53,6 @@ bool ServerManager::run(const std::uint16_t port) {
 
 void ServerManager::stop() { _running = false; }
 
-// The engine's transport refuses larger datagrams: every snapshot that passes this check can be sent.
-static_assert(protocol::MAX_UNRELIABLE_SIZE <= ecs::net::MAX_UNRELIABLE_PAYLOAD);
-
 void ServerManager::handleEvents() {
     for (const auto& [type, client, data, channel] : _network->poll()) {
         switch (type) {
@@ -87,16 +83,16 @@ void ServerManager::onDisconnected(const ClientId client) {
 }
 
 void ServerManager::onData(const ClientId client, const ecs::net::Channel channel, const ecs::net::Bytes& data) {
+    if (channel == ecs::net::Channel::Unreliable) {
+        onUnreliableData(client, data);
+        return;
+    }
     const auto message = protocol::decode(data);
     if (!message) {
         log::debug(LOG_TAG, "client ", client, " sent an invalid payload of ", data.size(), " bytes: dropped");
         return;
     }
-    if (channel == ecs::net::Channel::Reliable) {
-        onReliableMessage(client, *message);
-    } else {
-        onUnreliableMessage(client, *message);
-    }
+    onReliableMessage(client, *message);
 }
 
 void ServerManager::onReliableMessage(const ClientId client, const protocol::Message& message) {
@@ -133,28 +129,18 @@ void ServerManager::onReliableMessage(const ClientId client, const protocol::Mes
     log::debug(LOG_TAG, "client ", client, " sent an unhandled message (index ", message.index(), ")");
 }
 
-void ServerManager::onUnreliableMessage(const ClientId client, const protocol::Message& message) {
+void ServerManager::onUnreliableData(const ClientId client, const ecs::net::Bytes& data) {
     if (!_handshaken.contains(client)) {
         log::debug(LOG_TAG, "client ", client, " sent UDP data before Hello: dropped");
         return;
     }
-    const auto* input = std::get_if<protocol::PlayerInput>(&message);
-    if (input == nullptr) {
-        log::debug(LOG_TAG, "client ", client, " sent a non-input message over UDP: dropped");
-        return;
-    }
     const auto id = roomOf(client);
     if (!id) {
-        log::debug(LOG_TAG, "client ", client, " is not in a room: input ignored");
+        log::debug(LOG_TAG, "client ", client, " is not in a room: UDP data ignored");
         return;
     }
     if (const auto room = _rooms.find(*id); room != _rooms.end()) {
-        PlayerInput converted{.sequence = input->sequence, .held = input->held, .axes = {}};
-        converted.axes.reserve(input->axes.size());
-        for (const auto& [action, value] : input->axes) {
-            converted.axes.push_back({.action = action, .value = value});
-        }
-        room->second.onInput(client, converted);
+        room->second.onPacket(client, data);
     }
 }
 
@@ -180,26 +166,7 @@ void ServerManager::send(const ClientId client, const protocol::Message& message
 
 void ServerManager::advanceRooms() {
     for (auto& room : _rooms | std::views::values) {
-        // Each room runs the steps due on its own clock. After several catch-up steps, one snapshot is enough: it
-        // carries the latest state.
-        if (room.advance() > 0) {
-            sendSnapshot(room);
-        }
-    }
-}
-
-void ServerManager::sendSnapshot(const Room& room) const {
-    protocol::WorldState snapshot{.tick = static_cast<std::uint32_t>(room.time().tickCount)};
-    // TODO(protocol): fill snapshot.entities from room.registry() once the entities remember their prefab name
-    // (kind = protocol::makeEntityKind(name)); subtype and flags follow the R-Type conventions of packets.md.
-    for (const ClientId player : room.players()) {
-        snapshot.lastProcessedInput = room.lastProcessedInput(player);
-        const auto bytes = protocol::encode(snapshot);
-        if (bytes.size() > protocol::MAX_UNRELIABLE_SIZE) {
-            log::error(LOG_TAG, "snapshot of ", bytes.size(), " bytes does not fit in a datagram: not sent");
-            return;
-        }
-        _network->send(player, bytes, ecs::net::Channel::Unreliable);
+        room.advance();
     }
 }
 
@@ -217,7 +184,7 @@ std::optional<RoomId> ServerManager::joinRoom(const ClientId client) {
     }
     const RoomId id = open.value_or(_nextRoomId);
     if (!open) {
-        _rooms.try_emplace(_nextRoomId++, MAX_PLAYERS_PER_ROOM);
+        _rooms.try_emplace(_nextRoomId++, *_network, MAX_PLAYERS_PER_ROOM);
         log::debug(LOG_TAG, "room ", id, " created");
     }
 
