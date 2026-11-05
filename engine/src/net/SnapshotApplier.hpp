@@ -63,6 +63,8 @@ class SnapshotApplier {
 
     /** @brief True if the snapshot contained this entity (returned by `entity()`). */
     [[nodiscard]] bool contains(ecs::Entity entity) const { return _seen.contains(entity); }
+    /** @brief Entities the snapshot contained (returned by `entity()`). */
+    [[nodiscard]] const std::unordered_set<ecs::Entity>& seen() const noexcept { return _seen; }
     /** @brief Entities created by this snapshot, in creation order. */
     [[nodiscard]] const std::vector<SpawnedEntity>& spawned() const noexcept { return _spawned; }
 

@@ -5,9 +5,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
-#include <optional>
 #include <unordered_map>
-#include <utility>
+#include <unordered_set>
 #include <vector>
 
 #include "components/InputBuffer.hpp"
@@ -67,23 +66,15 @@ std::uint32_t replicate(ecs::Registry& registry, const ecs::Entity entity, const
     return id;
 }
 
-std::optional<ecs::Entity> findOwnedEntity(ecs::Registry& registry, const PeerId peer) {
-    std::optional<ecs::Entity> found;
+bool receiveInput(ecs::Registry& registry, const PeerId peer, const NetInput& input) {
+    bool queued = false;
     registry.runSystem<ecs::NetworkOwner, ecs::InputBuffer>(
-        [&](const ecs::Entity entity, const ecs::NetworkOwner& owner, ecs::InputBuffer& /*buffer*/) {
-            if (!found && owner.client == peer) {
-                found = entity;
+        [&](const ecs::Entity /*entity*/, const ecs::NetworkOwner& owner, ecs::InputBuffer& buffer) {
+            if (owner.client == peer) {
+                queued = pushInput(buffer, input) || queued;
             }
         });
-    return found;
-}
-
-bool receiveInput(ecs::Registry& registry, const PeerId peer, NetInput input) {
-    const auto entity = findOwnedEntity(registry, peer);
-    if (!entity) {
-        return false;
-    }
-    return pushInput(registry.getComponents<ecs::InputBuffer>().get(*entity), std::move(input));
+    return queued;
 }
 
 void applyInputs(ecs::Registry& registry, ecs::EventBus& events, const float deltaTime) {
@@ -97,7 +88,7 @@ void applyInputs(ecs::Registry& registry, ecs::EventBus& events, const float del
     publishInputs(events, inputs, deltaTime, false);
 }
 
-std::size_t sendSnapshots(ecs::Registry& registry, IReplicationCodec& codec, engine::INetworkService& service,
+std::size_t sendSnapshots(ecs::Registry& registry, IReplicationCodec& codec, INetworkService& service,
                           const std::uint32_t tick) {
     codec.beginSnapshot(tick);
     registry.runSystem<ecs::NetworkId, ecs::Replicated>(
@@ -116,20 +107,21 @@ std::size_t sendSnapshots(ecs::Registry& registry, IReplicationCodec& codec, eng
 
     std::size_t sent = 0;
     for (const auto& [peer, lastProcessed] : recipients) {
-        const Bytes bytes = codec.encodeSnapshot(lastProcessed);
-        if (bytes.empty() || bytes.size() > MAX_UNRELIABLE_PAYLOAD) {
-            continue;
+        for (const Bytes& part : codec.encodeSnapshot(lastProcessed)) {
+            if (part.empty() || part.size() > MAX_UNRELIABLE_PAYLOAD) {
+                continue;
+            }
+            service.send(peer, part, Channel::Unreliable);
+            ++sent;
         }
-        service.send(peer, bytes, Channel::Unreliable);
-        ++sent;
     }
     return sent;
 }
 
-void despawnMissing(ecs::Registry& registry, ecs::EventBus& events, const SnapshotApplier& applier) {
+void despawnMissing(ecs::Registry& registry, ecs::EventBus& events, const std::unordered_set<ecs::Entity>& present) {
     std::vector<ReplicatedEntityDespawned> missing;
     registry.runSystem<ecs::NetworkId>([&](const ecs::Entity entity, const ecs::NetworkId& id) {
-        if (!applier.contains(entity)) {
+        if (!present.contains(entity)) {
             const std::uint32_t kind = registry.hasComponent<ecs::Replicated>(entity)
                                            ? registry.getComponents<ecs::Replicated>().get(entity).kind
                                            : 0;

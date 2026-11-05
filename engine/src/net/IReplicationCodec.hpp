@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "components/InputBuffer.hpp"
 #include "components/Replicated.hpp"
@@ -12,12 +13,19 @@
 
 namespace ecs::net {
 
-/** @brief Fields of a snapshot the engine needs, read before the snapshot is applied. */
+/** @brief Largest number of parts one snapshot can be split into. */
+inline constexpr std::uint32_t MAX_SNAPSHOT_PARTS = 64;
+
+/** @brief Fields of a snapshot part the engine needs, read before the part is applied. */
 struct SnapshotHeader {
-    /** @brief Server step of the snapshot; a snapshot not newer than the last applied one is dropped. */
+    /** @brief Server step of the snapshot; a part older than the last snapshot received is dropped. */
     std::uint32_t tick = 0;
     /** @brief Sequence of the last input of this client applied by the server, for reconciliation. */
     std::uint32_t lastProcessedInput = 0;
+    /** @brief Index of this part in the snapshot, below `partCount`. */
+    std::uint32_t partIndex = 0;
+    /** @brief Number of parts of the snapshot, from 1 to `MAX_SNAPSHOT_PARTS`. */
+    std::uint32_t partCount = 1;
 };
 
 /**
@@ -63,10 +71,15 @@ class IReplicationCodec {
 
     /**
      * @brief Server: encodes the current snapshot for one peer. Called once per peer, with the same entities.
+     *
+     * A snapshot that does not fit in one datagram is split: each part holds some of the entities, with the same tick
+     * and `lastProcessedInput`, and its `partIndex` / `partCount` in the header `decodeSnapshot()` will read. A world
+     * without entities still needs one part: that is how the client learns its entities are gone.
+     *
      * @param lastProcessedInput Sequence of the last input of this peer applied by the server.
-     * @return The payload, at most `MAX_UNRELIABLE_PAYLOAD` bytes; an empty payload is not sent.
+     * @return The parts, in order, each at most `MAX_UNRELIABLE_PAYLOAD` bytes; a larger or empty one is not sent.
      */
-    [[nodiscard]] virtual Bytes encodeSnapshot(std::uint32_t lastProcessedInput) = 0;
+    [[nodiscard]] virtual std::vector<Bytes> encodeSnapshot(std::uint32_t lastProcessedInput) = 0;
 
     /**
      * @brief Server: reads an input sent by a client.
@@ -83,18 +96,18 @@ class IReplicationCodec {
     [[nodiscard]] virtual Bytes encodeInput(const NetInput& input) = 0;
 
     /**
-     * @brief Client: decodes a snapshot and keeps it for `applySnapshot()`.
+     * @brief Client: decodes one part of a snapshot and keeps it for `applySnapshot()`.
      * @param data Payload received from the server (untrusted).
      * @return Its header, or nothing if the payload is not a valid snapshot (e.g. another message of the game).
      */
     [[nodiscard]] virtual std::optional<SnapshotHeader> decodeSnapshot(const Bytes& data) = 0;
 
     /**
-     * @brief Client: writes the entities of the last decoded snapshot into the world.
+     * @brief Client: writes the entities of the last decoded part into the world.
      *
-     * Called only if the snapshot is newer than the last applied one. Calls `applier.entity()` for each entity of the
-     * snapshot, then writes its state (`applier.setTransform()` for its position). Entities not passed to
-     * `applier.entity()` are removed by the engine.
+     * Called only if the part is not stale nor already received. Calls `applier.entity()` for each entity of the part,
+     * then writes its state (`applier.setTransform()` for its position). Once every part of a snapshot was received,
+     * the entities passed to `applier.entity()` by none of them are removed by the engine.
      *
      * @param applier Access to the client world.
      */

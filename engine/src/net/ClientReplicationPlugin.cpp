@@ -1,4 +1,4 @@
-#include "net/ReplicationPlugins.hpp"
+#include "net/ClientReplicationPlugin.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -20,46 +20,6 @@
 
 namespace ecs::net {
 
-// ---------------------------------------------------------------------------------------------------------------------
-// Server
-
-ServerReplicationPlugin::ServerReplicationPlugin(std::shared_ptr<IReplicationCodec> codec) : _codec(std::move(codec)) {}
-
-void ServerReplicationPlugin::build(engine::PluginBuilder& builder) { builder.require<NetworkPlugin>(); }
-
-void ServerReplicationPlugin::init(engine::Engine& engine) {
-    _packets = engine.eventBus().subscribe<PacketReceived>([this, &engine](const PacketReceived& packet) {
-        if (auto input = _codec->decodeInput(packet.data)) {
-            receiveInput(engine.registry(), packet.peer, std::move(*input));
-        }
-    });
-}
-
-void ServerReplicationPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) {
-    applyInputs(engine.registry(), engine.eventBus(), time.deltaTime);
-    _pendingTick = static_cast<std::uint32_t>(time.tickCount);
-}
-
-void ServerReplicationPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
-    // After several catch-up steps, one snapshot is enough: it carries the latest state.
-    if (!_pendingTick) {
-        return;
-    }
-    sendSnapshots(engine.registry(), *_codec, engine.service<engine::INetworkService>(), *_pendingTick);
-    _pendingTick.reset();
-}
-
-void ServerReplicationPlugin::shutdown(engine::Engine& engine) {
-    if (_packets) {
-        engine.eventBus().unsubscribe<PacketReceived>(*_packets);
-        _packets.reset();
-    }
-    _pendingTick.reset();
-}
-
-// ---------------------------------------------------------------------------------------------------------------------
-// Client
-
 ClientReplicationPlugin::ClientReplicationPlugin(std::shared_ptr<IReplicationCodec> codec) : _codec(std::move(codec)) {}
 
 void ClientReplicationPlugin::build(engine::PluginBuilder& builder) { builder.require<NetworkPlugin>(); }
@@ -71,35 +31,65 @@ void ClientReplicationPlugin::init(engine::Engine& engine) {
     }
     _packets = engine.eventBus().subscribe<PacketReceived>(
         [this, &engine](const PacketReceived& packet) { onPacket(engine, packet); });
-    _inputs = engine.eventBus().subscribe<LocalInput>([this, &engine](const LocalInput& local) {
-        engine.service<engine::INetworkService>().send(SERVER_PEER, _codec->encodeInput(local.input),
-                                                       Channel::Unreliable);
-        predict(engine.registry(), engine.eventBus(), local.input, engine.fixedDeltaTime());
-    });
+    _inputs = engine.eventBus().subscribe<LocalInput>(
+        [this, &engine](const LocalInput& local) { onLocalInput(engine, local); });
+}
+
+void ClientReplicationPlugin::onLocalInput(engine::Engine& engine, const LocalInput& local) {
+    auto& service = engine.service<INetworkService>();
+    const std::uint32_t acknowledged = engine.registry().getResource<SnapshotState>().lastProcessedInput;
+    for (const SentInput& sent : _sentInputs) {
+        if (sent.sequence > acknowledged) {
+            service.send(SERVER_PEER, sent.bytes, Channel::Unreliable);
+        }
+    }
+    Bytes bytes = _codec->encodeInput(local.input);
+    service.send(SERVER_PEER, bytes, Channel::Unreliable);
+
+    _sentInputs.push_back({.sequence = local.input.sequence, .bytes = std::move(bytes)});
+    if (_sentInputs.size() > INPUT_RESEND_COUNT) {
+        _sentInputs.pop_front();
+    }
+    predict(engine.registry(), engine.eventBus(), local.input, engine.fixedDeltaTime());
 }
 
 void ClientReplicationPlugin::onPacket(engine::Engine& engine, const PacketReceived& packet) {
     const auto header = _codec->decodeSnapshot(packet.data);
-    if (!header) {
+    if (!header || header->partCount == 0 || header->partCount > MAX_SNAPSHOT_PARTS ||
+        header->partIndex >= header->partCount) {
         return;
     }
     auto& registry = engine.registry();
     auto& state = registry.getResource<SnapshotState>();
     // Unreliable channel: an older snapshot can arrive after a newer one; applying it would move entities back.
-    if (state.tick && header->tick <= *state.tick) {
+    if (state.tick && header->tick < *state.tick) {
         return;
     }
-    const float interval = state.tick ? static_cast<float>(header->tick - *state.tick) * engine.fixedDeltaTime() : 0.0F;
+    const std::uint64_t part = std::uint64_t{1} << header->partIndex;
+    if (!state.tick || header->tick > *state.tick) {
+        _snapshotInterval =
+            state.tick ? static_cast<float>(header->tick - *state.tick) * engine.fixedDeltaTime() : 0.0F;
+        _partsReceived = 0;
+        _snapshotEntities.clear();
+    } else if ((_partsReceived & part) != 0) {
+        return;
+    }
 
-    SnapshotApplier applier(registry, registry.getResource<NetworkEntityMap>(), interval);
+    SnapshotApplier applier(registry, registry.getResource<NetworkEntityMap>(), _snapshotInterval);
     _codec->applySnapshot(applier);
     state.tick = header->tick;
     state.lastProcessedInput = header->lastProcessedInput;
+    _partsReceived |= part;
+    _snapshotEntities.insert(applier.seen().begin(), applier.seen().end());
 
     for (const auto& [entity, id, kind] : applier.spawned()) {
         engine.eventBus().publish(ReplicatedEntitySpawned{.entity = entity, .id = id, .kind = kind});
     }
-    despawnMissing(registry, engine.eventBus(), applier);
+    const std::uint64_t allParts =
+        header->partCount == MAX_SNAPSHOT_PARTS ? ~std::uint64_t{0} : (std::uint64_t{1} << header->partCount) - 1;
+    if (_partsReceived == allParts) {
+        despawnMissing(registry, engine.eventBus(), _snapshotEntities);
+    }
     reconcile(registry, engine.eventBus(), applier, header->lastProcessedInput, engine.fixedDeltaTime());
 }
 

@@ -2,7 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <optional>
+#include <unordered_set>
 
 #include "components/InputBuffer.hpp"
 #include "ecs/Entity.hpp"
@@ -29,21 +29,14 @@ namespace ecs::net {
 std::uint32_t replicate(ecs::Registry& registry, ecs::Entity entity, std::uint32_t kind);
 
 /**
- * @brief Server: finds the entity controlled by a peer, i.e. carrying `NetworkOwner{peer}` and an `InputBuffer`.
- * @param registry Server world.
- * @param peer Owner to look for.
- * @return The first such entity, or nothing.
- */
-[[nodiscard]] std::optional<ecs::Entity> findOwnedEntity(ecs::Registry& registry, PeerId peer);
-
-/**
- * @brief Server: queues an input in the `InputBuffer` of the entity controlled by the peer.
+ * @brief Server: queues an input in every entity controlled by the peer, i.e. carrying `NetworkOwner{peer}` and an
+ * `InputBuffer`. Like on the client, where an input is predicted on every `Predicted` entity.
  * @param registry Server world.
  * @param peer Sender of the input.
- * @param input Decoded input, moved into the queue.
- * @return False if the peer controls no entity or the input was dropped (late, duplicated).
+ * @param input Decoded input.
+ * @return False if the peer controls no entity or every entity dropped the input (late, duplicated).
  */
-bool receiveInput(ecs::Registry& registry, PeerId peer, NetInput input);
+bool receiveInput(ecs::Registry& registry, PeerId peer, const NetInput& input);
 
 /**
  * @brief Server, once per fixed step: takes one pending input per entity and publishes it as `InputApplied`.
@@ -56,26 +49,27 @@ void applyInputs(ecs::Registry& registry, ecs::EventBus& events, float deltaTime
 /**
  * @brief Server: encodes the replicated entities and sends one snapshot to each peer controlling an entity.
  *
- * Each peer receives the sequence of the last of its inputs applied by the server. Payloads that are empty or larger
- * than `MAX_UNRELIABLE_PAYLOAD` are not sent.
+ * Each peer receives the sequence of the last of its inputs applied by the server. The codec may split a snapshot into
+ * several parts, each one sent as a datagram; parts that are empty or larger than `MAX_UNRELIABLE_PAYLOAD` are not
+ * sent.
  *
  * @param registry Server world.
  * @param codec Game wire format.
  * @param service Where snapshots are sent (unreliable channel).
  * @param tick Server step of the snapshot.
- * @return Number of snapshots sent.
+ * @return Number of datagrams sent.
  */
-std::size_t sendSnapshots(ecs::Registry& registry, IReplicationCodec& codec, engine::INetworkService& service,
+std::size_t sendSnapshots(ecs::Registry& registry, IReplicationCodec& codec, INetworkService& service,
                           std::uint32_t tick);
 
 /**
- * @brief Client: removes the replicated entities a snapshot did not contain. Publishes `ReplicatedEntityDespawned`
- * for each of them before killing it.
+ * @brief Client: removes the replicated entities a complete snapshot did not contain. Publishes
+ * `ReplicatedEntityDespawned` for each of them before killing it.
  * @param registry Client world.
  * @param events Bus the game listens to.
- * @param applier Applier of the snapshot just applied.
+ * @param present Entities contained in all the parts of the snapshot.
  */
-void despawnMissing(ecs::Registry& registry, ecs::EventBus& events, const SnapshotApplier& applier);
+void despawnMissing(ecs::Registry& registry, ecs::EventBus& events, const std::unordered_set<ecs::Entity>& present);
 
 /**
  * @brief Client: reconciles the `Predicted` entities with the server state just applied.
@@ -85,7 +79,7 @@ void despawnMissing(ecs::Registry& registry, ecs::EventBus& events, const Snapsh
  *
  * @param registry Client world.
  * @param events Bus the game's input handlers listen to.
- * @param applier Applier of the snapshot just applied; only the entities it contained are reconciled.
+ * @param applier Applier of the snapshot part just applied; only the entities it contained are reconciled.
  * @param lastProcessedInput Sequence acknowledged by the server.
  * @param deltaTime Duration of one input, in seconds.
  */
