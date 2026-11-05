@@ -1,6 +1,11 @@
 #include "ui/font/FontStore.hpp"
 
+#include <raylib.h>
+
 #include <cstddef>
+#include <string>
+
+#include "ui/components/FontId.hpp"
 
 namespace ui {
 
@@ -16,7 +21,7 @@ FontStore::~FontStore() {
 }
 
 FontId FontStore::load(const std::string& path) {
-    Font font = LoadFont(path.c_str());
+    const Font font = LoadFont(path.c_str());
     if (font.texture.id == 0) {
         return NO_FONT;
     }

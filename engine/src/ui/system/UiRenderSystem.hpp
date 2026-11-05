@@ -3,6 +3,10 @@
 #include <vector>
 
 #include "ecs/Registry.hpp"
+#include "ui/components/UiButton.hpp"
+#include "ui/components/UiProgressBar.hpp"
+#include "ui/components/UiRect.hpp"
+#include "ui/components/UiText.hpp"
 #include "ui/font/FontStore.hpp"
 #include "ui/system/UiDrawItem.hpp"
 
@@ -28,8 +32,10 @@ class UiRenderSystem {
      * @brief Gathers HUD entities and resolves their screen positions.
      *
      * @param registry Registry to read from.
+     * @param screenW  Current window width in pixels.
+     * @param screenH  Current window height in pixels.
      */
-    void collect(ecs::Registry& registry);
+    void collect(ecs::Registry& registry, int screenW, int screenH);
 
     /**
      * @brief Draws the items gathered by the last `collect`.
@@ -42,8 +48,10 @@ class UiRenderSystem {
      * @brief Collects then draws in one call.
      *
      * @param registry Registry to read from.
+     * @param screenW  Current window width in pixels.
+     * @param screenH  Current window height in pixels.
      */
-    void update(ecs::Registry& registry);
+    void update(ecs::Registry& registry, int screenW, int screenH);
 
     /**
      * @brief Items gathered by the last `collect`.

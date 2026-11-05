@@ -3,14 +3,21 @@
 #include <raylib.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
+#include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
+#include "ui/components/FontId.hpp"
 #include "ui/components/UiAnchor.hpp"
 #include "ui/components/UiButton.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
+#include "ui/font/FontStore.hpp"
+#include "ui/system/UiDrawItem.hpp"
 
 namespace ui {
 
@@ -18,16 +25,15 @@ static constexpr std::size_t INITIAL_QUEUE_CAPACITY = 64;
 
 UiRenderSystem::UiRenderSystem(const FontStore& fonts) : _fonts(&fonts) { _queue.reserve(INITIAL_QUEUE_CAPACITY); }
 
-void UiRenderSystem::collect(ecs::Registry& registry) {
+void UiRenderSystem::collect(ecs::Registry& registry, int screenW, int screenH) {
     _queue.clear();
 
-    const auto screenW = static_cast<float>(GetScreenWidth());
-    const auto screenH = static_cast<float>(GetScreenHeight());
+    const auto sw = static_cast<float>(screenW);
+    const auto sh = static_cast<float>(screenH);
 
-    const auto resolve = [screenW, screenH](const UiAnchor& anchor, float elemW,
-                                            float elemH) -> std::pair<float, float> {
-        return {(anchor.anchorX * screenW) + anchor.offsetX - (anchor.pivotX * elemW),
-                (anchor.anchorY * screenH) + anchor.offsetY - (anchor.pivotY * elemH)};
+    const auto resolve = [sw, sh](const UiAnchor& anchor, float elemW, float elemH) -> std::pair<float, float> {
+        return {(anchor.anchorX * sw) + anchor.offsetX - (anchor.pivotX * elemW),
+                (anchor.anchorY * sh) + anchor.offsetY - (anchor.pivotY * elemH)};
     };
 
     registry.runSystem<UiAnchor, UiRect>(
@@ -59,8 +65,8 @@ void UiRenderSystem::collect(ecs::Registry& registry) {
         });
 }
 
-void UiRenderSystem::update(ecs::Registry& registry) {
-    collect(registry);
+void UiRenderSystem::update(ecs::Registry& registry, int screenW, int screenH) {
+    collect(registry, screenW, screenH);
     draw();
 }
 

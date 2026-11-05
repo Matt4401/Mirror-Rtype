@@ -14,7 +14,6 @@
 #include "core/PluginBuilder.hpp"
 #include "ecs/time/Time.hpp"
 #include "ui/font/FontStore.hpp"
-#include "ui/system/UiButtonSystem.hpp"
 #include "ui/system/UiRenderSystem.hpp"
 
 namespace ui {
@@ -89,8 +88,6 @@ class UiPlugin final : public engine::IPlugin {
     std::unique_ptr<FontStore> _fonts;
     /** @brief Owned UI render system; valid after init(). */
     std::unique_ptr<UiRenderSystem> _uiRenderSystem;
-    /** @brief Button interaction system. */
-    UiButtonSystem _buttonSystem;
 };
 
 }  // namespace ui

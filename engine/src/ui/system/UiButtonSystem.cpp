@@ -7,10 +7,11 @@
 
 #include "ui/system/UiButtonSystem.hpp"
 
-#include <raylib.h>
-
+#include "core/services/IWindowService.hpp"
 #include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
+#include "events/EventBus.hpp"
 #include "events/UiEvents.hpp"
 #include "ui/components/UiAnchor.hpp"
 #include "ui/components/UiButton.hpp"
@@ -18,8 +19,8 @@
 namespace ui {
 
 void UiButtonSystem::update(ecs::Registry& registry, const engine::IWindowService& window, ecs::EventBus& bus) {
-    const auto screenW = static_cast<float>(GetScreenWidth());
-    const auto screenH = static_cast<float>(GetScreenHeight());
+    const auto screenW = static_cast<float>(window.width());
+    const auto screenH = static_cast<float>(window.height());
     const engine::MousePosition mouse = window.mousePosition();
     const bool mouseDown = window.isMouseButtonDown(engine::MouseButton::Left);
 

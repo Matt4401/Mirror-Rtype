@@ -37,7 +37,7 @@ class UiButtonSystem {
      * @param window   Window service providing mouse position and button state.
      * @param bus      Event bus used to publish click events.
      */
-    void update(ecs::Registry& registry, const engine::IWindowService& window, ecs::EventBus& bus);
+    static void update(ecs::Registry& registry, const engine::IWindowService& window, ecs::EventBus& bus);
 };
 
 }  // namespace ui
