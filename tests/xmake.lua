@@ -68,6 +68,13 @@ target("test_physics")
     add_files("physics/PhysicsSystemTests.cpp")
     add_tests("test_physics")
 
+target("test_collision_router")
+    set_kind("binary")
+    add_deps("rtype_collision")
+    add_packages("gtest")
+    add_files("server/CollisionRouterTests.cpp")
+    add_tests("test_collision_router")
+
 target("test_config")
     set_kind("binary")
     add_deps("engine_config")

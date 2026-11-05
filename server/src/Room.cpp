@@ -84,7 +84,8 @@ void Room::step([[maybe_unused]] ecs::Registry& registry) {
     // TODO(ecs): run the systems, always in the same order, with the Time resource, e.g.:
     // const float dt = registry.getResource<ecs::time::Time>().deltaTime;
     // updateMovement(registry, dt);
-    // updateCollisions(registry, _events);
+    // updateCollisions(registry, _events); -> once the Room runs an engine::Engine, add systems::PhysicsPlugin (it
+    // publishes events::CollisionBeginEvent) and own a collision::CollisionRouter on the engine event bus.
     // _scripts.update(time.deltaTime);   // also flushes its CommandBuffer (spawns / kills requested by scripts)
 }
 
