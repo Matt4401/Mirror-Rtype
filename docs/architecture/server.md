@@ -5,27 +5,33 @@ headless and does not link raylib.
 
 ## Threads
 
-| Thread  | Runs                                        | Touches                               |
-|---------|---------------------------------------------|---------------------------------------|
-| Network | The Asio transport (`engine_network_asio`)  | Sockets; receiving never waits on the game |
-| Game    | `ServerManager::run()`: lobby and all rooms | Game state; no lock in game code      |
+| Thread         | Runs                                       | Touches                                     |
+|----------------|--------------------------------------------|---------------------------------------------|
+| Network        | The Asio transport (`engine_network_asio`) | Sockets; receiving never waits on the game  |
+| Server         | `ServerManager::run()` and the `Lobby`     | The clients, the rooms and their players    |
+| One per room   | `Room::advance()`, once the game started   | The engine of this room, under its mutex    |
 
-They only talk through the transport's event queue (`poll()`) and `asio::post` (`send()`). A slow or crashed client
-therefore never blocks the game thread. See [Network Architecture](network.md#6-threading-model).
+They only talk through the transport's event queue (`poll()`) and `asio::post` (`send()`), and a room receives its packets
+through the thread-safe `PeerGroupConnection`. A slow or crashed client therefore never blocks a game, and a room with many
+entities does not slow down the others. The mutex of a room is only contended when a player leaves it: the server thread
+then waits for the step in progress. An exception in a simulation stops that room only. See [Network Architecture](network.md#6-threading-model).
 
 ## `ServerManager`
 
-Owns the transport and the rooms, and holds no game logic. Each loop iteration, about every millisecond:
+Owns the transport and the `Lobby`, and holds no game logic. Each loop iteration, about every millisecond:
 
 1. **`poll()` the network once** and route the events. This is the only place that reads it: a room polling the shared
    queue would steal the events of the others.
 2. Kick the clients that sent no `Hello` within 5 seconds.
-3. **`advance()` every room.**
 
-Reliable payloads are decoded here (handshake, lobby). Unreliable payloads are forwarded to the client's room without
-being decoded: only the replication codec reads them.
+Reliable payloads are decoded here: the handshake is handled here too, and the rest goes to the `Lobby`. Unreliable
+payloads are forwarded to the client's room without being decoded: only the replication codec reads them.
+
+A client of another protocol version is refused with `INetworkServer::refuse()`, so that it can tell its player why.
 
 ### Lobby
+
+`Lobby` (`server/src/Lobby.cpp`) owns the rooms and the clients past their `Hello`, and only runs on the server thread.
 
 | Message            | Effect                                                                                 |
 |--------------------|----------------------------------------------------------------------------------------|
@@ -61,11 +67,12 @@ flowchart LR
 - **`start()` gives each player its index**, its position in join order, so the indices have no holes whoever left the
   lobby. `GameStart` requires `player_index < player_count`. It also resets the clock: game time starts at 0, however
   long the room waited.
+- **`runInBackground()` gives a started room its thread**, which stops when the room is destroyed.
 - **`advance()` does nothing while the room waits.** After several catch-up steps, a single snapshot is sent, since it
   carries the latest state.
 
 ## What is not simulated yet
 
 Only ship movement runs on the server. Shots, enemies, collisions and `GameOver` are still to do, as well as `Chat`, which
-the server drops. A snapshot is the complete state of the room: past about 45 entities it no longer fits in a datagram and
-is not sent (an error is logged), so more entities will need delta or partial snapshots.
+the server drops. A snapshot is the complete state of the room, split into as many datagrams as needed: 36 entities per
+datagram, and at most 64 of them, about 2300 entities. Past that it is not sent (an error is logged).

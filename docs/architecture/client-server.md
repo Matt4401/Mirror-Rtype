@@ -91,8 +91,8 @@ flowchart LR
     class P eng
 ```
 
-Each process has a **game thread** (the simulation, lock-free) and a **network thread** (Asio). They only talk
-through two points:
+Each process has a **network thread** (Asio). The client has one **game thread**; the server has one for the lobby, plus
+one for each started room. The game threads and the network thread only talk through two points:
 
 - `asio::post` to send;
 - the `EventQueue`, read by `poll()`, to receive.
@@ -110,14 +110,14 @@ Key points:
 ### One server loop iteration
 
 Each room owns its own `engine::Engine`, and so its own [`ecs::time::Clock`](clock.md): rooms are independent games, each
-with its own game time and rate. The `ServerManager` runs them all on the game thread, one loop iteration about every millisecond:
+with its own game time and rate. A started room runs on its own thread, so that a room with many entities does not slow
+down the others. Two loops run at the same time, one iteration about every millisecond each:
 
-1. `poll()` the network once and route the events: lobby messages decoded here, UDP payloads handed to the player's room.
-   This is the only place that reads the network: it has one event queue for every player.
-2. `room.advance()` for each room: the room's engine runs one frame. Its clock runs the steps that are due (60 Hz by
-   default, `DEFAULT_FIXED_DT`). Each step applies one input per player, then the ECS systems with `time.deltaTime`.
-   If at least one step ran, `ServerReplicationPlugin` sends a snapshot to each player of the room, numbered with the tick.
-3. Sleep 1 ms.
+- The `ServerManager` calls `poll()` on the network once and routes the events: lobby messages decoded here, UDP payloads
+  handed to the player's room. This is the only place that reads the network: it has one event queue for every player.
+- Each started room calls `advance()`: the room's engine runs one frame. Its clock runs the steps that are due (60 Hz by
+  default, `DEFAULT_FIXED_DT`). Each step applies one input per player, then the ECS systems with `time.deltaTime`.
+  If at least one step ran, `ServerReplicationPlugin` sends a snapshot to each player of the room, numbered with the tick.
 
 - `Room::start()` resets the room's clock: the game time (`tickCount`, `totalElapsedTime`) starts at 0 when the game
   starts, however long the room waited for its players. A waiting room does not step.

@@ -2,7 +2,7 @@
 
 How a game built on the engine gets connections, inputs, replication, prediction and interpolation without writing any
 socket code. This page is the checklist for a new game; R-Type follows it, see `game/src/`, `server/src/Room.cpp` and
-`client/src/net/RTypeNetworkPlugin.cpp`. The design is explained in [Network Architecture](../architecture/network.md).
+`client/src/net/`. The design is explained in [Network Architecture](../architecture/network.md).
 
 A game provides three things: **a wire format**, **the plugins** and **`Replicated` entities**. Everything else is engine
 code.
@@ -15,16 +15,17 @@ code.
 |--------|----------------------------------------|----------------------------------------------------------------------|
 | Server | `beginSnapshot(tick)`                  | Forgets the entities of the previous snapshot                        |
 | Server | `writeEntity(registry, entity, id, r)` | Adds one entity; reads the components you want to send               |
-| Server | `encodeSnapshot(lastProcessedInput)`   | Returns the bytes; called once per peer, an empty result is not sent |
+| Server | `encodeSnapshot(lastProcessedInput)`   | Returns the parts of the snapshot; called once per peer              |
 | Server | `decodeInput(bytes)`                   | Returns the input, or nothing if the payload is not a valid one      |
 | Client | `encodeInput(input)`                   | Returns the bytes of a local input                                   |
-| Client | `decodeSnapshot(bytes)`                | Keeps the snapshot and returns its tick and acknowledged input       |
+| Client | `decodeSnapshot(bytes)`                | Keeps the part; returns its tick, acknowledged input and part number |
 | Client | `applySnapshot(applier)`               | Writes each entity through the `SnapshotApplier`                     |
 
 ```cpp
 void MyCodec::applySnapshot(ecs::net::SnapshotApplier& applier) {
     for (const MyEntity& state : _received) {
-        // Finds the local entity of this network id, or creates it. Entities you do not pass here are removed.
+        // Finds the local entity of this network id, or creates it. Entities that no part of a snapshot passes here are
+        // removed.
         if (const auto entity = applier.entity(state.id, state.kind)) {
             applier.setTransform(*entity, ecs::Transform{.x = state.x, .y = state.y});
         }
@@ -35,7 +36,9 @@ void MyCodec::applySnapshot(ecs::net::SnapshotApplier& applier) {
 Three rules:
 
 - Everything decoded comes from the network: validate it, and return nothing instead of throwing.
-- A snapshot must fit in `MAX_UNRELIABLE_PAYLOAD` bytes (1192). A larger one is not sent at all.
+- Each part must fit in `MAX_UNRELIABLE_PAYLOAD` bytes (1192); a larger one is not sent. Split a large snapshot into at
+  most `MAX_SNAPSHOT_PARTS` parts, each with its `partIndex` and `partCount`. Always return at least one part, even for an
+  empty world: that is how a client learns that its entities are gone.
 - A codec keeps state between calls: give each engine its own instance.
 
 `setTransform` replaces the whole `Transform`. If your wire format only carries a position, start from the current
@@ -49,12 +52,15 @@ Pick a `protocolId` for your game: a peer announcing another one is refused duri
 
 ```cpp
 const std::shared_ptr<ecs::net::INetworkClient> transport = ecs::net::createClient({.protocolId = MY_GAME_ID});
-transport->connect(host, port);
-const auto connection = std::make_shared<engine::ClientConnection>(transport);
+const auto connection = std::make_shared<ecs::net::ClientConnection>(transport);
 
 engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection)
     .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<MyCodec>());
+
+transport->connect(host, port);  // returns at once: PeerConnected follows, or PeerDisconnected if it fails
 ```
+
+After `PeerDisconnected`, `transport->disconnectReason()` tells why: server unreachable or full, other protocol.
 
 Call `transport->openUdp(port)` when your game starts: snapshots and inputs travel over UDP.
 
@@ -64,7 +70,7 @@ A transport has one event queue for all its peers. A server with several worlds 
 world gets a `PeerGroupConnection`, which also stops it from reaching the peers of another world.
 
 ```cpp
-auto connection = std::make_shared<engine::PeerGroupConnection>(*server);  // the transport must outlive it
+auto connection = std::make_shared<ecs::net::PeerGroupConnection>(*server);  // the transport must outlive it
 
 engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection)
     .addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<MyCodec>());

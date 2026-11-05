@@ -91,7 +91,8 @@ engine/src/net/                      # target "engine_network": must not include
 ├── INetworkEventSource.hpp           # where NetworkPlugin reads its events from
 ├── ClientConnection.hpp/.cpp         # client transport -> service + event source
 ├── PeerGroupConnection.hpp/.cpp      # server transport shared by several engines -> service + event source
-├── ReplicationPlugins.hpp/.cpp       # ServerReplicationPlugin, ClientReplicationPlugin, SnapshotState
+├── ServerReplicationPlugin.hpp/.cpp  # inputs in, snapshots out
+├── ClientReplicationPlugin.hpp/.cpp  # snapshots in, inputs out, SnapshotState
 ├── ReplicationSystems.hpp/.cpp       # the systems, as free functions
 ├── ReplicationEvents.hpp             # InputApplied, LocalInput, ReplicatedEntitySpawned / Despawned
 ├── IReplicationCodec.hpp             # wire format, provided by the game
@@ -206,13 +207,14 @@ Event contract, the same on both sides:
 | `Disconnected` | The connection is gone (closed, timed out, kicked, or the peer stopped reading). Sent once per connection. Client: the client is now stopped. |
 
 On the client, a `Disconnected` can arrive **without** a `Connected` before it, when a connection fails before the
-library is ready: server full, other `protocolId`, or connection lost before `Welcome`. Game code must handle a
-`Disconnected` for a connection it never saw. On the server, a peer is announced only once its handshake is accepted, so
+library is ready: server unreachable or full, other `protocolId`, or connection lost before `Welcome`. Game code must
+handle a `Disconnected` for a connection it never saw, and `disconnectReason()` tells it why. On the server, a peer is announced only once its handshake is accepted, so
 a refused connection produces no event at all.
 
 The server and the client are **single-use objects**. After `stop()`, their `io_context` cannot run again:
 `start()` / `connect()` return `false`. To reconnect (back to the menu, then join again), create a new object. A failed
-`start()` / `connect()` (port taken, server unreachable) can be retried on the same object.
+`start()` (port taken) can be retried on the same object. `connect()` only reports its failure later, with `Disconnected`:
+that client is stopped, so create another one to retry.
 
 On the client, losing the connection also stops it. When its TCP session closes (server gone, kicked, UDP timeout,
 protocol violation), the client switches to `Stopped` **before** pushing `Disconnected`, so when the game reads that
@@ -239,11 +241,13 @@ public:
     virtual void send(PeerId peer, const Bytes& data, Channel channel) = 0;
     virtual void broadcast(const Bytes& data, Channel channel) = 0;
     virtual void kick(PeerId peer) = 0;
+    virtual void refuse(PeerId peer, DisconnectReason reason);  // tells the client why, then closes
 };
 
 class INetworkClient : public INetworkManager {
 public:
-    virtual bool connect(const std::string& host, uint16_t port) = 0;
+    virtual bool connect(const std::string& host, uint16_t port) = 0;  // never blocks
+    virtual DisconnectReason disconnectReason() const = 0;
     virtual bool openUdp(uint16_t port) = 0;
     virtual void closeUdp() = 0;
     virtual void send(const Bytes& data, Channel channel) = 0;
@@ -254,8 +258,9 @@ public:
           INetworkManager          poll · stop · isRunning
            /            \
   INetworkServer      INetworkClient
-  start · send(id)    connect · openUdp
-  broadcast · kick    closeUdp · send
+  start · send(id)    connect · disconnectReason
+  broadcast · kick    openUdp · closeUdp · send
+  refuse
            |                 |
     NetworkServer      NetworkClient       (private)
 ```
@@ -374,7 +379,7 @@ only once, so client and server cannot drift apart. The client's events always c
 
 | Function        | Effect                                                                                                                                                                                                                        |
 |-----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `connect()`     | Opens TCP only, creates the `TcpSession`, sends `Handshake`, starts the network thread. Returns once TCP is connected; `Connected` follows when `Welcome` (`PeerId` + token) arrives.                                         |
+| `connect()`     | Starts the network thread and returns at once. There, resolves the name and opens TCP only, creates the `TcpSession`, sends `Handshake`. `Connected` follows when `Welcome` (`PeerId` + token) arrives, `Disconnected` if it fails. |
 | `openUdp(port)` | Called at game start with the server's UDP port. Returns `false` before `Connected`. Opens UDP towards the TCP server's address, sends `UdpOpen` over TCP, then an empty bind datagram every 250 ms until the server answers. |
 | `closeUdp()`    | Called at game over. Sends `UdpClose` over TCP and closes UDP. The client goes back to TCP only (lobby).                                                                                                                      |
 
@@ -395,7 +400,7 @@ Network thread (Asio)                     Game thread (fixed tick)
 |---------------------------------------------|---------------------------------------------------------------|
 | Only the network thread touches sockets     | Asio sockets are not thread-safe                              |
 | `send()` / `broadcast()` use `asio::post`   | Hands the work to the network thread without locks on sockets |
-| Only the game thread touches game state     | The simulation stays single-threaded, no locks in game code   |
+| Each world has one game thread              | A simulation stays single-threaded, no locks in systems       |
 | `poll()` returns all pending events at once | One lock per tick instead of one per packet                   |
 
 ---
@@ -408,7 +413,7 @@ works with a fake in tests:
 | Interface                       | Role                                                       | Used by                                |
 |---------------------------------|------------------------------------------------------------|----------------------------------------|
 | `ecs::net::INetworkEventSource` | `poll()`: the events received since the last frame         | `NetworkPlugin::preUpdate`             |
-| `engine::INetworkService`       | `send()`, `broadcast()`, `kick()`, resolved in the Mediator | Any system, without knowing the plugin |
+| `ecs::net::INetworkService`       | `send()`, `broadcast()`, `kick()`, resolved in the Mediator | Any system, without knowing the plugin |
 
 | Stage       | What the plugin does                                                                                       |
 |-------------|------------------------------------------------------------------------------------------------------------|
@@ -448,10 +453,10 @@ Plugins require `NetworkPlugin` instead of being a mode of it, so that the trans
 
 ```
 preUpdate    NetworkPlugin publishes PacketReceived
-               -> codec.decodeInput, then pushInput in the InputBuffer of the entity the sender owns
+               -> codec.decodeInput, then pushInput in the InputBuffer of every entity the sender owns
 fixedUpdate  (0 to N times) popInput on each InputBuffer -> InputApplied -> the game moves the entity
 update       if a step ran: writeEntity for each NetworkId + Replicated entity,
-             then encodeSnapshot(lastProcessed) and send() for each owning peer, over UDP
+             then encodeSnapshot(lastProcessed) and send() of each part for each owning peer, over UDP
 ```
 
 One input per entity and per step, like the client's prediction, so both sides advance at the same pace. Snapshots are
@@ -461,16 +466,32 @@ sent in `update`, after every fixed step of the frame: several catch-up steps gi
 
 ```
 preUpdate    NetworkPlugin publishes PacketReceived
-               -> codec.decodeSnapshot; nothing if invalid, or not newer than the last one applied
+               -> codec.decodeSnapshot; nothing if invalid, older than the last snapshot, or a part already received
                -> codec.applySnapshot, through the SnapshotApplier
                -> ReplicatedEntitySpawned for the new entities
-               -> ReplicatedEntityDespawned, then kill, for the entities absent from the snapshot
-               -> reconciliation of the Predicted entities
-fixedUpdate  the game publishes LocalInput -> encodeInput, send(), InputApplied on Predicted entities
+               -> once all the parts are there: ReplicatedEntityDespawned, then kill, for the entities absent from them
+               -> reconciliation of the Predicted entities of this part
+fixedUpdate  the game publishes LocalInput -> encodeInput, send() after the inputs not acknowledged yet,
+             InputApplied on Predicted entities
 update       Interpolated entities move toward their last snapshot
 ```
 
 Decoding is split in two so that a stale snapshot is dropped before it touches the registry.
+
+### Large snapshots
+
+A snapshot is complete, not a delta, and a datagram holds 1192 bytes. So the codec may split it: `encodeSnapshot()` returns
+parts, each one holding some of the entities with the same tick, and `decodeSnapshot()` returns their `partIndex` and
+`partCount` (at most `MAX_SNAPSHOT_PARTS`). The client applies a part as soon as it arrives. It only removes the entities
+absent from a snapshot once it has all its parts, because a lost part must not remove what it carried. If parts keep being
+lost, dead entities stay until a snapshot is complete, while the others keep moving.
+
+### Lost inputs
+
+An input the server never receives is one step of movement the client predicted and the server did not apply: the next
+snapshot pulls the entity back by that much. So each datagram is followed by the last `INPUT_RESEND_COUNT` (2) inputs not
+acknowledged yet, which costs three times the packets while the round trip lasts. The server ignores the ones it already
+has (`pushInput()`), so an input is never applied twice.
 
 ### Prediction and reconciliation
 
@@ -495,8 +516,8 @@ fixed step. The first snapshot is applied at once, so that an entity does not sl
 
 - Events are published **after** iterating over the components, never during it: a handler may spawn or kill entities.
 - The codec validates everything it decodes, and an id of 0 is refused by `SnapshotApplier::entity()`.
-- A snapshot larger than `MAX_UNRELIABLE_PAYLOAD` is not sent. Its entities are not lost: the next snapshot carries them if
-  it fits. A snapshot is complete, not a delta, so this limits the entities of a world (about 45 with R-Type's format).
+- A part larger than `MAX_UNRELIABLE_PAYLOAD` is not sent. `partCount` and `partIndex` come from the network: a part that
+  announces an impossible value is dropped before it touches the registry.
 
 ---
 
@@ -540,7 +561,7 @@ int main() {
 
 ```cpp
 auto network = ecs::net::createClient({.protocolId = MY_GAME_PROTOCOL_ID});
-network->connect("127.0.0.1", 4242);
+network->connect("127.0.0.1", 4242);  // returns at once: wait for Connected, or Disconnected if it fails
 
 // each tick
 network->send(serializeInput(sequence, keys), ecs::net::Channel::Unreliable);
