@@ -9,16 +9,19 @@
 
 namespace ecs::net {
 
-bool pushInput(InputBuffer& buffer, const NetInput& input) {
+bool pushInput(InputBuffer& buffer, NetInput input) {
     if (input.sequence <= buffer.lastProcessed || buffer.capacity == 0) {
         return false;
     }
     auto& queue = buffer.pending;
+    if (queue.size() >= buffer.capacity && input.sequence < queue.front().sequence) {
+        return false;
+    }
     const auto pos = std::ranges::upper_bound(queue, input.sequence, {}, &NetInput::sequence);
     if (pos != queue.begin() && std::prev(pos)->sequence == input.sequence) {
         return false;
     }
-    queue.insert(pos, input);
+    queue.insert(pos, std::move(input));
     while (queue.size() > buffer.capacity) {
         queue.pop_front();
     }

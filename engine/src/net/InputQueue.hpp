@@ -9,15 +9,15 @@ namespace ecs::net {
 /**
  * @brief Queues an input received over an unreliable channel.
  *
- * Inputs can arrive late, duplicated or out of order. An input already applied (sequence <= `lastProcessed`) or
- * already queued is ignored; the others are inserted sorted by sequence. When the queue exceeds `capacity`, the
- * oldest input is dropped.
+ * Inputs can arrive late, duplicated or out of order. An input already applied (sequence <= `lastProcessed`), already
+ * queued, or older than every input of a full queue is ignored; the others are inserted sorted by sequence. When the
+ * queue exceeds `capacity`, the oldest input is dropped.
  *
  * @param buffer Input buffer of the entity.
- * @param input Received input.
- * @return True if the input was queued.
+ * @param input Received input, moved into the queue.
+ * @return True if the input is now in the queue.
  */
-bool pushInput(ecs::InputBuffer& buffer, const ecs::NetInput& input);
+bool pushInput(ecs::InputBuffer& buffer, ecs::NetInput input);
 
 /**
  * @brief Takes the oldest pending input and marks it as processed.

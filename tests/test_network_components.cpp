@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "components/InputBuffer.hpp"
 #include "components/NetworkId.hpp"
@@ -92,6 +93,41 @@ TEST(InputQueue, OverflowDropsTheOldest) {
     ASSERT_EQ(buffer.pending.size(), 3U);
     EXPECT_EQ(buffer.pending.front().sequence, 3U);
     EXPECT_EQ(drain(buffer), 5U);
+}
+
+TEST(InputQueue, FullQueueRejectsInputOlderThanAllPending) {
+    ecs::InputBuffer buffer{.capacity = 3};
+    for (std::uint32_t seq = 5; seq <= 7; ++seq) {
+        ASSERT_TRUE(ecs::net::pushInput(buffer, input(seq)));
+    }
+
+    EXPECT_FALSE(ecs::net::pushInput(buffer, input(4)));
+    ASSERT_EQ(buffer.pending.size(), 3U);
+    EXPECT_EQ(buffer.pending.front().sequence, 5U);
+}
+
+TEST(InputQueue, FullQueueAcceptsInputNewerThanTheOldest) {
+    ecs::InputBuffer buffer{.capacity = 3};
+    ASSERT_TRUE(ecs::net::pushInput(buffer, input(5)));
+    ASSERT_TRUE(ecs::net::pushInput(buffer, input(7)));
+    ASSERT_TRUE(ecs::net::pushInput(buffer, input(8)));
+
+    EXPECT_TRUE(ecs::net::pushInput(buffer, input(6)));
+    ASSERT_EQ(buffer.pending.size(), 3U);
+    EXPECT_EQ(buffer.pending.front().sequence, 6U);
+}
+
+TEST(InputQueue, KeepsTheInputPayload) {
+    ecs::InputBuffer buffer;
+    ASSERT_TRUE(ecs::net::pushInput(
+        buffer, ecs::NetInput{.sequence = 1, .held = {42}, .axes = {{.action = 7, .value = 0.5F}}}));
+
+    const auto popped = ecs::net::popInput(buffer);
+    ASSERT_TRUE(popped.has_value());
+    EXPECT_EQ(popped->held, std::vector<std::uint32_t>{42});
+    ASSERT_EQ(popped->axes.size(), 1U);
+    EXPECT_EQ(popped->axes[0].action, 7U);
+    EXPECT_FLOAT_EQ(popped->axes[0].value, 0.5F);
 }
 
 TEST(InputQueue, ZeroCapacityKeepsNothing) {

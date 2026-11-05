@@ -7,8 +7,13 @@
 
 namespace ecs {
 
-/** @brief Default maximum number of inputs kept in an `InputBuffer`. */
-inline constexpr std::size_t DEFAULT_MAX_PENDING_INPUTS = 8;
+/**
+ * @brief Default maximum number of inputs kept in an `InputBuffer`.
+ *
+ * Inputs are consumed at the rate they are sent, so a backlog does not shrink on its own: this bounds how late they
+ * are applied (about 66 ms with a 60 Hz fixed step).
+ */
+inline constexpr std::size_t DEFAULT_MAX_PENDING_INPUTS = 4;
 
 /** @brief Value of one axis action during a network input. */
 struct NetAxis {
