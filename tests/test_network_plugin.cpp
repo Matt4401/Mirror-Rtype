@@ -264,7 +264,7 @@ TEST(ClientConnection, FeedsTheNetworkPlugin) {
 
 TEST(PeerGroupConnection, OnlyReachesThePeersOfTheGroup) {
     FakeServer server;
-    engine::PeerGroupConnection group(server);
+    ecs::net::PeerGroupConnection group(server);
     group.addPeer(1);
     group.addPeer(2);
 
@@ -284,7 +284,7 @@ TEST(PeerGroupConnection, OnlyReachesThePeersOfTheGroup) {
 
 TEST(PeerGroupConnection, RemovedPeerIsNoLongerReachable) {
     FakeServer server;
-    engine::PeerGroupConnection group(server);
+    ecs::net::PeerGroupConnection group(server);
     group.addPeer(1);
     group.removePeer(1);
 
@@ -298,7 +298,7 @@ TEST(PeerGroupConnection, RemovedPeerIsNoLongerReachable) {
 
 TEST(PeerGroupConnection, HandsOutTheEventsOfItsPeersOnce) {
     FakeServer server;
-    engine::PeerGroupConnection group(server);
+    ecs::net::PeerGroupConnection group(server);
     group.addPeer(1);
 
     group.push({.type = EventType::Data, .peer = 1, .data = {7}, .channel = Channel::Unreliable});

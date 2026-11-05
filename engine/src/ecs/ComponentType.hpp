@@ -1,4 +1,6 @@
 #pragma once
+
+#include <atomic>
 #include <cstddef>
 
 namespace ecs {
@@ -15,8 +17,9 @@ namespace detail {
  * @return Monotonically increasing ComponentTypeId.
  */
 [[nodiscard]] inline ComponentTypeId getNextComponentTypeId() noexcept {
-    static ComponentTypeId counter = 0;
-    return counter++;
+    // Atomic: several engines can run on different threads and see a component type for the first time at once.
+    static std::atomic<ComponentTypeId> counter{0};
+    return counter.fetch_add(1, std::memory_order_relaxed);
 }
 
 }  // namespace detail

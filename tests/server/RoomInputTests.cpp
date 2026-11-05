@@ -1,10 +1,13 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -318,6 +321,67 @@ TEST(Room, PlayersKeepTheirIndexWhenAnotherOneLeaves) {
     }
     std::ranges::sort(indices);
     EXPECT_EQ(indices, (std::vector<int>{0, 1, 2}));
+}
+
+namespace {
+
+/** @brief Counts what a room sends from its own thread. */
+class CountingServer final : public ecs::net::INetworkServer {
+  public:
+    bool start(std::uint16_t /*port*/) override { return true; }
+    void stop() override {}
+    [[nodiscard]] bool isRunning() const override { return true; }
+    std::vector<ecs::net::NetworkEvent> poll() override { return {}; }
+    void send(const ClientId /*client*/, const Bytes& /*data*/, const Channel /*channel*/) override { ++sent; }
+    void broadcast(const Bytes& /*data*/, Channel /*channel*/) override {}
+    void kick(ClientId /*client*/) override {}
+
+    /** @brief Waits until something more than `count` was sent. */
+    [[nodiscard]] bool waitForMoreThan(const int count) const {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (sent.load() <= count && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return sent.load() > count;
+    }
+
+    std::atomic<int> sent{0};
+};
+
+}  // namespace
+
+TEST(RoomThread, AdvancesOnItsOwnUntilDestroyed) {
+    CountingServer network;
+    {
+        Room room(network, 2);
+        room.addPlayer(PLAYER);
+        room.start();
+        room.runInBackground();
+        EXPECT_TRUE(network.waitForMoreThan(0)) << "the room sends snapshots without anyone calling advance()";
+    }
+    const int sentWhenDestroyed = network.sent.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_EQ(network.sent.load(), sentWhenDestroyed) << "the thread stopped with the room";
+}
+
+TEST(RoomThread, PlayersCanLeaveAndSendWhileItRuns) {
+    CountingServer network;
+    Room room(network, 2);
+    room.addPlayer(PLAYER);
+    room.addPlayer(OTHER_PLAYER);
+    room.start();
+    room.runInBackground();
+
+    for (std::uint32_t sequence = 1; sequence <= 100; ++sequence) {
+        room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{.sequence = sequence, .held = {}, .axes = {}}));
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
+    EXPECT_TRUE(network.waitForMoreThan(0));
+    room.removePlayer(OTHER_PLAYER);
+
+    EXPECT_FALSE(room.isEmpty());
+    const int sent = network.sent.load();
+    EXPECT_TRUE(network.waitForMoreThan(sent)) << "the room keeps running for the remaining player";
 }
 
 int main(int argc, char** argv) {

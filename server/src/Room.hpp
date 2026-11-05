@@ -1,9 +1,12 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <ranges>
+#include <thread>
 #include <unordered_map>
 
 #include "components/InputBuffer.hpp"
@@ -34,8 +37,9 @@ using ClientId = ecs::net::PeerId;
  * payloads from the `ServerManager`, the plugin decodes the inputs, and sends the snapshots to the players of this room
  * only. A player's entity carries `ecs::NetworkOwner`, `ecs::NetworkId` and `ecs::InputBuffer`.
  *
- * The `ServerManager` calls `advance()` on every room in the same loop (one thread), but each room decides by itself
- * how many steps are due.
+ * Once started, the `ServerManager` calls `runInBackground()`: a room has its own thread, so that a room with many
+ * entities does not slow down the others. The engine is only touched under `_mutex`; everything else (the players, the
+ * ready states) belongs to the thread of the `ServerManager`.
  */
 class Room {
   public:
@@ -48,6 +52,17 @@ class Room {
      */
     Room(ecs::net::INetworkServer& network, std::uint8_t maxPlayers, float fixedDt = ecs::time::DEFAULT_FIXED_DT,
          ecs::time::Clock::TimeSource timeSource = nullptr);
+    /** @brief Stops and joins the thread of the room, if it has one. */
+    ~Room();
+
+    /** @brief Deleted copy constructor: the thread of the room holds a pointer to it. */
+    Room(const Room&) = delete;
+    /** @brief Deleted copy assignment operator. */
+    Room& operator=(const Room&) = delete;
+    /** @brief Deleted move constructor. */
+    Room(Room&&) = delete;
+    /** @brief Deleted move assignment operator. */
+    Room& operator=(Room&&) = delete;
 
     /**
      * @brief Adds a player and spawns its ship.
@@ -58,6 +73,9 @@ class Room {
 
     /**
      * @brief Removes a player and kills its entity. Does nothing if the player is not in the room.
+     *
+     * Waits for the step in progress if the room runs in the background.
+     *
      * @param player Network id of the player.
      */
     void removePlayer(ClientId player);
@@ -91,6 +109,13 @@ class Room {
      */
     std::size_t advance();
 
+    /**
+     * @brief Calls `advance()` in a loop on a new thread, until the room is destroyed. Call it once, after `start()`.
+     *
+     * An exception thrown by the simulation stops this room only: it is logged, and the other rooms keep running.
+     */
+    void runInBackground();
+
     /** @brief True once `start()` has been called. */
     [[nodiscard]] bool isPlaying() const { return _playing; }
     /** @brief True when no other player can join. */
@@ -111,9 +136,9 @@ class Room {
      */
     [[nodiscard]] std::uint32_t lastProcessedInput(ClientId player) const;
 
-    /** @brief ECS world of the room. */
+    /** @brief ECS world of the room. Not protected: do not use it once the room runs in the background. */
     [[nodiscard]] ecs::Registry& registry() { return _engine.registry(); }
-    /** @brief ECS world of the room, read-only. */
+    /** @brief ECS world of the room, read-only. Not protected: do not use it once the room runs in the background. */
     [[nodiscard]] const ecs::Registry& registry() const { return _engine.registry(); }
 
   private:
@@ -125,11 +150,17 @@ class Room {
     /** @brief True once the game has started. */
     bool _playing = false;
     /** @brief Network of this room: what its engine receives and the only peers it can reach. */
-    std::shared_ptr<engine::PeerGroupConnection> _connection;
+    std::shared_ptr<ecs::net::PeerGroupConnection> _connection;
     /** @brief Engine of this game: ECS world, event bus, clock and plugins. */
     engine::Engine _engine;
     /** @brief Entity controlled by each player of the room; its network state is in its components. */
     std::unordered_map<ClientId, ecs::Entity> _players;
+    /** @brief Protects `_engine` from the thread of the room. Mutable: `lastProcessedInput()` only reads. */
+    mutable std::mutex _mutex;
+    /** @brief Set by the destructor to stop `_thread`. */
+    std::atomic<bool> _stopping{false};
+    /** @brief Runs the simulation once `runInBackground()` was called. */
+    std::thread _thread;
 };
 
 }  // namespace rtype::server

@@ -42,10 +42,12 @@ bool ServerManager::run(const std::uint16_t port) {
     while (_running.load()) {
         handleEvents();
         expireHandshakes();
-        advanceRooms();
         std::this_thread::sleep_for(IDLE_SLEEP);
     }
 
+    // Rooms running in the background send through the network: they stop first.
+    _rooms.clear();
+    _roomOf.clear();
     _network->stop();
     log::info(LOG_TAG, "stopped");
     return true;
@@ -162,12 +164,6 @@ void ServerManager::expireHandshakes() {
 void ServerManager::send(const ClientId client, const protocol::Message& message,
                          const ecs::net::Channel channel) const {
     _network->send(client, protocol::encode(message), channel);
-}
-
-void ServerManager::advanceRooms() {
-    for (auto& room : _rooms | std::views::values) {
-        room.advance();
-    }
 }
 
 std::optional<RoomId> ServerManager::joinRoom(const ClientId client) {

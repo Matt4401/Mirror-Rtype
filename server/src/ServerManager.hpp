@@ -37,8 +37,8 @@ using RoomId = std::uint32_t;
 /**
  * @brief Owns the network and the rooms, and runs the server loop on the game thread.
  *
- * Each loop iteration: poll the network once and route the events to the rooms, then let each room advance on its own
- * clock (each room sends its own snapshots). It holds no game logic: that lives in the rooms (ECS).
+ * Each loop iteration polls the network once and routes the events to the rooms. A started room advances on its own
+ * thread and sends its own snapshots. It holds no game logic: that lives in the rooms (ECS).
  */
 class ServerManager {
   public:
@@ -96,9 +96,6 @@ class ServerManager {
     void expireHandshakes();
     /** @brief Encodes a message and sends it to one client. */
     void send(ClientId client, const protocol::Message& message, ecs::net::Channel channel) const;
-
-    /** @brief Lets each room run the steps due on its own clock. */
-    void advanceRooms();
 
     /**
      * @brief Puts a client in an open room, or in a new one.

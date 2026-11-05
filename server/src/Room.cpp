@@ -1,12 +1,18 @@
 #include "Room.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <memory>
+#include <mutex>
 #include <ranges>
+#include <thread>
 #include <utility>
 
+#include "LogTag.hpp"
+#include "Logger.hpp"
 #include "components/InputBuffer.hpp"
 #include "components/NetworkOwner.hpp"
 #include "components/Transform.hpp"
@@ -20,8 +26,8 @@
 #include "net/NetworkPlugin.hpp"
 #include "net/PeerGroupConnection.hpp"
 #include "net/ReplicationEvents.hpp"
-#include "net/ReplicationPlugins.hpp"
 #include "net/ReplicationSystems.hpp"
+#include "net/ServerReplicationPlugin.hpp"
 
 namespace rtype::server {
 
@@ -30,13 +36,16 @@ namespace {
 constexpr float SPAWN_X = 200.0F;
 constexpr float SPAWN_FIRST_Y = 120.0F;
 constexpr float SPAWN_SPACING_Y = 160.0F;
+// Sleep between two iterations of a room's thread. Short enough to keep the step jitter around 1 ms, long enough not to
+// burn a core.
+constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
 
 }  // namespace
 
 Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, const float fixedDt,
            ecs::time::Clock::TimeSource timeSource)
     : _maxPlayers(maxPlayers),
-      _connection(std::make_shared<engine::PeerGroupConnection>(network)),
+      _connection(std::make_shared<ecs::net::PeerGroupConnection>(network)),
       _engine(std::move(timeSource)) {
     _engine.setFixedDeltaTime(fixedDt);
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
@@ -50,6 +59,13 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
         }
     });
     _engine.init();
+}
+
+Room::~Room() {
+    _stopping = true;
+    if (_thread.joinable()) {
+        _thread.join();
+    }
 }
 
 bool Room::addPlayer(const ClientId player) {
@@ -76,8 +92,11 @@ void Room::removePlayer(const ClientId player) {
         return;
     }
     _connection->removePeer(player);
-    // NetworkPlugin releases the network id of a killed entity.
-    _engine.registry().killEntity(it->second);
+    {
+        const std::scoped_lock lock(_mutex);
+        // NetworkPlugin releases the network id of a killed entity.
+        _engine.registry().killEntity(it->second);
+    }
     _players.erase(it);
 }
 
@@ -94,13 +113,33 @@ void Room::start() {
     _engine.clock().reset();
 }
 
-std::size_t Room::advance() { return _playing ? _engine.advance() : 0; }
+std::size_t Room::advance() {
+    if (!_playing) {
+        return 0;
+    }
+    const std::scoped_lock lock(_mutex);
+    return _engine.advance();
+}
+
+void Room::runInBackground() {
+    _thread = std::thread([this] {
+        try {
+            while (!_stopping.load()) {
+                advance();
+                std::this_thread::sleep_for(IDLE_SLEEP);
+            }
+        } catch (const std::exception& error) {
+            log::error(LOG_TAG, "room stopped by an error in its simulation: ", error.what());
+        }
+    });
+}
 
 std::uint32_t Room::lastProcessedInput(const ClientId player) const {
     const auto it = _players.find(player);
     if (it == _players.end()) {
         return 0;
     }
+    const std::scoped_lock lock(_mutex);
     return registry().getComponents<ecs::InputBuffer>().get(it->second).lastProcessed;
 }
 
