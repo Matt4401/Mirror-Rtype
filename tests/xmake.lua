@@ -130,6 +130,13 @@ target("test_server_room")
     add_includedirs("../server/src")
     add_tests("test_server_room")
 
+target("test_network_components")
+    set_kind("binary")
+    add_deps("engine_core", "engine_network")
+    add_packages("gtest")
+    add_files("test_network_components.cpp")
+    add_tests("test_network_components")
+
 target("test_protocol")
     set_kind("binary")
     add_deps("common")
