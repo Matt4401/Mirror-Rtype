@@ -221,13 +221,15 @@ int main() {
 
 ### Driving the Loop
 
-The engine offers three ways to run frames. All of them call `init()` first if it was not called yet.
+The engine offers two ways to run frames. Both call `init()` first if it was not called yet.
 
 | Method      | Blocking | Fixed steps per call                             | Renders | Use it for                                                                                 |
 |-------------|----------|--------------------------------------------------|---------|--------------------------------------------------------------------------------------------|
 | `run()`     | yes      | as many as real time requires                    | yes     | a client: loops until `stop()` or the window closes, then shuts down                       |
 | `advance()` | no       | as many as real time requires; returns the count | no      | a loop owned by someone else, e.g. a server running one engine per room in a single thread |
-| `step(dt)`  | no       | exactly one, whatever the real time              | yes     | tests and tools that need a deterministic frame                                            |
+
+Tests that need a deterministic frame give the engine a fake time source: `Engine([&now] { return now; })`.
+`shutdown()` is final: an engine that was shut down is not initialized again, and `run()` and `advance()` do nothing.
 
 `run()` is a loop over `advance()` followed by `render`, so both produce the same frames. `advance()` returns the
 number of fixed steps it executed, `0` when less than one `fixedDt` has elapsed: the caller uses it to know whether the

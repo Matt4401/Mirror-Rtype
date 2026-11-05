@@ -105,27 +105,21 @@ TEST(Engine, AutomaticallyLoadsImplicitPlugins) {
     EXPECT_TRUE(engineInstance.registry().hasResource<ecs::time::Time>());
 }
 
-TEST(Engine, ExecutesPhasesInSequence) {
+TEST(Engine, RunExecutesPhasesInSequence) {
     std::vector<std::string> log;
-    {
-        engine::Engine engineInstance;
-        engineInstance.addPlugin<LifecycleRecorderPlugin>(log);
+    double now = 0.0;
+    float recordedDt = 0.0F;
+    engine::Engine engineInstance([&now]() -> double { return now; });
+    engineInstance.addPlugin<LifecycleRecorderPlugin>(log);
+    engineInstance.addPlugin<FrameTimeRecorderPlugin>(recordedDt);  // stops the engine after one frame
 
-        EXPECT_TRUE(log.empty());
+    EXPECT_TRUE(log.empty());
 
-        engineInstance.step(0.016F);
+    now = static_cast<double>(engineInstance.fixedDeltaTime()) * 1.5;
+    engineInstance.run();
 
-        ASSERT_GE(log.size(), 6U);
-        EXPECT_EQ(log[0], "build");
-        EXPECT_EQ(log[1], "init");
-        EXPECT_EQ(log[2], "preUpdate");
-        EXPECT_EQ(log[3], "fixedUpdate");
-        EXPECT_EQ(log[4], "update");
-        EXPECT_EQ(log[5], "render");
-
-        engineInstance.shutdown();
-        EXPECT_EQ(log.back(), "shutdown");
-    }
+    EXPECT_EQ(log,
+              (std::vector<std::string>{"build", "init", "preUpdate", "fixedUpdate", "update", "render", "shutdown"}));
 }
 
 TEST(Engine, RunPassesRealDeltaTimeToUpdate) {
@@ -158,17 +152,16 @@ TEST(Engine, InitFailureReleasesAlreadyInitializedPlugins) {
     EXPECT_EQ(log.back(), "shutdown");
 }
 
-TEST(Engine, StepAdvancesSimulationClockAccumulatingTicksAndElapsed) {
-    engine::Engine engineInstance;
-    const float fixedDt = engineInstance.fixedDeltaTime();
+TEST_F(EngineAdvanceTest, AccumulatesTicksAndElapsedTime) {
+    now = 0.25;
+    engine.advance();
+    EXPECT_EQ(engine.clock().time().tickCount, 1U);
+    EXPECT_FLOAT_EQ(engine.clock().time().totalElapsedTime, FIXED_DT);
 
-    engineInstance.step(0.016F);
-    EXPECT_EQ(engineInstance.clock().time().tickCount, 1U);
-    EXPECT_FLOAT_EQ(engineInstance.clock().time().totalElapsedTime, fixedDt);
-
-    engineInstance.step(0.016F);
-    EXPECT_EQ(engineInstance.clock().time().tickCount, 2U);
-    EXPECT_FLOAT_EQ(engineInstance.clock().time().totalElapsedTime, 2.0F * fixedDt);
+    now = 0.5;
+    engine.advance();
+    EXPECT_EQ(engine.clock().time().tickCount, 2U);
+    EXPECT_FLOAT_EQ(engine.clock().time().totalElapsedTime, 2.0F * FIXED_DT);
 }
 
 TEST(Engine, ImplicitPluginsOrderedBeforeIndependentUserPlugins) {
@@ -244,6 +237,21 @@ TEST_F(EngineAdvanceTest, CapsTheBacklog) {
 
     now = 100.25;
     EXPECT_EQ(engine.advance(), 1U) << "the dropped backlog is not replayed later";
+}
+
+TEST_F(EngineAdvanceTest, ShutdownIsFinal) {
+    now = 0.25;
+    engine.advance();
+    engine.shutdown();
+    const std::vector<std::string> before = log;
+
+    now = 0.5;
+    EXPECT_EQ(engine.advance(), 0U);
+    engine.init();
+    engine.run();
+    engine.shutdown();
+
+    EXPECT_EQ(log, before) << "a plugin that was shut down is never initialized nor updated again";
 }
 
 TEST_F(EngineAdvanceTest, DoesNotRender) {

@@ -39,7 +39,7 @@ void Engine::ensureDefaultPlugins() {
 }
 
 void Engine::init() {
-    if (_initialized) {
+    if (_initialized || _shutdown) {
         return;
     }
 
@@ -63,37 +63,10 @@ void Engine::init() {
     _initialized = true;
 }
 
-void Engine::step(float dt) {
-    if (!_initialized) {
-        init();
-    }
-
-    for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-        plugin->preUpdate(*this);
-    }
-
-    _clock.advance(_fixedDt);
-    const ecs::time::Time fixedTime = _clock.time();
-
-    for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-        plugin->fixedUpdate(*this, fixedTime);
-    }
-
-    const ecs::time::Time frameTime = _clock.frameTime(dt);
-
-    for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-        plugin->update(*this, frameTime);
-    }
-
-    const auto windowService = _mediator.getService<IWindowService>();
-    if (!windowService || !windowService->get().shouldClose()) {
-        for (IPlugin* plugin : _pluginGraph.executionOrder()) {
-            plugin->render(*this);
-        }
-    }
-}
-
 void Engine::run() {
+    if (_shutdown) {
+        return;
+    }
     if (!_initialized) {
         init();
     }
@@ -127,9 +100,13 @@ void Engine::shutdown() {
     }
 
     _initialized = false;
+    _shutdown = true;
 }
 
 std::size_t Engine::advance() {
+    if (_shutdown) {
+        return 0;
+    }
     if (!_initialized) {
         init();
     }
