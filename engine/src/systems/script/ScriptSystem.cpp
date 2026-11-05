@@ -15,6 +15,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
+#include "prefabs/PrefabManager.hpp"
 #include "scripting/WrenVM.hpp"
 #include "scripting/detail/WrenTypes.hpp"
 
@@ -30,6 +31,7 @@ ScriptSystem::~ScriptSystem() {
 ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
     : _registry(other._registry),
       _bus(other._bus),
+      _prefabs(other._prefabs),
       _commandBuffer(std::move(other._commandBuffer)),
       _vm(std::move(other._vm)),
       _updatingEntities(std::move(other._updatingEntities)),
@@ -66,6 +68,7 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _cachedMethodHandles.clear();
         _registry = other._registry;
         _bus = other._bus;
+        _prefabs = other._prefabs;
         _commandBuffer = std::move(other._commandBuffer);
         _vm = std::move(other._vm);
         _updatingEntities = std::move(other._updatingEntities);
@@ -194,6 +197,10 @@ void ScriptSystem::addBinderReplay(std::function<void(scripting::WrenVM&)> callb
 scripting::WrenVM& ScriptSystem::getVm() noexcept { return _vm; }
 
 ecs::CommandBuffer& ScriptSystem::getCommandBuffer() noexcept { return _commandBuffer; }
+
+void ScriptSystem::setPrefabManager(prefabs::PrefabManager const* manager) noexcept { _prefabs = manager; }
+
+prefabs::PrefabManager const* ScriptSystem::getPrefabManager() const noexcept { return _prefabs; }
 
 void ScriptSystem::addSleepingFiber(scripting::detail::UniqueWrenHandle fiber, float seconds) {
     _sleepingFibers.push_back(SleepingFiber{.fiber = std::move(fiber), .timeRemaining = seconds});

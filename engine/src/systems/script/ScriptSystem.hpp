@@ -18,6 +18,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
+#include "prefabs/PrefabManager.hpp"
 #include "scripting/WrenVM.hpp"            // IWYU pragma: export
 #include "scripting/detail/WrenTypes.hpp"  // IWYU pragma: export
 
@@ -141,6 +142,20 @@ class ScriptSystem {
      * @brief Returns a reference to the deferred command buffer.
      */
     [[nodiscard]] ecs::CommandBuffer& getCommandBuffer() noexcept;
+
+    /**
+     * @brief Sets the prefab registry used by `Engine.spawnPrefab(name, x, y)`.
+     *
+     * Without a manager, `spawnPrefab` logs an error and spawns nothing.
+     *
+     * @param manager Non-owning pointer; must outlive this system (nullptr to detach).
+     */
+    void setPrefabManager(prefabs::PrefabManager const* manager) noexcept;
+
+    /**
+     * @brief Returns the prefab registry used by `Engine.spawnPrefab`, or nullptr if none is set.
+     */
+    [[nodiscard]] prefabs::PrefabManager const* getPrefabManager() const noexcept;
 
     /**
      * @brief Returns a non-owning pointer to the active ECS Registry.
@@ -296,6 +311,8 @@ class ScriptSystem {
     ecs::Registry* _registry = nullptr;
     /** @brief Non-owning pointer to the EventBus. */
     ecs::EventBus* _bus = nullptr;
+    /** @brief Non-owning pointer to the prefab registry used by `Engine.spawnPrefab`. */
+    prefabs::PrefabManager const* _prefabs = nullptr;
     /** @brief Internal command buffer buffering mutations during script execution. */
     ecs::CommandBuffer _commandBuffer;
     /** @brief Embedded Wren Virtual Machine instance. */
