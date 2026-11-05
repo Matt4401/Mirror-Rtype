@@ -43,7 +43,7 @@ struct ReplicatedEntitySpawned {
     /** @brief Network id of the entity. */
     std::uint32_t id = 0;
     /** @brief Game-defined kind, to choose its sprite, sound... */
-    std::uint16_t kind = 0;
+    std::uint32_t kind = 0;
 };
 
 /** @brief Client: a replicated entity is no longer in the snapshots. Published just before it is killed. */
@@ -53,7 +53,7 @@ struct ReplicatedEntityDespawned {
     /** @brief Network id of the entity. */
     std::uint32_t id = 0;
     /** @brief Game-defined kind of the entity. */
-    std::uint16_t kind = 0;
+    std::uint32_t kind = 0;
 };
 
 }  // namespace ecs::net

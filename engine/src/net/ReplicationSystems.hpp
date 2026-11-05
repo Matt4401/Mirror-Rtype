@@ -11,6 +11,7 @@
 #include "net/INetworkManager.hpp"
 #include "net/INetworkService.hpp"
 #include "net/IReplicationCodec.hpp"
+#include "net/SnapshotApplier.hpp"
 
 // Systems of the replication plugins, as free functions so that they can run (and be tested) without a plugin.
 namespace ecs::net {
@@ -25,7 +26,7 @@ namespace ecs::net {
  * @param kind Game-defined kind, sent to the clients so that they know what to spawn.
  * @return Its network id.
  */
-std::uint32_t replicate(ecs::Registry& registry, ecs::Entity entity, std::uint16_t kind);
+std::uint32_t replicate(ecs::Registry& registry, ecs::Entity entity, std::uint32_t kind);
 
 /**
  * @brief Server: finds the entity controlled by a peer, i.e. carrying `NetworkOwner{peer}` and an `InputBuffer`.
