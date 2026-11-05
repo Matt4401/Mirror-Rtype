@@ -156,7 +156,7 @@ TEST_F(RoomInputTest, AlreadyAppliedInputIsIgnored) {
 }
 
 TEST_F(RoomInputTest, FullQueueKeepsTheNewestInputs) {
-    const auto total = static_cast<std::uint32_t>(MAX_PENDING_INPUTS) + 2;  // sequences 1..10
+    const auto total = static_cast<std::uint32_t>(MAX_PENDING_INPUTS) + 2;
     for (std::uint32_t seq = 1; seq <= total; ++seq) {
         send(seq);
     }
