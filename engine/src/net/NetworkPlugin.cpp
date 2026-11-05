@@ -18,14 +18,13 @@
 
 namespace ecs::net {
 
-NetworkPlugin::NetworkPlugin(std::shared_ptr<INetworkEventSource> source,
-                             std::shared_ptr<engine::INetworkService> service)
+NetworkPlugin::NetworkPlugin(std::shared_ptr<INetworkEventSource> source, std::shared_ptr<INetworkService> service)
     : _source(std::move(source)), _service(std::move(service)) {}
 
 void NetworkPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
 
 void NetworkPlugin::init(engine::Engine& engine) {
-    if (const auto res = engine.mediator().registerService<engine::INetworkService>(_service); !res) {
+    if (const auto res = engine.mediator().registerService<INetworkService>(_service); !res) {
         throw engine::MediatorError(res.error());
     }
     // Reuse a map created by the game before init: replacing it would drop its bindings and dangle references to it.
@@ -56,8 +55,8 @@ void NetworkPlugin::shutdown(engine::Engine& engine) {
         engine.registry().removeDestroyListener(*_destroyListener);
         _destroyListener.reset();
     }
-    if (engine.mediator().hasService<engine::INetworkService>()) {
-        engine.mediator().removeService<engine::INetworkService>();
+    if (engine.mediator().hasService<INetworkService>()) {
+        engine.mediator().removeService<INetworkService>();
     }
 }
 }  // namespace ecs::net

@@ -4,15 +4,15 @@
 
 #include "INetworkManager.hpp"
 
-namespace engine {
-void ClientConnection::send(ecs::net::PeerId peer, const ecs::net::Bytes& data, ecs::net::Channel ch) {
-    if (peer == ecs::net::SERVER_PEER) {
+namespace ecs::net {
+void ClientConnection::send(PeerId peer, const Bytes& data, Channel ch) {
+    if (peer == SERVER_PEER) {
         _client->send(data, ch);
     }
 }
-void ClientConnection::broadcast(const ecs::net::Bytes& data, ecs::net::Channel ch) { _client->send(data, ch); }
+void ClientConnection::broadcast(const Bytes& data, Channel ch) { _client->send(data, ch); }
 
-void ClientConnection::kick(ecs::net::PeerId /*unused*/) { _client->stop(); }
+void ClientConnection::kick(PeerId /*unused*/) { _client->stop(); }
 
-std::vector<ecs::net::NetworkEvent> ClientConnection::poll() { return _client->poll(); }
-}  // namespace engine
+std::vector<NetworkEvent> ClientConnection::poll() { return _client->poll(); }
+}  // namespace ecs::net

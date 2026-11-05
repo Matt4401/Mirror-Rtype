@@ -2,12 +2,12 @@
 
 #include "INetworkManager.hpp"
 
-namespace engine {
+namespace ecs::net {
 
 /**
  * @brief Abstract network service exposed through the Mediator, used by systems to send messages.
  *
- * Registered by `ecs::net::NetworkPlugin`. On a client, the only peer is `ecs::net::SERVER_PEER`.
+ * Registered by `NetworkPlugin`. On a client, the only peer is `SERVER_PEER`.
  */
 class INetworkService {
   public:
@@ -35,18 +35,18 @@ class INetworkService {
      * @param data Payload (at most `NetworkConfig::maxReliablePayload` bytes, or `MAX_UNRELIABLE_PAYLOAD`).
      * @param channel Delivery guarantee.
      */
-    virtual void send(ecs::net::PeerId peer, const ecs::net::Bytes& data, ecs::net::Channel channel) = 0;
+    virtual void send(PeerId peer, const Bytes& data, Channel channel) = 0;
     /**
      * @brief Sends a message to every connected peer. Thread-safe.
      * @param data Payload.
      * @param channel Delivery guarantee.
      */
-    virtual void broadcast(const ecs::net::Bytes& data, ecs::net::Channel channel) = 0;
+    virtual void broadcast(const Bytes& data, Channel channel) = 0;
     /**
      * @brief Closes a peer's connection; a `Disconnected` event follows. Thread-safe.
      * @param peer Peer to disconnect.
      */
-    virtual void kick(ecs::net::PeerId peer) = 0;
+    virtual void kick(PeerId peer) = 0;
 };
 
-}  // namespace engine
+}  // namespace ecs::net

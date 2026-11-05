@@ -26,7 +26,7 @@ class NetworkPlugin final : public engine::IPlugin {
      * @param source Where incoming events are read from.
      * @param service What systems use to send; registered in the Mediator on `init`.
      */
-    NetworkPlugin(std::shared_ptr<INetworkEventSource> source, std::shared_ptr<engine::INetworkService> service);
+    NetworkPlugin(std::shared_ptr<INetworkEventSource> source, std::shared_ptr<INetworkService> service);
 
     /**
      * @brief Gets plugin name.
@@ -62,7 +62,7 @@ class NetworkPlugin final : public engine::IPlugin {
     /** @brief Incoming events. */
     std::shared_ptr<INetworkEventSource> _source;
     /** @brief Outgoing messages, registered in the Mediator. */
-    std::shared_ptr<engine::INetworkService> _service;
+    std::shared_ptr<INetworkService> _service;
     /** @brief Id of the listener unbinding killed entities, while registered. */
     std::optional<std::size_t> _destroyListener;
 };

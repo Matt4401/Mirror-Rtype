@@ -26,8 +26,6 @@ using ecs::net::EventType;
 using ecs::net::NetworkEvent;
 using ecs::net::PeerId;
 
-constexpr float DT = 1.0F / 60.0F;
-
 /** @brief Hands out the events pushed by the test, once each. */
 class FakeSource final : public ecs::net::INetworkEventSource {
   public:
@@ -37,7 +35,7 @@ class FakeSource final : public ecs::net::INetworkEventSource {
 };
 
 /** @brief Records every call instead of sending. */
-class FakeService final : public engine::INetworkService {
+class FakeService final : public ecs::net::INetworkService {
   public:
     struct Sent {
         PeerId peer;
@@ -61,6 +59,9 @@ class FakeService final : public engine::INetworkService {
 class FakeClient final : public ecs::net::INetworkClient {
   public:
     bool connect(const std::string& /*host*/, std::uint16_t /*port*/) override { return true; }
+    [[nodiscard]] ecs::net::DisconnectReason disconnectReason() const override {
+        return ecs::net::DisconnectReason::ConnectionLost;
+    }
     bool openUdp(std::uint16_t /*port*/) override { return true; }
     void closeUdp() override {}
     void send(const Bytes& data, Channel /*channel*/) override { sent.push_back(data); }
@@ -104,7 +105,7 @@ TEST_F(NetworkPluginTest, PublishesTransportEventsOnTheEventBus) {
         {.type = EventType::Data, .peer = 3, .data = {1, 2, 3}, .channel = Channel::Unreliable},
         {.type = EventType::Disconnected, .peer = 3, .data = {}, .channel = Channel::Reliable},
     };
-    engine.step(DT);
+    engine.advance();
 
     EXPECT_EQ(connected, std::vector<PeerId>{3});
     EXPECT_EQ(disconnected, std::vector<PeerId>{3});
@@ -125,7 +126,7 @@ TEST_F(NetworkPluginTest, KeepsTheArrivalOrder) {
         {.type = EventType::Disconnected, .peer = 1, .data = {}, .channel = Channel::Reliable},
         {.type = EventType::Connected, .peer = 2, .data = {}, .channel = Channel::Reliable},
     };
-    engine.step(DT);
+    engine.advance();
 
     EXPECT_EQ(order, (std::vector<int>{1, 2, 0}));
 }
@@ -135,14 +136,14 @@ TEST_F(NetworkPluginTest, PublishesEachEventOnce) {
     engine.eventBus().subscribe<ecs::net::PeerConnected>([&](const auto&) { ++count; });
 
     source->next = {{.type = EventType::Connected, .peer = 1, .data = {}, .channel = Channel::Reliable}};
-    engine.step(DT);
-    engine.step(DT);
+    engine.advance();
+    engine.advance();
 
     EXPECT_EQ(count, 1);
 }
 
 TEST_F(NetworkPluginTest, RegistersTheServiceInTheMediator) {
-    const auto found = engine.mediator().getService<engine::INetworkService>();
+    const auto found = engine.mediator().getService<ecs::net::INetworkService>();
     ASSERT_TRUE(found.has_value());
 
     found->get().send(4, {7}, Channel::Reliable);
@@ -154,7 +155,7 @@ TEST_F(NetworkPluginTest, RegistersTheServiceInTheMediator) {
 TEST_F(NetworkPluginTest, ShutdownUnregistersTheService) {
     engine.shutdown();
 
-    EXPECT_FALSE(engine.mediator().hasService<engine::INetworkService>());
+    EXPECT_FALSE(engine.mediator().hasService<ecs::net::INetworkService>());
 }
 
 TEST_F(NetworkPluginTest, CreatesTheEntityMapResource) {
@@ -202,7 +203,7 @@ TEST(NetworkPlugin, ReusesAnEntityMapCreatedBeforeInit) {
 
 TEST(ClientConnection, OnlySendsToTheServer) {
     const auto client = std::make_shared<FakeClient>();
-    engine::ClientConnection connection(client);
+    ecs::net::ClientConnection connection(client);
 
     connection.send(ecs::net::SERVER_PEER, {1}, Channel::Reliable);
     connection.send(5, {2}, Channel::Reliable);
@@ -213,7 +214,7 @@ TEST(ClientConnection, OnlySendsToTheServer) {
 
 TEST(ClientConnection, ForwardsPollAndKick) {
     const auto client = std::make_shared<FakeClient>();
-    engine::ClientConnection connection(client);
+    ecs::net::ClientConnection connection(client);
     client->next = {
         {.type = EventType::Connected, .peer = ecs::net::SERVER_PEER, .data = {}, .channel = Channel::Reliable}};
 
@@ -225,7 +226,7 @@ TEST(ClientConnection, ForwardsPollAndKick) {
 
 TEST(ClientConnection, FeedsTheNetworkPlugin) {
     const auto client = std::make_shared<FakeClient>();
-    const auto connection = std::make_shared<engine::ClientConnection>(client);
+    const auto connection = std::make_shared<ecs::net::ClientConnection>(client);
     engine::Engine engine;
     engine.addPlugin<engine::CorePlugin>();
     engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection);
@@ -234,8 +235,9 @@ TEST(ClientConnection, FeedsTheNetworkPlugin) {
 
     client->next = {
         {.type = EventType::Data, .peer = ecs::net::SERVER_PEER, .data = {9}, .channel = Channel::Unreliable}};
-    engine.step(DT);
-    engine.mediator().getService<engine::INetworkService>()->get().send(ecs::net::SERVER_PEER, {4}, Channel::Reliable);
+    engine.advance();
+    engine.mediator().getService<ecs::net::INetworkService>()->get().send(ecs::net::SERVER_PEER, {4},
+                                                                          Channel::Reliable);
 
     EXPECT_EQ(packets, 1);
     EXPECT_EQ(client->sent, std::vector<Bytes>{{4}});
