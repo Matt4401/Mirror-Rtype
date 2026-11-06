@@ -153,6 +153,18 @@ void ScriptSystem::updateScriptEntities(float dt) {
     std::erase_if(_updatingEntities, [this](ecs::Entity e) { return !_instanceHandles.contains(e); });
 }
 
+void ScriptSystem::releaseDeadInstances() {
+    std::vector<ecs::Entity> dead;
+    for (auto const& [entity, handle] : _instanceHandles) {
+        if (!_registry->isAlive(entity)) {
+            dead.push_back(entity);
+        }
+    }
+    for (ecs::Entity const e : dead) {
+        triggerDestroyHook(e);
+    }
+}
+
 void ScriptSystem::flushPendingDestructions() {
     for (ecs::Entity const e : _pendingDestroyEntities) {
         triggerDestroyHook(e);
@@ -182,6 +194,7 @@ void ScriptSystem::update(float dt) {
         }
     }
 
+    releaseDeadInstances();
     updateSleepingFibers(dt);
     updateScriptEntities(dt);
     flushPendingDestructions();

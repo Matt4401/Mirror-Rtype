@@ -281,6 +281,16 @@ class ScriptSystem {
     void flushPendingDestructions();
 
     /**
+     * @brief Releases the script instances of entities killed outside the scripting layer.
+     *
+     * Entities destroyed by C++ code (game rules, physics, network despawn, ...) never go through
+     * `queueDestroyEntity`. Their instance is detected here, gets its `onDestroy()` hook, and is released, so it is
+     * neither updated nor kept alive once the entity is dead. A sweep is used instead of a registry destroy listener
+     * because `ScriptSystem` is movable and a listener capturing `this` would dangle.
+     */
+    void releaseDeadInstances();
+
+    /**
      * @brief Ensures a script module is compiled and imported into the VM, tracking it for changes.
      * @param moduleName Script module path/name.
      * @return True on success, false if file missing or compile failed.
