@@ -476,32 +476,59 @@ TEST(Scripting, LifecycleOnDestroy) {
     EXPECT_FALSE(registry.getComponents<ecs::ScriptComponent>().contains(e1));
 }
 
+namespace {
+int g_externalDestroyCount = 0;
+double g_externalDestroyX = 0.0;
+int g_replacementUpdateCount = 0;
+void recordExternalDestroy(scripting::ForeignCall& call) {
+    ++g_externalDestroyCount;
+    g_externalDestroyX = call.arg<double>(1).value_or(-1.0);
+}
+void recordReplacementUpdate(scripting::ForeignCall& /*call*/) { ++g_replacementUpdateCount; }
+}  // namespace
+
 TEST(Scripting, LifecycleOnDestroyWhenKilledOutsideScripts) {
-    g_destroyHookCallCount = 0;
+    g_externalDestroyCount = 0;
+    g_externalDestroyX = 0.0;
+    g_replacementUpdateCount = 0;
     ecs::Registry registry;
     ecs::EventBus bus;
+    registry.registerComponent<Position>();
     registry.registerComponent<ecs::ScriptComponent>();
 
     systems::ScriptSystem scriptSystem;
     scriptSystem.init(registry, bus);
 
-    scriptSystem.getVm().registerForeignMethod<&recordDestroyHook>("gameplay_external", "ExternalDestroyScript", true,
-                                                                   "recordDestroyed()");
+    scripting::ComponentBinder<Position> binder(scriptSystem.getVm(), "core/Position", "Position");
+    binder.property<&Position::x>("x");
+    EXPECT_TRUE(scriptSystem.getVm().interpret("core/Position", binder.generateWrenClass()));
+
+    scriptSystem.getVm().registerForeignMethod<&recordExternalDestroy>("gameplay_external", "ExternalDestroyScript",
+                                                                       true, "recordDestroyed(_)");
+    scriptSystem.getVm().registerForeignMethod<&recordReplacementUpdate>("gameplay_external", "ReplacementScript", true,
+                                                                         "recordUpdate()");
 
     const char* scriptCode =
         "import \"core/Entity\" for Entity\n"
+        "import \"core/Position\" for Position\n"
         "class ExternalDestroyScript {\n"
         "    construct new(entity) {\n"
         "        _entity = entity\n"
         "    }\n"
         "    onDestroy() {\n"
-        "        ExternalDestroyScript.recordDestroyed()\n"
+        "        ExternalDestroyScript.recordDestroyed(Position.new(_entity.id).x)\n"
         "    }\n"
-        "    foreign static recordDestroyed()\n"
+        "    foreign static recordDestroyed(x)\n"
+        "}\n"
+        "class ReplacementScript {\n"
+        "    construct new(entity) {}\n"
+        "    update(dt) { ReplacementScript.recordUpdate() }\n"
+        "    foreign static recordUpdate()\n"
         "}\n";
     EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay_external", scriptCode));
 
     ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<Position>(e1, Position{.x = 7.0F, .y = 0.0F});
     registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay_external",
                                                                          .className = "ExternalDestroyScript",
                                                                          .hasUpdate = false,
@@ -511,19 +538,60 @@ TEST(Scripting, LifecycleOnDestroyWhenKilledOutsideScripts) {
 
     // Killed by C++ code (game rule, physics, network despawn...), not through Entity.destroy().
     registry.killEntity(e1);
-    // The slot is recycled with a new generation: the old instance must not be reused nor leaked.
-    ecs::Entity const e2 = registry.spawnEntity();
-    ASSERT_NE(e2, e1);
 
-    scriptSystem.update(0.016F);
-
-    EXPECT_EQ(g_destroyHookCallCount, 1);
+    // onDestroy() ran synchronously, while the entity's components still existed.
+    EXPECT_EQ(g_externalDestroyCount, 1);
+    EXPECT_DOUBLE_EQ(g_externalDestroyX, 7.0);
     EXPECT_EQ(scriptSystem.getScriptInstance(e1), nullptr);
-    EXPECT_EQ(scriptSystem.getScriptInstance(e2), nullptr);
 
-    // Released once only.
+    // The slot is recycled with a new generation and its own script: it must not be affected by the old instance.
+    ecs::Entity const e2 = registry.spawnEntity();
+    ASSERT_EQ(ecs::entityIndex(e2), ecs::entityIndex(e1));
+    ASSERT_NE(e2, e1);
+    registry.addComponent<ecs::ScriptComponent>(e2, ecs::ScriptComponent{.moduleName = "gameplay_external",
+                                                                         .className = "ReplacementScript",
+                                                                         .hasUpdate = true,
+                                                                         .initialized = false});
+
     scriptSystem.update(0.016F);
-    EXPECT_EQ(g_destroyHookCallCount, 1);
+    scriptSystem.update(0.016F);
+
+    EXPECT_EQ(g_externalDestroyCount, 1);  // released once only
+    EXPECT_EQ(scriptSystem.getScriptInstance(e1), nullptr);
+    EXPECT_NE(scriptSystem.getScriptInstance(e2), nullptr);
+    EXPECT_GE(g_replacementUpdateCount, 1);
+}
+
+TEST(Scripting, DestroyListenerFollowsMovedScriptSystem) {
+    g_externalDestroyCount = 0;
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem original;
+    original.init(registry, bus);
+    original.getVm().registerForeignMethod<&recordExternalDestroy>("gameplay_moved", "MovedScript", true,
+                                                                   "recordDestroyed(_)");
+    EXPECT_TRUE(original.getVm().interpret("gameplay_moved",
+                                           "class MovedScript {\n"
+                                           "    construct new(entity) {}\n"
+                                           "    onDestroy() { MovedScript.recordDestroyed(1) }\n"
+                                           "    foreign static recordDestroyed(x)\n"
+                                           "}\n"));
+
+    ecs::Entity const e = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(
+        e, ecs::ScriptComponent{
+               .moduleName = "gameplay_moved", .className = "MovedScript", .hasUpdate = false, .initialized = false});
+    original.update(0.016F);
+
+    systems::ScriptSystem moved(std::move(original));
+    ASSERT_NE(moved.getScriptInstance(e), nullptr);
+
+    // Only the moved-to system reacts, exactly once, and the moved-from one no longer listens.
+    registry.killEntity(e);
+    EXPECT_EQ(g_externalDestroyCount, 1);
+    EXPECT_EQ(moved.getScriptInstance(e), nullptr);
 }
 
 TEST(Scripting, GetSlotRejectsOutOfRangeUnsigned64) {
@@ -536,6 +604,12 @@ TEST(Scripting, GetSlotRejectsOutOfRangeUnsigned64) {
     vm.setSlot(0, std::ldexp(1.0, 52));
     ASSERT_TRUE(vm.getSlotChecked<std::uint64_t>(0).has_value());
     EXPECT_EQ(vm.getSlotChecked<std::uint64_t>(0).value(), std::uint64_t{1} << 52U);
+
+    // Largest double below 2^64 is still a valid uint64_t.
+    double const belowLimit = std::nextafter(std::ldexp(1.0, 64), 0.0);
+    vm.setSlot(0, belowLimit);
+    ASSERT_TRUE(vm.getSlotChecked<std::uint64_t>(0).has_value());
+    EXPECT_EQ(vm.getSlotChecked<std::uint64_t>(0).value(), static_cast<std::uint64_t>(belowLimit));
 }
 
 TEST(Scripting, LifecycleOnReload) {

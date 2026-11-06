@@ -20,7 +20,11 @@ An **Entity** is not an object containing behaviors. It is a lightweight **gener
 
 Use `ecs::entityIndex(e)`, `ecs::entityGeneration(e)` and `ecs::makeEntity(index, generation)` to work with the fields; `ecs::NULL_ENTITY` is never alive.
 
-Slots of killed entities are recycled, but with a new generation. A handle kept after its entity died (in a script, in a component referencing another entity, ...) is therefore **stale**: `isAlive` returns false, `hasComponent`/`contains`/`get` do not see the new occupant's components, `killEntity` and `removeComponent` are no-ops, and `addComponent`/`emplaceComponent` throw `std::invalid_argument` instead of overwriting the new entity's data. Two entities may share an index over time, so never use an index alone as an identity; store the full handle.
+Slots of killed entities are recycled, but with a new generation. A handle kept after its entity died (in a script, in a component referencing another entity, ...) is therefore **stale**: `isAlive` returns false, `hasComponent`/`contains`/`get` do not see the new occupant's components, `killEntity` and `removeComponent` are no-ops, and `addComponent`/`emplaceComponent` throw `std::invalid_argument` instead of overwriting the new entity's data. They also throw for a killed entity whose slot is not reused yet, which would otherwise leave an orphan component visited by `runSystem`. At the lower level, `SparseArray::insertAt` throws if the slot already holds the component of another handle with the same index.
+
+When an entity with a script is killed from C++ (not through `Entity.destroy()`), the `ScriptSystem` runs its `onDestroy()` hook from a registry destroy listener, while its components still exist, and releases the script instance. Because the hook calls into Wren synchronously, never call `killEntity` from inside a Wren foreign method; scripts use the deferred `Entity.destroy()`.
+
+Two entities may share an index over time, so never use an index alone as an identity; store the full handle.
 
 ### 2.2 Components
 

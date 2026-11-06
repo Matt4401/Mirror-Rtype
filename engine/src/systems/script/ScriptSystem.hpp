@@ -4,9 +4,11 @@
  */
 
 #pragma once
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -281,14 +283,20 @@ class ScriptSystem {
     void flushPendingDestructions();
 
     /**
-     * @brief Releases the script instances of entities killed outside the scripting layer.
+     * @brief Registers the registry destroy listener that releases script instances of killed entities.
      *
      * Entities destroyed by C++ code (game rules, physics, network despawn, ...) never go through
-     * `queueDestroyEntity`. Their instance is detected here, gets its `onDestroy()` hook, and is released, so it is
-     * neither updated nor kept alive once the entity is dead. A sweep is used instead of a registry destroy listener
-     * because `ScriptSystem` is movable and a listener capturing `this` would dangle.
+     * `queueDestroyEntity`. The listener runs their `onDestroy()` hook while their components still exist, then
+     * releases the instance so it is neither updated nor kept alive once the entity is dead.
+     * The listener captures `this`, so it is re-registered by the move operations.
+     *
+     * @warning The hook calls into Wren synchronously: `Registry::killEntity` must not be called from inside a
+     *          foreign method. Scripts destroy entities through `queueDestroyEntity`, which is deferred.
      */
-    void releaseDeadInstances();
+    void attachDestroyListener();
+
+    /** @brief Unregisters the destroy listener registered by `attachDestroyListener`, if any. */
+    void detachDestroyListener() noexcept;
 
     /**
      * @brief Ensures a script module is compiled and imported into the VM, tracking it for changes.
@@ -330,6 +338,8 @@ class ScriptSystem {
 
     /** @brief Non-owning pointer to the ECS Registry. */
     ecs::Registry* _registry = nullptr;
+    /** @brief Id of the registry destroy listener releasing script instances, if registered. */
+    std::optional<std::size_t> _destroyListenerId;
     /** @brief Non-owning pointer to the EventBus. */
     ecs::EventBus* _bus = nullptr;
     /** @brief Non-owning pointer to the prefab registry used by `Engine.spawnPrefab`. */
