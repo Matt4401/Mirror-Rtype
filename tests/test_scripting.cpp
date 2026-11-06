@@ -10,6 +10,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
+#include "events/PhysicsEvents.hpp"
 #include "input/InputState.hpp"
 #include "scripting/ComponentBinder.hpp"
 #include "scripting/ForeignCall.hpp"
@@ -856,6 +857,193 @@ TEST(Scripting, RobustnessForeignCallNumericConversions) {
 
     EXPECT_EQ(callWithEntity("validFloat(_)"), WREN_RESULT_SUCCESS);
     EXPECT_FLOAT_EQ(registry.getComponents<Position>().get(entity).x, 1.5F);
+}
+
+namespace {
+
+/** @brief Wren scripts counting their `onCollision` calls; `DestroyerScript` also destroys what it hits. */
+constexpr const char* COLLISION_SCRIPTS =
+    "import \"core/Entity\" for Entity\n"
+    "class HitScript {\n"
+    "    construct new(entity) {\n"
+    "        _hits = 0\n"
+    "        _last = -1\n"
+    "    }\n"
+    "    onCollision(other) {\n"
+    "        _hits = _hits + 1\n"
+    "        _last = other.id\n"
+    "    }\n"
+    "    hits { _hits }\n"
+    "    last { _last }\n"
+    "}\n"
+    "class DestroyerScript {\n"
+    "    construct new(entity) {\n"
+    "        _hits = 0\n"
+    "        _last = -1\n"
+    "    }\n"
+    "    onCollision(other) {\n"
+    "        _hits = _hits + 1\n"
+    "        _last = other.id\n"
+    "        other.destroy()\n"
+    "    }\n"
+    "    hits { _hits }\n"
+    "    last { _last }\n"
+    "}\n";
+
+ecs::Entity spawnScripted(ecs::Registry& registry, const char* className, bool hasCollision) {
+    const ecs::Entity e = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(e, ecs::ScriptComponent{.moduleName = "collisions",
+                                                                        .className = className,
+                                                                        .hasUpdate = false,
+                                                                        .hasCollision = hasCollision,
+                                                                        .initialized = false});
+    return e;
+}
+
+double readGetter(systems::ScriptSystem& scriptSystem, ecs::Entity e, const char* getter) {
+    auto handle = scriptSystem.getVm().makeCallHandle(getter);
+    EXPECT_EQ(scriptSystem.getVm().call(handle, scriptSystem.getScriptInstance(e)), WREN_RESULT_SUCCESS);
+    return scriptSystem.getVm().getSlot<double>(0);
+}
+
+/** @brief A ScriptSystem forwarding the collisions of its bus, with the collision scripts loaded. */
+struct CollisionFixture {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    systems::ScriptSystem scriptSystem;
+
+    CollisionFixture() {
+        registry.registerComponent<ecs::ScriptComponent>();
+        scriptSystem.init(registry, bus);
+        scriptSystem.forwardCollisions(bus);
+        EXPECT_TRUE(scriptSystem.getVm().interpret("collisions", COLLISION_SCRIPTS));
+    }
+};
+
+}  // namespace
+
+TEST(Scripting, CollisionForwardingCallsBothFlaggedScripts) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, e1, "hits"), 1.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, e1, "last"), static_cast<double>(e2));
+    EXPECT_EQ(readGetter(fx.scriptSystem, e2, "hits"), 1.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, e2, "last"), static_cast<double>(e1));
+}
+
+TEST(Scripting, CollisionForwardingSkipsUnflaggedScripts) {
+    CollisionFixture fx;
+    const ecs::Entity flagged = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity unflagged = spawnScripted(fx.registry, "HitScript", false);
+    fx.scriptSystem.update(0.016F);
+
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = unflagged, .entityB = flagged});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, flagged, "hits"), 1.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, unflagged, "hits"), 0.0);
+}
+
+TEST(Scripting, CollisionForwardingSkipsPendingDestroy) {
+    CollisionFixture fx;
+    const ecs::Entity destroyer = spawnScripted(fx.registry, "DestroyerScript", true);
+    const ecs::Entity victim = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    // The destroyer runs first and queues the victim for destruction: the victim's script is then skipped.
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = destroyer, .entityB = victim});
+    EXPECT_EQ(readGetter(fx.scriptSystem, destroyer, "hits"), 1.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, victim, "hits"), 0.0);
+    EXPECT_TRUE(fx.registry.isAlive(victim));  // deferred through the CommandBuffer
+
+    // Later contacts of the queued entity are ignored too, until the deferred destruction is flushed.
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = destroyer, .entityB = victim});
+    EXPECT_EQ(readGetter(fx.scriptSystem, destroyer, "hits"), 1.0);
+
+    fx.scriptSystem.update(0.016F);
+    EXPECT_FALSE(fx.registry.isAlive(victim));
+}
+
+TEST(Scripting, CollisionForwardingSkipsDeadEntities) {
+    CollisionFixture fx;
+    const ecs::Entity survivor = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity victim = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    // A C++ rule handled the contact first and killed the victim: the survivor must not see a dead entity.
+    fx.registry.killEntity(victim);
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = survivor, .entityB = victim});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, survivor, "hits"), 0.0);
+}
+
+TEST(Scripting, StopForwardingCollisionsUnsubscribes) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    fx.scriptSystem.stopForwardingCollisions();
+    fx.scriptSystem.stopForwardingCollisions();  // idempotent, as ScriptPlugin::shutdown then the destructor call it
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, e1, "hits"), 0.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, e2, "hits"), 0.0);
+}
+
+TEST(Scripting, CollisionForwardingFollowsAMove) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    systems::ScriptSystem moved(std::move(fx.scriptSystem));
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+    EXPECT_EQ(readGetter(moved, e1, "hits"), 1.0);
+    EXPECT_EQ(readGetter(moved, e2, "hits"), 1.0);
+}
+
+TEST(Scripting, CollisionForwardingFollowsAMoveAssignment) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    {
+        // The target forwards on the same bus: after the assignment, each contact must be delivered exactly once.
+        systems::ScriptSystem target;
+        target.init(fx.registry, fx.bus);
+        target.forwardCollisions(fx.bus);
+        target = std::move(fx.scriptSystem);
+        fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+        EXPECT_EQ(readGetter(target, e1, "hits"), 1.0);
+        EXPECT_EQ(readGetter(target, e2, "hits"), 1.0);
+    }
+    // Both systems are gone: publishing must not reach a dangling slot.
+    EXPECT_NO_FATAL_FAILURE(fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2}));
+}
+
+TEST(Scripting, CollisionForwardingStopsWithTheSystem) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    {
+        CollisionFixture fx;
+        (void)fx;
+    }
+    {
+        systems::ScriptSystem scriptSystem;
+        registry.registerComponent<ecs::ScriptComponent>();
+        scriptSystem.init(registry, bus);
+        scriptSystem.forwardCollisions(bus);
+    }
+    // The destroyed system unsubscribed: publishing must not reach a dangling `this`.
+    EXPECT_NO_FATAL_FAILURE(bus.publish(events::CollisionBeginEvent{.entityA = 0, .entityB = 1}));
 }
 
 int main(int argc, char** argv) {

@@ -71,6 +71,18 @@ flowchart LR
 - **`advance()` does nothing while the room waits.** After several catch-up steps, a single snapshot is sent, since it
   carries the latest state.
 
+## Collisions
+
+The server classifies physics contacts with `rtype::server::collision::CollisionRouter` (`server/src/collision/`, target `rtype_collision`). It subscribes to the engine `events::CollisionBeginEvent` and uses the categories from `prefabs/CollisionCategories.hpp` to republish each contact as an R-Type event:
+
+| Event | Pair |
+|-------|------|
+| `ShotHitEvent` | Player shot ↔ enemy / obstacle (`byPlayer = true`), enemy shot ↔ player / obstacle (`byPlayer = false`) |
+| `ShipContactEvent` | Player ship ↔ enemy / obstacle |
+| `PowerUpTouchedEvent` | Player ship ↔ power-up |
+
+The router does not change any state: game rules (damage, kills, pickups) subscribe to these events. It is not wired into `Room` yet: that happens once the room's engine runs `PhysicsPlugin`, by owning a router on its event bus.
+
 ## What is not simulated yet
 
 Only ship movement runs on the server. Shots, enemies, collisions and `GameOver` are still to do, as well as `Chat`, which

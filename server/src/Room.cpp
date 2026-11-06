@@ -49,7 +49,9 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.setFixedDeltaTime(fixedDt);
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
-    // TODO(ecs): add the gameplay plugins (PhysicsPlugin, ScriptPlugin, shooting, collisions...).
+    // TODO(ecs): add the gameplay plugins (PhysicsPlugin, ScriptPlugin, shooting, collisions...). For collisions, own a
+    // collision::CollisionRouter on _engine.eventBus(): it turns the events::CollisionBeginEvent of PhysicsPlugin into
+    // R-Type events.
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
         if (registry.hasComponent<ecs::Transform>(event.entity)) {

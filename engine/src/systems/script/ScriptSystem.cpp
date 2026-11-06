@@ -22,7 +22,10 @@ namespace systems {
 
 ScriptSystem::ScriptSystem() = default;
 
-ScriptSystem::~ScriptSystem() { releaseActiveHandles(); }
+ScriptSystem::~ScriptSystem() {
+    stopForwardingCollisions();
+    releaseActiveHandles();
+}
 
 ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
     : _registry(other._registry),
@@ -37,6 +40,9 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _updateHandle(std::move(other._updateHandle)),
       _onSpawnHandle(std::move(other._onSpawnHandle)),
       _fiberCallHandle(std::move(other._fiberCallHandle)),
+      _collisionBus(std::exchange(other._collisionBus, nullptr)),
+      _collisionToken(other._collisionToken),
+      _collisionTarget(std::move(other._collisionTarget)),
       _cachedMethodHandles(std::move(other._cachedMethodHandles)),
       _watchedScripts(std::move(other._watchedScripts)),
       _entitiesToReinstantiate(std::move(other._entitiesToReinstantiate)),
@@ -44,11 +50,20 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _reloadCheckTimer(other._reloadCheckTimer),
       _hotReloadEnabled(other._hotReloadEnabled) {
     _vm.setUserContext(this);
+    if (_collisionTarget) {
+        *_collisionTarget = this;
+    }
 }
 
 ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
     if (this != &other) {
         releaseActiveHandles();
+        _sleepingFibers.clear();
+        _newHandle.reset();
+        _updateHandle.reset();
+        _onSpawnHandle.reset();
+        _fiberCallHandle.reset();
+        _cachedMethodHandles.clear();
         _registry = other._registry;
         _bus = other._bus;
         _commandBuffer = std::move(other._commandBuffer);
@@ -68,6 +83,15 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _reloadCheckTimer = other._reloadCheckTimer;
         _hotReloadEnabled = other._hotReloadEnabled;
         _vm.setUserContext(this);
+        std::swap(_collisionBus, other._collisionBus);
+        std::swap(_collisionToken, other._collisionToken);
+        std::swap(_collisionTarget, other._collisionTarget);
+        if (_collisionTarget) {
+            *_collisionTarget = this;
+        }
+        if (other._collisionTarget) {
+            *other._collisionTarget = &other;
+        }
     }
     return *this;
 }

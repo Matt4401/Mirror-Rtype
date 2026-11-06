@@ -63,7 +63,7 @@ void PhysicsPlugin::build(engine::PluginBuilder& builder) {
 }
 
 void PhysicsPlugin::init(engine::Engine& engine) {
-    _physicsSystem = std::make_unique<PhysicsSystem>(engine.registry());
+    _physicsSystem = std::make_unique<PhysicsSystem>(engine.registry(), engine.eventBus());
     _physicsService = std::make_shared<PhysicsServiceImpl>(*_physicsSystem);
     if (const auto res = engine.mediator().registerService<engine::IPhysicsService>(_physicsService); !res) {
         throw engine::MediatorError(res.error());

@@ -25,6 +25,14 @@ struct ScriptComponent {
     /** @brief Flag indicating whether this script opts in to the per-frame `update(dt)` loop. */
     bool hasUpdate = false;
 
+    /**
+     * @brief Flag indicating whether this script opts in to `onCollision(other)`.
+     *
+     * When set, the script must define `onCollision(other)`: it is called with the other `Entity` each time a
+     * collision begins (`events::CollisionBeginEvent`). Wren cannot check if a method exists, hence the opt-in.
+     */
+    bool hasCollision = false;
+
     /** @brief Flag set to true once `new(entityId)` and `onSpawn()` have executed. */
     bool initialized = false;
 };

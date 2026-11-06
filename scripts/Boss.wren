@@ -12,7 +12,7 @@ import "core/World" for World
  *  - Asynchronous coroutines & timed phases (Fiber & Engine.wait)
  *  - Deferred entity mutations & prefab spawning (CommandBuffer)
  *  - Spatial queries (World API)
- *  - Event handling (onCollision, onDamage)
+ *  - Event handling (onCollision, onDamage); onCollision needs `hasCollision = true` in its ScriptComponent
  */
 class Boss {
     construct new(entity) {

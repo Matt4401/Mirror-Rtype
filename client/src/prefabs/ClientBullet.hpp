@@ -27,7 +27,8 @@ struct ClientBullet {};
 /**
  * @brief Attaches the client bullet components to an entity.
  *
- * Sets up Transform, Renderable, AnimationComponent, RigidBody2D and the ClientBullet tag.
+ * Sets up Transform, Renderable, AnimationComponent, RigidBody2D, a `PLAYER_SHOT` sensor Collider2D and the
+ * ClientBullet tag.
  * Accepted parameters: transform keys (x, y, scaleX, scaleY), `speed` (horizontal pixels/sec),
  * and `textureId` (integer texture identifier set as a registration default).
  *

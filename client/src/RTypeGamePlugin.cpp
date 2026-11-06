@@ -8,11 +8,13 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "collision/CollisionRouter.hpp"
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
@@ -27,6 +29,7 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "gameplay/ShotHitRule.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
@@ -198,6 +201,9 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
 
     _spawned = engine.eventBus().subscribe<ecs::net::ReplicatedEntitySpawned>(
         [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) { onEntitySpawned(engine, event); });
+
+    _collisionRouter = std::make_unique<rtype::server::collision::CollisionRouter>(engine.eventBus());
+    _shotHitRule = std::make_unique<gameplay::ShotHitRule>(engine.eventBus(), registry);
 }
 
 void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const {
@@ -253,6 +259,8 @@ void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*ti
 }
 
 void RTypeGamePlugin::shutdown(engine::Engine& engine) {
+    _shotHitRule.reset();
+    _collisionRouter.reset();
     if (_spawned) {
         engine.eventBus().unsubscribe<ecs::net::ReplicatedEntitySpawned>(*_spawned);
         _spawned.reset();
