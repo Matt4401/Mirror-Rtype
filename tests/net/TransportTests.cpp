@@ -8,6 +8,7 @@
 #include <asio/ip/address_v4.hpp>
 #include <asio/ip/tcp.hpp>
 #include <asio/read.hpp>
+#include <asio/socket_base.hpp>
 #include <asio/write.hpp>
 #include <atomic>
 #include <chrono>
@@ -41,6 +42,9 @@ using ecs::net::NetworkEvent;
 
 constexpr std::uint32_t GAME_A = 0xA;
 constexpr std::uint32_t GAME_B = 0xB;
+// The ports of these tests are below every ephemeral range (from 32768 on Linux, 49152 on Windows and macOS). Inside
+// it, an outgoing connection can get a test port as its source port and hold it in TIME_WAIT: start() then fails for a
+// minute with "Address already in use", and the tests themselves open such connections.
 // Long enough for Windows, where connecting to a closed port takes about 2 s: the SYN is retried after each refusal.
 constexpr auto WAIT = std::chrono::seconds(10);
 /** @brief What "at once" means for an operation that must not wait for the network. */
@@ -117,7 +121,7 @@ TEST(NetworkConfig, InvalidConfigIsRefusedByTheFactory) {
 }
 
 TEST(Transport, SameProtocolConnectsAndExchangesData) {
-    constexpr std::uint16_t PORT = 47311;
+    constexpr std::uint16_t PORT = 21311;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
     ASSERT_TRUE(server->start(PORT));
     const auto client = ecs::net::createClient({.protocolId = GAME_A});
@@ -138,7 +142,7 @@ TEST(Transport, SameProtocolConnectsAndExchangesData) {
 }
 
 TEST(Transport, OtherProtocolIsRefusedBeforeTheGameSeesIt) {
-    constexpr std::uint16_t PORT = 47312;
+    constexpr std::uint16_t PORT = 21312;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
     ASSERT_TRUE(server->start(PORT));
     const auto client = ecs::net::createClient({.protocolId = GAME_B});
@@ -155,7 +159,7 @@ TEST(Transport, OtherProtocolIsRefusedBeforeTheGameSeesIt) {
 }
 
 TEST(Transport, FrameBeforeHandshakeClosesTheConnection) {
-    constexpr std::uint16_t PORT = 47313;
+    constexpr std::uint16_t PORT = 21313;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
     ASSERT_TRUE(server->start(PORT));
 
@@ -165,7 +169,7 @@ TEST(Transport, FrameBeforeHandshakeClosesTheConnection) {
 }
 
 TEST(Transport, SilentConnectionIsClosedAfterHandshakeTimeout) {
-    constexpr std::uint16_t PORT = 47314;
+    constexpr std::uint16_t PORT = 21314;
     const auto server = ecs::net::createServer({.protocolId = GAME_A,
                                                 .udpTick = std::chrono::milliseconds(20),
                                                 .handshakeTimeout = std::chrono::milliseconds(100)});
@@ -176,7 +180,7 @@ TEST(Transport, SilentConnectionIsClosedAfterHandshakeTimeout) {
 }
 
 TEST(Transport, FullServerTellsTheClientWhy) {
-    constexpr std::uint16_t PORT = 47315;
+    constexpr std::uint16_t PORT = 21315;
     const auto server = ecs::net::createServer({.protocolId = GAME_A, .maxPeers = 1});
     ASSERT_TRUE(server->start(PORT));
     const auto first = ecs::net::createClient({.protocolId = GAME_A});
@@ -194,7 +198,7 @@ TEST(Transport, FullServerTellsTheClientWhy) {
 }
 
 TEST(Transport, RefusedPeerThatStaysConnectedIsClosedAnyway) {
-    constexpr std::uint16_t PORT = 47322;
+    constexpr std::uint16_t PORT = 21322;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
     ASSERT_TRUE(server->start(PORT));
     asio::io_context io;
@@ -217,7 +221,7 @@ TEST(Transport, RefusedPeerThatStaysConnectedIsClosedAnyway) {
 }
 
 TEST(Transport, RefusedPeerLearnsTheReasonAfterConnecting) {
-    constexpr std::uint16_t PORT = 47316;
+    constexpr std::uint16_t PORT = 21316;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
     ASSERT_TRUE(server->start(PORT));
     const auto client = ecs::net::createClient({.protocolId = GAME_A});
@@ -233,7 +237,7 @@ TEST(Transport, RefusedPeerLearnsTheReasonAfterConnecting) {
 }
 
 TEST(Transport, LostConnectionHasNoSpecialReason) {
-    constexpr std::uint16_t PORT = 47317;
+    constexpr std::uint16_t PORT = 21317;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
     ASSERT_TRUE(server->start(PORT));
     const auto client = ecs::net::createClient({.protocolId = GAME_A});
@@ -249,7 +253,7 @@ TEST(Transport, LostConnectionHasNoSpecialReason) {
 }
 
 TEST(Transport, UnreachableServerIsReportedByAnEvent) {
-    constexpr std::uint16_t CLOSED_PORT = 47318;
+    constexpr std::uint16_t CLOSED_PORT = 21318;
     const auto client = ecs::net::createClient({.protocolId = GAME_A});
 
     ASSERT_TRUE(client->connect("127.0.0.1", CLOSED_PORT));
@@ -267,7 +271,7 @@ TEST(Transport, ConnectDoesNotBlockAndCanBeCancelled) {
     const auto client = ecs::net::createClient({.protocolId = GAME_A});
 
     const auto before = std::chrono::steady_clock::now();
-    ASSERT_TRUE(client->connect(blackHole, 47319));
+    ASSERT_TRUE(client->connect(blackHole, 21319));
     client->send(Bytes{1}, Channel::Reliable);  // dropped: not connected yet
     client->stop();
 
@@ -275,7 +279,7 @@ TEST(Transport, ConnectDoesNotBlockAndCanBeCancelled) {
 }
 
 TEST(Transport, StopRightAfterConnectNeverHangs) {
-    constexpr std::uint16_t PORT = 47321;
+    constexpr std::uint16_t PORT = 21321;
     constexpr int ATTEMPTS = 200;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
     ASSERT_TRUE(server->start(PORT));
@@ -297,8 +301,6 @@ TEST(Transport, StopRightAfterConnectNeverHangs) {
 }
 
 TEST(Transport, ServerStopDuringAConnectionBurstNeverHangs) {
-    // Below the ephemeral ports: connecting in a loop to a closed ephemeral port ends up connecting a socket to itself,
-    // which holds the port and makes the next start() fail.
     constexpr std::uint16_t PORT = 21323;
     constexpr int ATTEMPTS = 100;
     constexpr int CONNECTING_THREADS = 4;
@@ -309,9 +311,14 @@ TEST(Transport, ServerStopDuringAConnectionBurstNeverHangs) {
             const asio::ip::tcp::endpoint server(asio::ip::make_address_v4("127.0.0.1"), PORT);
             while (!done) {
                 asio::io_context io;
-                asio::ip::tcp::socket socket(io);
+                asio::ip::tcp::socket socket(io, asio::ip::tcp::v4());
+                // Closes with a reset: a normal close keeps the ephemeral port in TIME_WAIT for a minute, and thousands
+                // of them would use up the range and collide with the ports of other test suites. The close must be
+                // explicit, because the destructor of an asio socket turns the linger option off.
+                socket.set_option(asio::socket_base::linger(true, 0));
                 std::error_code ignored;
                 std::ignore = socket.connect(server, ignored);
+                std::ignore = socket.close(ignored);
             }
         }));
     }
@@ -334,7 +341,7 @@ TEST(Transport, ServerStopDuringAConnectionBurstNeverHangs) {
 }
 
 TEST(Transport, ServerStopOnATimerTickNeverHangs) {
-    constexpr std::uint16_t PORT = 47323;
+    constexpr std::uint16_t PORT = 21324;
     constexpr int ATTEMPTS = 100;
 
     // A timer that has just expired cannot be cancelled anymore: stop() must also hold when its handler runs
@@ -349,7 +356,7 @@ TEST(Transport, ServerStopOnATimerTickNeverHangs) {
 }
 
 TEST(Transport, ConnectingTwiceIsRefused) {
-    constexpr std::uint16_t PORT = 47320;
+    constexpr std::uint16_t PORT = 21320;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
     ASSERT_TRUE(server->start(PORT));
     const auto client = ecs::net::createClient({.protocolId = GAME_A});
