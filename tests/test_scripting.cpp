@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -472,6 +474,68 @@ TEST(Scripting, LifecycleOnDestroy) {
 
     EXPECT_EQ(g_destroyHookCallCount, 1);
     EXPECT_FALSE(registry.getComponents<ecs::ScriptComponent>().contains(e1));
+}
+
+TEST(Scripting, LifecycleOnDestroyWhenKilledOutsideScripts) {
+    g_destroyHookCallCount = 0;
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    scriptSystem.getVm().registerForeignMethod<&recordDestroyHook>("gameplay_external", "ExternalDestroyScript", true,
+                                                                   "recordDestroyed()");
+
+    const char* scriptCode =
+        "import \"core/Entity\" for Entity\n"
+        "class ExternalDestroyScript {\n"
+        "    construct new(entity) {\n"
+        "        _entity = entity\n"
+        "    }\n"
+        "    onDestroy() {\n"
+        "        ExternalDestroyScript.recordDestroyed()\n"
+        "    }\n"
+        "    foreign static recordDestroyed()\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay_external", scriptCode));
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay_external",
+                                                                         .className = "ExternalDestroyScript",
+                                                                         .hasUpdate = false,
+                                                                         .initialized = false});
+    scriptSystem.update(0.016F);
+    ASSERT_NE(scriptSystem.getScriptInstance(e1), nullptr);
+
+    // Killed by C++ code (game rule, physics, network despawn...), not through Entity.destroy().
+    registry.killEntity(e1);
+    // The slot is recycled with a new generation: the old instance must not be reused nor leaked.
+    ecs::Entity const e2 = registry.spawnEntity();
+    ASSERT_NE(e2, e1);
+
+    scriptSystem.update(0.016F);
+
+    EXPECT_EQ(g_destroyHookCallCount, 1);
+    EXPECT_EQ(scriptSystem.getScriptInstance(e1), nullptr);
+    EXPECT_EQ(scriptSystem.getScriptInstance(e2), nullptr);
+
+    // Released once only.
+    scriptSystem.update(0.016F);
+    EXPECT_EQ(g_destroyHookCallCount, 1);
+}
+
+TEST(Scripting, GetSlotRejectsOutOfRangeUnsigned64) {
+    scripting::WrenVM vm;
+    vm.ensureSlots(1);
+
+    vm.setSlot(0, std::ldexp(1.0, 64));
+    EXPECT_FALSE(vm.getSlotChecked<std::uint64_t>(0).has_value());
+
+    vm.setSlot(0, std::ldexp(1.0, 52));
+    ASSERT_TRUE(vm.getSlotChecked<std::uint64_t>(0).has_value());
+    EXPECT_EQ(vm.getSlotChecked<std::uint64_t>(0).value(), std::uint64_t{1} << 52U);
 }
 
 TEST(Scripting, LifecycleOnReload) {
