@@ -58,6 +58,12 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
 ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
     if (this != &other) {
         releaseActiveHandles();
+        _sleepingFibers.clear();
+        _newHandle.reset();
+        _updateHandle.reset();
+        _onSpawnHandle.reset();
+        _fiberCallHandle.reset();
+        _cachedMethodHandles.clear();
         _registry = other._registry;
         _bus = other._bus;
         _commandBuffer = std::move(other._commandBuffer);
