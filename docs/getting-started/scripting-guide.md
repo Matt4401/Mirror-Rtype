@@ -270,6 +270,25 @@ class HomingMissile {
 
 ---
 
+### Reference
+
+| Call | Returns |
+| --- | --- |
+| `World.getEntitiesWithTag(tag)` | `List` of `Entity` whose `Tag` equals `tag` (exact, case-sensitive) |
+| `World.getNearestWithTag(x, y, tag)` | Closest tagged `Entity` that has a `Transform`, or `null` |
+| `World.getEntitiesInRadius(x, y, radius)` | `List` of `Entity` whose `Transform` is within `radius` (boundary included) |
+
+* Entities are labelled from C++ with the generic `ecs::Tag` component (`registry.addComponent<ecs::Tag>(e, {.name = "enemy"})`);
+  the engine gives no meaning to the strings, each game picks its own.
+* Coordinates and radius are in `Transform` world units. The queries scan the ECS directly, so they work on the
+  headless server and do not need a physics body.
+* `radius` is clamped to `ecs::MAX_QUERY_RADIUS`; a negative radius returns an empty list.
+* No match returns an empty list or `null`, never a VM error. Entities destroyed by a script during the current
+  frame are skipped. Wrong argument types abort the calling fiber.
+* The same queries are available in C++ in `ecs/SpatialQueries.hpp`.
+
+---
+
 ## 9. Entity Deletion & Prefab Spawning
 
 To destroy an entity:
