@@ -37,7 +37,10 @@ using ecs::net::NetworkEvent;
 
 constexpr std::uint32_t GAME_A = 0xA;
 constexpr std::uint32_t GAME_B = 0xB;
-constexpr auto WAIT = std::chrono::seconds(2);
+// Long enough for Windows, where connecting to a closed port takes about 2 s: the SYN is retried after each refusal.
+constexpr auto WAIT = std::chrono::seconds(10);
+/** @brief What "at once" means for an operation that must not wait for the network. */
+constexpr auto PROMPTLY = std::chrono::seconds(2);
 
 /** @brief Polls a transport until `done` holds or `WAIT` elapses; returns every event seen. */
 std::vector<NetworkEvent> pollUntil(ecs::net::INetworkManager& net,
@@ -172,6 +175,29 @@ TEST(Transport, FullServerTellsTheClientWhy) {
     EXPECT_EQ(second->disconnectReason(), DisconnectReason::ServerFull);
 }
 
+TEST(Transport, RefusedPeerThatStaysConnectedIsClosedAnyway) {
+    constexpr std::uint16_t PORT = 47322;
+    const auto server = ecs::net::createServer({.protocolId = GAME_A});
+    ASSERT_TRUE(server->start(PORT));
+    asio::io_context io;
+    asio::ip::tcp::socket socket(io);
+    asio::ip::tcp::resolver resolver(io);
+    // NOLINTNEXTLINE(misc-include-cleaner): false positive, the public header asio/connect.hpp is included
+    asio::connect(socket, resolver.resolve("127.0.0.1", std::to_string(PORT)));
+
+    // A `Handshake` of another protocol: `[length u32 = 4][kind u8 = 4][protocolId u32 = 0xB]`. Then this peer stays
+    // silent and never closes.
+    asio::write(socket, asio::buffer(Bytes{4, 0, 0, 0, 4, GAME_B, 0, 0, 0}));
+    std::array<std::uint8_t, 6> refused{};
+    asio::read(socket, asio::buffer(refused));
+    EXPECT_EQ(refused[4], 5U) << "kind of a Refused frame";
+    EXPECT_EQ(refused[5], static_cast<std::uint8_t>(DisconnectReason::ProtocolMismatch));
+
+    const auto before = std::chrono::steady_clock::now();
+    server->stop();
+    EXPECT_LT(std::chrono::steady_clock::now() - before, PROMPTLY) << "the server does not wait for this peer";
+}
+
 TEST(Transport, RefusedPeerLearnsTheReasonAfterConnecting) {
     constexpr std::uint16_t PORT = 47316;
     const auto server = ecs::net::createServer({.protocolId = GAME_A});
@@ -227,7 +253,7 @@ TEST(Transport, ConnectDoesNotBlockAndCanBeCancelled) {
     client->send(Bytes{1}, Channel::Reliable);  // dropped: not connected yet
     client->stop();
 
-    EXPECT_LT(std::chrono::steady_clock::now() - before, WAIT);
+    EXPECT_LT(std::chrono::steady_clock::now() - before, PROMPTLY);
 }
 
 TEST(Transport, StopRightAfterConnectNeverHangs) {

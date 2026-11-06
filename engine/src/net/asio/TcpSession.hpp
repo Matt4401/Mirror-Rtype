@@ -2,6 +2,7 @@
 
 #include <array>
 #include <asio/ip/tcp.hpp>
+#include <asio/steady_timer.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -50,7 +51,10 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     void send(wire::MessageKind kind, const Bytes& payload = {});
     /** @brief Closes the connection; `onClose` is called later, from the network thread. */
     void close();
-    /** @brief Closes the connection once the queued frames are written; nothing is sent or delivered until then. */
+    /**
+     * @brief Closes the connection once the queued frames are written and the peer had time to read them. Nothing is
+     * sent or delivered in the meantime.
+     */
     void closeAfterFlush();
 
   private:
@@ -64,6 +68,8 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     void write();
     /** @brief Closes the session after a read or write error. @param ec The error. */
     void onError(std::error_code ec);
+    /** @brief The last frame is written: ends the sending side, and waits for the peer to close, for a limited time. */
+    void linger();
     /** @brief Closes the socket and calls `onClose`. */
     void closeNow();
 
@@ -88,8 +94,10 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     std::size_t _queuedBytes = 0;
     /** @brief True once `close()` was called. */
     bool _closing = false;
-    /** @brief True once `closeAfterFlush()` was called, until the queue is written. */
+    /** @brief True once `closeAfterFlush()` was called. */
     bool _flushing = false;
+    /** @brief Limits the time a peer has to close after `closeAfterFlush()`. */
+    asio::steady_timer _lingerTimer;
 };
 
 }  // namespace ecs::net::detail

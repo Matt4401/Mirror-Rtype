@@ -141,7 +141,10 @@ Afterwards:
 | `2` `ServerFull`       | The server already has `maxPeers` connections                                  | `Refused`   |
 | `3` `Unreachable`      | The name cannot be resolved or the TCP connection fails                        | Never sent  |
 
-The reason is best effort: if the connection breaks before `Refused` is read, the client reports `ConnectionLost`.
+The reason is best effort: if the connection breaks before `Refused` is read, the client reports `ConnectionLost`. After
+`Refused`, the server only ends its sending side and discards what it receives until the client closes, for 500 ms at most:
+closing a socket with unread data would reset the connection, and on Windows a reset destroys the frame the client has not
+read yet.
 
 While UDP is open, each side's library sends an empty **keepalive** datagram when it has sent nothing for 1 s. Silence
 on UDP therefore always means a connection problem, never an idle player or a paused game, and the timeout does not

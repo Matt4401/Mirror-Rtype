@@ -7,6 +7,7 @@
 #include <asio/post.hpp>
 #include <asio/read.hpp>
 #include <asio/write.hpp>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <span>
@@ -21,13 +22,21 @@
 
 namespace ecs::net::detail {
 
+namespace {
+
+/** @brief Time a peer has to close its side after `closeAfterFlush()`: it holds a socket, so it must stay short. */
+constexpr auto LINGER_TIMEOUT = std::chrono::milliseconds(500);
+
+}  // namespace
+
 TcpSession::TcpSession(asio::ip::tcp::socket socket, const PeerId id, const Limits limits, MessageHandler onMessage,
                        CloseHandler onClose)
     : _socket(std::move(socket)),
       _id(id),
       _limits(limits),
       _onMessage(std::move(onMessage)),
-      _onClose(std::move(onClose)) {}
+      _onClose(std::move(onClose)),
+      _lingerTimer(_socket.get_executor()) {}
 
 void TcpSession::start() { readHeader(); }
 
@@ -68,12 +77,14 @@ void TcpSession::readBody(const std::uint32_t size) {
 }
 
 void TcpSession::deliver(Bytes payload) {
-    if (_closing || _flushing) {
+    if (_closing) {
         return;
     }
-    _onMessage(_id, static_cast<wire::MessageKind>(_header[4]), std::move(payload));
+    if (!_flushing) {
+        _onMessage(_id, static_cast<wire::MessageKind>(_header[4]), std::move(payload));
+    }
     // The owner may have closed the session (invalid kind, kick...): stop reading in that case.
-    if (!_closing && !_flushing) {
+    if (!_closing) {
         readHeader();
     }
 }
@@ -119,7 +130,7 @@ void TcpSession::write() {
                           if (!self->_writeQueue.empty()) {
                               self->write();
                           } else if (self->_flushing) {
-                              self->close();
+                              self->linger();
                           }
                       });
 }
@@ -142,14 +153,31 @@ void TcpSession::close() {
 }
 
 void TcpSession::closeAfterFlush() {
-    if (_writeQueue.empty()) {
-        close();
+    if (_closing || _flushing) {
         return;
     }
     _flushing = true;
+    if (_writeQueue.empty()) {
+        linger();
+    }
+}
+
+void TcpSession::linger() {
+    // Closing a socket with unread data resets the connection, and on Windows a reset destroys what the peer has not
+    // read yet: the frame just written would be lost. So only end this side, and keep reading (deliver() discards the
+    // frames) until the peer closes, which the read reports as an error.
+    std::error_code ignored;
+    std::ignore = _socket.shutdown(asio::ip::tcp::socket::shutdown_send, ignored);
+    _lingerTimer.expires_after(LINGER_TIMEOUT);
+    _lingerTimer.async_wait([self = shared_from_this()](const std::error_code ec) {
+        if (!ec) {
+            self->close();
+        }
+    });
 }
 
 void TcpSession::closeNow() {
+    _lingerTimer.cancel();
     if (!_socket.is_open()) {
         return;
     }

@@ -136,12 +136,13 @@ void NetworkServer::accept() {
 }
 
 void NetworkServer::refuseConnection(asio::ip::tcp::socket socket) {
-    // Not in `_peers`, and never read: its pending write keeps it alive until it is closed.
+    // Not in `_peers`: its pending operations keep it alive until it is closed, within the linger timeout.
     const auto tcp = std::make_shared<TcpSession>(
         std::move(socket), 0,
         TcpSession::Limits{.maxPayload = _config.maxReliablePayload, .maxQueueBytes = _config.maxReliableQueueBytes},
         [](PeerId, MessageKind, const Bytes&) {}, [](PeerId) {});
     closeWithReason(*tcp, DisconnectReason::ServerFull);
+    tcp->start();  // discards the handshake of the client, which must be read for the close not to lose the frame
 }
 
 void NetworkServer::onTcpMessage(const PeerId peer, const MessageKind kind, Bytes payload) {
