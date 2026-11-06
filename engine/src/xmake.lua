@@ -58,9 +58,15 @@ target("engine_physics")
     add_deps("engine_core", "engine_events")
     add_packages("box2d")
 
+target("engine_hierarchy")
+    set_kind("static")
+    add_files("hierarchy/**.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core")
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end
