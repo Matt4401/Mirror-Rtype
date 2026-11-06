@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cstdint>
 #include <optional>
+#include <stdexcept>
 
 #include "ecs/ComponentType.hpp"
 #include "ecs/Entity.hpp"
@@ -38,7 +40,9 @@ TEST(ECS, EntityRecycling) {
     registry.killEntity(e1);
 
     ecs::Entity const e3 = registry.spawnEntity();
-    EXPECT_EQ(e3, 0);  // Should recycle e1's ID
+    EXPECT_EQ(ecs::entityIndex(e3), ecs::entityIndex(e1));  // Should recycle e1's slot...
+    EXPECT_NE(e3, e1);                                      // ...with a new generation
+    EXPECT_EQ(ecs::entityGeneration(e3), 1U);
 }
 
 TEST(ECS, DestroyListenerRunsBeforeComponentsAreRemoved) {
@@ -79,8 +83,10 @@ TEST(ECS, DestroyListenerCannotDestroyEntityRecursively) {
     EXPECT_EQ(calls, 1);
     EXPECT_FALSE(registry.isAlive(entity));
     EXPECT_FALSE(registry.hasComponent<Position>(entity));
-    EXPECT_EQ(registry.spawnEntity(), entity);
-    EXPECT_NE(registry.spawnEntity(), entity);
+    ecs::Entity const recycled = registry.spawnEntity();
+    EXPECT_EQ(ecs::entityIndex(recycled), ecs::entityIndex(entity));
+    EXPECT_NE(recycled, entity);
+    EXPECT_NE(ecs::entityIndex(registry.spawnEntity()), ecs::entityIndex(entity));
 }
 
 TEST(ECS, ListenerRemovalDuringDispatchSkipsUnregisteredListeners) {
@@ -333,12 +339,13 @@ TEST(ECS, EntityLivenessAndDoubleKill) {
     EXPECT_FALSE(registry.isAlive(e1));
 
     ecs::Entity const e2 = registry.spawnEntity();
-    EXPECT_EQ(e2, e1);
+    EXPECT_EQ(ecs::entityIndex(e2), ecs::entityIndex(e1));
     EXPECT_TRUE(registry.isAlive(e2));
+    EXPECT_FALSE(registry.isAlive(e1));
 
-    // Next spawn must be a new entity, NOT e1 again
+    // Next spawn must use a new slot, NOT e1's slot again
     ecs::Entity const e3 = registry.spawnEntity();
-    EXPECT_NE(e3, e1);
+    EXPECT_NE(ecs::entityIndex(e3), ecs::entityIndex(e1));
     EXPECT_TRUE(registry.isAlive(e3));
 }
 
@@ -358,13 +365,13 @@ TEST(ECS, CommandBufferDeduplication) {
 
     EXPECT_FALSE(registry.isAlive(e1));
 
-    // Recycle e1 once
+    // Recycle e1's slot once
     ecs::Entity const e2 = registry.spawnEntity();
-    EXPECT_EQ(e2, e1);
+    EXPECT_EQ(ecs::entityIndex(e2), ecs::entityIndex(e1));
 
-    // Ensure e1 was not recycled multiple times
+    // Ensure e1's slot was not recycled multiple times
     ecs::Entity const e3 = registry.spawnEntity();
-    EXPECT_NE(e3, e1);
+    EXPECT_NE(ecs::entityIndex(e3), ecs::entityIndex(e1));
 }
 
 struct GameConfig {
@@ -480,4 +487,128 @@ TEST(ECS, ComponentRemoveListenerCanAddListenersDuringDispatch) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(ECSGeneration, HandlePackingRoundTrips) {
+    constexpr ecs::Entity e = ecs::makeEntity(1234U, 56U);
+    static_assert(ecs::entityIndex(e) == 1234U);
+    static_assert(ecs::entityGeneration(e) == 56U);
+    static_assert(ecs::makeEntity(0U, ecs::MAX_ENTITY_GENERATION + 1U) == ecs::makeEntity(0U, 0U));
+
+    // Every handle, NULL_ENTITY included, must be exact once converted to a Wren number (double).
+    static_assert(ecs::NULL_ENTITY < (ecs::Entity{1} << 53U));
+    EXPECT_EQ(static_cast<ecs::Entity>(static_cast<double>(ecs::NULL_ENTITY)), ecs::NULL_ENTITY);
+}
+
+TEST(ECSGeneration, StaleHandleIsDeadAfterSlotReuse) {
+    ecs::Registry registry;
+    ecs::Entity const oldHandle = registry.spawnEntity();
+    registry.killEntity(oldHandle);
+    ecs::Entity const newHandle = registry.spawnEntity();
+
+    ASSERT_EQ(ecs::entityIndex(newHandle), ecs::entityIndex(oldHandle));
+    EXPECT_FALSE(registry.isAlive(oldHandle));
+    EXPECT_TRUE(registry.isAlive(newHandle));
+    EXPECT_FALSE(registry.isAlive(ecs::NULL_ENTITY));
+}
+
+TEST(ECSGeneration, StaleHandleCannotReachNewOccupantComponents) {
+    ecs::Registry registry;
+    ecs::Entity const oldHandle = registry.spawnEntity();
+    registry.addComponent<Position>(oldHandle, Position{.x = 1.0F, .y = 1.0F});
+    registry.killEntity(oldHandle);
+
+    ecs::Entity const newHandle = registry.spawnEntity();
+    registry.addComponent<Position>(newHandle, Position{.x = 2.0F, .y = 2.0F});
+
+    auto& positions = registry.getComponents<Position>();
+    EXPECT_FALSE(registry.hasComponent<Position>(oldHandle));
+    EXPECT_FALSE(positions.contains(oldHandle));
+    EXPECT_THROW((void)positions.get(oldHandle), std::out_of_range);
+
+    // Removing or killing through the stale handle must not touch the new entity.
+    registry.removeComponent<Position>(oldHandle);
+    positions.erase(oldHandle);
+    registry.killEntity(oldHandle);
+    EXPECT_TRUE(registry.isAlive(newHandle));
+    ASSERT_TRUE(registry.hasComponent<Position>(newHandle));
+    EXPECT_EQ(positions.get(newHandle).x, 2.0F);
+
+    // Writing through the stale handle is rejected instead of overwriting the new entity's data.
+    EXPECT_THROW(registry.addComponent<Position>(oldHandle, Position{.x = 3.0F, .y = 3.0F}), std::invalid_argument);
+    EXPECT_THROW(registry.emplaceComponent<Position>(oldHandle, 3.0F, 3.0F), std::invalid_argument);
+    EXPECT_EQ(positions.get(newHandle).x, 2.0F);
+}
+
+TEST(ECSGeneration, SparseArrayReplacesLeftoverOfOlderHandle) {
+    ecs::SparseArray<Position> positions;
+    ecs::Entity const oldHandle = ecs::makeEntity(3U, 0U);
+    ecs::Entity const newHandle = ecs::makeEntity(3U, 1U);
+
+    positions.insertAt(oldHandle, Position{.x = 1.0F, .y = 0.0F});
+    positions.insertAt(newHandle, Position{.x = 2.0F, .y = 0.0F});
+
+    EXPECT_FALSE(positions.contains(oldHandle));
+    ASSERT_TRUE(positions.contains(newHandle));
+    EXPECT_EQ(positions.get(newHandle).x, 2.0F);
+    ASSERT_EQ(positions.getDenseEntities().size(), 1U);
+    EXPECT_EQ(positions.getDenseEntities().front(), newHandle);
+}
+
+TEST(ECSGeneration, SwapAndPopKeepsGenerationalHandles) {
+    ecs::Registry registry;
+    ecs::Entity const recycledSource = registry.spawnEntity();
+    registry.killEntity(recycledSource);
+    ecs::Entity const a = registry.spawnEntity();  // slot 0, generation 1
+    ecs::Entity const b = registry.spawnEntity();  // slot 1, generation 0
+    registry.addComponent<Position>(a, Position{.x = 1.0F, .y = 0.0F});
+    registry.addComponent<Position>(b, Position{.x = 2.0F, .y = 0.0F});
+
+    registry.removeComponent<Position>(a);
+
+    EXPECT_FALSE(registry.hasComponent<Position>(a));
+    ASSERT_TRUE(registry.hasComponent<Position>(b));
+    EXPECT_EQ(registry.getComponents<Position>().get(b).x, 2.0F);
+}
+
+TEST(ECSGeneration, DestroyListenerReceivesFullHandle) {
+    ecs::Registry registry;
+    registry.killEntity(registry.spawnEntity());
+    ecs::Entity const entity = registry.spawnEntity();
+    ASSERT_EQ(ecs::entityGeneration(entity), 1U);
+
+    std::optional<ecs::Entity> notified;
+    registry.addDestroyListener([&](ecs::Entity destroyed) { notified = destroyed; });
+    registry.killEntity(entity);
+
+    EXPECT_EQ(notified, entity);
+}
+
+TEST(ECSGeneration, GenerationWrapsAround) {
+    ecs::Registry registry;
+    ecs::Entity e = registry.spawnEntity();
+    std::uint32_t const index = ecs::entityIndex(e);
+
+    for (std::uint32_t i = 0; i < ecs::MAX_ENTITY_GENERATION; ++i) {
+        registry.killEntity(e);
+        e = registry.spawnEntity();
+    }
+    EXPECT_EQ(ecs::entityIndex(e), index);
+    EXPECT_EQ(ecs::entityGeneration(e), ecs::MAX_ENTITY_GENERATION);
+
+    registry.killEntity(e);
+    e = registry.spawnEntity();
+    EXPECT_EQ(ecs::entityIndex(e), index);
+    EXPECT_EQ(ecs::entityGeneration(e), 0U);
+    EXPECT_TRUE(registry.isAlive(e));
+}
+
+TEST(ECSGeneration, HandleWithGarbageHighBitsIsNotAlive) {
+    ecs::Registry registry;
+    ecs::Entity const e = registry.spawnEntity();
+    ecs::Entity const forged = e | (ecs::Entity{1} << 60U);
+
+    EXPECT_FALSE(registry.isAlive(forged));
+    registry.killEntity(forged);
+    EXPECT_TRUE(registry.isAlive(e));
 }
