@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -158,6 +159,19 @@ class ScriptSystem {
     [[nodiscard]] prefabs::PrefabManager const* getPrefabManager() const noexcept;
 
     /**
+     * @brief Returns the scratch buffer reused by the `World` query bindings to avoid per-call allocations.
+     */
+    [[nodiscard]] std::vector<ecs::Entity>& getQueryBuffer() noexcept;
+
+    /** @brief Whether an entity is queued for destruction by a script this frame. */
+    [[nodiscard]] bool isPendingDestroy(ecs::Entity e) const noexcept;
+
+    /** @brief Entities queued for destruction by a script this frame. */
+    [[nodiscard]] std::span<ecs::Entity const> getPendingDestroyEntities() const noexcept {
+        return _pendingDestroyEntities;
+    }
+
+    /**
      * @brief Returns a non-owning pointer to the active ECS Registry.
      */
     [[nodiscard]] ecs::Registry* getRegistry() noexcept { return _registry; }
@@ -225,9 +239,6 @@ class ScriptSystem {
      * @param arg Numeric argument, kept as a `double` so values that are not entity ids are not truncated.
      */
     void invokeEntityMethod(ecs::Entity target, std::string const& signature, double arg);
-
-    /** @brief Whether an entity is queued for destruction by a script this frame. */
-    [[nodiscard]] bool isPendingDestroy(ecs::Entity e) const noexcept;
 
     /** @brief Calls `onCollision(other)` on `target` if it opted in and both entities are alive and not pending
      * destruction. */
@@ -322,6 +333,8 @@ class ScriptSystem {
     std::vector<ecs::Entity> _updatingEntities;
     /** @brief Queue of entities pending deferred destruction with onDestroy hook. */
     std::vector<ecs::Entity> _pendingDestroyEntities;
+    /** @brief Scratch buffer reused by the `World` spatial query bindings. */
+    std::vector<ecs::Entity> _queryBuffer;
     /** @brief Collection of suspended coroutine fibers awaiting timeout. */
     std::vector<SleepingFiber> _sleepingFibers;
     /** @brief Active script instance handles indexed by entity ID. */

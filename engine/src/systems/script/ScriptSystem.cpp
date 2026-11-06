@@ -36,6 +36,7 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _vm(std::move(other._vm)),
       _updatingEntities(std::move(other._updatingEntities)),
       _pendingDestroyEntities(std::move(other._pendingDestroyEntities)),
+      _queryBuffer(std::move(other._queryBuffer)),
       _sleepingFibers(std::move(other._sleepingFibers)),
       _instanceHandles(std::move(other._instanceHandles)),
       _newHandle(std::move(other._newHandle)),
@@ -73,6 +74,7 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _vm = std::move(other._vm);
         _updatingEntities = std::move(other._updatingEntities);
         _pendingDestroyEntities = std::move(other._pendingDestroyEntities);
+        _queryBuffer = std::move(other._queryBuffer);
         _sleepingFibers = std::move(other._sleepingFibers);
         _instanceHandles = std::move(other._instanceHandles);
         _newHandle = std::move(other._newHandle);
@@ -201,6 +203,8 @@ ecs::CommandBuffer& ScriptSystem::getCommandBuffer() noexcept { return _commandB
 void ScriptSystem::setPrefabManager(prefabs::PrefabManager const* manager) noexcept { _prefabs = manager; }
 
 prefabs::PrefabManager const* ScriptSystem::getPrefabManager() const noexcept { return _prefabs; }
+
+std::vector<ecs::Entity>& ScriptSystem::getQueryBuffer() noexcept { return _queryBuffer; }
 
 void ScriptSystem::addSleepingFiber(scripting::detail::UniqueWrenHandle fiber, float seconds) {
     _sleepingFibers.push_back(SleepingFiber{.fiber = std::move(fiber), .timeRemaining = seconds});
