@@ -35,6 +35,7 @@ A client of another protocol version is refused with `INetworkServer::refuse()`,
 ### Lobby
 
 `Lobby` (`server/src/Lobby.cpp`) owns the rooms and the clients past their `Hello`, and only runs on the server thread.
+A room holds at most `MAX_PLAYERS_PER_ROOM` players: 2 for now, while the protocol allows up to 4.
 
 | Message            | Effect                                                                                   |
 |--------------------|------------------------------------------------------------------------------------------|
@@ -74,14 +75,34 @@ flowchart LR
 - **`runInBackground()` gives a started room its thread**, which stops when the room is destroyed.
 - **`advance()` does nothing while the room waits.** After several catch-up steps, a single snapshot is sent, since it
   carries the latest state.
-- **`ShootingPlugin` decides the shots.** While `shoot` is held in an applied input, a ship shoots at most once per
-  `SHOT_INTERVAL`, whatever the client sends. Bullets are moved by `PhysicsPlugin`, replicated with the kind
-  `player_bullet` and the shooter's index as `subtype`, and removed once off screen.
+
+## Collisions
+
+The server classifies physics contacts with `rtype::server::collision::CollisionRouter` (`server/src/collision/`, target `rtype_collision`). It subscribes to the engine `events::CollisionBeginEvent` and uses the categories from `prefabs/CollisionCategories.hpp` to republish each contact as an R-Type event:
+
+| Event | Pair |
+| ------- | ------ |
+| `ShotHitEvent` | Player shot ↔ enemy / obstacle (`byPlayer = true`), enemy shot ↔ player / obstacle (`byPlayer = false`) |
+| `ShipContactEvent` | Player ship ↔ enemy / obstacle |
+| `PowerUpTouchedEvent` | Player ship ↔ power-up |
+
+The router does not change any state: game rules (damage, kills, pickups) subscribe to these events. `GameplayPlugin` owns the router of each room.
+
+## Gameplay
+
+Each room's engine runs `systems::PhysicsPlugin` and `gameplay::GameplayPlugin` (`server/src/gameplay/`, target
+`rtype_gameplay`). Every entity they spawn is replicated: the client only draws what the server simulates.
+
+- **Enemies:** an `alien_scout` every 1.2 s, just past the right edge, at heights cycled through deterministically.
+- **Shots:** while a player's input holds `shoot`, its ship fires a `player_bullet` every 0.2 s at most. The bullet's
+  `subtype` is the index of the player who fired it.
+- **Kills and scores:** a `ShotHitEvent` of a player shot on an enemy destroys both and gives 1 point to the shooter.
+  Each player has their own score.
+- **Cleanup:** bullets and enemies more than 64 px off the screen are destroyed.
+- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`. Scores are not sent to the
+  clients yet.
 
 ## What is not simulated yet
 
-Ship movement and shots run on the server. Bullets do not hit anything yet: enemies, collisions and `GameOver` are still
-to
-do, as well as `Chat`, which the server drops. A snapshot is the complete state of the room, split into as many
-datagrams as needed: 36 entities per
+Enemy shots, ship damage, power-ups and `GameOver` are still to do, as well as `Chat`, which the server drops. A snapshot is the complete state of the room, split into as many datagrams as needed: 36 entities per
 datagram, and at most 64 of them, about 2300 entities. Past that it is not sent (an error is logged).

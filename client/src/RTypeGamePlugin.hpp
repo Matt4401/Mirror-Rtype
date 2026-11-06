@@ -19,7 +19,7 @@ namespace client {
 /**
  * @brief What the R-Type client shows: textures, input bindings, starfield and the sprites of replicated entities.
  *
- * The game itself runs on the server: ships and bullets come from its snapshots through the network plugins.
+ * The game itself runs on the server: ships, enemies and bullets come from its snapshots through the network plugins.
  */
 class RTypeGamePlugin final : public engine::IPlugin {
   public:

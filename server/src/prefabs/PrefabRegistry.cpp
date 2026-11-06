@@ -5,6 +5,7 @@
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/obstacle/Obstacle.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
+#include "prefabs/player_ship/PlayerShip.hpp"
 #include "prefabs/power_up/PowerUp.hpp"
 
 namespace prefabs {
@@ -15,6 +16,7 @@ void registerRtypePrefabs(PrefabManager& manager) {
     manager.registerPrefab(ALIEN_SCOUT_PREFAB, buildAlienScout);
     manager.registerPrefab(OBSTACLE_PREFAB, buildObstacle);
     manager.registerPrefab(POWER_UP_PREFAB, buildPowerUp);
+    manager.registerPrefab(PLAYER_SHIP_PREFAB, buildPlayerShip);
 }
 
 }  // namespace prefabs

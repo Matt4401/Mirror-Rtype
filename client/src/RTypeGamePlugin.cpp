@@ -27,7 +27,6 @@
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
 #include "net/ReplicationEvents.hpp"
-#include "protocol/Messages.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "systems/render/AnimationPlugin.hpp"
@@ -50,7 +49,6 @@ constexpr int BULLET_FRAME_COUNT = 4;
 constexpr float BULLET_SCALE = 1.5F;
 constexpr float BULLET_FRAME_DURATION = 0.015F;
 constexpr float DEFAULT_FRAME_DURATION = 0.12F;
-constexpr auto KIND_ALIEN_SCOUT = rtype::protocol::makeEntityKind("alien_scout");
 constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
@@ -173,8 +171,8 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     ecs::Registry& registry = engine.registry();
     spawnStarfield(registry, _starSmallId, _starMediumId, _starLargeId);
     registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
-    // The local player's actions, read by the network plugins for the server. The ship is not spawned here: it comes
-    // from the snapshots of the server, like every other entity of the game.
+    // The local player's actions, sent to the server by the network plugins. Nothing of the game is spawned here:
+    // ships, enemies and bullets come from the snapshots of the server.
     registry.addComponent<InputState>(registry.spawnEntity(), InputState{.playerIndex = 0, .actions = {}});
 
     _spawned = engine.eventBus().subscribe<ecs::net::ReplicatedEntitySpawned>(
@@ -195,7 +193,7 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = row * SHIP_FRAME_HEIGHT,
                         .layer = 3,
                     });
-    } else if (event.kind == KIND_ALIEN_SCOUT) {
+    } else if (event.kind == rtype::game::KIND_ALIEN_SCOUT) {
         applySprite(registry, event.entity,
                     {
                         .texture = _bydosTexId,

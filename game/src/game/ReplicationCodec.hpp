@@ -17,8 +17,10 @@ namespace rtype::game {
 
 /** @brief Kind of a player ship (`docs/protocol/packets.md`, appendix A). */
 inline constexpr protocol::EntityKind KIND_PLAYER_SHIP = protocol::makeEntityKind("player_ship");
-/** @brief Kind of a player bullet (`docs/protocol/packets.md`, appendix A). */
+/** @brief Kind of a shot fired by a player; its subtype is the index of the player who fired it. */
 inline constexpr protocol::EntityKind KIND_PLAYER_BULLET = protocol::makeEntityKind("player_bullet");
+/** @brief Kind of the basic Bydos enemy. */
+inline constexpr protocol::EntityKind KIND_ALIEN_SCOUT = protocol::makeEntityKind("alien_scout");
 /** @brief `EntityNetState::flags` bit: the entity is alive. */
 inline constexpr std::uint8_t FLAG_ALIVE = 0x01;
 /** @brief `EntityNetState::flags` bit: the entity is shooting. */

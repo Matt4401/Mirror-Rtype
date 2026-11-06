@@ -14,12 +14,16 @@ namespace scripting {
 
 void ScriptPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
 
-void ScriptPlugin::init(engine::Engine& engine) { _scriptSystem.init(engine.registry(), engine.eventBus()); }
+void ScriptPlugin::init(engine::Engine& engine) {
+    _scriptSystem.init(engine.registry(), engine.eventBus());
+    // Physics contacts reach `onCollision(other)`; without PhysicsPlugin, no contact event is ever published.
+    _scriptSystem.forwardCollisions(engine.eventBus());
+}
 
 void ScriptPlugin::update(engine::Engine& /*engine*/, const ecs::time::Time& time) {
     _scriptSystem.update(time.deltaTime);
 }
 
-void ScriptPlugin::shutdown(engine::Engine& /*engine*/) {}
+void ScriptPlugin::shutdown(engine::Engine& /*engine*/) { _scriptSystem.stopForwardingCollisions(); }
 
 }  // namespace scripting

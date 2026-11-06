@@ -15,6 +15,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
+#include "prefabs/PrefabManager.hpp"
 #include "scripting/WrenVM.hpp"
 #include "scripting/detail/WrenTypes.hpp"
 
@@ -22,21 +23,29 @@ namespace systems {
 
 ScriptSystem::ScriptSystem() = default;
 
-ScriptSystem::~ScriptSystem() { releaseActiveHandles(); }
+ScriptSystem::~ScriptSystem() {
+    stopForwardingCollisions();
+    releaseActiveHandles();
+}
 
 ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
     : _registry(other._registry),
       _bus(other._bus),
+      _prefabs(other._prefabs),
       _commandBuffer(std::move(other._commandBuffer)),
       _vm(std::move(other._vm)),
       _updatingEntities(std::move(other._updatingEntities)),
       _pendingDestroyEntities(std::move(other._pendingDestroyEntities)),
+      _queryBuffer(std::move(other._queryBuffer)),
       _sleepingFibers(std::move(other._sleepingFibers)),
       _instanceHandles(std::move(other._instanceHandles)),
       _newHandle(std::move(other._newHandle)),
       _updateHandle(std::move(other._updateHandle)),
       _onSpawnHandle(std::move(other._onSpawnHandle)),
       _fiberCallHandle(std::move(other._fiberCallHandle)),
+      _collisionBus(std::exchange(other._collisionBus, nullptr)),
+      _collisionToken(other._collisionToken),
+      _collisionTarget(std::move(other._collisionTarget)),
       _cachedMethodHandles(std::move(other._cachedMethodHandles)),
       _watchedScripts(std::move(other._watchedScripts)),
       _entitiesToReinstantiate(std::move(other._entitiesToReinstantiate)),
@@ -44,17 +53,28 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _reloadCheckTimer(other._reloadCheckTimer),
       _hotReloadEnabled(other._hotReloadEnabled) {
     _vm.setUserContext(this);
+    if (_collisionTarget) {
+        *_collisionTarget = this;
+    }
 }
 
 ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
     if (this != &other) {
         releaseActiveHandles();
+        _sleepingFibers.clear();
+        _newHandle.reset();
+        _updateHandle.reset();
+        _onSpawnHandle.reset();
+        _fiberCallHandle.reset();
+        _cachedMethodHandles.clear();
         _registry = other._registry;
         _bus = other._bus;
+        _prefabs = other._prefabs;
         _commandBuffer = std::move(other._commandBuffer);
         _vm = std::move(other._vm);
         _updatingEntities = std::move(other._updatingEntities);
         _pendingDestroyEntities = std::move(other._pendingDestroyEntities);
+        _queryBuffer = std::move(other._queryBuffer);
         _sleepingFibers = std::move(other._sleepingFibers);
         _instanceHandles = std::move(other._instanceHandles);
         _newHandle = std::move(other._newHandle);
@@ -68,6 +88,15 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _reloadCheckTimer = other._reloadCheckTimer;
         _hotReloadEnabled = other._hotReloadEnabled;
         _vm.setUserContext(this);
+        std::swap(_collisionBus, other._collisionBus);
+        std::swap(_collisionToken, other._collisionToken);
+        std::swap(_collisionTarget, other._collisionTarget);
+        if (_collisionTarget) {
+            *_collisionTarget = this;
+        }
+        if (other._collisionTarget) {
+            *other._collisionTarget = &other;
+        }
     }
     return *this;
 }
@@ -170,6 +199,12 @@ void ScriptSystem::addBinderReplay(std::function<void(scripting::WrenVM&)> callb
 scripting::WrenVM& ScriptSystem::getVm() noexcept { return _vm; }
 
 ecs::CommandBuffer& ScriptSystem::getCommandBuffer() noexcept { return _commandBuffer; }
+
+void ScriptSystem::setPrefabManager(prefabs::PrefabManager const* manager) noexcept { _prefabs = manager; }
+
+prefabs::PrefabManager const* ScriptSystem::getPrefabManager() const noexcept { return _prefabs; }
+
+std::vector<ecs::Entity>& ScriptSystem::getQueryBuffer() noexcept { return _queryBuffer; }
 
 void ScriptSystem::addSleepingFiber(scripting::detail::UniqueWrenHandle fiber, float seconds) {
     _sleepingFibers.push_back(SleepingFiber{.fiber = std::move(fiber), .timeRemaining = seconds});

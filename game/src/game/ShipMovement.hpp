@@ -10,6 +10,8 @@ namespace rtype::game {
 inline constexpr input::ActionId ACTION_MOVE_X = input::makeActionId("move_x");
 /** @brief Vertical axis action of a ship: its value is in `NetInput::axes`. */
 inline constexpr input::ActionId ACTION_MOVE_Y = input::makeActionId("move_y");
+/** @brief Button action firing a shot: the server fires while it is in `NetInput::held`. */
+inline constexpr input::ActionId ACTION_SHOOT = input::makeActionId("shoot");
 
 /** @brief Speed of a ship, in world units per second. */
 inline constexpr float SHIP_SPEED = 350.0F;

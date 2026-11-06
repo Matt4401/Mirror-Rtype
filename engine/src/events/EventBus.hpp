@@ -13,7 +13,7 @@ namespace ecs {
  * @brief Decoupled publish-subscribe event bus connecting engine systems and scripts.
  *
  * Provides a type-safe pub-sub messaging architecture:
- * - Systems or scripts subscribe to specific event types (`CollisionEvent`, etc.).
+ * - Systems or scripts subscribe to specific event types (`events::CollisionBeginEvent`, etc.).
  * - Type erasure (`MoveOnlyFunction<void(const void*)>`) allows storing callbacks generically.
  * - Supports listener removal via subscription tokens (`EventToken`).
  */

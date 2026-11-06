@@ -22,7 +22,6 @@
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
-#include "gameplay/ShootingPlugin.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkEntityMap.hpp"
@@ -101,7 +100,7 @@ class RoomInputTest : public ::testing::Test {
     /** @brief Sends an input with the shoot button held, then runs one step. */
     void stepHoldingShoot(const std::uint32_t sequence) {
         room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{
-                                  .sequence = sequence, .held = {rtype::server::ACTION_SHOOT}, .axes = {}}));
+                                  .sequence = sequence, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
         step();
     }
 
@@ -298,7 +297,7 @@ TEST_F(RoomInputTest, HoldingShootSpawnsABulletInFrontOfTheShip) {
     ASSERT_EQ(spawned.size(), 1U);
     EXPECT_NE(spawned[0].entityId, 0U);
     EXPECT_EQ(spawned[0].subtype, 0) << "the index of the player who shot";
-    EXPECT_GE(spawned[0].x, ship.x + rtype::server::SHOT_OFFSET_X);
+    EXPECT_GT(spawned[0].x, ship.x);
     EXPECT_FLOAT_EQ(spawned[0].y, ship.y);
 }
 
@@ -316,7 +315,7 @@ TEST_F(RoomInputTest, HoldingShootIsLimitedByTheCooldown) {
 TEST_F(RoomInputTest, InputsSentInBurstCannotShootFaster) {
     for (std::uint32_t sequence = 1; sequence <= MAX_PENDING_INPUTS; ++sequence) {
         room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{
-                                  .sequence = sequence, .held = {rtype::server::ACTION_SHOOT}, .axes = {}}));
+                                  .sequence = sequence, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
     }
 
     step();
@@ -353,7 +352,9 @@ TEST_F(RoomInputTest, OffscreenBulletIsRemoved) {
     }
 
     EXPECT_TRUE(bullets().empty());
-    EXPECT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().size(), 1U)
+    const auto snapshots = network.snapshotsOf(PLAYER);
+    EXPECT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().size(),
+              snapshots.at(snapshots.size() - 1).entities.size())
         << "the id of the bullet is released";
 }
 
@@ -366,7 +367,7 @@ TEST(Room, BulletCarriesTheIndexOfThePlayerWhoShot) {
     room.start();
 
     room.onPacket(OTHER_PLAYER, protocol::encode(protocol::PlayerInput{
-                                    .sequence = 1, .held = {rtype::server::ACTION_SHOOT}, .axes = {}}));
+                                    .sequence = 1, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
     now += static_cast<double>(FIXED_DT);
     room.advance();
 

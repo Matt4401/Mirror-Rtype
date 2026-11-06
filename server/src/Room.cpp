@@ -20,7 +20,7 @@
 #include "ecs/time/Clock.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
-#include "gameplay/ShootingPlugin.hpp"
+#include "gameplay/GameplayPlugin.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkPlugin.hpp"
@@ -52,8 +52,8 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
     _engine.addPlugin<systems::PhysicsPlugin>();
-    _engine.addPlugin<ShootingPlugin>();
-    // TODO(ecs): add the other gameplay plugins (ScriptPlugin, collisions...).
+    _engine.addPlugin<gameplay::GameplayPlugin>();
+    // TODO(ecs): add ScriptPlugin for the scripted enemies.
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
         if (registry.hasComponent<ecs::Transform>(event.entity)) {
@@ -82,7 +82,6 @@ bool Room::addPlayer(const ClientId player) {
     registry.addComponent(entity, ecs::InputBuffer{.capacity = MAX_PENDING_INPUTS});
     registry.addComponent(entity, game::EntityNetState{});
     registry.addComponent(entity, ecs::Transform{});
-    registry.addComponent(entity, ShotCooldown{});
     _connection->addPeer(player);
     _players.push_back({.client = player, .entity = entity});
     return true;
@@ -129,6 +128,7 @@ void Room::start() {
         transform.y = SPAWN_FIRST_Y + (SPAWN_SPACING_Y * static_cast<float>(index));
         ++index;
     }
+    _engine.getPlugin<gameplay::GameplayPlugin>().setPlayerCount(_players.size());
     _playing = true;
     _engine.clock().reset();
 }

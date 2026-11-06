@@ -98,7 +98,9 @@ void NetworkServer::stop() {
 
 void NetworkServer::accept() {
     _acceptor.async_accept([this](const std::error_code ec, asio::ip::tcp::socket socket) {
-        if (ec == asio::error::operation_aborted) {
+        // A connection accepted just before stop() completes without error, after the acceptor is closed. Starting
+        // another accept then would fail at once with `bad_descriptor`, in a loop that keeps stop() from joining.
+        if (ec == asio::error::operation_aborted || _state.load() != State::Running) {
             return;
         }
         if (!ec && _peers.size() >= _config.maxPeers) {
@@ -241,7 +243,8 @@ void NetworkServer::refuse(const PeerId peer, const DisconnectReason reason) {
 void NetworkServer::receiveUdp() {
     _udpSocket.async_receive_from(
         asio::buffer(_udpBuffer), _udpFrom, [this](const std::error_code ec, const std::size_t size) {
-            if (ec == asio::error::operation_aborted) {
+            // As in accept(): a datagram received just before stop() must not start a receive on the closed socket.
+            if (ec == asio::error::operation_aborted || _state.load() != State::Running) {
                 return;
             }
             if (!ec) {
@@ -300,7 +303,8 @@ void NetworkServer::sendDatagram(PeerInfo& peer, Bytes datagram) {
 void NetworkServer::scheduleUdpTick() {
     _udpTimer.expires_after(_config.udpTick);
     _udpTimer.async_wait([this](const std::error_code ec) {
-        if (ec) {
+        // cancel() has no effect on a timer that has just expired: its handler still runs, without error, after stop().
+        if (ec || _state.load() != State::Running) {
             return;
         }
         onUdpTick();

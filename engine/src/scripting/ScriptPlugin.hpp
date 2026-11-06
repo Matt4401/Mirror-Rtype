@@ -62,7 +62,7 @@ class ScriptPlugin final : public engine::IPlugin {
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
-     * @brief Shuts down scripting runtime.
+     * @brief Shuts down scripting runtime: stops forwarding collision events to the scripts.
      * @param engine Reference to host Engine.
      */
     void shutdown(engine::Engine& engine) override;
