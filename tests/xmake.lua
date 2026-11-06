@@ -33,6 +33,13 @@ target("test_scripting")
     add_files("test_scripting.cpp")
     add_tests("test_scripting")
 
+target("test_spatial_queries")
+    set_kind("binary")
+    add_deps("engine_core", "engine_events", "engine_scripting", "engine_input", "engine_prefabs")
+    add_packages("gtest", "wren")
+    add_files("scripting/SpatialQueriesTests.cpp")
+    add_tests("test_spatial_queries")
+
 target("test_log")
     set_kind("binary")
     add_deps("log")
