@@ -106,6 +106,19 @@ class ForeignCall {
     }
 
     /**
+     * @brief Appends a number to the list previously created in slot 0 by `retList()`.
+     *
+     * Uses slot 1 as scratch space, so call it only once every argument has been read.
+     *
+     * @param value Number to append.
+     */
+    void listAppend(double value) const noexcept {
+        wrenEnsureSlots(_vm, 2);
+        wrenSetSlotDouble(_vm, 1, value);
+        wrenInsertInList(_vm, 0, -1, 1);
+    }
+
+    /**
      * @brief Writes a return value into slot 0.
      * @tparam T Value type.
      * @param value Value to return.
