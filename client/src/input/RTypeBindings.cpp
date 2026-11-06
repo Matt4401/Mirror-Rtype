@@ -18,6 +18,10 @@ void setupCommonActions(::input::ActionMapping& mapping) {
     mapping.bindKey("charge_weapon", engine::Key::LeftShift);
     mapping.bindKey("charge_weapon", engine::Key::RightShift);
     mapping.bindGamepadButton("charge_weapon", engine::GamepadButton::RightTrigger2);
+
+    mapping.registerAction("ready", ::input::ActionType::Button);
+    mapping.bindKey("ready", engine::Key::R);
+    mapping.bindGamepadButton("ready", engine::GamepadButton::MiddleRight);
 }
 
 }  // namespace

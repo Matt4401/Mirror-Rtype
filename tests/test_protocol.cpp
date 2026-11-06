@@ -94,8 +94,10 @@ TEST(Protocol, InputIsCompact) {
 
 TEST(Protocol, FullSnapshotFitsInADatagram) {
     WorldState snapshot{.tick = 0xFFFFFFFF, .lastProcessedInput = 0xFFFFFFFF, .entities = {}};
-    // Every field at its largest encoding: 15 bytes of header + 32 per entity.
-    for (std::uint32_t i = 0; i < 36; ++i) {
+    snapshot.partIndex = MAX_SNAPSHOT_PARTS - 1;
+    snapshot.partCount = MAX_SNAPSHOT_PARTS;
+    // Every field at its largest encoding: 19 bytes of header + 32 per entity.
+    for (std::uint32_t i = 0; i < MAX_ENTITIES_PER_PART; ++i) {
         snapshot.entities.push_back({.entityId = 0xFFFFFFF0 + i,
                                      .kind = 0xFFFFFFFF,
                                      .subtype = 255,
@@ -105,6 +107,33 @@ TEST(Protocol, FullSnapshotFitsInADatagram) {
                                      .flags = 255});
     }
     EXPECT_LE(encode(snapshot).size(), MAX_UNRELIABLE_SIZE);
+}
+
+TEST(Protocol, SnapshotPartSurvivesARoundTrip) {
+    const WorldState part{.tick = 3, .lastProcessedInput = 2, .entities = {}, .partIndex = 4, .partCount = 9};
+
+    const auto decoded = decode(encode(part));
+
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(std::get<WorldState>(*decoded), part);
+}
+
+TEST(Protocol, UnsplitSnapshotHasOnePart) {
+    const auto decoded = decode(encode(WorldState{.tick = 3, .lastProcessedInput = 2, .entities = {}}));
+
+    ASSERT_TRUE(decoded.has_value());
+    EXPECT_EQ(std::get<WorldState>(*decoded).partIndex, 0U);
+    EXPECT_EQ(std::get<WorldState>(*decoded).partCount, 1U);
+}
+
+TEST(Protocol, RejectsInvalidSnapshotParts) {
+    const auto withPart = [](const std::uint32_t index, const std::uint32_t count) {
+        return encode(
+            WorldState{.tick = 1, .lastProcessedInput = 0, .entities = {}, .partIndex = index, .partCount = count});
+    };
+
+    EXPECT_FALSE(decode(withPart(2, 2)).has_value()) << "index past the last part";
+    EXPECT_FALSE(decode(withPart(0, MAX_SNAPSHOT_PARTS + 1)).has_value()) << "too many parts";
 }
 
 TEST(Protocol, RejectsEmptyAndOversizedPayloads) {

@@ -29,7 +29,10 @@ class ParallaxSystem {
     void update(ecs::Registry& registry, float deltaTime);
 
   private:
+    /// @brief Previous camera position, used to compute the camera delta.
     float _prevCameraX = 0.0F;
+
+    /// @brief Previous camera position, used to compute the camera delta.
     float _prevCameraY = 0.0F;
 };
 

@@ -27,11 +27,12 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
 - `engine/src/` — the engine, split into link-time modules (one static lib each):
   `engine_core` (ecs/), `engine_time` (ecs/time/), `engine_events` (events/, header-only),
   `engine_scripting` (scripting/, systems/script/), `engine_physics` (systems/physics/),
+  `engine_network` (net/: transport interfaces, `NetworkConfig`, `NetworkPlugin`, replication plugins — no asio),
+  `engine_network_asio` (net/asio/: asio transport behind `net/NetworkFactory.hpp`),
   `engine_render` (render/, systems/render/), `engine_input` (input/). `engine_all` is a phony aggregate.
-- `network/src/` — asio-based UDP client/server + wire serialization (`Wire.hpp`)
-- `shared/src/` — header-only interfaces shared by client/server (e.g. `INetworkServer`)
 - `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`src/protocol/`), protobuf types stay
   private
+- `game/src/` — `rtype_game`: R-Type code shared by server and client (replication codec, ship movement)
 - `server/src/`, `client/src/` — the R-Type game executables
 - `scripts/` — Wren scripts (`scripts/core/*.wren`) + tooling scripts
 - `tests/` — GoogleTest binaries, one `target` per suite in `tests/xmake.lua`
@@ -55,7 +56,8 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
 
 ## Networking rules
 
-- All in-game traffic is UDP with a **binary** protocol; TCP only for justified cases (`network/src/session/`).
+- All in-game traffic is UDP with a **binary** protocol; TCP only for justified cases
+  (`engine/src/net/asio/TcpSession`).
 - The server is authoritative and multithreaded; it must never block on clients and must survive client crashes.
 - Every received packet is untrusted: validate sizes/bounds before reading; malformed input must never crash,
   over-allocate, or overflow.

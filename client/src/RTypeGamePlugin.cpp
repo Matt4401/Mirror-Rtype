@@ -5,7 +5,6 @@
 
 #include "RTypeGamePlugin.hpp"
 
-#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -19,8 +18,8 @@
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
+#include "components/Predicted.hpp"
 #include "components/Renderable.hpp"
-#include "components/ShipInput.hpp"
 #include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
@@ -29,15 +28,17 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
+#include "game/ReplicationCodec.hpp"
 #include "gameplay/ShotHitRule.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
+#include "net/ReplicationEvents.hpp"
 #include "prefabs/ClientBullet.hpp"
-#include "prefabs/ClientEnemy.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/PrefabPlugin.hpp"
+#include "protocol/Messages.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
@@ -49,18 +50,14 @@ namespace {
 
 constexpr float SCENE_WIDTH = 1280.0F;
 constexpr float SCENE_HEIGHT = 720.0F;
-constexpr float MIN_X = 32.0F;
-constexpr float MAX_X = 1248.0F;
-constexpr float MIN_Y = 32.0F;
-constexpr float MAX_Y = 688.0F;
-/** @brief Seconds between two enemy spawns. */
-constexpr float ENEMY_SPAWN_INTERVAL = 1.2F;
-/** @brief Spawn abscissa of the enemies, just past the right edge. */
-constexpr float ENEMY_SPAWN_X = SCENE_WIDTH + 48.0F;
-/** @brief Spawn heights, cycled through so the waves are deterministic. */
-constexpr std::array<float, 6> ENEMY_SPAWN_HEIGHTS{160.0F, 420.0F, 280.0F, 560.0F, 220.0F, 480.0F};
-/** @brief Margin past the screen edges after which bullets and enemies are destroyed. */
-constexpr float OFFSCREEN_MARGIN = 64.0F;
+constexpr float SPRITE_SCALE = 2.0F;
+constexpr int SHIP_FRAME_WIDTH = 33;
+constexpr int SHIP_FRAME_HEIGHT = 17;
+constexpr int SHIP_FRAME_COUNT = 5;
+constexpr int BYDOS_FRAME_WIDTH = 33;
+constexpr int BYDOS_FRAME_HEIGHT = 36;
+constexpr int BYDOS_FRAME_COUNT = 8;
+constexpr auto KIND_ALIEN_SCOUT = rtype::protocol::makeEntityKind("alien_scout");
 constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
@@ -107,63 +104,51 @@ void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::Textur
     }
 }
 
-void spawnDemoScene(ecs::Registry& registry, ecs::TextureId shipTexId) {
-    registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
-
-    const ecs::Entity player = registry.spawnEntity();
-    registry.addComponent<ecs::Transform>(player,
-                                          ecs::Transform{.x = 200.0F, .y = 360.0F, .scaleX = 2.0F, .scaleY = 2.0F});
-    registry.addComponent<ecs::Renderable>(player, ecs::Renderable{
-                                                       .textureId = shipTexId,
-                                                       .sourceRect = {.x = 0, .y = 0, .width = 33, .height = 17},
-                                                       .origin = {.x = 0.5F, .y = 0.5F},
-                                                       .tint = COLOR_WHITE,
-                                                       .layer = 3,
-                                                   });
-    registry.addComponent<ecs::AnimationComponent>(player, ecs::AnimationComponent{
-                                                               .frameWidth = 33,
-                                                               .frameHeight = 17,
-                                                               .frameCount = 5,
-                                                               .startX = 0,
-                                                               .startY = 0,
-                                                               .frameDuration = 0.12F,
-                                                           });
-    registry.addComponent<client::ShipInput>(player, client::ShipInput{.playerIndex = 0, .speed = 350.0F});
-    registry.addComponent<InputState>(player, InputState{.playerIndex = 0, .actions = {}});
-}
-
-void movePlayer(ecs::Registry& registry, float deltaTime) {
-    registry.runSystem<ecs::Transform, client::ShipInput, InputState>(
-        [deltaTime](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
-                    const InputState& inputState) {
-            if (!ship.enabled) {
-                return;
-            }
-            const auto move = inputState.getVector2("move_x", "move_y", true);
-            transform.x += move.x * ship.speed * deltaTime;
-            transform.y += move.y * ship.speed * deltaTime;
-            transform.x = std::clamp(transform.x, MIN_X, MAX_X);
-            transform.y = std::clamp(transform.y, MIN_Y, MAX_Y);
-        });
-}
-
-void killOffscreenEntities(ecs::Registry& registry) {
+void killOffscreenBullets(ecs::Registry& registry) {
     std::vector<ecs::Entity> toDestroy;
     registry.runSystem<ecs::Transform, client::prefabs::ClientBullet>(
         [&toDestroy](ecs::Entity entity, const ecs::Transform& transform, client::prefabs::ClientBullet& /*tag*/) {
-            if (transform.x > SCENE_WIDTH + OFFSCREEN_MARGIN) {
-                toDestroy.push_back(entity);
-            }
-        });
-    registry.runSystem<ecs::Transform, client::prefabs::ClientEnemy>(
-        [&toDestroy](ecs::Entity entity, const ecs::Transform& transform, client::prefabs::ClientEnemy& /*tag*/) {
-            if (transform.x < -OFFSCREEN_MARGIN) {
+            if (transform.x > SCENE_WIDTH + 64.0F) {
                 toDestroy.push_back(entity);
             }
         });
     for (const ecs::Entity entity : toDestroy) {
         registry.killEntity(entity);
     }
+}
+
+/** @brief Sprite of a replicated entity: one frame strip of a spritesheet. */
+struct EntitySprite {
+    ecs::TextureId texture = ecs::NO_TEXTURE;
+    int frameWidth = 0;
+    int frameHeight = 0;
+    int frameCount = 1;
+    int startY = 0;
+    int layer = 0;
+};
+
+/** @brief Gives a replicated entity its sprite and its size on screen. */
+void applySprite(ecs::Registry& registry, const ecs::Entity entity, const EntitySprite& sprite) {
+    auto& transform = registry.getComponents<ecs::Transform>().get(entity);
+    transform.scaleX = SPRITE_SCALE;
+    transform.scaleY = SPRITE_SCALE;
+    registry.addComponent<ecs::Renderable>(
+        entity,
+        ecs::Renderable{
+            .textureId = sprite.texture,
+            .sourceRect = {.x = 0, .y = sprite.startY, .width = sprite.frameWidth, .height = sprite.frameHeight},
+            .origin = {.x = 0.5F, .y = 0.5F},
+            .tint = COLOR_WHITE,
+            .layer = sprite.layer,
+        });
+    registry.addComponent<ecs::AnimationComponent>(entity, ecs::AnimationComponent{
+                                                               .frameWidth = sprite.frameWidth,
+                                                               .frameHeight = sprite.frameHeight,
+                                                               .frameCount = sprite.frameCount,
+                                                               .startX = 0,
+                                                               .startY = sprite.startY,
+                                                               .frameDuration = 0.12F,
+                                                           });
 }
 
 }  // namespace
@@ -199,10 +184,6 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
         client::prefabs::CLIENT_BULLET_PREFAB, client::prefabs::buildClientBullet,
         {{"textureId", static_cast<std::int64_t>(_bulletTexId)}, {"scaleX", 1.5F}, {"scaleY", 1.5F}});
 
-    engine.getPlugin<::prefabs::PrefabPlugin>().manager().registerPrefab(
-        client::prefabs::CLIENT_ENEMY_PREFAB, client::prefabs::buildClientEnemy,
-        {{"textureId", static_cast<std::int64_t>(_bydosTexId)}, {"scaleX", 2.0F}, {"scaleY", 2.0F}});
-
     _starSmallId = load("sprites/star_small.png");
     _starMediumId = load("sprites/star_medium.png");
     _starLargeId = load("sprites/star_large.png");
@@ -211,50 +192,79 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
         client::input::setupDefaultBindings(engine.service<engine::IInputService>().mapping());
     }
 
-    spawnStarfield(engine.registry(), _starSmallId, _starMediumId, _starLargeId);
-    spawnDemoScene(engine.registry(), _shipTexId);
+    ecs::Registry& registry = engine.registry();
+    spawnStarfield(registry, _starSmallId, _starMediumId, _starLargeId);
+    registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
+    // The local player's actions, read here for the bullets and by the network plugins for the server. The ship is not
+    // spawned here: it comes from the snapshots of the server, like every other entity of the game.
+    registry.addComponent<InputState>(registry.spawnEntity(), InputState{.playerIndex = 0, .actions = {}});
+
+    _spawned = engine.eventBus().subscribe<ecs::net::ReplicatedEntitySpawned>(
+        [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) { onEntitySpawned(engine, event); });
 
     _collisionRouter = std::make_unique<rtype::server::collision::CollisionRouter>(engine.eventBus());
-    _shotHitRule = std::make_unique<gameplay::ShotHitRule>(engine.eventBus(), engine.registry());
+    _shotHitRule = std::make_unique<gameplay::ShotHitRule>(engine.eventBus(), registry);
 }
 
-void RTypeGamePlugin::shutdown(engine::Engine& /*engine*/) {
-    _shotHitRule.reset();
-    _collisionRouter.reset();
-}
-
-void RTypeGamePlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) {
-    movePlayer(engine.registry(), time.deltaTime);
-
-    _enemySpawnTimer -= time.deltaTime;
-    if (_enemySpawnTimer <= 0.0F) {
-        _enemySpawnTimer += ENEMY_SPAWN_INTERVAL;
-        const float y = ENEMY_SPAWN_HEIGHTS.at(_enemiesSpawned % ENEMY_SPAWN_HEIGHTS.size());
-        ++_enemiesSpawned;
-        engine.service<::prefabs::PrefabManager>().spawn(client::prefabs::CLIENT_ENEMY_PREFAB, _commandBuffer,
-                                                         {{"x", ENEMY_SPAWN_X}, {"y", y}});
-        _commandBuffer.flush(engine.registry());
+void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const {
+    ecs::Registry& registry = engine.registry();
+    if (event.kind == rtype::game::KIND_PLAYER_SHIP) {
+        // Each row of the spritesheet is one ship color, so that players can tell their ships apart.
+        const int row = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
+        applySprite(registry, event.entity,
+                    {
+                        .texture = _shipTexId,
+                        .frameWidth = SHIP_FRAME_WIDTH,
+                        .frameHeight = SHIP_FRAME_HEIGHT,
+                        .frameCount = SHIP_FRAME_COUNT,
+                        .startY = row * SHIP_FRAME_HEIGHT,
+                        .layer = 3,
+                    });
+    } else if (event.kind == KIND_ALIEN_SCOUT) {
+        applySprite(registry, event.entity,
+                    {
+                        .texture = _bydosTexId,
+                        .frameWidth = BYDOS_FRAME_WIDTH,
+                        .frameHeight = BYDOS_FRAME_HEIGHT,
+                        .frameCount = BYDOS_FRAME_COUNT,
+                        .startY = 0,
+                        .layer = 2,
+                    });
     }
+}
 
-    killOffscreenEntities(engine.registry());
+void RTypeGamePlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& /*time*/) {
+    killOffscreenBullets(engine.registry());
 }
 
 void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
-    std::vector<ecs::Transform> spawnPositions;
-    engine.registry().runSystem<ecs::Transform, client::ShipInput, InputState>(
-        [&spawnPositions](ecs::Entity /*entity*/, ecs::Transform& transform, client::ShipInput& ship,
-                          const InputState& inputState) {
-            if (ship.enabled && inputState.isJustPressed("shoot")) {
-                spawnPositions.push_back(transform);
-            }
-        });
-
-    const auto& prefabManager = engine.service<::prefabs::PrefabManager>();
-    for (const auto& pos : spawnPositions) {
-        prefabManager.spawn(client::prefabs::CLIENT_BULLET_PREFAB, _commandBuffer,
-                            {{"x", pos.x + 40.0F}, {"y", pos.y}});
+    ecs::Registry& registry = engine.registry();
+    bool shooting = false;
+    registry.runSystem<InputState>([&shooting](ecs::Entity /*entity*/, const InputState& state) {
+        shooting = shooting || state.isJustPressed("shoot");
+    });
+    if (shooting) {
+        // TODO(ecs): the server does not simulate shots yet: these bullets only exist on this client.
+        std::vector<ecs::Transform> spawnPositions;
+        registry.runSystem<ecs::Predicted, ecs::Transform>(
+            [&spawnPositions](ecs::Entity /*entity*/, const ecs::Predicted& /*local*/,
+                              const ecs::Transform& transform) { spawnPositions.push_back(transform); });
+        const auto& prefabManager = engine.service<::prefabs::PrefabManager>();
+        for (const auto& pos : spawnPositions) {
+            prefabManager.spawn(client::prefabs::CLIENT_BULLET_PREFAB, _commandBuffer,
+                                {{"x", pos.x + 40.0F}, {"y", pos.y}});
+        }
     }
-    _commandBuffer.flush(engine.registry());
+    _commandBuffer.flush(registry);
+}
+
+void RTypeGamePlugin::shutdown(engine::Engine& engine) {
+    _shotHitRule.reset();
+    _collisionRouter.reset();
+    if (_spawned) {
+        engine.eventBus().unsubscribe<ecs::net::ReplicatedEntitySpawned>(*_spawned);
+        _spawned.reset();
+    }
 }
 
 }  // namespace client

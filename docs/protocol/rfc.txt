@@ -147,7 +147,7 @@ Table of Contents
 
 4.  Protocol Versioning
 
-   The protocol version is PROTOCOL_VERSION = 2.  It is carried by the
+   The protocol version is PROTOCOL_VERSION = 3.  It is carried by the
    Hello message only; other messages carry no header.
 
    Version history:
@@ -160,13 +160,18 @@ Table of Contents
           enum, and its positions are floats in world units instead of
           int16 pixels.  Field 2 of PlayerInput and fields 2, 4, 5 of
           EntityState are reserved.
+      3   A WorldState can be one part of a snapshot too large for one
+          datagram (part_index, part_count).  A client removes the
+          entities absent from a snapshot only once it has received
+          all its parts.
 
    Version negotiation:
 
-   (1) The client sends Hello with version set to 2.
-   (2) The server rejects any Hello whose version differs by closing
+   (1) The client sends Hello with the version it implements.
+   (2) The server rejects any Hello whose version differs: the
+       transport sends a Refused frame (ProtocolMismatch), then closes
        the TCP connection.
-   (3) Once the server sends Welcome, both sides agree on version 2
+   (3) Once the server sends Welcome, both sides agree on that version
        for the session.
    (4) The client MUST send Hello within 5 seconds of the TCP
        connection.  Otherwise the server closes the connection.
@@ -190,7 +195,8 @@ Table of Contents
    Client                                   Server
      |                                        |
      |-- TCP connect -----------------------> | (transport)
-     |<-- Welcome [ClientId, token] --------- | (transport)
+     |-- Handshake [protocolId] -----------> | (transport)
+     |<-- Welcome [PeerId, token] ---------- | (transport)
      |                                        |
      |-- Hello (16) -----------------------> | Handshake
      |<-- Welcome (17) --------------------- |
@@ -274,10 +280,19 @@ Table of Contents
 8.1.  Token-Based UDP Authentication
 
    Every client-to-server UDP datagram is prefixed with
-   [ClientId u32][token u32] by the transport layer.  The token is a
+   [PeerId u32][token u32] by the transport layer.  The token is a
    32-bit cryptographically random value generated per TCP session
-   (std::random_device).  A datagram with an unknown ClientId or a
+   (std::random_device).  A datagram with an unknown PeerId or a
    mismatched token is dropped before the game layer ever sees it.
+
+   Before any of this, the first TCP frame of a client MUST be a
+   transport Handshake carrying the 32-bit protocol id 0x50595452
+   ("RTYP" on the wire).  A connection whose first frame is anything
+   else, whose protocol id differs, or which sends no Handshake within
+   5 seconds is closed by the transport layer; the game layer is never
+   notified of it, so a client of another game or a port scanner
+   never reaches the Envelope decoder.  A wrong protocol id, or a full
+   server, is first answered with a Refused frame telling why.
 
 8.2.  Input Validation
 
