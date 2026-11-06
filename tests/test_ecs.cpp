@@ -540,19 +540,44 @@ TEST(ECSGeneration, StaleHandleCannotReachNewOccupantComponents) {
     EXPECT_EQ(positions.get(newHandle).x, 2.0F);
 }
 
-TEST(ECSGeneration, SparseArrayReplacesLeftoverOfOlderHandle) {
+TEST(ECSGeneration, SparseArrayRejectsSlotTakeoverByAnotherHandle) {
     ecs::SparseArray<Position> positions;
-    ecs::Entity const oldHandle = ecs::makeEntity(3U, 0U);
     ecs::Entity const newHandle = ecs::makeEntity(3U, 1U);
+    ecs::Entity const staleHandle = ecs::makeEntity(3U, 0U);
 
-    positions.insertAt(oldHandle, Position{.x = 1.0F, .y = 0.0F});
     positions.insertAt(newHandle, Position{.x = 2.0F, .y = 0.0F});
 
-    EXPECT_FALSE(positions.contains(oldHandle));
+    // Direct insertion through a stale handle must not steal the owner's component.
+    EXPECT_THROW(positions.insertAt(staleHandle, Position{.x = 1.0F, .y = 0.0F}), std::invalid_argument);
+    EXPECT_FALSE(positions.contains(staleHandle));
     ASSERT_TRUE(positions.contains(newHandle));
     EXPECT_EQ(positions.get(newHandle).x, 2.0F);
     ASSERT_EQ(positions.getDenseEntities().size(), 1U);
     EXPECT_EQ(positions.getDenseEntities().front(), newHandle);
+
+    // Replacing through the owning handle still works, and the slot can change owner once erased.
+    positions.insertAt(newHandle, Position{.x = 5.0F, .y = 0.0F});
+    EXPECT_EQ(positions.get(newHandle).x, 5.0F);
+    positions.erase(newHandle);
+    positions.insertAt(staleHandle, Position{.x = 1.0F, .y = 0.0F});
+    EXPECT_TRUE(positions.contains(staleHandle));
+}
+
+TEST(ECSGeneration, RegistryRejectsComponentsOnDeadHandles) {
+    ecs::Registry registry;
+    ecs::Entity const killed = registry.spawnEntity();
+    registry.killEntity(killed);
+
+    // Killed but slot not reused yet: the component would be orphaned and still visited by runSystem.
+    EXPECT_THROW(registry.addComponent<Position>(killed, Position{.x = 1.0F, .y = 1.0F}), std::invalid_argument);
+    EXPECT_THROW(registry.emplaceComponent<Position>(killed, 1.0F, 1.0F), std::invalid_argument);
+    // Never spawned.
+    EXPECT_THROW(registry.addComponent<Position>(ecs::makeEntity(42U, 0U), Position{}), std::invalid_argument);
+    EXPECT_THROW(registry.addComponent<Position>(ecs::NULL_ENTITY, Position{}), std::invalid_argument);
+
+    int visited = 0;
+    registry.runSystem<Position>([&visited](ecs::Entity /*entity*/, Position& /*pos*/) { ++visited; });
+    EXPECT_EQ(visited, 0);
 }
 
 TEST(ECSGeneration, SwapAndPopKeepsGenerationalHandles) {
@@ -569,6 +594,14 @@ TEST(ECSGeneration, SwapAndPopKeepsGenerationalHandles) {
     EXPECT_FALSE(registry.hasComponent<Position>(a));
     ASSERT_TRUE(registry.hasComponent<Position>(b));
     EXPECT_EQ(registry.getComponents<Position>().get(b).x, 2.0F);
+
+    // Now move the nonzero-generation entity: removing b swaps a into b's dense position.
+    registry.addComponent<Position>(a, Position{.x = 3.0F, .y = 0.0F});
+    registry.removeComponent<Position>(b);
+
+    EXPECT_FALSE(registry.hasComponent<Position>(b));
+    ASSERT_TRUE(registry.hasComponent<Position>(a));
+    EXPECT_EQ(registry.getComponents<Position>().get(a).x, 3.0F);
 }
 
 TEST(ECSGeneration, DestroyListenerReceivesFullHandle) {

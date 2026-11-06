@@ -215,7 +215,7 @@ class Registry {
      * @tparam Component Component type.
      * @param to Entity to attach the component to.
      * @param c Component rvalue to move into storage.
-     * @throws std::invalid_argument If `to` is a stale handle whose slot now holds another live entity.
+     * @throws std::invalid_argument If `to` is not alive (killed, never spawned, or a stale handle).
      * @return Reference to the newly stored component.
      */
     template <class Component>
@@ -227,7 +227,7 @@ class Registry {
      * @tparam Component Component type.
      * @param to Entity to attach the component to.
      * @param c Component lvalue to copy into storage.
-     * @throws std::invalid_argument If `to` is a stale handle whose slot now holds another live entity.
+     * @throws std::invalid_argument If `to` is not alive (killed, never spawned, or a stale handle).
      * @return Reference to the newly stored component.
      */
     template <class Component>
@@ -240,7 +240,7 @@ class Registry {
      * @tparam Args Constructor argument types.
      * @param to Entity to attach the component to.
      * @param args Arguments forwarded to Component constructor.
-     * @throws std::invalid_argument If `to` is a stale handle whose slot now holds another live entity.
+     * @throws std::invalid_argument If `to` is not alive (killed, never spawned, or a stale handle).
      * @return Reference to the newly constructed component.
      */
     template <class Component, typename... Args>
@@ -347,14 +347,14 @@ class Registry {
 
   private:
     /**
-     * @brief Throws if a component is about to be attached through a stale handle.
+     * @brief Throws if a component is about to be attached to an entity that is not alive.
      *
-     * A stale handle shares its slot index with a newer, live entity; writing through it would overwrite that
-     * entity's component.
+     * Writing through a stale handle would overwrite the component of the slot's new occupant, and writing to a
+     * killed (or never spawned) handle would leave an orphan component that `runSystem` keeps visiting.
      * @param e Handle about to receive a component.
-     * @throws std::invalid_argument If `e` is stale and its slot is occupied by another live entity.
+     * @throws std::invalid_argument If `e` is not alive.
      */
-    void ensureNotStale(Entity e) const;
+    void ensureAlive(Entity e) const;
 
     /** @brief Vector of type-erased sparse array containers indexed by component type ID. */
     std::vector<std::unique_ptr<ISparseArray>> _componentsArrays;

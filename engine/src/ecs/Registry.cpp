@@ -14,10 +14,9 @@ bool Registry::isAlive(Entity e) const noexcept {
     return idx < _isAlive.size() && _isAlive[idx] && e == makeEntity(idx, _generations[idx]);
 }
 
-void Registry::ensureNotStale(Entity e) const {
-    std::uint32_t const idx = entityIndex(e);
-    if (idx < _isAlive.size() && _isAlive[idx] && !isAlive(e)) {
-        throw std::invalid_argument("Cannot attach a component through a stale entity handle");
+void Registry::ensureAlive(Entity e) const {
+    if (!isAlive(e)) {
+        throw std::invalid_argument("Cannot attach a component to an entity that is not alive");
     }
 }
 

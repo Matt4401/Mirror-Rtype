@@ -71,11 +71,11 @@ class SparseArray : public ISparseArray {
     /**
      * @brief Inserts or replaces a component for an entity using copy semantics.
      *
-     * If the slot still holds a component of an older handle of the same slot, that leftover is replaced.
-     *
      * @param e The entity to attach the component to.
      * @param c The component value to copy.
      * @return Reference to the stored component.
+     * @throws std::invalid_argument If the slot of `e` already holds the component of a different handle with the
+     *         same index (e.g. `e` is stale). Erase that component first.
      */
     Component& insertAt(Entity e, Component const& c);
 
@@ -85,6 +85,8 @@ class SparseArray : public ISparseArray {
      * @param e The entity to attach the component to.
      * @param c The component value to move.
      * @return Reference to the stored component.
+     * @throws std::invalid_argument If the slot of `e` already holds the component of a different handle with the
+     *         same index (e.g. `e` is stale). Erase that component first.
      */
     Component& insertAt(Entity e, Component&& c);
 

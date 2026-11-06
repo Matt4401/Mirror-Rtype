@@ -28,12 +28,12 @@ Component& SparseArray<Component>::insertImpl(Entity e, Value&& c) {
     if (idx >= _sparse.size()) {
         _sparse.resize(idx + 1, std::nullopt);
     }
-    if (auto const& opt = _sparse[idx]; opt.has_value()) {
-        // Either the same entity (replace) or a leftover from an older handle of this slot (take the slot over).
-        std::size_t const denseIdx = opt.value();
-        _dense[denseIdx] = e;
-        _components[denseIdx] = std::forward<Value>(c);
-        return _components[denseIdx];
+    if (std::optional<std::size_t> const denseIdx = _sparse[idx]; denseIdx.has_value()) {
+        if (_dense[*denseIdx] != e) {
+            throw std::invalid_argument("SparseArray: slot is owned by another handle of the same entity index");
+        }
+        _components[*denseIdx] = std::forward<Value>(c);
+        return _components[*denseIdx];
     }
     _sparse[idx] = _components.size();
     _dense.push_back(e);
