@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cstddef>
 #include <memory>
 
 #include "audio/AudioPlugin.hpp"
@@ -65,10 +66,15 @@ TEST(AudioPlugin, NullBackendIsReplacedByAMutedOne) {
 }
 
 TEST(AudioPlugin, StepsWithoutThrowing) {
-    engine::Engine engine;
+    double now = 0.0;
+    engine::Engine engine([&now]() -> double { return now; });
     engine.addPlugin<audio::AudioPlugin>(std::make_unique<audio::NullAudioBackend>());
+    engine.init();
 
-    EXPECT_NO_THROW(engine.step(0.016F));
+    now = static_cast<double>(engine.fixedDeltaTime()) * 1.5;
+    std::size_t steps = 0;
+    EXPECT_NO_THROW(steps = engine.advance());
+    EXPECT_EQ(steps, 1U);
 }
 
 TEST(AudioPlugin, ShutdownUnregistersTheServiceAndKeepsTheInjectedBackend) {
@@ -89,8 +95,11 @@ TEST(AudioPlugin, CanBeInitializedAgainAfterShutdown) {
     engine.init();
     engine.shutdown();
 
-    EXPECT_NO_THROW(engine.init());
+    // An engine does not restart after shutdown(), but the plugin itself can be initialized again.
+    auto& plugin = engine.getPlugin<audio::AudioPlugin>();
+    EXPECT_NO_THROW(plugin.init(engine));
     EXPECT_TRUE(engine.mediator().hasService<engine::IAudioService>());
+    plugin.shutdown(engine);
 }
 
 int main(int argc, char** argv) {

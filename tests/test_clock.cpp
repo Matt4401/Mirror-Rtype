@@ -153,8 +153,10 @@ TEST(Clock, SyncsTimeResourceInRegistry) {
 }
 
 TEST(Clock, FrameTimeUsesProvidedDeltaAndCurrentProgress) {
-    ecs::time::Clock clock;
-    clock.advance(0.5F);
+    FakeTime fake;
+    ecs::time::Clock clock(fake.source());
+    fake.now = 0.5;
+    ASSERT_EQ(clock.tick(0.5F, [](const ecs::time::Time&) {}), 1U);
 
     const ecs::time::Time frame = clock.frameTime(0.25F);
 

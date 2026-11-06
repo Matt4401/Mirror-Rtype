@@ -128,17 +128,17 @@ The codebase is organized into modular libraries and applications:
 ```text
 .
 ├── client/        # Graphical client implementation (Raylib rendering, input, interpolation)
-├── common/        # Common headers and shared utility definitions
+├── common/        # Game protocol: Protobuf schema and codec
 ├── docs/          # Complete MkDocs & Doxygen documentation
 ├── engine/        # Agnostic core game engine:
 │   ├── ecs/       # Entity-Component-System (Registry, SparseSet, Systems)
 │   ├── events/    # Decoupled Event Bus & Dispatcher
+│   ├── net/       # Transport (Asio in net/asio/), NetworkPlugin & replication
 │   ├── physics/   # Box2D physics integration
 │   ├── scripting/ # Wren scripting integration
 │   └── time/      # High-resolution game clock & tick management
-├── network/       # Network transport abstraction & packet serialization
-├── server/        # Authoritative server (game simulation, network broadcasting)
-├── shared/        # Shared game components, systems, and game protocol definitions
+├── game/          # R-Type code shared by client and server (replication codec, ship movement)
+├── server/        # Authoritative server (lobby, one engine per room)
 └── tests/         # Unit and integration test suites (GoogleTest)
 ```
 

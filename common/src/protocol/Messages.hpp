@@ -14,9 +14,20 @@ namespace rtype::protocol {
  *
  * Version 2: `PlayerInput` carries the game's action ids instead of a fixed button bitmask, and `EntityState`
  * positions are floats in world units instead of int16 pixels.
+ * Version 3: a `WorldState` can be one part of a snapshot, so a client must not remove the entities it does not
+ * contain.
  */
-inline constexpr std::uint32_t PROTOCOL_VERSION = 2;
+inline constexpr std::uint32_t PROTOCOL_VERSION = 3;
 
+/**
+ * @brief Value of `ecs::net::NetworkConfig::protocolId` for R-Type: the bytes `RTYP` on the wire (little-endian u32).
+ *
+ * It identifies the game, not its version: a peer announcing another id is refused during the transport handshake,
+ * before `Hello` is even sent. `PROTOCOL_VERSION` is what changes with the format of the messages.
+ */
+inline constexpr std::uint32_t TRANSPORT_PROTOCOL_ID = 0x50595452;
+/** @brief TCP and UDP port the server listens on when none is given. */
+inline constexpr std::uint16_t DEFAULT_PORT = 4242;
 /** @brief Maximum number of players in a room (player slots, scores). */
 inline constexpr std::size_t MAX_PLAYERS = 4;
 /** @brief Maximum number of rooms in one `LobbyList`. */
@@ -27,6 +38,11 @@ inline constexpr std::size_t MAX_CHAT_LENGTH = 256;
 inline constexpr std::size_t MAX_MESSAGE_SIZE = std::size_t{64} * 1024;
 /** @brief Largest encoded message that fits in one UDP datagram (1200 bytes minus the 8-byte library header). */
 inline constexpr std::size_t MAX_UNRELIABLE_SIZE = 1192;
+
+/** @brief Entities that always fit in one `WorldState` datagram: 32 bytes each at most, plus its header. */
+inline constexpr std::size_t MAX_ENTITIES_PER_PART = 36;
+/** @brief Maximum number of parts of one snapshot. */
+inline constexpr std::uint32_t MAX_SNAPSHOT_PARTS = 64;
 
 /** @brief Maximum number of button actions held in one `PlayerInput`. */
 inline constexpr std::size_t MAX_INPUT_BUTTONS = 16;
@@ -250,8 +266,12 @@ struct WorldState {
     std::uint32_t tick = 0;
     /** @brief Sequence of the last input of this client applied by the server, for reconciliation. */
     std::uint32_t lastProcessedInput = 0;
-    /** @brief Entities of the room. */
+    /** @brief Entities of this part of the snapshot. */
     std::vector<EntityState> entities;
+    /** @brief Index of this part, below `partCount`. */
+    std::uint32_t partIndex = 0;
+    /** @brief Number of parts of the snapshot, from 1 to `MAX_SNAPSHOT_PARTS`. */
+    std::uint32_t partCount = 1;
     bool operator==(const WorldState&) const = default;
 };
 

@@ -36,14 +36,6 @@ void Clock::reset() {
     };
 }
 
-void Clock::advance(float fixedDt) noexcept {
-    const auto stepSeconds = static_cast<double>(fixedDt);
-    _totalElapsed += stepSeconds;
-    _time.deltaTime = fixedDt;
-    _time.totalElapsedTime = static_cast<float>(_totalElapsed);
-    ++_time.tickCount;
-}
-
 double Clock::pollElapsed() {
     const double now = _source();
     const double elapsed = std::max(now - _lastInstant, 0.0);

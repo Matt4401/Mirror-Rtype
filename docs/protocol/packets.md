@@ -89,17 +89,22 @@ Standard protobuf wire format. Main consequences:
 
 ## 3. Handshake
 
+Before any of these messages, the network library runs its own handshake: its first frame carries a 32-bit `protocolId`
+that identifies the game (R-Type: `0x50595452`, `TRANSPORT_PROTOCOL_ID`), and a peer announcing another one is refused
+before the game sees it. See [Transport & Connection](transport.md#3-framing-and-validation).
+
 ### `Hello` (16)
 
 **Direction:** Client → Server · **Channel:** Reliable · **Phase:** Handshake
 
-Sent right after the library delivers its own `Welcome` (`ClientId` + token). Starts version negotiation.
+Sent right after the library delivers its own `Welcome` (`PeerId` + token). Starts version negotiation.
 
 | Field     | # | Type     | Description                                             |
 |-----------|---|----------|---------------------------------------------------------|
-| `version` | 1 | `uint32` | Client protocol version, MUST be `PROTOCOL_VERSION` (2) |
+| `version` | 1 | `uint32` | Client protocol version, MUST be `PROTOCOL_VERSION` (3) |
 
-On a version mismatch, the server closes the connection without sending `Welcome`. The client MUST send `Hello`
+On a version mismatch, the server does not send `Welcome`: the transport tells the client why with a `Refused` frame
+(see [transport.md](transport.md)), then closes the connection. The client MUST send `Hello`
 within 5 seconds of connecting: past that, the server closes the connection (messages other than `Hello` do not reset
 the timer).
 
@@ -111,7 +116,7 @@ the timer).
 |------------|---|----------|---------------------------------------------------|
 | `udp_port` | 1 | `uint32` | Server UDP port (1–65535), same as TCP by default |
 
-After receiving it, the client calls `openUdp(udp_port)` on the network library.
+The client keeps this port, and calls `openUdp(udp_port)` on the network library at `GameStart`.
 
 ---
 
@@ -127,7 +132,8 @@ No field. Asks for a `LobbyList`.
 
 **Direction:** Server → Client · **Channel:** Reliable · **Phase:** Lobby
 
-Answer to `LobbyListRequest`, also pushed whenever a room is created, changed or destroyed.
+Answer to `LobbyListRequest`, also pushed to every client in the lobby phase whenever a room is created, destroyed, or
+changes its number of players or its state.
 
 | Field   | # | Type                 | Description                     |
 |---------|---|----------------------|---------------------------------|
@@ -146,7 +152,8 @@ Answer to `LobbyListRequest`, also pushed whenever a room is created, changed or
 
 **Direction:** Client → Server · **Channel:** Reliable · **Phase:** Lobby
 
-No field. Creates a room and joins it; the server then broadcasts an updated `LobbyList`.
+No field. Creates a room and joins it; the server then sends a `LobbyUpdate` and broadcasts an updated `LobbyList`.
+Ignored if the client is already in a room, or if the server already has 256 rooms (`MAX_ROOMS`).
 
 ### `LobbyJoin` (35)
 
@@ -156,7 +163,7 @@ No field. Creates a room and joins it; the server then broadcasts an updated `Lo
 |-----------|---|----------|--------------|
 | `room_id` | 1 | `uint32` | Room to join |
 
-Ignored if the room is full or already in game.
+Ignored if the client is already in a room, or if the room is unknown, full or already in game.
 
 ### `LobbyReady` (36)
 
@@ -166,7 +173,8 @@ Ignored if the room is full or already in game.
 |---------|---|--------|----------------------------|
 | `ready` | 1 | `bool` | `true` when ready to start |
 
-The server starts the game when every player of the room is ready.
+Ignored if the client is not in a room. The server starts the game when every player of the room is ready, which can
+also happen when the last player who was not ready leaves.
 
 ### `LobbyUpdate` (37)
 
@@ -202,7 +210,8 @@ Only occupied slots are sent: the number of players is `slots` size.
 | `player_index` | 2 | `uint32` | Ship controlled by this client, in `[0, player_count)` |
 | `player_count` | 3 | `uint32` | Number of players in the game (1–4)                    |
 
-The client then opens UDP and switches to the in-game phase. `player_index` is stable for the whole game.
+The client then opens UDP on the port received in `Welcome` and switches to the in-game phase. `player_index` is the position of the player in join
+order among those present at the start, and is stable for the whole game: it does not change when another player leaves.
 
 ### `GameOver` (49)
 
@@ -287,14 +296,22 @@ one are dropped by the server.
 
 **Direction:** Server → Client · **Channel:** Unreliable · **Phase:** In-game
 
-Sent after each server step. The client renders the most recent snapshot; older ones (by `tick`, with wrapping) MUST be
-dropped.
+Sent after each server step. The client renders the most recent snapshot; parts of older ones (by `tick`, with wrapping)
+MUST be dropped.
+
+A snapshot too large for one datagram is split into several `WorldState`, the **parts** of the snapshot, each one holding
+at most `MAX_ENTITIES_PER_PART` (36) entities, with the same `tick` and `last_processed_input`. A client applies each part
+when it arrives, and ignores a part it already has. It MUST NOT remove an entity absent from a snapshot before it has
+received all its parts: a lost part may have carried that entity. A world with no entity is still sent, as one empty part.
+A snapshot needing more than `MAX_SNAPSHOT_PARTS` (64) parts, about 2300 entities, is not sent.
 
 | Field                  | # | Type                   | Description                                    |
 |------------------------|---|------------------------|------------------------------------------------|
 | `tick`                 | 1 | `uint32`               | Server step of the snapshot (wrapping)         |
 | `last_processed_input` | 2 | `uint32`               | `sequence` of this client's last applied input |
-| `entities`             | 3 | repeated `EntityState` | Entities of the room                           |
+| `entities`             | 3 | repeated `EntityState` | Entities of this part of the snapshot          |
+| `part_index`           | 4 | `uint32`               | Index of this part, below `part_count`         |
+| `part_count`           | 5 | `uint32`               | Number of parts; `0` (not sent) means 1        |
 
 `last_processed_input` lets the client reconcile its prediction: it snaps to the server state and replays the inputs
 the server has not applied yet.
@@ -354,9 +371,11 @@ game, after decoding. The server currently enforces:
 - before a successful `Hello`, every other message (reliable or unreliable) is dropped;
 - a second `Hello` from the same client is dropped (no second `Welcome`);
 - a client that sends no valid `Hello` within 5 seconds of connecting is kicked;
-- over UDP, only `PlayerInput` is accepted, and only from a client in a room.
+- over UDP, only `PlayerInput` is accepted, and only from a client in a room that has started;
+- during a game, lobby messages (`LobbyListRequest`, `LobbyCreate`, `LobbyJoin`, `LobbyReady`) are dropped;
+- `LobbyCreate` and `LobbyJoin` are dropped from a client already in a room, and `LobbyReady` from a client in none.
 
-Lobby and in-game phase checks come with the lobby implementation.
+`Chat` is not implemented yet: the server drops it.
 
 ---
 
@@ -381,11 +400,11 @@ layout (about 26 bytes per entity with float positions and a prefab hash), which
 
 How R-Type fills the game-defined fields of `EntityState`. Another game defines its own.
 
-| Field     | R-Type use                                                                                         |
-|-----------|----------------------------------------------------------------------------------------------------|
-| `kind`    | `makeEntityKind(<prefab name>)`: `alien_scout`, `missile`, `obstacle`, `player_bullet`, `power_up` |
-| `subtype` | Player index (0–3) of a player ship or a player bullet, 0 otherwise                                 |
-| `flags`   | Bit 0: alive. Bit 1: shooting. Bits 2–7: reserved, 0                                               |
+| Field     | R-Type use                                                                                                        |
+|-----------|-------------------------------------------------------------------------------------------------------------------|
+| `kind`    | `makeEntityKind(<prefab name>)`: `player_ship`, `alien_scout`, `missile`, `obstacle`, `player_bullet`, `power_up` |
+| `subtype` | Player index (0–3) of a player ship or a player bullet, 0 otherwise                                               |
+| `flags`   | Bit 0: alive. Bit 1: shooting. Bits 2–7: reserved, 0                                                              |
 
 ---
 
@@ -394,7 +413,7 @@ How R-Type fills the game-defined fields of `EntityState`. Another game defines 
 | #    | Message            | Dir   | Channel    | Typical size (bytes)       |
 |------|--------------------|-------|------------|----------------------------|
 | `1`  | `PlayerInput`      | C → S | Unreliable | 4–34                       |
-| `2`  | `WorldState`       | S → C | Unreliable | ~8 + 26 per entity (≤1192) |
+| `2`  | `WorldState`       | S → C | Unreliable | ~8 + 26 per entity (≤1192, split beyond) |
 | `16` | `Hello`            | C → S | Reliable   | 5                          |
 | `17` | `Welcome`          | S → C | Reliable   | 6                          |
 | `32` | `LobbyListRequest` | C → S | Reliable   | 3                          |
