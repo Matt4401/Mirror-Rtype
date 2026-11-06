@@ -190,7 +190,9 @@ void NetworkClient::closeUdpNow() {
 void NetworkClient::receiveUdp() {
     _udpSocket.async_receive_from(asio::buffer(_udpBuffer), _udpFrom,
                                   [this](const std::error_code ec, const std::size_t size) {
-                                      if (ec == asio::error::operation_aborted) {
+                                      // A datagram received just before stop() must not start a receive on the closed
+                                      // socket: it would fail at once, in a loop that keeps stop() from joining.
+                                      if (ec == asio::error::operation_aborted || _state.load() != State::Running) {
                                           return;
                                       }
                                       if (!ec && _udpFrom == _serverUdp && size <= MAX_DATAGRAM) {
@@ -221,7 +223,8 @@ void NetworkClient::sendDatagram(const Bytes& payload) {
 void NetworkClient::scheduleUdpTick() {
     _udpTimer.expires_after(_config.udpTick);
     _udpTimer.async_wait([this](const std::error_code ec) {
-        if (ec) {
+        // cancel() has no effect on a timer that has just expired: its handler still runs, without error, after stop().
+        if (ec || _state.load() != State::Running) {
             return;
         }
         onUdpTick();
