@@ -20,6 +20,7 @@
 #include "ecs/time/Clock.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
+#include "gameplay/GameplayPlugin.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkPlugin.hpp"
@@ -27,6 +28,7 @@
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "net/ServerReplicationPlugin.hpp"
+#include "systems/physics/PhysicsPlugin.hpp"
 
 namespace rtype::server {
 
@@ -49,9 +51,9 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.setFixedDeltaTime(fixedDt);
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
-    // TODO(ecs): add the gameplay plugins (PhysicsPlugin, ScriptPlugin, shooting, collisions...). For collisions, own a
-    // collision::CollisionRouter on _engine.eventBus(): it turns the events::CollisionBeginEvent of PhysicsPlugin into
-    // R-Type events.
+    _engine.addPlugin<systems::PhysicsPlugin>();
+    _engine.addPlugin<gameplay::GameplayPlugin>();
+    // TODO(ecs): add ScriptPlugin for the scripted enemies.
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
         if (registry.hasComponent<ecs::Transform>(event.entity)) {
@@ -126,6 +128,7 @@ void Room::start() {
         transform.y = SPAWN_FIRST_Y + (SPAWN_SPACING_Y * static_cast<float>(index));
         ++index;
     }
+    _engine.getPlugin<gameplay::GameplayPlugin>().setPlayerCount(_players.size());
     _playing = true;
     _engine.clock().reset();
 }

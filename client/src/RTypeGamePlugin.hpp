@@ -5,17 +5,13 @@
 
 #pragma once
 
-#include <memory>
 #include <optional>
 #include <string_view>
 
-#include "collision/CollisionRouter.hpp"
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
-#include "ecs/CommandBuffer.hpp"
 #include "events/EventBus.hpp"
-#include "gameplay/ShotHitRule.hpp"
 #include "net/ReplicationEvents.hpp"
 
 namespace client {
@@ -23,8 +19,7 @@ namespace client {
 /**
  * @brief What the R-Type client shows: textures, input bindings, starfield and the sprites of replicated entities.
  *
- * The game itself runs on the server: ships come from its snapshots through the network plugins. Player shots
- * destroy the enemies they touch: physics contacts go through `CollisionRouter`, and `ShotHitRule` applies the hits.
+ * The game itself runs on the server: ships, enemies and bullets come from its snapshots through the network plugins.
  */
 class RTypeGamePlugin final : public engine::IPlugin {
   public:
@@ -65,21 +60,7 @@ class RTypeGamePlugin final : public engine::IPlugin {
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Fixed simulation update: kills off-screen bullets.
-     * @param engine Reference to host Engine.
-     * @param time Fixed simulation timing information.
-     */
-    void fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
-
-    /**
-     * @brief Frame update: checks player shooting trigger.
-     * @param engine Reference to host Engine.
-     * @param time Frame timing information.
-     */
-    void update(engine::Engine& engine, const ecs::time::Time& time) override;
-
-    /**
-     * @brief Unsubscribes from the replication events and destroys the collision router and rules.
+     * @brief Unsubscribes from the replication events.
      * @param engine Reference to host Engine.
      */
     void shutdown(engine::Engine& engine) override;
@@ -106,12 +87,6 @@ class RTypeGamePlugin final : public engine::IPlugin {
     ecs::TextureId _starMediumId = ecs::NO_TEXTURE;
     /** @brief Texture identifier for large star sprites. */
     ecs::TextureId _starLargeId = ecs::NO_TEXTURE;
-    /** @brief Deferred command buffer for safe prefab spawning during update loops. */
-    ecs::CommandBuffer _commandBuffer;
-    /** @brief Turns physics contacts into R-Type collision events. */
-    std::unique_ptr<rtype::server::collision::CollisionRouter> _collisionRouter;
-    /** @brief Destroys player shots and the enemies they hit. */
-    std::unique_ptr<gameplay::ShotHitRule> _shotHitRule;
 };
 
 }  // namespace client
