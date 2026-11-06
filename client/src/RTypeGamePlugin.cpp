@@ -7,18 +7,14 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdint>
-#include <memory>
 #include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "collision/CollisionRouter.hpp"
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
-#include "components/Predicted.hpp"
 #include "components/Renderable.hpp"
 #include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
@@ -27,18 +23,12 @@
 #include "core/services/IInputService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
-#include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
-#include "gameplay/ShotHitRule.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
 #include "net/ReplicationEvents.hpp"
-#include "prefabs/ClientBullet.hpp"
-#include "prefabs/PrefabManager.hpp"
-#include "prefabs/PrefabParams.hpp"
 #include "prefabs/PrefabPlugin.hpp"
-#include "protocol/Messages.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
@@ -57,7 +47,9 @@ constexpr int SHIP_FRAME_COUNT = 5;
 constexpr int BYDOS_FRAME_WIDTH = 33;
 constexpr int BYDOS_FRAME_HEIGHT = 36;
 constexpr int BYDOS_FRAME_COUNT = 8;
-constexpr auto KIND_ALIEN_SCOUT = rtype::protocol::makeEntityKind("alien_scout");
+constexpr int BULLET_FRAME_SIZE = 32;
+constexpr int BULLET_FRAME_COUNT = 4;
+constexpr float BULLET_SCALE = 1.5F;
 constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
@@ -104,19 +96,6 @@ void spawnStarfield(ecs::Registry& registry, ecs::TextureId smallId, ecs::Textur
     }
 }
 
-void killOffscreenBullets(ecs::Registry& registry) {
-    std::vector<ecs::Entity> toDestroy;
-    registry.runSystem<ecs::Transform, client::prefabs::ClientBullet>(
-        [&toDestroy](ecs::Entity entity, const ecs::Transform& transform, client::prefabs::ClientBullet& /*tag*/) {
-            if (transform.x > SCENE_WIDTH + 64.0F) {
-                toDestroy.push_back(entity);
-            }
-        });
-    for (const ecs::Entity entity : toDestroy) {
-        registry.killEntity(entity);
-    }
-}
-
 /** @brief Sprite of a replicated entity: one frame strip of a spritesheet. */
 struct EntitySprite {
     ecs::TextureId texture = ecs::NO_TEXTURE;
@@ -125,13 +104,14 @@ struct EntitySprite {
     int frameCount = 1;
     int startY = 0;
     int layer = 0;
+    float scale = SPRITE_SCALE;
 };
 
 /** @brief Gives a replicated entity its sprite and its size on screen. */
 void applySprite(ecs::Registry& registry, const ecs::Entity entity, const EntitySprite& sprite) {
     auto& transform = registry.getComponents<ecs::Transform>().get(entity);
-    transform.scaleX = SPRITE_SCALE;
-    transform.scaleY = SPRITE_SCALE;
+    transform.scaleX = sprite.scale;
+    transform.scaleY = sprite.scale;
     registry.addComponent<ecs::Renderable>(
         entity,
         ecs::Renderable{
@@ -180,10 +160,6 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     _bydosTexId = load("sprites/spritesheet5.png");
     _bulletTexId = load("sprites/r-typesheet-amo.png");
 
-    engine.getPlugin<::prefabs::PrefabPlugin>().manager().registerPrefab(
-        client::prefabs::CLIENT_BULLET_PREFAB, client::prefabs::buildClientBullet,
-        {{"textureId", static_cast<std::int64_t>(_bulletTexId)}, {"scaleX", 1.5F}, {"scaleY", 1.5F}});
-
     _starSmallId = load("sprites/star_small.png");
     _starMediumId = load("sprites/star_medium.png");
     _starLargeId = load("sprites/star_large.png");
@@ -195,15 +171,12 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     ecs::Registry& registry = engine.registry();
     spawnStarfield(registry, _starSmallId, _starMediumId, _starLargeId);
     registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
-    // The local player's actions, read here for the bullets and by the network plugins for the server. The ship is not
-    // spawned here: it comes from the snapshots of the server, like every other entity of the game.
+    // The local player's actions, sent to the server by the network plugins. Nothing of the game is spawned here:
+    // ships, enemies and bullets come from the snapshots of the server.
     registry.addComponent<InputState>(registry.spawnEntity(), InputState{.playerIndex = 0, .actions = {}});
 
     _spawned = engine.eventBus().subscribe<ecs::net::ReplicatedEntitySpawned>(
         [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) { onEntitySpawned(engine, event); });
-
-    _collisionRouter = std::make_unique<rtype::server::collision::CollisionRouter>(engine.eventBus());
-    _shotHitRule = std::make_unique<gameplay::ShotHitRule>(engine.eventBus(), registry);
 }
 
 void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const {
@@ -220,7 +193,7 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = row * SHIP_FRAME_HEIGHT,
                         .layer = 3,
                     });
-    } else if (event.kind == KIND_ALIEN_SCOUT) {
+    } else if (event.kind == rtype::game::KIND_ALIEN_SCOUT) {
         applySprite(registry, event.entity,
                     {
                         .texture = _bydosTexId,
@@ -230,37 +203,21 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = 0,
                         .layer = 2,
                     });
+    } else if (event.kind == rtype::game::KIND_PLAYER_BULLET) {
+        applySprite(registry, event.entity,
+                    {
+                        .texture = _bulletTexId,
+                        .frameWidth = BULLET_FRAME_SIZE,
+                        .frameHeight = BULLET_FRAME_SIZE,
+                        .frameCount = BULLET_FRAME_COUNT,
+                        .startY = 0,
+                        .layer = 2,
+                        .scale = BULLET_SCALE,
+                    });
     }
-}
-
-void RTypeGamePlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& /*time*/) {
-    killOffscreenBullets(engine.registry());
-}
-
-void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
-    ecs::Registry& registry = engine.registry();
-    bool shooting = false;
-    registry.runSystem<InputState>([&shooting](ecs::Entity /*entity*/, const InputState& state) {
-        shooting = shooting || state.isJustPressed("shoot");
-    });
-    if (shooting) {
-        // TODO(ecs): the server does not simulate shots yet: these bullets only exist on this client.
-        std::vector<ecs::Transform> spawnPositions;
-        registry.runSystem<ecs::Predicted, ecs::Transform>(
-            [&spawnPositions](ecs::Entity /*entity*/, const ecs::Predicted& /*local*/,
-                              const ecs::Transform& transform) { spawnPositions.push_back(transform); });
-        const auto& prefabManager = engine.service<::prefabs::PrefabManager>();
-        for (const auto& pos : spawnPositions) {
-            prefabManager.spawn(client::prefabs::CLIENT_BULLET_PREFAB, _commandBuffer,
-                                {{"x", pos.x + 40.0F}, {"y", pos.y}});
-        }
-    }
-    _commandBuffer.flush(registry);
 }
 
 void RTypeGamePlugin::shutdown(engine::Engine& engine) {
-    _shotHitRule.reset();
-    _collisionRouter.reset();
     if (_spawned) {
         engine.eventBus().unsubscribe<ecs::net::ReplicatedEntitySpawned>(*_spawned);
         _spawned.reset();

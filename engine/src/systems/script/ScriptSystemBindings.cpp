@@ -4,6 +4,7 @@
  */
 
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -11,7 +12,9 @@
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "ecs/SpatialQueries.hpp"
 #include "input/InputState.hpp"
+#include "prefabs/PrefabManager.hpp"
 #include "scripting/CoreModules.hpp"
 #include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
@@ -54,13 +57,12 @@ void engineSpawnPrefab(scripting::ForeignCall& call) {
         return;
     }
 
-    std::string const name(*prefabName);
-    double const posX = *x;
-    double const posY = *y;
-    scriptSystem->getCommandBuffer().deferSpawn(
-        [name, posX, posY]([[maybe_unused]] ecs::Entity e, [[maybe_unused]] ecs::Registry& reg) {
-            // Placeholder prefab spawner
-        });
+    auto const* manager = scriptSystem->getPrefabManager();
+    if (manager == nullptr) {
+        std::cerr << "[ScriptSystem] Engine.spawnPrefab(\"" << *prefabName << "\"): no PrefabManager set\n";
+        return;
+    }
+    (void)manager->spawn(*prefabName, scriptSystem->getCommandBuffer(), {{"x", *x}, {"y", *y}});
 }
 
 /**
@@ -80,22 +82,81 @@ void entityDestroy(scripting::ForeignCall& call) {
 }
 
 /**
- * @brief Foreign static method `World.getEntitiesWithTag(tag)` callback.
+ * @brief Returns the query buffer to Wren as a list of entity ids, skipping entities pending destruction.
  * @param call ForeignCall execution context.
+ * @param scriptSystem Owner of the buffer and of the pending-destroy queue.
  */
-void worldGetEntitiesWithTag(scripting::ForeignCall& call) { call.retList(); }
+void retEntityIdList(scripting::ForeignCall& call, ScriptSystem& scriptSystem) {
+    call.retList();
+    for (ecs::Entity const e : scriptSystem.getQueryBuffer()) {
+        if (!scriptSystem.isPendingDestroy(e)) {
+            call.listAppend(static_cast<double>(e));
+        }
+    }
+}
 
 /**
- * @brief Foreign static method `World.getNearestWithTag(x, y, tag)` callback.
+ * @brief Foreign static method `World.idsWithTag_(tag)` callback, backing `World.getEntitiesWithTag`.
  * @param call ForeignCall execution context.
  */
-void worldGetNearestWithTag(scripting::ForeignCall& call) { call.retNull(); }
+void worldIdsWithTag(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    auto const tag = call.arg<std::string_view>(1);
+    if (!tag.has_value()) {
+        return;
+    }
+    if (scriptSystem == nullptr || scriptSystem->getRegistry() == nullptr) {
+        call.retList();
+        return;
+    }
+    ecs::entitiesWithTag(*scriptSystem->getRegistry(), *tag, scriptSystem->getQueryBuffer());
+    retEntityIdList(call, *scriptSystem);
+}
 
 /**
- * @brief Foreign static method `World.getEntitiesInRadius(x, y, radius)` callback.
+ * @brief Foreign static method `World.nearestIdWithTag_(x, y, tag)` callback, backing `World.getNearestWithTag`.
  * @param call ForeignCall execution context.
  */
-void worldGetEntitiesInRadius(scripting::ForeignCall& call) { call.retList(); }
+void worldNearestIdWithTag(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    auto const x = call.arg<float>(1);
+    auto const y = call.arg<float>(2);
+    auto const tag = call.arg<std::string_view>(3);
+    if (!x.has_value() || !y.has_value() || !tag.has_value()) {
+        return;
+    }
+    if (scriptSystem == nullptr || scriptSystem->getRegistry() == nullptr) {
+        call.retNull();
+        return;
+    }
+    auto const nearest =
+        ecs::nearestWithTag(*scriptSystem->getRegistry(), *x, *y, *tag, scriptSystem->getPendingDestroyEntities());
+    if (nearest.has_value()) {
+        call.ret(static_cast<double>(*nearest));
+    } else {
+        call.retNull();
+    }
+}
+
+/**
+ * @brief Foreign static method `World.idsInRadius_(x, y, radius)` callback, backing `World.getEntitiesInRadius`.
+ * @param call ForeignCall execution context.
+ */
+void worldIdsInRadius(scripting::ForeignCall& call) {
+    auto* scriptSystem = call.userData<ScriptSystem>();
+    auto const x = call.arg<float>(1);
+    auto const y = call.arg<float>(2);
+    auto const radius = call.arg<float>(3);
+    if (!x.has_value() || !y.has_value() || !radius.has_value()) {
+        return;
+    }
+    if (scriptSystem == nullptr || scriptSystem->getRegistry() == nullptr) {
+        call.retList();
+        return;
+    }
+    ecs::entitiesInRadius(*scriptSystem->getRegistry(), *x, *y, *radius, scriptSystem->getQueryBuffer());
+    retEntityIdList(call, *scriptSystem);
+}
 
 /**
  * @brief Resolves the InputState component matching playerIndex.
@@ -223,9 +284,9 @@ void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
     vm.registerForeignMethod<&engineRegisterWait>("core/Engine", "Engine", true, "registerWait(_,_)");
     vm.registerForeignMethod<&engineSpawnPrefab>("core/Engine", "Engine", true, "spawnPrefab(_,_,_)");
     vm.registerForeignMethod<&entityDestroy>("core/Entity", "Entity", true, "destroyEntity(_)");
-    vm.registerForeignMethod<&worldGetEntitiesWithTag>("core/World", "World", true, "getEntitiesWithTag(_)");
-    vm.registerForeignMethod<&worldGetNearestWithTag>("core/World", "World", true, "getNearestWithTag(_,_,_)");
-    vm.registerForeignMethod<&worldGetEntitiesInRadius>("core/World", "World", true, "getEntitiesInRadius(_,_,_)");
+    vm.registerForeignMethod<&worldIdsWithTag>("core/World", "World", true, "idsWithTag_(_)");
+    vm.registerForeignMethod<&worldNearestIdWithTag>("core/World", "World", true, "nearestIdWithTag_(_,_,_)");
+    vm.registerForeignMethod<&worldIdsInRadius>("core/World", "World", true, "idsInRadius_(_,_,_)");
     vm.registerForeignMethod<&inputIsDown>("core/Input", "Input", true, "isDown(_,_)");
     vm.registerForeignMethod<&inputIsJustPressed>("core/Input", "Input", true, "isJustPressed(_,_)");
     vm.registerForeignMethod<&inputIsJustReleased>("core/Input", "Input", true, "isJustReleased(_,_)");

@@ -7,11 +7,14 @@
 #include <utility>
 
 #include "components/ScriptComponent.hpp"
+#include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/PhysicsEvents.hpp"
 #include "input/InputState.hpp"
+#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
 #include "scripting/ComponentBinder.hpp"
 #include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
@@ -1049,4 +1052,81 @@ TEST(Scripting, CollisionForwardingStopsWithTheSystem) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+namespace {
+
+/**
+ * @brief Runs `Engine.spawnPrefab(<prefabName>, 12, 34)` from a Wren static method.
+ * @return The Wren call result.
+ */
+WrenInterpretResult callSpawnPrefab(systems::ScriptSystem& scriptSystem, std::string const& prefabName) {
+    std::string const module = "spawn_" + prefabName;
+    std::string const code =
+        "import \"core/Engine\" for Engine\n"
+        "class Spawner {\n"
+        "    static run() { Engine.spawnPrefab(\"" +
+        prefabName +
+        "\", 12, 34) }\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret(module, code));
+    auto handle = scriptSystem.getVm().makeCallHandle("run()");
+    scriptSystem.getVm().ensureSlots(1);
+    scriptSystem.getVm().getVariable(module, "Spawner", 0);
+    return scriptSystem.getVm().call(handle);
+}
+
+}  // namespace
+
+TEST(Scripting, SpawnPrefabInstantiatesRegisteredPrefab) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+    registry.registerComponent<ecs::Transform>();
+
+    prefabs::PrefabManager manager;
+    manager.registerPrefab("probe", [](ecs::Entity e, ecs::Registry& reg, prefabs::PrefabParams const& params) {
+        reg.addComponent<ecs::Transform>(e, prefabs::makeTransform(params));
+    });
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+    scriptSystem.setPrefabManager(&manager);
+
+    EXPECT_EQ(callSpawnPrefab(scriptSystem, "probe"), WREN_RESULT_SUCCESS);
+    EXPECT_FALSE(scriptSystem.getCommandBuffer().empty());
+    EXPECT_TRUE(registry.getComponents<ecs::Transform>().getDense().empty());
+
+    scriptSystem.update(0.016F);
+
+    auto const& transforms = registry.getComponents<ecs::Transform>().getDense();
+    ASSERT_EQ(transforms.size(), 1U);
+    EXPECT_FLOAT_EQ(transforms.front().x, 12.0F);
+    EXPECT_FLOAT_EQ(transforms.front().y, 34.0F);
+}
+
+TEST(Scripting, SpawnPrefabUnknownNameQueuesNothing) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    prefabs::PrefabManager const manager;
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+    scriptSystem.setPrefabManager(&manager);
+
+    EXPECT_EQ(callSpawnPrefab(scriptSystem, "does_not_exist"), WREN_RESULT_SUCCESS);
+    EXPECT_TRUE(scriptSystem.getCommandBuffer().empty());
+}
+
+TEST(Scripting, SpawnPrefabWithoutManagerQueuesNothing) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    EXPECT_EQ(callSpawnPrefab(scriptSystem, "probe"), WREN_RESULT_SUCCESS);
+    EXPECT_TRUE(scriptSystem.getCommandBuffer().empty());
 }

@@ -183,6 +183,15 @@ class Registry {
     [[nodiscard]] SparseArray<Component> const& getComponents() const;
 
     /**
+     * @brief Looks up the const sparse array of a component type without creating or throwing.
+     *
+     * @tparam Component The component type to look up.
+     * @return Pointer to the container, or nullptr if the type has never been registered or accessed.
+     */
+    template <class Component>
+    [[nodiscard]] SparseArray<Component> const* findComponents() const noexcept;
+
+    /**
      * @brief Checks if an entity currently has a component attached.
      *
      * @tparam Component Component type to check.
