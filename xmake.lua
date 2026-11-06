@@ -25,6 +25,7 @@ includes("common/xmake.lua")
 includes("engine/*/xmake.lua")
 includes("game/*/xmake.lua")
 includes("server/*/xmake.lua")
+includes("rlss/xmake.lua")
 if has_config("graphics") then
     includes("client/*/xmake.lua")
     add_requires("raylib")
