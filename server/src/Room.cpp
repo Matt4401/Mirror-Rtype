@@ -20,6 +20,7 @@
 #include "ecs/time/Clock.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
+#include "gameplay/ShootingPlugin.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkPlugin.hpp"
@@ -27,6 +28,7 @@
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "net/ServerReplicationPlugin.hpp"
+#include "systems/physics/PhysicsPlugin.hpp"
 
 namespace rtype::server {
 
@@ -49,7 +51,9 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.setFixedDeltaTime(fixedDt);
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
-    // TODO(ecs): add the gameplay plugins (PhysicsPlugin, ScriptPlugin, shooting, collisions...).
+    _engine.addPlugin<systems::PhysicsPlugin>();
+    _engine.addPlugin<ShootingPlugin>();
+    // TODO(ecs): add the other gameplay plugins (ScriptPlugin, collisions...).
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
         if (registry.hasComponent<ecs::Transform>(event.entity)) {
@@ -78,6 +82,7 @@ bool Room::addPlayer(const ClientId player) {
     registry.addComponent(entity, ecs::InputBuffer{.capacity = MAX_PENDING_INPUTS});
     registry.addComponent(entity, game::EntityNetState{});
     registry.addComponent(entity, ecs::Transform{});
+    registry.addComponent(entity, ShotCooldown{});
     _connection->addPeer(player);
     _players.push_back({.client = player, .entity = entity});
     return true;

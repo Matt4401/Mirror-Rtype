@@ -11,7 +11,6 @@
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
-#include "ecs/CommandBuffer.hpp"
 #include "events/EventBus.hpp"
 #include "net/ReplicationEvents.hpp"
 
@@ -20,7 +19,7 @@ namespace client {
 /**
  * @brief What the R-Type client shows: textures, input bindings, starfield and the sprites of replicated entities.
  *
- * The game itself runs on the server: ships come from its snapshots through the network plugins.
+ * The game itself runs on the server: ships and bullets come from its snapshots through the network plugins.
  */
 class RTypeGamePlugin final : public engine::IPlugin {
   public:
@@ -49,7 +48,7 @@ class RTypeGamePlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "RTypeGamePlugin"; }
 
     /**
-     * @brief Declares dependencies on RenderPlugin, InputPlugin, PhysicsPlugin, AnimationPlugin.
+     * @brief Declares dependencies on RenderPlugin, InputPlugin, AnimationPlugin.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
@@ -59,20 +58,6 @@ class RTypeGamePlugin final : public engine::IPlugin {
      * @param engine Reference to host Engine.
      */
     void init(engine::Engine& engine) override;
-
-    /**
-     * @brief Fixed simulation update: kills off-screen bullets.
-     * @param engine Reference to host Engine.
-     * @param time Fixed simulation timing information.
-     */
-    void fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
-
-    /**
-     * @brief Frame update: checks player shooting trigger.
-     * @param engine Reference to host Engine.
-     * @param time Frame timing information.
-     */
-    void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
      * @brief Unsubscribes from the replication events.
@@ -102,8 +87,6 @@ class RTypeGamePlugin final : public engine::IPlugin {
     ecs::TextureId _starMediumId = ecs::NO_TEXTURE;
     /** @brief Texture identifier for large star sprites. */
     ecs::TextureId _starLargeId = ecs::NO_TEXTURE;
-    /** @brief Deferred command buffer for safe prefab spawning during update loops. */
-    ecs::CommandBuffer _commandBuffer;
 };
 
 }  // namespace client
