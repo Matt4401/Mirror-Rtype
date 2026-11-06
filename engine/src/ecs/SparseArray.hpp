@@ -41,9 +41,12 @@ class ISparseArray {
  * @brief Cache-friendly sparse set container mapping entities to component instances.
  *
  * Implements the Sparse Set pattern:
- * - A sparse vector indexed by Entity ID storing indices into the dense vectors ($O(1)$ lookup).
+ * - A sparse vector indexed by the entity's slot index (`entityIndex`) storing indices into the dense vectors
+ *   ($O(1)$ lookup).
  * - A dense vector of components stored contiguously in memory for optimal cache locality during system iteration.
- * - A dense vector of entities mirroring component positions.
+ * - A dense vector of full entity handles mirroring component positions. Lookups compare the stored handle with the
+ *   requested one, so a stale handle (same slot, older generation) never sees the component of the slot's new
+ *   occupant.
  * - Deletions use the "swap-and-pop" idiom in $O(1)$ time, maintaining dense contiguity.
  *
  * @tparam Component The component type stored in this array.
@@ -67,6 +70,8 @@ class SparseArray : public ISparseArray {
 
     /**
      * @brief Inserts or replaces a component for an entity using copy semantics.
+     *
+     * If the slot still holds a component of an older handle of the same slot, that leftover is replaced.
      *
      * @param e The entity to attach the component to.
      * @param c The component value to copy.
@@ -129,13 +134,30 @@ class SparseArray : public ISparseArray {
     [[nodiscard]] std::vector<Component> const& getDense() const noexcept;
 
     /**
-     * @brief Returns a const reference to the dense array of entity IDs matching components.
+     * @brief Returns a const reference to the dense array of entity handles matching components.
      * @return Const reference to the std::vector of entities.
      */
     [[nodiscard]] std::vector<Entity> const& getDenseEntities() const noexcept;
 
   private:
-    /** @brief Sparse array indexed by Entity ID holding indices into the dense vectors. */
+    /**
+     * @brief Finds the dense position of the component owned by exactly this handle.
+     * @param e Entity handle (index and generation must both match).
+     * @return Dense index, or `std::nullopt` if this handle owns no component here.
+     */
+    [[nodiscard]] std::optional<std::size_t> denseIndexOf(Entity e) const noexcept;
+
+    /**
+     * @brief Shared implementation of the copy and move `insertAt` overloads.
+     * @tparam Value Forwarded component type.
+     * @param e Entity handle.
+     * @param c Component value to store.
+     * @return Reference to the stored component.
+     */
+    template <typename Value>
+    Component& insertImpl(Entity e, Value&& c);
+
+    /** @brief Sparse array indexed by entity slot index holding indices into the dense vectors. */
     std::vector<std::optional<std::size_t>> _sparse;
     /** @brief Dense array of active entity IDs corresponding to components. */
     std::vector<Entity> _dense;

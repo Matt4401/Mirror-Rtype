@@ -1,5 +1,6 @@
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -78,7 +79,8 @@ class ResourceSlot final : public IResourceSlot {
  * @brief Central coordinator for the Entity Component System (ECS).
  *
  * Responsibilities:
- * - Entity lifecycle: creates new entity IDs and recycles destroyed entities.
+ * - Entity lifecycle: creates generational entity handles and recycles the slots of destroyed entities. A handle
+ *   kept after its entity died is detected as dead, even once the slot is reused (see `Entity`).
  * - Component storage: maintains a flat vector of type-erased `ISparseArray` containers indexed by dense
  * ComponentTypeId.
  * - Resource storage: maintains global unique singleton data instances indexed by dense ResourceTypeId.
@@ -106,13 +108,19 @@ class Registry {
     Registry& operator=(Registry&&) noexcept = default;
 
     /**
-     * @brief Spawns a new entity, recycling a previously destroyed entity ID if available.
-     * @return Newly created or recycled Entity ID.
+     * @brief Spawns a new entity, recycling the slot of a previously destroyed entity if available.
+     *
+     * A recycled slot gets a new generation, so the returned handle never equals a handle handed out before for
+     * that slot (until the generation wraps around after 2^20 reuses).
+     * @return Handle of the new entity.
+     * @throws std::length_error If every slot index is in use.
      */
     Entity spawnEntity();
 
     /**
-     * @brief Kills an entity, removing all its components across all sparse arrays and recycling its ID.
+     * @brief Kills an entity, removing all its components across all sparse arrays and recycling its slot.
+     *
+     * Does nothing if the handle is not alive, including a stale handle whose slot now holds another entity.
      * @param e Entity to destroy.
      */
     void killEntity(Entity e);
@@ -146,7 +154,7 @@ class Registry {
     /**
      * @brief Checks if an entity is currently alive.
      * @param e Entity to query.
-     * @return True if the entity is active and not destroyed.
+     * @return True if the entity is active and not destroyed. False for a stale handle whose slot was recycled.
      */
     [[nodiscard]] bool isAlive(Entity e) const noexcept;
 
@@ -207,6 +215,7 @@ class Registry {
      * @tparam Component Component type.
      * @param to Entity to attach the component to.
      * @param c Component rvalue to move into storage.
+     * @throws std::invalid_argument If `to` is a stale handle whose slot now holds another live entity.
      * @return Reference to the newly stored component.
      */
     template <class Component>
@@ -218,6 +227,7 @@ class Registry {
      * @tparam Component Component type.
      * @param to Entity to attach the component to.
      * @param c Component lvalue to copy into storage.
+     * @throws std::invalid_argument If `to` is a stale handle whose slot now holds another live entity.
      * @return Reference to the newly stored component.
      */
     template <class Component>
@@ -230,6 +240,7 @@ class Registry {
      * @tparam Args Constructor argument types.
      * @param to Entity to attach the component to.
      * @param args Arguments forwarded to Component constructor.
+     * @throws std::invalid_argument If `to` is a stale handle whose slot now holds another live entity.
      * @return Reference to the newly constructed component.
      */
     template <class Component, typename... Args>
@@ -335,16 +346,28 @@ class Registry {
     void runSystem(Func func);
 
   private:
+    /**
+     * @brief Throws if a component is about to be attached through a stale handle.
+     *
+     * A stale handle shares its slot index with a newer, live entity; writing through it would overwrite that
+     * entity's component.
+     * @param e Handle about to receive a component.
+     * @throws std::invalid_argument If `e` is stale and its slot is occupied by another live entity.
+     */
+    void ensureNotStale(Entity e) const;
+
     /** @brief Vector of type-erased sparse array containers indexed by component type ID. */
     std::vector<std::unique_ptr<ISparseArray>> _componentsArrays;
     /** @brief Vector of type-erased resource slots indexed by resource type ID. */
     std::vector<std::unique_ptr<detail::IResourceSlot>> _resources;
-    /** @brief Next available entity ID counter when no recycled IDs exist. */
-    Entity _nextEntity = 0;
-    /** @brief Queue of recycled entity IDs from previously destroyed entities. */
-    std::queue<Entity> _deadEntities;
-    /** @brief Liveness tracking bitmap for entity IDs. */
+    /** @brief Next never-used slot index, used when no recycled slot exists. */
+    std::uint32_t _nextEntity = 0;
+    /** @brief Queue of slot indices freed by destroyed entities, reused in FIFO order. */
+    std::queue<std::uint32_t> _deadEntities;
+    /** @brief Liveness bitmap indexed by slot index. */
     std::vector<bool> _isAlive;
+    /** @brief Current generation of each slot, indexed by slot index. */
+    std::vector<std::uint32_t> _generations;
 
     /** @brief Internal tracking structure for destruction listeners. */
     struct DestroyListenerEntry {
