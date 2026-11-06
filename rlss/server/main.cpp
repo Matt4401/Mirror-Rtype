@@ -15,15 +15,19 @@
 #include <span>
 #include <thread>
 
+#include "CarSimulationPlugin.hpp"
 #include "CommandLine.hpp"
 #include "LobbyPlugin.hpp"
 #include "Logger.hpp"
 #include "ServerConnection.hpp"
 #include "core/Engine.hpp"
+#include "game/ReplicationCodec.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkFactory.hpp"
 #include "net/NetworkPlugin.hpp"
+#include "net/ServerReplicationPlugin.hpp"
 #include "protocol/Protocol.hpp"
+#include "scripting/ScriptPlugin.hpp"
 
 namespace {
 
@@ -64,7 +68,11 @@ int main(int ac, char** av) {
         const auto connection = std::make_shared<rlss::server::ServerConnection>(transport);
 
         engine::Engine engine;
-        engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection).addPlugin<rlss::server::LobbyPlugin>();
+        engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection)
+            .addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
+            .addPlugin<scripting::ScriptPlugin>()
+            .addPlugin<rlss::server::CarSimulationPlugin>()
+            .addPlugin<rlss::server::LobbyPlugin>();
         engine.init();
 
         std::signal(SIGINT, onSignal);
