@@ -38,7 +38,7 @@ plugins:
   - mkdoxy:
       projects:
         rtype:
-          src-dirs: "engine/src client/src server/src log/src common/src game/src"
+          src-dirs: "engine/src client/src server/src log/src common/src game/src rlss"
           full-doc: True
           doxy-cfg:
             FILE_PATTERNS: "*.cpp *.hpp *.h"
@@ -75,6 +75,7 @@ nav:
       - Client: architecture/client.md
       - Client ↔ Server: architecture/client-server.md
       - Network: architecture/network.md
+  - RLSS: rlss/index.md
   - Prefabs:
       - Overview: prefabs/index.md
       - Collision Categories: prefabs/collision-categories.md
