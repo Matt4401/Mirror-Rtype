@@ -10,7 +10,17 @@ To maximize performance, flexibility, and architectural decoupling, the engine i
 
 ### 2.1 Entities
 
-An **Entity** is not an object containing behaviors. It is simply a lightweight, unique identifier (e.g., `uint32_t` or `size_t`). Entities serve as logical handles to associate components together.
+An **Entity** is not an object containing behaviors. It is a lightweight **generational handle** (`ecs::Entity`, a `std::uint64_t`) used to associate components together. It packs two fields:
+
+| Bits  | Field      | Meaning                                                                  |
+|-------|------------|--------------------------------------------------------------------------|
+| 0-31  | index      | Slot of the entity; addresses the component sparse arrays.               |
+| 32-51 | generation | Bumped each time an entity in that slot is killed; wraps after 2^20.     |
+| 52-63 | (zero)     | Unused, so every handle is exact as a `double` (Wren numbers).           |
+
+Use `ecs::entityIndex(e)`, `ecs::entityGeneration(e)` and `ecs::makeEntity(index, generation)` to work with the fields; `ecs::NULL_ENTITY` is never alive.
+
+Slots of killed entities are recycled, but with a new generation. A handle kept after its entity died (in a script, in a component referencing another entity, ...) is therefore **stale**: `isAlive` returns false, `hasComponent`/`contains`/`get` do not see the new occupant's components, `killEntity` and `removeComponent` are no-ops, and `addComponent`/`emplaceComponent` throw `std::invalid_argument` instead of overwriting the new entity's data. Two entities may share an index over time, so never use an index alone as an identity; store the full handle.
 
 ### 2.2 Components
 
