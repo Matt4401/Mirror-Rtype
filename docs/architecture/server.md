@@ -5,16 +5,19 @@ headless and does not link raylib.
 
 ## Threads
 
-| Thread         | Runs                                       | Touches                                     |
-|----------------|--------------------------------------------|---------------------------------------------|
-| Network        | The Asio transport (`engine_network_asio`) | Sockets; receiving never waits on the game  |
-| Server         | `ServerManager::run()` and the `Lobby`     | The clients, the rooms and their players    |
-| One per room   | `Room::advance()`, once the game started   | The engine of this room, under its mutex    |
+| Thread       | Runs                                       | Touches                                    |
+|--------------|--------------------------------------------|--------------------------------------------|
+| Network      | The Asio transport (`engine_network_asio`) | Sockets; receiving never waits on the game |
+| Server       | `ServerManager::run()` and the `Lobby`     | The clients, the rooms and their players   |
+| One per room | `Room::advance()`, once the game started   | The engine of this room, under its mutex   |
 
-They only talk through the transport's event queue (`poll()`) and `asio::post` (`send()`), and a room receives its packets
-through the thread-safe `PeerGroupConnection`. A slow or crashed client therefore never blocks a game, and a room with many
+They only talk through the transport's event queue (`poll()`) and `asio::post` (`send()`), and a room receives its
+packets
+through the thread-safe `PeerGroupConnection`. A slow or crashed client therefore never blocks a game, and a room with
+many
 entities does not slow down the others. The mutex of a room is only contended when a player leaves it: the server thread
-then waits for the step in progress. An exception in a simulation stops that room only. See [Network Architecture](network.md#6-threading-model).
+then waits for the step in progress. An exception in a simulation stops that room only.
+See [Network Architecture](network.md#6-threading-model).
 
 ## `ServerManager`
 
@@ -33,13 +36,13 @@ A client of another protocol version is refused with `INetworkServer::refuse()`,
 
 `Lobby` (`server/src/Lobby.cpp`) owns the rooms and the clients past their `Hello`, and only runs on the server thread.
 
-| Message            | Effect                                                                                 |
-|--------------------|----------------------------------------------------------------------------------------|
-| `LobbyListRequest` | Answers with `LobbyList`                                                               |
-| `LobbyCreate`      | Creates a room with the client in it, sends `LobbyUpdate`                              |
-| `LobbyJoin`        | Adds the client if the room is open, sends `LobbyUpdate` to the room                   |
+| Message            | Effect                                                                                   |
+|--------------------|------------------------------------------------------------------------------------------|
+| `LobbyListRequest` | Answers with `LobbyList`                                                                 |
+| `LobbyCreate`      | Creates a room with the client in it, sends `LobbyUpdate`                                |
+| `LobbyJoin`        | Adds the client if the room is open, sends `LobbyUpdate` to the room                     |
 | `LobbyReady`       | Updates the room; when everyone is ready, starts it and sends `GameStart` to each player |
-| `Leave`            | Removes the client from its room (a disconnection does the same)                       |
+| `Leave`            | Removes the client from its room (a disconnection does the same)                         |
 
 - A departure sends `PlayerLeft` to the others. In a lobby it can also start the room, if the player who left was the
   last one not ready.
@@ -50,7 +53,8 @@ A client of another protocol version is refused with `INetworkServer::refuse()`,
 
 ## `Room`
 
-One game: one `engine::Engine`, so one registry, event bus, clock and set of plugins. Games are isolated from each other.
+One game: one `engine::Engine`, so one registry, event bus, clock and set of plugins. Games are isolated from each
+other.
 
 ```mermaid
 flowchart LR
@@ -70,9 +74,14 @@ flowchart LR
 - **`runInBackground()` gives a started room its thread**, which stops when the room is destroyed.
 - **`advance()` does nothing while the room waits.** After several catch-up steps, a single snapshot is sent, since it
   carries the latest state.
+- **`ShootingPlugin` decides the shots.** While `shoot` is held in an applied input, a ship shoots at most once per
+  `SHOT_INTERVAL`, whatever the client sends. Bullets are moved by `PhysicsPlugin`, replicated with the kind
+  `player_bullet` and the shooter's index as `subtype`, and removed once off screen.
 
 ## What is not simulated yet
 
-Only ship movement runs on the server. Shots, enemies, collisions and `GameOver` are still to do, as well as `Chat`, which
-the server drops. A snapshot is the complete state of the room, split into as many datagrams as needed: 36 entities per
+Ship movement and shots run on the server. Bullets do not hit anything yet: enemies, collisions and `GameOver` are still
+to
+do, as well as `Chat`, which the server drops. A snapshot is the complete state of the room, split into as many
+datagrams as needed: 36 entities per
 datagram, and at most 64 of them, about 2300 entities. Past that it is not sent (an error is logged).
