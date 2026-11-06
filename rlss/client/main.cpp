@@ -14,17 +14,24 @@
 #include <string>
 #include <utility>
 
+#include "ArenaViewPlugin.hpp"
+#include "CarViewPlugin.hpp"
 #include "CommandLine.hpp"
 #include "Logger.hpp"
+#include "PlayerInputPlugin.hpp"
 #include "ServerLink.hpp"
 #include "SessionPlugin.hpp"
 #include "core/Engine.hpp"
+#include "game/ReplicationCodec.hpp"
+#include "input/InputPlugin.hpp"
+#include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/NetworkFactory.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "protocol/Protocol.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/window/WindowConfig.hpp"
+#include "scripting/ScriptPlugin.hpp"
 
 namespace {
 
@@ -62,13 +69,25 @@ int main(int ac, char** av) {
             return EXIT_ERROR;
         }
         rtype::log::info(LOG_TAG, "connected");
+        // Snapshots and inputs travel over UDP, on the same port number as the TCP connection.
+        if (!transport->openUdp(*port)) {
+            rtype::log::error(LOG_TAG, "cannot open the UDP channel");
+            return EXIT_ERROR;
+        }
         const auto link = std::make_shared<rlss::client::ServerLink>(transport, std::move(*received));
 
-        // Connected: open the (still empty) game window.
+        // Connected: open the game window.
         engine::Engine engine;
         engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.title = std::string(rlss::protocol::GAME_TITLE)})
+            .addPlugin<input::InputPlugin>(rlss::client::makeControls())
             .addPlugin<ecs::net::NetworkPlugin>(link, link)
-            .addPlugin<rlss::client::SessionPlugin>(transport);
+            .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
+            // After the replication: the CarView scripts read the car transforms once interpolated.
+            .addPlugin<scripting::ScriptPlugin>()
+            .addPlugin<rlss::client::SessionPlugin>(transport)
+            .addPlugin<rlss::client::ArenaViewPlugin>()
+            .addPlugin<rlss::client::CarViewPlugin>()
+            .addPlugin<rlss::client::PlayerInputPlugin>();
         engine.run();
         return engine.getPlugin<rlss::client::SessionPlugin>().connectionLost() ? EXIT_ERROR : 0;
     } catch (const std::exception& error) {
