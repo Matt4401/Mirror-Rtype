@@ -5,9 +5,11 @@
 #include <asio/buffer.hpp>
 #include <asio/connect.hpp>  // IWYU pragma: keep
 #include <asio/io_context.hpp>
+#include <asio/ip/address_v4.hpp>
 #include <asio/ip/tcp.hpp>
 #include <asio/read.hpp>
 #include <asio/write.hpp>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +20,8 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include "net/INetworkClient.hpp"
@@ -84,6 +88,20 @@ bool serverClosesRawConnection(const std::uint16_t port, const Bytes& firstBytes
     std::error_code ignored;
     socket.close(ignored);  // unblocks read_some
     return false;
+}
+
+/**
+ * @brief Returns whether `stop()` ends within `WAIT`. A stop that hangs leaves its thread and the server behind, on
+ * purpose: nothing could join them, and the failure must be reported instead of hanging the whole test binary.
+ */
+bool stopsInTime(std::shared_ptr<ecs::net::INetworkServer> server) {
+    auto stopped = std::make_shared<std::promise<void>>();
+    auto future = stopped->get_future();
+    std::thread([server = std::move(server), stopped] {
+        server->stop();
+        stopped->set_value();
+    }).detach();
+    return future.wait_for(WAIT) == std::future_status::ready;
 }
 
 }  // namespace
@@ -276,6 +294,58 @@ TEST(Transport, StopRightAfterConnectNeverHangs) {
 
     ASSERT_EQ(stopped.wait_for(std::chrono::seconds(30)), std::future_status::ready);
     stopped.get();
+}
+
+TEST(Transport, ServerStopDuringAConnectionBurstNeverHangs) {
+    // Below the ephemeral ports: connecting in a loop to a closed ephemeral port ends up connecting a socket to itself,
+    // which holds the port and makes the next start() fail.
+    constexpr std::uint16_t PORT = 21323;
+    constexpr int ATTEMPTS = 100;
+    constexpr int CONNECTING_THREADS = 4;
+    std::atomic<bool> done{false};
+    std::vector<std::future<void>> bursts;
+    for (int thread = 0; thread < CONNECTING_THREADS; ++thread) {
+        bursts.push_back(std::async(std::launch::async, [&done] {
+            const asio::ip::tcp::endpoint server(asio::ip::make_address_v4("127.0.0.1"), PORT);
+            while (!done) {
+                asio::io_context io;
+                asio::ip::tcp::socket socket(io);
+                std::error_code ignored;
+                std::ignore = socket.connect(server, ignored);
+            }
+        }));
+    }
+
+    // A connection accepted just before stop() completes after the acceptor is closed.
+    int started = 0;
+    bool stopped = true;
+    for (int attempt = 0; attempt < ATTEMPTS && stopped; ++attempt) {
+        std::shared_ptr server = ecs::net::createServer({.protocolId = GAME_A});
+        if (server->start(PORT)) {
+            ++started;
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+            stopped = stopsInTime(std::move(server));
+        }
+    }
+    done = true;
+
+    EXPECT_TRUE(stopped);
+    EXPECT_GT(started, 0);
+}
+
+TEST(Transport, ServerStopOnATimerTickNeverHangs) {
+    constexpr std::uint16_t PORT = 47323;
+    constexpr int ATTEMPTS = 100;
+
+    // A timer that has just expired cannot be cancelled anymore: stop() must also hold when its handler runs
+    // afterwards. The delays go across the 1 ms tick, to stop as close to its expiry as possible.
+    for (int attempt = 0; attempt < ATTEMPTS; ++attempt) {
+        std::shared_ptr server =
+            ecs::net::createServer({.protocolId = GAME_A, .udpTick = std::chrono::milliseconds(1)});
+        ASSERT_TRUE(server->start(PORT));
+        std::this_thread::sleep_for(std::chrono::microseconds(900 + (attempt * 3)));
+        ASSERT_TRUE(stopsInTime(std::move(server)));
+    }
 }
 
 TEST(Transport, ConnectingTwiceIsRefused) {
