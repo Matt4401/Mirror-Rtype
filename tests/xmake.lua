@@ -194,6 +194,13 @@ target("test_server_manager")
     add_includedirs("../server/src")
     add_tests("test_server_manager")
 
+target("test_hierarchy")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_hierarchy")
+    add_packages("gtest")
+    add_files("test_hierarchy.cpp")
+    add_tests("test_hierarchy")
+
 target("test_client_collisions")
     set_kind("binary")
     add_deps("engine_core", "engine_events", "engine_physics", "engine_prefabs", "rtype_collision")
