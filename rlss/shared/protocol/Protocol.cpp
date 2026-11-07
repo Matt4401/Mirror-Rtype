@@ -18,6 +18,7 @@ constexpr std::size_t LOBBY_STATE_SIZE = 3;
 constexpr std::size_t SNAPSHOT_HEADER_SIZE = 12;
 constexpr std::size_t ENTITY_SIZE = 20;
 constexpr std::size_t PLAYER_INPUT_SIZE = 7;
+constexpr std::size_t MATCH_STATUS_SIZE = 7;
 constexpr float STEER_SCALE = 127.0F;
 constexpr std::uint8_t FLAG_FACING_LEFT = 0x01U;
 constexpr std::uint8_t FLAG_BOOSTING = 0x02U;
@@ -163,6 +164,22 @@ std::optional<Message> decodePlayerInput(Reader& reader) {
     return input;
 }
 
+std::optional<Message> decodeMatchStatus(Reader& reader) {
+    if (reader.remaining() != MATCH_STATUS_SIZE - 1) {
+        return std::nullopt;
+    }
+    MatchStatus status;
+    status.blueScore = reader.u16();
+    status.orangeScore = reader.u16();
+    const std::uint8_t phase = reader.u8();
+    status.countdown = reader.u8();
+    if (phase > static_cast<std::uint8_t>(MatchPhase::Kickoff) || status.countdown > MAX_COUNTDOWN) {
+        return std::nullopt;
+    }
+    status.phase = static_cast<MatchPhase>(phase);
+    return status;
+}
+
 }  // namespace
 
 Bytes encode(const LobbyState& message) {
@@ -219,6 +236,18 @@ Bytes encode(const PlayerInput& message) {
     return out;
 }
 
+Bytes encode(const MatchStatus& message) {
+    Bytes out;
+    out.reserve(MATCH_STATUS_SIZE);
+    Writer writer(out);
+    writer.u8(static_cast<std::uint8_t>(MessageType::MatchStatus));
+    writer.u16(message.blueScore);
+    writer.u16(message.orangeScore);
+    writer.u8(static_cast<std::uint8_t>(message.phase));
+    writer.u8(std::min(message.countdown, MAX_COUNTDOWN));
+    return out;
+}
+
 std::optional<Message> decode(const std::span<const std::uint8_t> data) {
     if (data.empty()) {
         return std::nullopt;
@@ -231,6 +260,8 @@ std::optional<Message> decode(const std::span<const std::uint8_t> data) {
             return decodeSnapshot(reader);
         case MessageType::PlayerInput:
             return decodePlayerInput(reader);
+        case MessageType::MatchStatus:
+            return decodeMatchStatus(reader);
     }
     return std::nullopt;
 }

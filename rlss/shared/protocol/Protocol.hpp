@@ -22,7 +22,7 @@ inline constexpr std::string_view GAME_TITLE = "RLSS";
  * @brief Transport protocol id (`ecs::net::NetworkConfig::protocolId`): an R-Type client and an RLSS server refuse
  * each other during the handshake. Bump the low byte on every incompatible protocol change.
  */
-inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0003U;  // "RL", version 3
+inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0004U;  // "RL", version 4
 
 /** @brief Port used when none is given on the command line (TCP and UDP). */
 inline constexpr std::uint16_t DEFAULT_PORT = 4250;
@@ -38,6 +38,8 @@ enum class MessageType : std::uint8_t {
     Snapshot = 2,
     /** @brief Client → server, unreliable: input of the local player for one step. */
     PlayerInput = 3,
+    /** @brief Server → client, reliable: score and phase of the match. */
+    MatchStatus = 4,
 };
 
 /** @brief Server → client: state of the lobby, sent to everyone when a player joins or leaves. */
@@ -100,8 +102,36 @@ struct PlayerInput {
     bool boost = false;
 };
 
+/** @brief Phase of the match. */
+enum class MatchPhase : std::uint8_t {
+    /** @brief The ball is in play. */
+    Playing = 0,
+    /** @brief A goal was just scored: celebration before the kickoff. */
+    Goal = 1,
+    /** @brief Cars and ball are back in place, frozen during the countdown. */
+    Kickoff = 2,
+};
+
+/** @brief Highest kickoff countdown value. */
+inline constexpr std::uint8_t MAX_COUNTDOWN = 9;
+
+/** @brief Server → client: score and phase, sent when they change and to every player who joins. */
+struct MatchStatus {
+    /** @brief Goals of the blue team (left side). */
+    std::uint16_t blueScore = 0;
+    /** @brief Goals of the orange team (right side). */
+    std::uint16_t orangeScore = 0;
+    /** @brief Current phase. */
+    MatchPhase phase = MatchPhase::Playing;
+    /** @brief Kickoff countdown shown to the players (3, 2, 1), 0 outside the kickoff. */
+    std::uint8_t countdown = 0;
+
+    /** @brief Field-wise equality. */
+    bool operator==(const MatchStatus&) const = default;
+};
+
 /** @brief Any decoded message. */
-using Message = std::variant<LobbyState, Snapshot, PlayerInput>;
+using Message = std::variant<LobbyState, Snapshot, PlayerInput, MatchStatus>;
 
 /**
  * @brief Encodes a lobby state: `[type u8][players u16]`.
@@ -125,6 +155,13 @@ using Message = std::variant<LobbyState, Snapshot, PlayerInput>;
  * @return Wire bytes.
  */
 [[nodiscard]] Bytes encode(const PlayerInput& message);
+
+/**
+ * @brief Encodes the match status: `[type u8][blueScore u16][orangeScore u16][phase u8][countdown u8]`.
+ * @param message Message to encode.
+ * @return Wire bytes.
+ */
+[[nodiscard]] Bytes encode(const MatchStatus& message);
 
 /**
  * @brief Decodes a message received from the network. Multi-byte integers are big-endian, floats are IEEE 754
