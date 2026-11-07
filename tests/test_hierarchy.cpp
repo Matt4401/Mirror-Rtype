@@ -390,7 +390,7 @@ TEST(HierarchyPlugin, ChildFollowsParentMovedInUpdateWithinSameFrame) {
     registry.addComponent<ecs::Transform>(child, ecs::Transform{.x = 1.0F});
     ASSERT_TRUE(hierarchy::setParent(registry, child, parent));
 
-    engineInstance.step(0.016F);
+    engineInstance.advance();
 
     EXPECT_NEAR(registry.getComponents<ecs::Transform>().get(parent).x, 10.0F, EPS);
     EXPECT_NEAR(registry.getComponents<ecs::Transform>().get(child).x, 11.0F, EPS);
