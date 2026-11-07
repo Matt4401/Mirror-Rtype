@@ -270,10 +270,15 @@ class CarPhysics : public ::testing::Test {
   protected:
     /** @brief Runs Wren code in the simulation's VM (scripts must exist: call after a first update). */
     void wren(const std::string& code) {
+        // A module of its own each time: two snippets (or a snippet and `throwBall`) may declare the same variables.
+        const std::string module = "rlss_snippet_" + std::to_string(++_snippets);
         ASSERT_TRUE(_scripts.getVm()
-                        .interpret("rlss_test", "import \"rlss/scripts/Simulation\" for Simulation\n" + code + "\n")
+                        .interpret(module, "import \"rlss/scripts/Simulation\" for Simulation\n" + code + "\n")
                         .has_value());
     }
+
+    /** @brief Snippets run by `wren`, to name their modules. */
+    int _snippets = 0;
 
     [[nodiscard]] int glow() { return _registry.getComponents<game::ShotGlow>().get(_ball).shot; }
     [[nodiscard]] const game::CarCues& carCues() { return _registry.getComponents<game::CarCues>().get(_car); }
@@ -547,6 +552,24 @@ TEST_F(CarPhysics, ABallBehindTheLeftGoalLineScoresForOrangeThenKicksOff) {
     EXPECT_GT(transform().x, frozenX);                         // play resumed
     EXPECT_GT(ball().y, (arena::TOP + arena::BOTTOM) / 2.0F);  // the ball drops
     EXPECT_EQ(match().orangeScore, 1);                         // scored once
+}
+
+TEST_F(CarPhysics, AGoalExplodesTheBallAndBlowsTheCloseCarsAway) {
+    // A car in the air in front of the left goal, falling straight down without the blast.
+    const float startX = arena::LEFT + 160.0F;
+    spawnCar(startX, arena::GOAL_BOTTOM - 150.0F);
+    spawnBall(arena::LEFT - 140.0F, arena::GOAL_BOTTOM - 120.0F);
+    run(0.1F);
+    ASSERT_EQ(match().phase, 1);
+    const float ballX = ball().x;
+    const float ballY = ball().y;
+
+    run(0.5F);
+    EXPECT_GT(transform().x, startX + 100.0F);  // blown away from the goal
+    run(1.0F);
+    EXPECT_EQ(match().phase, 1);
+    EXPECT_FLOAT_EQ(ball().x, ballX);  // out of play: it does not fall any more
+    EXPECT_FLOAT_EQ(ball().y, ballY);
 }
 
 TEST_F(CarPhysics, ANewMatchStartsWithAKickoffAndAFullClock) {
@@ -934,12 +957,18 @@ TEST_F(CarPhysics, ABallThrownIntoAGoalCornerFollowsTheCurve) {
     const float back = arena::LEFT - arena::GOAL_DEPTH;
     spawnBall(back + BALL_RADIUS + 1.0F, arena::GOAL_BOTTOM - BALL_RADIUS - 100.0F);
     throwBall(0.0F, -1500.0F);
-    float furthest = ball().x;
-    for (int i = 0; i < 40; ++i) {
-        run(FRAME);
-        furthest = std::max(furthest, ball().x);
-    }
-    EXPECT_GT(furthest, back + BALL_RADIUS + 20.0F);  // pushed out of the corner, toward the goal mouth
+    // The ball is in the goal: the match would score and take it out of play. Step its physics alone instead.
+    wren(
+        "var ball = Simulation.ball\n"
+        "var furthest = ball.x\n"
+        "for (i in 0...80) {\n"
+        "    ball.step(1 / 120)\n"
+        "    ball.constrain()\n"
+        "    furthest = furthest.max(ball.x)\n"
+        "}\n"
+        "if (furthest <= " +
+        std::to_string(back + BALL_RADIUS + 20.0F) + ") Fiber.abort(\"stuck in the corner at %(furthest)\")");
+    EXPECT_FALSE(HasFailure());  // pushed out of the corner, toward the goal mouth
 }
 
 // --- Air control: the stick aims, the nose follows ---

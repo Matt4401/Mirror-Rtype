@@ -132,6 +132,10 @@ struct FakeScreenDraw final : engine::IScreenDrawService {
                   const ecs::Rgba& color, engine::FontId /*font*/) override {
         calls.push_back({.kind = "text", .rect = {.x = x, .y = y}, .color = color, .text = std::string(text)});
     }
+    void drawTexture(ecs::TextureId /*texture*/, const ecs::TextureRect& /*source*/, const engine::ScreenRect& dest,
+                     float /*rotation*/, const ecs::Rgba& tint) override {
+        calls.push_back({.kind = "texture", .rect = dest, .color = tint, .text = {}});
+    }
 };
 
 void renderUi(ecs::Registry& reg, FakeScreenDraw& draw) {

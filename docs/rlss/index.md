@@ -13,9 +13,10 @@ rlss/
 ├── game/               -- rlss_game: game components, replication codec, Wren bindings (server + client)
 ├── server/             -- rlss_server: headless, authoritative, one engine (and thread) per match
 ├── client/             -- rlss_client: window, menus, arena and car drawing, controls, sounds
-├── assets/             -- sounds/*.wav, synthesized by generate_sounds.py (no third-party asset)
-└── scripts/            -- Wren: Match, Kickoff, Car, Ball, Arena, tunings (server); CameraDirector, CarView, BallView,
-                           ScoreboardView (client)
+├── assets/             -- sounds/*.wav; textures/*.png drawn by generate_textures.py (original artwork);
+│                          fonts/: Russo One (SIL Open Font License, see fonts/OFL.txt)
+└── scripts/            -- Wren: Match, Kickoff, Car, Ball, Arena, tunings (server); CameraDirector, CarView, BallView
+                           (client)
 ```
 
 | Target        | Engine modules used                                                                               |
@@ -34,7 +35,8 @@ xmake
 ```
 
 Run both from the repository root: the Wren scripts are loaded from `rlss/scripts/`, the sounds from
-`rlss/assets/sounds/`. Scripts are hot-reloaded: save
+`rlss/assets/sounds/`, the textures and the font from `rlss/assets/textures/` and `rlss/assets/fonts/`. Scripts are
+hot-reloaded: save
 `rlss/scripts/CarTuning.wren` or `BallTuning.wren` while the server runs to tune the physics live.
 
 The client first asks for a name (keyboard: up to 12 letters, digits, spaces, `-` or `.`; Enter or **VALIDER**). It is
@@ -92,18 +94,23 @@ flowchart LR
       a `Welcome` with its car and team.
 - **Client** (`rlss/client/main.cpp`): connects first (no window if the server is unreachable), opens UDP, then
   `RenderPlugin`, `InputPlugin`, `NetworkPlugin` fed by `ServerLink`, `ClientReplicationPlugin`, `ScriptPlugin`, and:
-    - `ArenaViewPlugin` draws the arena with flat colored rectangles;
+    - `AssetsPlugin` loads the textures and the font once (`GameAssets`, an ECS resource read by the views, see
+      [Graphics](#graphics));
+    - `ArenaViewPlugin` draws the arena picture (in tiles) and the stadium behind it, which moves slower than the
+      arena when the camera moves (parallax);
     - `CameraPlugin` owns the camera: it keeps a `CameraRig` up to date (local car from the server's `Welcome`, ball,
       match phase, window size, arena bounds) for the `CameraDirector` script, which frames the action (see below);
-    - `CarViewPlugin` gives each replicated car its parts (body and cabin in the player color, wheels, headlight,
-      boost flame and gauge) and the `CarView` script that places them every frame;
-    - `BallViewPlugin` builds the ball (a disc of strips and two seams, tagged `ball_part`) and the `BallView` script
-      that places the pieces and turns the seams with the ball;
-    - `ScoreboardPlugin` draws the score, the match clock, the kickoff countdown and "GOAL" with small squares (until
-      the engine can render text): it creates the squares (tagged `score_cell`, laid out in screen pixels) and writes
-      each `MatchStatus` of the joined match into a `MatchState`; the `ScoreboardView` script lights the squares with a
-      3 × 5 pixel font and places them through the camera every frame, so the scoreboard stays on screen while the
-      camera moves. Nothing is shown in the menus;
+    - `CarViewPlugin` gives each replicated car its textured parts (body tinted with the player color, glass and
+      trims, wheels, headlight glow, boost flame and gauge, flip reset flash) and the `CarView` script that places
+      them every frame;
+    - `BallViewPlugin` builds the ball (panels that turn with it, lighting that does not, one colored halo per shot,
+      tagged `ball_part`) and the `BallView` script that places the pieces;
+    - `HudPlugin` writes each `MatchStatus` of the joined match into a `MatchState` (read by the sounds) and draws the
+      HUD on screen with the engine's `IScreenDrawService`: score and clock at the top, kickoff countdown and "GO!",
+      the "GOAL!" banner in the color of the team that scored, the boost meter of the local car in the bottom-right
+      corner. Nothing is shown in the menus;
+    - `GoalEffectPlugin` blows the ball up when a goal is scored (see [Graphics](#graphics)) and hides the ball until
+      the kickoff;
     - `SoundPlugin` plays the sounds through the engine `AudioPlugin` (see [Sounds](#sounds));
     - `PlayerInputPlugin` publishes the local controls as a `LocalInput` every fixed step, while in a match;
     - `NameTagPlugin` draws each player's name above their car, from the server's `PlayerNames` (see
@@ -124,10 +131,9 @@ flowchart LR
 | `rlss/scripts/Ball`       | server  | Ball physics: drag, bounces, spin                                         |
 | `rlss/scripts/Arena`      | server  | Arena shape as a signed distance field: distance, wall normal, curvature  |
 | `rlss/scripts/CarTuning`, `BallTuning` | server | Rocket League constants                                     |
-| `rlss/scripts/CarView`    | client  | Size and placement of the car parts, wheel spin, boost flame and gauge    |
-| `rlss/scripts/BallView`   | client  | Placement of the ball pieces, seams turning with the ball                 |
+| `rlss/scripts/CarView`    | client  | Placement of the car sprites (mirrored when facing left), wheel spin, boost flame and gauge |
+| `rlss/scripts/BallView`   | client  | Placement of the ball pieces, panels turning with the ball, halo pulse     |
 | `rlss/scripts/CameraDirector` | client | Camera: aim, zoom, easing, arena bounds, kickoff wide shot         |
-| `rlss/scripts/ScoreboardView` | client | Score, clock, countdown and "GOAL" drawn with squares (3 × 5 font), on screen |
 
 The scripts see the ECS through component classes bound by `rlss::game::installScriptBindings` in the
 `rlss/components` module: `Transform`, `Controls` (`InputState.playerIndex`), `ArenaShape`, `CarParts`. They read the
@@ -138,8 +144,8 @@ The cars and the ball are not stepped by their own `update`: each instance regis
 script (on the arena entity) steps them all in a fixed order, so that their contacts are resolved deterministically.
 
 What stays in C++: creating entities (Wren can only spawn prefabs at a position), the network and replication, the
-arena drawing (hundreds of shapes created once), and the menus (driven by network messages, rebuilt as entities when
-the screen changes).
+arena drawing (a few tiles placed once), the HUD and the menus (drawn on screen every frame, the menus driven by
+network messages).
 
 ## Goals and match
 
@@ -159,7 +165,10 @@ formula alone.
 - **Teams**: even player slots are blue (left side, defending the left goal, cool colors), odd slots orange (right
   side, warm colors). Teammates line up one behind the other at kickoff.
 - **Goal**: as in Rocket League, once the whole ball is behind the goal line. The team attacking that goal scores.
-- **After a goal**: 2 s of celebration ("GOAL" on screen, the ball stays in play), then every car goes back to its
+- **After a goal**: the ball explodes in the goal. The blast blows away the cars closer than 900 uu to it (up to
+  1600 uu/s next to it, fading with the distance, always a little upward; `Kickoff.BLAST_RADIUS` / `BLAST_SPEED`), and
+  the ball is out of play: it stays where it exploded, without colliding (clients hide it). 2 s of celebration
+  ("GOAL!" on screen), then every car goes back to its
   kickoff spot (at rest, full boost) and the ball to the center of the arena. A 3-2-1 countdown follows, everybody
   frozen, then play resumes and the ball drops. A player who joins starts at their kickoff spot.
 - **Clock**: a match starts with a kickoff and lasts 3 minutes of play (`Match.DURATION`): the clock stops during the
@@ -194,8 +203,8 @@ sequenceDiagram
   refreshes under a mutex after each frame. A match that throws is reported as ended, so its players get the end screen.
 - A match is listed until it ends; a full one is shown but cannot be joined. A match without players is destroyed, a
   player who disconnects leaves their match.
-- Client side, `MenuPlugin` draws the screens in screen space with `UiCanvas` (flat rectangles and a 5 × 7 block font,
-  placed through the camera every frame like the scoreboard) and reads the mouse. On `JoinResult(Joined)` it publishes
+- Client side, `MenuPlugin` draws the screens on screen with `UiCanvas` (rectangles, pictures and text in the game
+  font, rebuilt when the screen changes and drawn every frame through `IScreenDrawService`) and reads the mouse. On `JoinResult(Joined)` it publishes
   `MatchJoined` and tells the `ServerLink` which match's snapshots to let through: snapshots are unreliable, so a few
   of a match just left can still arrive, and must not bring back its cars nor a newer tick. Leaving removes the
   replicated entities (each with its `ReplicatedEntityDespawned`), resets the engine's `SnapshotState` (the next match
@@ -205,16 +214,50 @@ sequenceDiagram
 
 1. **Name entry.** `MenuPlugin` opens on the name entry. It reads the typed characters through the engine's
    `IWindowService::nextTypedCharacter()` (layout-aware: an AZERTY keyboard types what its keys say), makes letters
-   upper-case and only keeps the characters the block font draws (`protocol::isNameCharacter`). Enter sends `SetName`.
+   upper-case and only keeps the characters names may hold (`protocol::isNameCharacter`). Enter sends `SetName`.
 2. **Server.** The `MatchServer` keeps the name of each peer (a malformed one is dropped). When the peer joins a match,
    it hands the name to the match right after the player, as a `SetName` from that peer, and again if the player
    renames while playing.
 3. **Match.** `RosterPlugin` names each car "JOUEUR" and its slot number until the player's `SetName` arrives, and sends
    every player of the match the names of all the cars (`PlayerNames`) when a player joins, leaves or renames.
 4. **Client.** `NameTagPlugin` keeps the last `PlayerNames` of the joined match (one arriving outside a match is late,
-   and ignored). Once a named car is in the snapshots, it builds its label: the name in the block font, in the player
-   color lightened, on a dark plate. The label is laid out in pixels (`UiCanvas`, shifted every frame to the point above
+   and ignored). Once a named car is in the snapshots, it builds its label: the name in the game font, in the player
+   color lightened, on a dark plate underlined in the player color. The label is laid out in pixels (`UiCanvas`, shifted every frame to the point above
    the car's boost gauge on screen), so it keeps its size whatever the zoom.
+
+## Graphics
+
+The look is original artwork in the spirit of the genre (no asset from another game): a night stadium, a glass arena
+with neon walls, blue on the left and orange on the right, and a grass pitch along the floor.
+
+- **Textures.** `rlss/assets/generate_textures.py` draws every texture procedurally (Pillow and NumPy, deterministic):
+  `python3 rlss/assets/generate_textures.py` regenerates `rlss/assets/textures/`. It reads the arena dimensions from
+  `rlss/shared/Arena.hpp` (and the wall thickness from `ArenaViewPlugin.hpp`), so the picture always matches the
+  physics: walls, rounded corners, goals with their rounded back corners, posts and goal lines. The arena picture
+  (1.25 px per uu) is cut into tiles of at most 1024 px, which `ArenaViewPlugin` places with the same constants.
+- **Layers, back to front.** The stadium (stands full of fans, LED ribbons, floodlights, blurred: it is far away),
+  then the arena: its field is tinted glass, so the stadium shows through it and, since it moves slower than the
+  arena, gives the scene depth; then the cars and the ball, then the screen overlays (name tags, HUD, menus).
+- **Car.** The body texture is greyscale and tinted with the player color; glass, trims and lights are a second,
+  untinted texture on top. The wheels turn with the distance travelled, the flame flickers while boosting, and the
+  sprites are mirrored when the car faces left. The car textures have 4 px per uu (`CarView.PX`).
+- **Ball.** The panels (a truncated icosahedron with glowing seams) turn with the ball; the lighting (a highlight
+  from the top-left and a dark rim) is a separate texture that does not, so the ball keeps looking round.
+- **Text.** The menus, the HUD and the name tags use Russo One (SIL Open Font License, `rlss/assets/fonts/OFL.txt`).
+  `UiCanvas` sizes text by the height of its capital letters.
+- **Engine support** (generic, used here): `TextureStore::load(path, TextureFilter::Smooth)` (mipmaps, trilinear,
+  clamped edges, for artwork drawn at any zoom), fonts rasterized at 128 px so that big titles stay sharp, and
+  `IScreenDrawService::drawTexture` (textured quads on screen, rotated around their center) for the HUD.
+
+- **Goal explosion** (`GoalEffectPlugin`, on the switch to the goal celebration, at the ball): a fireball in the color
+  of the team that scored (`goal_explosion_blue.png` / `goal_explosion_orange.png`, 20 frames of 192 px played once in
+  1.1 s by the engine's `AnimationPlugin`), two shockwave rings, a burst of light, sparks flying out and falling, smoke
+  drifting up, and a flash of the whole screen. The particles are short-lived entities (`GoalParticle`) moved,
+  scaled and faded every frame, then removed. The ball pieces are hidden during the celebration and 0.3 s after it,
+  until the snapshots bring the ball back to the center.
+
+A missing texture is logged: the stadium or arena tile is then not drawn, a car or ball part shows as a small flat
+rectangle. A missing font falls back to the backend's default font.
 
 ## Camera
 
@@ -252,7 +295,8 @@ The client plays every sound from the server's state: it never guesses an event 
   hot-reload replays nothing.
 - **`SoundPlugin`** (client) loads the sounds through `engine::IAudioService` and publishes engine `PlaySoundEvent`s,
   positioned where the car or the ball is: louder and lower-pitched for stronger hits, bounces and impacts; a colored
-  shot adds a blast on top of the hit (pitched by its color). Each car plays its engine (an `AudioEmitter` on the car,
+  shot adds a blast on top of the hit (pitched by its color). A goal plays the explosion (`goal_explosion.wav`,
+synthesized by `rlss/assets/generate_goal_sound.py`) with the horn and the cheering. Each car plays its engine (an `AudioEmitter` on the car,
   pitched and louder with its speed, measured on screen) and, while it boosts, the boost roar (an emitter on its own
   entity, which follows the car).
 - **Match sounds** come from the `MatchState`: a beep for each second of the kickoff countdown, a higher one when play
@@ -374,7 +418,8 @@ directional jump off the ball flips and misses it), the sound cues (jumps counte
 impact, driving around is not, ball bounces counted until it settles, a shot counted with its strength, counters going
 on from the component after a hot-reload), the rounded back corners of the goals (the arena distance, a ball rising
 along the back of a goal turned out of the corner), the flip and boost resets on the ball, goals (a ball behind the line scores for the
-right team, celebration, kickoff spots, countdown freeze, play resuming; a shot in the goal scores, a shot above the
+right team, celebration, kickoff spots, countdown freeze, play resuming; the goal explosion freezing the ball and blowing
+a close car away; a shot in the goal scores, a shot above the
 crossbar or under the goal does not), driving above the goal and up the ramp, and 400 random input sequences (with and
 without the ball) where neither the car nor the ball may leave the arena and the goals. The test checks containment
 with its own C++ distance to the arena and goals, written independently from `Arena.wren`.
