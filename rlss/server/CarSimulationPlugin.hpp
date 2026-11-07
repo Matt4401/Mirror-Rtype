@@ -1,6 +1,6 @@
 /**
  * @file CarSimulationPlugin.hpp
- * @brief Server plugin hosting the car simulation: arena, Wren bindings, player inputs.
+ * @brief Server plugin hosting the match simulation: arena, ball, Wren bindings, player inputs.
  */
 
 #pragma once
@@ -19,11 +19,12 @@ namespace rlss::server {
  * @brief Prepares the world the `Car` Wren scripts simulate, and feeds them the player inputs.
  *
  * - Exposes the RLSS components to Wren (`rlss::game::installScriptBindings`).
- * - Spawns the arena entity (`ecs::Tag` "arena" + `rlss::game::ArenaShape`), read by `Arena.fromWorld()`.
+ * - Spawns the arena entity (`ecs::Tag` "arena" + `rlss::game::ArenaShape`, read by `Arena.fromWorld()`), which runs
+ *   the `Match` script, and the replicated ball, driven by the `Ball` script.
  * - On each `ecs::net::InputApplied` (one input per car and per fixed step, from `ServerReplicationPlugin`), writes
  *   the input into the car's `input::InputState`, which the scripts read with `Input.getAxis` / `Input.isDown`.
  *
- * The physics itself is in `rlss/scripts/Car.wren`.
+ * The physics itself is in `rlss/scripts/` (`Match`, `Car`, `Ball`).
  */
 class CarSimulationPlugin final : public engine::IPlugin {
   public:
@@ -40,7 +41,7 @@ class CarSimulationPlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Registers the Wren bindings, spawns the arena and subscribes to the applied inputs.
+     * @brief Registers the Wren bindings, spawns the arena and the ball, and subscribes to the applied inputs.
      * @param engine Host engine.
      * @throws std::runtime_error If Wren refuses the bindings.
      */
@@ -55,6 +56,8 @@ class CarSimulationPlugin final : public engine::IPlugin {
   private:
     /** @brief Arena entity. */
     ecs::Entity _arena = 0;
+    /** @brief Ball entity. */
+    ecs::Entity _ball = 0;
     /** @brief Subscription to `InputApplied`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _inputs;
 };

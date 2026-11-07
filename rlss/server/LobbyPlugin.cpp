@@ -113,10 +113,11 @@ void LobbyPlugin::join(engine::Engine& engine, const ecs::net::PeerId peer) {
     registry.addComponent(car, ecs::InputBuffer{});
     registry.addComponent(car, ecs::NetworkOwner{.client = peer});
     registry.addComponent(car, game::CarLook{.color = static_cast<std::uint8_t>(slot % PLAYER_COLORS.size())});
+    registry.addComponent(car, game::CarStatus{});
+    // Stepped by the `Match` script, not by its own update.
     registry.addComponent(car, ecs::ScriptComponent{
                                    .moduleName = std::string(game::CAR_SCRIPT_MODULE),
                                    .className = "Car",
-                                   .hasUpdate = true,
                                });
     ecs::net::replicate(registry, car, game::KIND_CAR);
     _players.emplace(peer, Player{.slot = slot, .car = car});
