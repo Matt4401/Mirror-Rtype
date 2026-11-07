@@ -29,12 +29,13 @@ TEST(RlssCodec, InputSurvivesTheWire) {
     ASSERT_EQ(decoded->axes.size(), 1U);
     EXPECT_NEAR(decoded->axes[0].value, 0.5F, 0.01F);
     // A snapshot is not an input.
-    EXPECT_FALSE(codec.decodeInput(rlss::protocol::encode(rlss::protocol::LobbyState{})).has_value());
+    EXPECT_FALSE(codec.decodeInput(rlss::protocol::encode(rlss::protocol::CreateMatch{})).has_value());
 }
 
 TEST(RlssCodec, SnapshotSplitsIntoPartsAndRecreatesTheCars) {
     ecs::Registry server;
-    game::ReplicationCodec codec;
+    constexpr std::uint16_t MATCH = 12;
+    game::ReplicationCodec codec(MATCH);
     codec.beginSnapshot(7);
     constexpr std::uint32_t CARS = rlss::protocol::MAX_ENTITIES_PER_PART + 2;
     for (std::uint32_t id = 1; id <= CARS; ++id) {
@@ -50,6 +51,8 @@ TEST(RlssCodec, SnapshotSplitsIntoPartsAndRecreatesTheCars) {
     ecs::net::NetworkEntityMap map;
     std::size_t applied = 0;
     for (const auto& part : parts) {
+        // Every part says which match it comes from: a client drops those of another match.
+        EXPECT_EQ(rlss::protocol::snapshotMatch(part), MATCH);
         const auto header = codec.decodeSnapshot(part);
         ASSERT_TRUE(header.has_value());
         EXPECT_EQ(header->tick, 7U);

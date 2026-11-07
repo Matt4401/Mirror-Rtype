@@ -256,6 +256,17 @@ target("test_rlss_codec")
     add_files("rlss/CodecTests.cpp")
     add_tests("test_rlss_codec")
 
+target("test_rlss_server")
+    set_kind("binary")
+    add_deps("rlss_game", "log", "engine_core", "engine_time", "engine_events", "engine_network", "engine_scripting")
+    add_packages("gtest", "wren")
+    add_files("rlss/MatchServerTests.cpp", "../rlss/server/MatchServer.cpp", "../rlss/server/MatchRoom.cpp",
+              "../rlss/server/RosterPlugin.cpp", "../rlss/server/CarSimulationPlugin.cpp")
+    add_includedirs("../rlss/server")
+    -- Each match runs the Wren scripts, loaded relative to the working directory.
+    add_defines('RLSS_PROJECT_DIR="$(projectdir)"')
+    add_tests("test_rlss_server")
+
 target("test_rlss_camera")
     set_kind("binary")
     add_deps("rlss_game")

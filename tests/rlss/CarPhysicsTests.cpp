@@ -96,7 +96,8 @@ class CarPhysics : public ::testing::Test {
                                                              .goalTop = arena::GOAL_TOP,
                                                              .goalBottom = arena::GOAL_BOTTOM,
                                                              .goalDepth = arena::GOAL_DEPTH});
-        _registry.addComponent(arenaEntity, game::MatchState{});
+        // Most tests want the ball in play at once: a match already running (a new one starts with a kickoff).
+        _registry.addComponent(arenaEntity, game::MatchState{.clock = MATCH_DURATION});
         _arena = arenaEntity;
         _registry.addComponent(arenaEntity, ecs::ScriptComponent{.moduleName = std::string(game::MATCH_SCRIPT_MODULE),
                                                                  .className = "Match",
@@ -235,6 +236,12 @@ class CarPhysics : public ::testing::Test {
     }
 
     [[nodiscard]] const game::MatchState& match() { return _registry.getComponents<game::MatchState>().get(_arena); }
+
+    /** @brief The arena's `MatchState`, to set before the first `run()`: the match script starts from it. */
+    [[nodiscard]] game::MatchState& matchState() { return _registry.getComponents<game::MatchState>().get(_arena); }
+
+    /** @brief `Match.DURATION`: 3 minutes. */
+    static constexpr int MATCH_DURATION = 180;
 
     ecs::Registry _registry;
     ecs::EventBus _bus;
@@ -486,6 +493,81 @@ TEST_F(CarPhysics, ABallBehindTheLeftGoalLineScoresForOrangeThenKicksOff) {
     EXPECT_GT(transform().x, frozenX);                         // play resumed
     EXPECT_GT(ball().y, (arena::TOP + arena::BOTTOM) / 2.0F);  // the ball drops
     EXPECT_EQ(match().orangeScore, 1);                         // scored once
+}
+
+TEST_F(CarPhysics, ANewMatchStartsWithAKickoffAndAFullClock) {
+    matchState() = game::MatchState{};  // no clock yet: a new match
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::WIDTH / 2.0F, arena::HEIGHT / 2.0F);
+    run(0.1F);
+    EXPECT_EQ(match().phase, 2);
+    EXPECT_EQ(match().countdown, 3);
+    EXPECT_EQ(match().clock, MATCH_DURATION);
+
+    run(3.0F);
+    EXPECT_EQ(match().phase, 0);
+    EXPECT_EQ(match().clock, MATCH_DURATION);  // the countdown does not count
+    run(10.0F);
+    EXPECT_NEAR(match().clock, MATCH_DURATION - 10, 1);
+    EXPECT_FALSE(match().overtime);
+}
+
+TEST_F(CarPhysics, TheClockStopsDuringAGoalAndItsKickoff) {
+    matchState().clock = 60;
+    spawnBall(arena::LEFT - 140.0F, arena::GOAL_BOTTOM - BALL_RADIUS);
+    run(0.1F);
+    ASSERT_EQ(match().phase, 1);
+    run(4.5F);  // 2 s of celebration, then the countdown
+    EXPECT_EQ(match().phase, 2);
+    EXPECT_EQ(match().clock, 60);
+    run(2.0F);
+    EXPECT_EQ(match().phase, 0);
+    EXPECT_EQ(match().clock, 59);
+}
+
+TEST_F(CarPhysics, TheMatchEndsWhenTimeRunsOutWithALead) {
+    matchState().clock = 2;
+    matchState().blueScore = 1;
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::WIDTH / 2.0F, arena::BOTTOM - BALL_RADIUS);
+    run(1.2F);
+    EXPECT_EQ(match().phase, 0);
+    EXPECT_EQ(match().clock, 1);
+
+    run(1.0F);
+    EXPECT_EQ(match().phase, 3);
+    EXPECT_EQ(match().clock, 0);
+    EXPECT_FALSE(match().overtime);
+    EXPECT_EQ(match().blueScore, 1);
+
+    // Over: everything stays frozen, whatever the input.
+    const float x = transform().x;
+    run(1.0F, 1.0F, true, true);
+    EXPECT_FLOAT_EQ(transform().x, x);
+    EXPECT_EQ(match().phase, 3);
+}
+
+TEST_F(CarPhysics, ATieAtTheEndGoesToOvertimeAndTheNextGoalWins) {
+    matchState().clock = 1;
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::WIDTH / 2.0F, arena::BOTTOM - BALL_RADIUS);
+    run(1.2F);
+    EXPECT_TRUE(match().overtime);
+    EXPECT_EQ(match().phase, 2);  // overtime starts with a kickoff
+    EXPECT_EQ(match().clock, 0);
+
+    run(5.0F);  // 3 s of countdown, then the clock counts the overtime up
+    EXPECT_EQ(match().phase, 0);
+    EXPECT_NEAR(match().clock, 2, 1);
+
+    wren("Simulation.ball.respawn(" + std::to_string(arena::LEFT - 140.0F) + ", " +
+         std::to_string(arena::GOAL_BOTTOM - BALL_RADIUS) + ")");
+    run(0.1F);
+    EXPECT_EQ(match().orangeScore, 1);
+    EXPECT_EQ(match().phase, 1);  // celebration first...
+    run(2.5F);
+    EXPECT_EQ(match().phase, 3);  // ...then the golden goal ends the match, no kickoff
+    EXPECT_TRUE(match().overtime);
 }
 
 TEST_F(CarPhysics, AShotIntoTheRightGoalScoresForBlue) {
