@@ -16,11 +16,16 @@ constexpr unsigned BYTE_BITS = 8;
 constexpr std::uint32_t BYTE_MASK = 0xFFU;
 constexpr std::size_t LOBBY_STATE_SIZE = 3;
 constexpr std::size_t SNAPSHOT_HEADER_SIZE = 12;
-constexpr std::size_t ENTITY_SIZE = 19;
+constexpr std::size_t ENTITY_SIZE = 20;
 constexpr std::size_t PLAYER_INPUT_SIZE = 7;
 constexpr float STEER_SCALE = 127.0F;
 constexpr std::uint8_t FLAG_FACING_LEFT = 0x01U;
+constexpr std::uint8_t FLAG_BOOSTING = 0x02U;
+constexpr std::uint8_t KNOWN_FLAGS = FLAG_FACING_LEFT | FLAG_BOOSTING;
+constexpr std::uint8_t MAX_BOOST = 100;
 constexpr std::uint8_t BUTTON_JUMP = 0x01U;
+constexpr std::uint8_t BUTTON_BOOST = 0x02U;
+constexpr std::uint8_t KNOWN_BUTTONS = BUTTON_JUMP | BUTTON_BOOST;
 
 /** @brief Appends big-endian values to a byte buffer. */
 class Writer {
@@ -103,13 +108,15 @@ std::optional<EntityState> decodeEntity(Reader& reader) {
     const auto rotation = reader.f32();
     const std::uint8_t flags = reader.u8();
     entity.color = reader.u8();
-    if (entity.id == 0 || !x || !y || !rotation || (flags & ~FLAG_FACING_LEFT) != 0) {
+    entity.boost = reader.u8();
+    if (entity.id == 0 || !x || !y || !rotation || (flags & ~KNOWN_FLAGS) != 0 || entity.boost > MAX_BOOST) {
         return std::nullopt;
     }
     entity.x = *x;
     entity.y = *y;
     entity.rotation = *rotation;
     entity.facingLeft = (flags & FLAG_FACING_LEFT) != 0;
+    entity.boosting = (flags & FLAG_BOOSTING) != 0;
     return entity;
 }
 
@@ -147,11 +154,12 @@ std::optional<Message> decodePlayerInput(Reader& reader) {
     input.sequence = reader.u32();
     const auto steer = static_cast<std::int8_t>(reader.u8());
     const std::uint8_t buttons = reader.u8();
-    if (steer < -static_cast<int>(STEER_SCALE) || (buttons & ~BUTTON_JUMP) != 0) {
+    if (steer < -static_cast<int>(STEER_SCALE) || (buttons & ~KNOWN_BUTTONS) != 0) {
         return std::nullopt;
     }
     input.steer = static_cast<float>(steer) / STEER_SCALE;
     input.jump = (buttons & BUTTON_JUMP) != 0;
+    input.boost = (buttons & BUTTON_BOOST) != 0;
     return input;
 }
 
@@ -184,8 +192,13 @@ Bytes encode(const Snapshot& message) {
         writer.f32(entity.x);
         writer.f32(entity.y);
         writer.f32(entity.rotation);
-        writer.u8(entity.facingLeft ? FLAG_FACING_LEFT : 0);
+        std::uint8_t flags = entity.facingLeft ? FLAG_FACING_LEFT : 0;
+        if (entity.boosting) {
+            flags |= FLAG_BOOSTING;
+        }
+        writer.u8(flags);
         writer.u8(entity.color);
+        writer.u8(std::min(entity.boost, MAX_BOOST));
     }
     return out;
 }
@@ -198,7 +211,11 @@ Bytes encode(const PlayerInput& message) {
     writer.u32(message.sequence);
     const float steer = std::isfinite(message.steer) ? std::clamp(message.steer, -1.0F, 1.0F) : 0.0F;
     writer.u8(static_cast<std::uint8_t>(static_cast<std::int8_t>(std::lround(steer * STEER_SCALE))));
-    writer.u8(message.jump ? BUTTON_JUMP : 0);
+    std::uint8_t buttons = message.jump ? BUTTON_JUMP : 0;
+    if (message.boost) {
+        buttons |= BUTTON_BOOST;
+    }
+    writer.u8(buttons);
     return out;
 }
 

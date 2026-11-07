@@ -1,5 +1,6 @@
 #include "CarViewPlugin.hpp"
 
+#include <array>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -26,13 +27,19 @@ namespace {
 
 constexpr ecs::Rgba WHEEL_COLOR{.r = 85, .g = 88, .b = 96, .a = 255};
 constexpr ecs::Rgba HEADLIGHT_COLOR{.r = 255, .g = 240, .b = 170, .a = 255};
+constexpr ecs::Rgba FLAME_COLOR{.r = 255, .g = 150, .b = 30, .a = 230};
+constexpr ecs::Rgba GAUGE_BACK_COLOR{.r = 10, .g = 12, .b = 20, .a = 200};
+constexpr ecs::Rgba GAUGE_FILL_COLOR{.r = 255, .g = 190, .b = 40, .a = 255};
 /** @brief The cabin is the player color, darkened by this factor. */
 constexpr float CABIN_SHADE = 0.6F;
 
+constexpr int LAYER_FLAME = 9;
 constexpr int LAYER_WHEELS = 10;
 constexpr int LAYER_CABIN = 11;
 constexpr int LAYER_BODY = 12;
 constexpr int LAYER_LIGHT = 13;
+constexpr int LAYER_GAUGE_BACK = 30;
+constexpr int LAYER_GAUGE_FILL = 31;
 
 ecs::Rgba shade(const Rgb color, const float factor) {
     return ecs::Rgba{
@@ -86,6 +93,9 @@ void CarViewPlugin::init(engine::Engine& engine) {
                                       .rearWheel = spawnPart(registry, car, WHEEL_COLOR, LAYER_WHEELS),
                                       .frontWheel = spawnPart(registry, car, WHEEL_COLOR, LAYER_WHEELS),
                                       .headlight = spawnPart(registry, car, HEADLIGHT_COLOR, LAYER_LIGHT),
+                                      .flame = spawnPart(registry, car, FLAME_COLOR, LAYER_FLAME),
+                                      .gaugeBack = spawnPart(registry, car, GAUGE_BACK_COLOR, LAYER_GAUGE_BACK),
+                                      .gaugeFill = spawnPart(registry, car, GAUGE_FILL_COLOR, LAYER_GAUGE_FILL),
                                   });
             registry.addComponent(event.entity, ecs::ScriptComponent{
                                                     .moduleName = std::string(game::CAR_VIEW_SCRIPT_MODULE),
@@ -101,8 +111,11 @@ void CarViewPlugin::init(engine::Engine& engine) {
                 return;
             }
             const game::CarParts parts = allParts.get(event.entity);
-            for (const std::uint32_t part :
-                 {parts.body, parts.cabin, parts.rearWheel, parts.frontWheel, parts.headlight}) {
+            const std::array<std::uint32_t, 8> pieces{
+                parts.body,      parts.cabin, parts.rearWheel, parts.frontWheel,
+                parts.headlight, parts.flame, parts.gaugeBack, parts.gaugeFill,
+            };
+            for (const std::uint32_t part : pieces) {
                 killPart(registry, part);
             }
             // The engine kills the car right after this event: drop its script instance first.

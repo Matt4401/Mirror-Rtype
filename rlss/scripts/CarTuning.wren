@@ -6,7 +6,7 @@
  */
 class CarTuning {
     // --- Simulation ---
-    /** @brief Physics step: the car is simulated at 120 Hz, like Rocket League, whatever the frame rate. */
+    /** @brief Physics step: the match is simulated at 120 Hz, like Rocket League, whatever the frame rate. */
     static STEP { 1 / 120 }
     /** @brief Longest time simulated in one frame (avoids a spiral of death after a freeze). */
     static MAX_FRAME_TIME { 0.25 }
@@ -48,6 +48,23 @@ class CarTuning {
         }
         return 0
     }
+
+    // --- Boost ---
+    /** @brief Boost tank size, and its content when the car appears (Sideswipe starts full). */
+    static BOOST_MAX { 100 }
+    static BOOST_START { 100 }
+    /** @brief Boost burnt per second while boosting. */
+    static BOOST_USE_RATE { 100 / 3 }
+    /**
+     * @brief Boost gained per second while the car touches a surface (Sideswipe has no boost pads). Not a published
+     * value: an estimate of Sideswipe's refill (empty to full in about 4 s).
+     */
+    static BOOST_REFILL_RATE { 25 }
+    /** @brief Acceleration given by boosting, toward the nose. */
+    static BOOST_ACCEL_GROUND { 2975 / 3 }
+    static BOOST_ACCEL_AIR { 3175 / 3 }
+    /** @brief A boost, once started, lasts at least this long. */
+    static BOOST_MIN_TIME { 0.1 }
 
     // --- Jumping ---
     /** @brief Velocity given instantly by a jump, along the car roof. */

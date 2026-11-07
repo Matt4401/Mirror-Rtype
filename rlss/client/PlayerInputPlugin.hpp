@@ -20,7 +20,7 @@ namespace rlss::client {
 
 /**
  * @brief Default controls: steer with A/D, Q/D or the arrows (or the left stick), jump with Space, W, Z or Up (or the
- * bottom face button).
+ * bottom face button), boost with Shift, S or Down (or the right face button / right trigger).
  * @return The mapping, for `input::InputPlugin`.
  */
 [[nodiscard]] input::ActionMapping makeControls();

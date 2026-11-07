@@ -1,6 +1,7 @@
 #include "game/ReplicationCodec.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -36,6 +37,8 @@ void ReplicationCodec::writeEntity(const ecs::Registry& registry, const ecs::Ent
     const ecs::Transform& transform = transforms->get(entity);
     const auto* looks = registry.findComponents<CarLook>();
     const std::uint8_t color = looks != nullptr && looks->contains(entity) ? looks->get(entity).color : 0;
+    const auto* statuses = registry.findComponents<CarStatus>();
+    const CarStatus status = statuses != nullptr && statuses->contains(entity) ? statuses->get(entity) : CarStatus{};
     _entities.push_back(protocol::EntityState{
         .id = id,
         .kind = static_cast<std::uint8_t>(replicated.kind),
@@ -44,6 +47,8 @@ void ReplicationCodec::writeEntity(const ecs::Registry& registry, const ecs::Ent
         .rotation = transform.rotation,
         .facingLeft = transform.scaleX < 0.0F,
         .color = color,
+        .boost = static_cast<std::uint8_t>(std::clamp(std::lround(status.boost), 0L, 100L)),
+        .boosting = status.boosting,
     });
 }
 
@@ -83,17 +88,21 @@ std::optional<ecs::NetInput> ReplicationCodec::decodeInput(const ecs::net::Bytes
     if (input->jump) {
         result.held.push_back(JUMP_ID);
     }
+    if (input->boost) {
+        result.held.push_back(BOOST_ID);
+    }
     return result;
 }
 
 ecs::net::Bytes ReplicationCodec::encodeInput(const ecs::NetInput& input) {
-    protocol::PlayerInput message{.sequence = input.sequence, .steer = 0.0F, .jump = false};
+    protocol::PlayerInput message{.sequence = input.sequence, .steer = 0.0F, .jump = false, .boost = false};
     for (const ecs::NetAxis& axis : input.axes) {
         if (axis.action == STEER_ID) {
             message.steer = axis.value;
         }
     }
     message.jump = std::ranges::find(input.held, JUMP_ID) != input.held.end();
+    message.boost = std::ranges::find(input.held, BOOST_ID) != input.held.end();
     return protocol::encode(message);
 }
 
@@ -122,7 +131,11 @@ void ReplicationCodec::applySnapshot(ecs::net::SnapshotApplier& applier) {
         if (!registry.hasComponent<ecs::Interpolated>(*entity)) {
             registry.addComponent(*entity, ecs::Interpolated{});
         }
-        registry.addComponent(*entity, CarLook{.color = state.color});
+        if (state.kind == KIND_CAR) {
+            registry.addComponent(*entity, CarLook{.color = state.color});
+            registry.addComponent(*entity,
+                                  CarStatus{.boost = static_cast<float>(state.boost), .boosting = state.boosting});
+        }
         applier.setTransform(*entity, ecs::Transform{
                                           .x = state.x,
                                           .y = state.y,

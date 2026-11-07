@@ -31,6 +31,7 @@ namespace game = rlss::game;
 constexpr float FRAME = 1.0F / 60.0F;
 constexpr float HALF_LENGTH = 59.0F;
 constexpr float HALF_HEIGHT = 18.0F;
+constexpr float BALL_RADIUS = 91.25F;
 
 /** @brief Distance from a point to the arena walls, positive inside (same shape as Arena.wren). */
 float arenaDistance(const float x, const float y) {
@@ -58,6 +59,9 @@ class CarPhysics : public ::testing::Test {
                                                              .right = arena::RIGHT,
                                                              .bottom = arena::BOTTOM,
                                                              .cornerRadius = arena::CORNER_RADIUS});
+        _registry.addComponent(arenaEntity, ecs::ScriptComponent{.moduleName = std::string(game::MATCH_SCRIPT_MODULE),
+                                                                 .className = "Match",
+                                                                 .hasUpdate = true});
     }
 
     /** @brief Spawns a car at rest, wheels down. */
@@ -67,23 +71,42 @@ class CarPhysics : public ::testing::Test {
         input::InputState controls;
         controls.playerIndex = 3;
         _registry.addComponent(_car, std::move(controls));
+        _registry.addComponent(_car, game::CarStatus{});
         _registry.addComponent(
-            _car, ecs::ScriptComponent{
-                      .moduleName = std::string(game::CAR_SCRIPT_MODULE), .className = "Car", .hasUpdate = true});
+            _car, ecs::ScriptComponent{.moduleName = std::string(game::CAR_SCRIPT_MODULE), .className = "Car"});
+    }
+
+    /** @brief Spawns the ball at rest. */
+    void spawnBall(const float x, const float y) {
+        _ball = _registry.spawnEntity();
+        _registry.addComponent(_ball, ecs::Transform{.x = x, .y = y});
+        _registry.addComponent(
+            _ball, ecs::ScriptComponent{.moduleName = std::string(game::BALL_SCRIPT_MODULE), .className = "Ball"});
     }
 
     /** @brief Simulates `seconds` with the given input held. */
-    void run(const float seconds, const float steer = 0.0F, const bool jump = false) {
-        auto& input = _registry.getComponents<input::InputState>().get(_car);
-        input.setAxis(game::STEER_ID, steer);
-        input.setDown(game::JUMP_ID, jump);
+    void run(const float seconds, const float steer = 0.0F, const bool jump = false, const bool boost = false) {
+        if (_car != 0) {
+            auto& input = _registry.getComponents<input::InputState>().get(_car);
+            input.setAxis(game::STEER_ID, steer);
+            input.setDown(game::JUMP_ID, jump);
+            input.setDown(game::BOOST_ID, boost);
+        }
         for (float t = 0.0F; t < seconds; t += FRAME) {
             _scripts.update(FRAME);
-            ASSERT_TRUE(insideArena()) << "car left the arena at x=" << transform().x << " y=" << transform().y;
+            if (_car != 0) {
+                ASSERT_TRUE(insideArena()) << "car left the arena at x=" << transform().x << " y=" << transform().y;
+            }
+            if (_ball != 0) {
+                ASSERT_GE(arenaDistance(ball().x, ball().y), BALL_RADIUS - 1.0F)
+                    << "ball left the arena at x=" << ball().x << " y=" << ball().y;
+            }
         }
     }
 
     [[nodiscard]] const ecs::Transform& transform() { return _registry.getComponents<ecs::Transform>().get(_car); }
+    [[nodiscard]] const ecs::Transform& ball() { return _registry.getComponents<ecs::Transform>().get(_ball); }
+    [[nodiscard]] const game::CarStatus& status() { return _registry.getComponents<game::CarStatus>().get(_car); }
 
     /** @brief Every corner of the hitbox is inside the arena (with a small tolerance). */
     [[nodiscard]] bool insideArena() {
@@ -104,6 +127,7 @@ class CarPhysics : public ::testing::Test {
     ecs::EventBus _bus;
     systems::ScriptSystem _scripts;
     ecs::Entity _car = 0;
+    ecs::Entity _ball = 0;
 };
 
 TEST_F(CarPhysics, FallsAndRestsOnTheFloor) {
@@ -183,6 +207,112 @@ TEST_F(CarPhysics, RandomInputsNeverLeaveTheArena) {
     std::uniform_real_distribution<float> duration(0.05F, 0.8F);
     for (int i = 0; i < 400; ++i) {
         run(duration(random), static_cast<float>(steer(random)), jump(random));
+        if (HasFatalFailure()) {
+            return;
+        }
+    }
+}
+
+TEST_F(CarPhysics, BoostGoesPastTheThrottleTopSpeedAndEmptiesTheTank) {
+    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
+    run(0.2F);
+    EXPECT_FLOAT_EQ(status().boost, 100.0F);
+    float previous = transform().x;
+    float fastest = 0.0F;
+    for (int i = 0; i < 60; ++i) {
+        run(FRAME, 0.0F, false, true);
+        fastest = std::max(fastest, (transform().x - previous) / FRAME);
+        previous = transform().x;
+    }
+    // One second of boost from rest: throttle (~1300 uu/s) + boost (~990 uu/s), well past the 1410 throttle cap.
+    EXPECT_GT(fastest, 1600.0F);
+    EXPECT_TRUE(status().boosting);
+    EXPECT_NEAR(status().boost, 100.0F - (100.0F / 3.0F), 2.0F);
+}
+
+TEST_F(CarPhysics, BoostRefillsOnlyAgainstASurface) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    run(0.2F);
+    run(1.0F, 0.0F, false, true);
+    const float afterBoost = status().boost;
+    run(1.0F);
+    EXPECT_GT(status().boost, afterBoost + 20.0F);  // on the floor: refills
+
+    run(0.2F, 0.0F, true);  // jump
+    const float jumped = status().boost;
+    run(0.3F);  // in the air: no refill
+    EXPECT_NEAR(status().boost, jumped, 0.5F);
+}
+
+TEST_F(CarPhysics, BallBouncesLikeInRocketLeague) {
+    spawnBall(arena::WIDTH / 2.0F, arena::BOTTOM - BALL_RADIUS - 500.0F);
+    run(0.2F);
+    // Falls 500 uu, bounces with restitution 0.6: back up to about 0.36 * 500 = 180 uu (a little less with drag).
+    float bottom = arena::TOP;
+    for (int i = 0; i < 120; ++i) {
+        run(FRAME);
+        bottom = std::max(bottom, ball().y);
+    }
+    EXPECT_NEAR(bottom, arena::BOTTOM - BALL_RADIUS, 1.0F);
+    float apex = arena::BOTTOM;
+    for (int i = 0; i < 60; ++i) {
+        run(FRAME);
+        apex = std::min(apex, ball().y);
+    }
+    const float bounce = arena::BOTTOM - BALL_RADIUS - apex;
+    EXPECT_GT(bounce, 150.0F);
+    EXPECT_LT(bounce, 185.0F);
+    run(6.0F);
+    EXPECT_NEAR(ball().y, arena::BOTTOM - BALL_RADIUS, 1.0F);  // settles on the floor
+}
+
+TEST_F(CarPhysics, DrivingIntoTheBallPushesIt) {
+    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::LEFT + 900.0F, arena::BOTTOM - BALL_RADIUS);
+    run(0.3F);
+    const float start = ball().x;
+    run(1.0F, 1.0F);
+    run(0.5F);
+    EXPECT_GT(ball().x - start, 300.0F);
+    EXPECT_GT(ball().x, transform().x + BALL_RADIUS);  // pushed ahead, not driven through
+}
+
+TEST_F(CarPhysics, AHitSendsTheBallFasterThanTheCar) {
+    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::RIGHT - 500.0F, arena::BOTTOM - BALL_RADIUS);
+    run(0.2F);
+    float carSpeed = 0.0F;
+    float ballSpeed = 0.0F;
+    float carX = transform().x;
+    float ballX = ball().x;
+    float ballY = ball().y;
+    for (int i = 0; i < 120; ++i) {
+        run(FRAME, 1.0F);
+        const float speed = std::hypot(ball().x - ballX, ball().y - ballY) / FRAME;
+        if (speed < 1.0F) {
+            carSpeed = (transform().x - carX) / FRAME;  // until the ball moves
+        }
+        ballSpeed = std::max(ballSpeed, speed);
+        carX = transform().x;
+        ballX = ball().x;
+        ballY = ball().y;
+    }
+    // Contact: the ball takes ~6/7 of the car speed; Rocket League's extra impulse adds ~0.6 of it along the line
+    // between the centers. The bumper hits the ball under its center, so it also pops up.
+    EXPECT_GT(carSpeed, 1000.0F);
+    EXPECT_GT(ballSpeed, carSpeed * 1.2F);
+    EXPECT_LT(ballSpeed, carSpeed * 1.7F);
+}
+
+TEST_F(CarPhysics, RandomPlayNeverLetsTheBallOrTheCarOut) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::WIDTH / 2.0F + 300.0F, arena::BOTTOM - 400.0F);
+    std::mt19937 random(7);
+    std::uniform_int_distribution<int> steer(-1, 1);
+    std::bernoulli_distribution press(0.35);
+    std::uniform_real_distribution<float> duration(0.05F, 0.8F);
+    for (int i = 0; i < 400; ++i) {
+        run(duration(random), static_cast<float>(steer(random)), press(random), press(random));
         if (HasFatalFailure()) {
             return;
         }
