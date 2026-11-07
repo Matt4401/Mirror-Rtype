@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "ecs/Entity.hpp"
 #include "input/ActionId.hpp"
 
 namespace rlss::game {
@@ -128,29 +129,29 @@ struct ArenaShape {
 /** @brief Client: entities drawing the parts of a car, placed every frame by the `CarView` script. */
 struct CarParts {
     /** @brief Chassis, in the player color. */
-    std::uint32_t body = 0;
+    ecs::Entity body = 0;
     /** @brief Cabin, on top of the chassis. */
-    std::uint32_t cabin = 0;
+    ecs::Entity cabin = 0;
     /** @brief Rear wheel. */
-    std::uint32_t rearWheel = 0;
+    ecs::Entity rearWheel = 0;
     /** @brief Front wheel. */
-    std::uint32_t frontWheel = 0;
+    ecs::Entity frontWheel = 0;
     /** @brief Headlight, shows where the car is facing. */
-    std::uint32_t headlight = 0;
+    ecs::Entity headlight = 0;
     /** @brief Boost flame behind the car, hidden when not boosting. */
-    std::uint32_t flame = 0;
+    ecs::Entity flame = 0;
     /** @brief Background of the boost gauge above the car. */
-    std::uint32_t gaugeBack = 0;
+    ecs::Entity gaugeBack = 0;
     /** @brief Filled part of the boost gauge. */
-    std::uint32_t gaugeFill = 0;
+    ecs::Entity gaugeFill = 0;
     /** @brief White body overlay, blinking after a flip reset. */
-    std::uint32_t flash = 0;
+    ecs::Entity flash = 0;
 };
 
 /** @brief Client: one piece of the ball drawing, placed every frame by the `BallView` script. */
 struct BallPart {
     /** @brief Ball entity. */
-    std::uint32_t parent = 0;
+    ecs::Entity parent = 0;
     /** @brief Offset from the ball center, before rotation. */
     float offsetX = 0.0F;
     /** @brief Offset from the ball center, before rotation. */
@@ -189,17 +190,20 @@ struct ScoreCell {
     float height = 0.0F;
 };
 
-/** @brief "No entity" in the entity fields read by scripts (0 is a valid entity). */
-inline constexpr int NO_ENTITY = -1;
+/**
+ * @brief "No entity" in the entity fields read by scripts (0 is a valid entity). Those fields are 64-bit signed: an
+ * `ecs::Entity` (generation and index, 52 bits) fits, and so does -1.
+ */
+inline constexpr std::int64_t NO_ENTITY = -1;
 
 /**
  * @brief Client: what the `CameraDirector` script frames, kept up to date by `CameraPlugin` on the camera entity.
  */
 struct CameraRig {
     /** @brief Local player's car entity, `NO_ENTITY` while unknown. */
-    int car = NO_ENTITY;
+    std::int64_t car = NO_ENTITY;
     /** @brief Ball entity, `NO_ENTITY` while unknown. */
-    int ball = NO_ENTITY;
+    std::int64_t ball = NO_ENTITY;
     /** @brief `protocol::MatchPhase` value: 0 playing, 1 goal celebration, 2 kickoff countdown. */
     int phase = 0;
     /** @brief Window size, in pixels. */

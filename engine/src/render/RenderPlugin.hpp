@@ -10,6 +10,7 @@
 
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "render/screen/ScreenDrawService.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
@@ -19,6 +20,9 @@ namespace render {
 
 /**
  * @brief Plugin responsible for window lifecycle, texture management, and 2D ECS rendering.
+ *
+ * Provides `engine::IWindowService`, `engine::IRenderService` and `engine::IScreenDrawService`. Each frame it draws
+ * the world, then the screen-space calls queued through `IScreenDrawService`, then presents the frame.
  */
 class RenderPlugin final : public engine::IPlugin {
   public:
@@ -98,6 +102,8 @@ class RenderPlugin final : public engine::IPlugin {
     std::shared_ptr<WindowServiceImpl> _windowService = nullptr;
     /** @brief Shared pointer to abstract render service adapter. */
     std::shared_ptr<RenderServiceImpl> _renderService = nullptr;
+    /** @brief Screen-space overlay drawing, flushed on top of the world each frame. */
+    std::shared_ptr<ScreenDrawService> _screenDrawService = nullptr;
 };
 
 }  // namespace render

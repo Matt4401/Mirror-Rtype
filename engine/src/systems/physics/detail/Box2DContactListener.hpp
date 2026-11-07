@@ -10,8 +10,6 @@
 #include <cstdint>
 #include <vector>
 
-#include "ecs/Entity.hpp"
-
 class b2Contact;
 
 namespace physics::detail {
@@ -19,11 +17,14 @@ namespace physics::detail {
 /** @brief Unique identifier of a Box2D body, never reused, stored in the body user data. */
 using BodySerial = std::uintptr_t;
 
-/** @brief One side of a recorded contact. */
+/**
+ * @brief One side of a recorded contact.
+ *
+ * It holds no entity handle: Box2D user data is a `std::uintptr_t`, which would truncate a 64-bit `ecs::Entity` on
+ * 32-bit targets. `PhysicsSystem` resolves the owning entity from the body serial.
+ */
 struct ContactSide {
-    /** @brief Entity owning the fixture (from the fixture user data). */
-    ecs::Entity entity = 0;
-    /** @brief Serial of the body when the contact was recorded. */
+    /** @brief Serial of the body when the contact was recorded (from the body user data). */
     BodySerial serial = 0;
     /** @brief Collision category of the fixture. */
     std::uint16_t category = 0;

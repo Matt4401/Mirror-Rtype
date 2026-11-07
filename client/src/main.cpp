@@ -14,6 +14,7 @@
 #include "RTypeGamePlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "core/Engine.hpp"
+#include "hierarchy/HierarchyPlugin.hpp"
 #include "input/InputPlugin.hpp"
 #include "net/ClientNetwork.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
@@ -22,6 +23,7 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
+#include "ui/UiPlugin.hpp"
 
 namespace {
 
@@ -45,6 +47,8 @@ int main(int ac, char** av) {
             .addPlugin<systems::AnimationPlugin>()
             .addPlugin<prefabs::PrefabPlugin>()
             .addPlugin<scripting::ScriptPlugin>()
+            .addPlugin<hierarchy::HierarchyPlugin>()
+            .addPlugin<ui::UiPlugin>()
             .addPlugin<client::RTypeGamePlugin>();
         client::addNetworkPlugins(engine, *options);
 

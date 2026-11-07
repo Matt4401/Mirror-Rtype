@@ -5,16 +5,19 @@ headless and does not link raylib.
 
 ## Threads
 
-| Thread         | Runs                                       | Touches                                     |
-|----------------|--------------------------------------------|---------------------------------------------|
-| Network        | The Asio transport (`engine_network_asio`) | Sockets; receiving never waits on the game  |
-| Server         | `ServerManager::run()` and the `Lobby`     | The clients, the rooms and their players    |
-| One per room   | `Room::advance()`, once the game started   | The engine of this room, under its mutex    |
+| Thread       | Runs                                       | Touches                                    |
+|--------------|--------------------------------------------|--------------------------------------------|
+| Network      | The Asio transport (`engine_network_asio`) | Sockets; receiving never waits on the game |
+| Server       | `ServerManager::run()` and the `Lobby`     | The clients, the rooms and their players   |
+| One per room | `Room::advance()`, once the game started   | The engine of this room, under its mutex   |
 
-They only talk through the transport's event queue (`poll()`) and `asio::post` (`send()`), and a room receives its packets
-through the thread-safe `PeerGroupConnection`. A slow or crashed client therefore never blocks a game, and a room with many
+They only talk through the transport's event queue (`poll()`) and `asio::post` (`send()`), and a room receives its
+packets
+through the thread-safe `PeerGroupConnection`. A slow or crashed client therefore never blocks a game, and a room with
+many
 entities does not slow down the others. The mutex of a room is only contended when a player leaves it: the server thread
-then waits for the step in progress. An exception in a simulation stops that room only. See [Network Architecture](network.md#6-threading-model).
+then waits for the step in progress. An exception in a simulation stops that room only.
+See [Network Architecture](network.md#6-threading-model).
 
 ## `ServerManager`
 
@@ -51,7 +54,8 @@ A room holds at most `MAX_PLAYERS_PER_ROOM` players: 2 for now, while the protoc
 
 ## `Room`
 
-One game: one `engine::Engine`, so one registry, event bus, clock and set of plugins. Games are isolated from each other.
+One game: one `engine::Engine`, so one registry, event bus, clock and set of plugins. Games are isolated from each
+other.
 
 ```mermaid
 flowchart LR
