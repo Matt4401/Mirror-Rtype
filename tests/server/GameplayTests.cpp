@@ -184,7 +184,8 @@ TEST_F(GameplayWithoutLevelTest, NoLevelSpawnsNoEnemy) {
 
 TEST(GameplayPluginTest, OnlyKnownPrefabsCanBeSpawned) {
     EXPECT_TRUE(GameplayPlugin::canSpawn("alien_scout"));
-    EXPECT_FALSE(GameplayPlugin::canSpawn("boss_core"));
+    EXPECT_TRUE(GameplayPlugin::canSpawn("boss_core"));
+    EXPECT_FALSE(GameplayPlugin::canSpawn("dragon"));
     EXPECT_FALSE(GameplayPlugin::canSpawn(""));
 }
 

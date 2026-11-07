@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -16,6 +17,8 @@
 #include "collision/CollisionRouter.hpp"
 #include "collision/GameCollisionEvents.hpp"
 #include "components/Replicated.hpp"
+#include "components/RigidBody2D.hpp"
+#include "components/ScriptComponent.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
@@ -28,8 +31,10 @@
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/CollisionCategories.hpp"
+#include "prefabs/Health.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
+#include "prefabs/boss_core/BossCore.hpp"
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
 #include "prefabs/power_up/PowerUp.hpp"
@@ -70,7 +75,7 @@ void GameplayPlugin::build(engine::PluginBuilder& builder) {
 }
 
 bool GameplayPlugin::canSpawn(const std::string_view prefab) noexcept {
-    return prefab == ::prefabs::ALIEN_SCOUT_PREFAB;
+    return prefab == ::prefabs::ALIEN_SCOUT_PREFAB || prefab == ::prefabs::BOSS_CORE_PREFAB;
 }
 
 void GameplayPlugin::init(engine::Engine& engine) {
@@ -93,6 +98,7 @@ void GameplayPlugin::startLevel() {
     }
     _timeline->timeline() = _level->timeline;
     _timeline->setSpeed(_level->scrollSpeed);
+    _bossFight = false;
 }
 
 void GameplayPlugin::onLevelEvent(const timeline::TimelineEventFired& fired) {
@@ -101,6 +107,8 @@ void GameplayPlugin::onLevelEvent(const timeline::TimelineEventFired& fired) {
         spawnFromLevel(event.params);
     } else if (event.type == level::EVENT_SCROLL) {
         _timeline->setSpeed(event.params.get("speed", _timeline->speed()));
+    } else if (event.type == level::EVENT_BOSS) {
+        startBossFight(event.params);
     } else if (event.type == level::EVENT_END) {
         log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete, restarting it");
         startLevel();
@@ -117,6 +125,53 @@ void GameplayPlugin::spawnFromLevel(const ::prefabs::PrefabParams& params) {
     ::prefabs::buildAlienScout(enemy, registry, params);
     registry.addComponent(enemy, game::EntityNetState{});
     ecs::net::replicate(registry, enemy, game::KIND_ALIEN_SCOUT);
+}
+
+void GameplayPlugin::startBossFight(const ::prefabs::PrefabParams& params) {
+    // The loader only keeps the prefabs accepted by canSpawn(): a boss event names boss_core.
+    if (params.get<std::string>("prefab", "") != ::prefabs::BOSS_CORE_PREFAB) {
+        return;
+    }
+    if (!_bossFight) {
+        _bossFight = true;
+        _speedBeforeBoss = _timeline->speed();
+        _timeline->setSpeed(0.0F);
+    }
+    ecs::Registry& registry = *_registry;
+    const ecs::Entity boss = registry.spawnEntity();
+    ::prefabs::buildBossCore(boss, registry, params);
+    registry.addComponent(boss,
+                          game::EntityNetState{.health = registry.getComponents<::prefabs::Health>().get(boss).points});
+    if (const auto script = params.find<std::string>("script")) {
+        // `scripts/Boss.wren` is the module `scripts/Boss`, whose class is `Boss` unless the event names another one.
+        const std::filesystem::path path(*script);
+        registry.addComponent(boss, ecs::ScriptComponent{
+                                        .moduleName = (path.parent_path() / path.stem()).generic_string(),
+                                        .className = params.get<std::string>("class", path.stem().string()),
+                                        .hasUpdate = true,
+                                    });
+    }
+    ecs::net::replicate(registry, boss, game::KIND_BOSS_CORE);
+    log::info(LOG_TAG, "boss fight: the scroll stops until the boss is destroyed");
+}
+
+void GameplayPlugin::updateBossFight() {
+    ecs::Registry& registry = *_registry;
+    bool bossLeft = false;
+    registry.runSystem<::prefabs::BossCore, ecs::Transform, ecs::RigidBody2D>(
+        [&bossLeft](ecs::Entity /*boss*/, const ::prefabs::BossCore& core, const ecs::Transform& transform,
+                    ecs::RigidBody2D& body) {
+            bossLeft = true;
+            // Flying in: stops once in place. A script may move it afterwards.
+            if (body.velocityX < 0.0F && transform.x <= core.stopX) {
+                body.velocityX = 0.0F;
+            }
+        });
+    if (_bossFight && !bossLeft) {
+        _bossFight = false;
+        _timeline->setSpeed(_speedBeforeBoss);
+        log::info(LOG_TAG, "boss destroyed: the level goes on");
+    }
 }
 
 void GameplayPlugin::shutdown(engine::Engine& /*engine*/) {
@@ -169,7 +224,8 @@ void GameplayPlugin::onShotHit(const collision::ShotHitEvent& hit) {
         return;
     }
     // The contacts are published after the physics step: a shot touching two enemies in the same step only gets one.
-    if ((hit.targetCategory & ::prefabs::collision::ENEMY) != 0 && registry.isAlive(hit.target)) {
+    if ((hit.targetCategory & ::prefabs::collision::ENEMY) != 0 && registry.isAlive(hit.target) &&
+        takeHit(hit.target)) {
         if (registry.hasComponent<game::EntityNetState>(hit.shot)) {
             const std::uint8_t shooter = registry.getComponents<game::EntityNetState>().get(hit.shot).subtype;
             if (shooter < _scores.size()) {
@@ -181,6 +237,21 @@ void GameplayPlugin::onShotHit(const collision::ShotHitEvent& hit) {
     registry.killEntity(hit.shot);
 }
 
+bool GameplayPlugin::takeHit(const ecs::Entity target) {
+    ecs::Registry& registry = *_registry;
+    if (!registry.hasComponent<::prefabs::Health>(target)) {
+        return true;
+    }
+    ::prefabs::Health& health = registry.getComponents<::prefabs::Health>().get(target);
+    if (health.points > 0) {
+        --health.points;
+    }
+    if (registry.hasComponent<game::EntityNetState>(target)) {
+        registry.getComponents<game::EntityNetState>().get(target).health = health.points;
+    }
+    return health.points == 0;
+}
+
 void GameplayPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time& time) {
     for (float& cooldown : _shotCooldowns) {
         cooldown = std::max(cooldown - time.deltaTime, 0.0F);
@@ -190,6 +261,7 @@ void GameplayPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Ti
     }
     _pendingShots.clear();
 
+    updateBossFight();
     killOffscreenEntities();
 
     _scoreLogTimer -= time.deltaTime;

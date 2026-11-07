@@ -17,6 +17,7 @@
 #include "collision/GameCollisionEvents.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "level/Level.hpp"
@@ -41,6 +42,11 @@ inline constexpr std::uint32_t POINTS_PER_KILL = 1;
  * - Plays its level with `timeline::TimelinePlugin`, the cursor moving at the scroll speed: `spawn` events create
  *   the enemies, `scroll` events change the speed, and the `end` event restarts the level (until there are several
  *   levels).
+ * - A `boss` event stops the scroll and spawns a `boss_core`, driven by the event's Wren `script` if any (module
+ *   `scripts/Boss` for `scripts/Boss.wren`, class named after the file unless the event sets `class`). The boss flies
+ *   in until its `stop_x`; once no boss is left, the scroll resumes at the speed it had before the fight.
+ * - An enemy with a `prefabs::Health` loses one point per player shot and dies at 0; its `EntityNetState::health`
+ *   follows. The other enemies die on the first hit.
  * - Fires a `player_bullet` from a ship while its input holds `game::ACTION_SHOOT`, at most every `SHOT_COOLDOWN`.
  *   The bullet's `EntityNetState::subtype` is the index of the player who fired it.
  * - Turns physics contacts into R-Type events with a `collision::CollisionRouter`; a player shot touching an enemy
@@ -138,6 +144,16 @@ class GameplayPlugin final : public engine::IPlugin {
     void onLevelEvent(const timeline::TimelineEventFired& fired);
     /** @brief Spawns the replicated entity of a level `spawn` event. */
     void spawnFromLevel(const prefabs::PrefabParams& params);
+    /** @brief Handles a `boss` event: stops the scroll and spawns the replicated, possibly scripted, boss. */
+    void startBossFight(const prefabs::PrefabParams& params);
+    /** @brief Stops the bosses that reached their place, and resumes the scroll once no boss is left. */
+    void updateBossFight();
+    /**
+     * @brief Applies a player shot to an enemy.
+     * @param target Enemy hit.
+     * @return True if the enemy dies: no `prefabs::Health`, or its last point.
+     */
+    bool takeHit(ecs::Entity target);
     /** @brief Puts the level at its start: events pending again, initial scroll speed. */
     void startLevel();
     /** @brief Kills the player bullets past the right edge, and the enemies, enemy shots and power-ups past the left
@@ -170,6 +186,10 @@ class GameplayPlugin final : public engine::IPlugin {
     timeline::TimelinePlugin* _timeline = nullptr;
     /** @brief Subscription to the level events. */
     std::optional<ecs::EventBus::EventToken> _levelToken;
+    /** @brief True from a `boss` event until no boss is left. */
+    bool _bossFight = false;
+    /** @brief Scroll speed when the boss fight started, restored once it is over. */
+    float _speedBeforeBoss = 0.0F;
     /** @brief Seconds left before the next score log. */
     float _scoreLogTimer = SCORE_LOG_INTERVAL;
 };
