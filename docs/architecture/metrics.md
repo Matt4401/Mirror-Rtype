@@ -74,6 +74,15 @@ late was counted as missed when the next one came, so it is removed from the cou
     here. For the player the effect is the same: updates did not come. A snapshot split in several parts counts as
     received as soon as one part arrives.
 
+### Server on Windows
+
+`RTT` and `Missed` also depend on when the server wakes up, not only on the network. Its loops sleep 1 ms between two
+passes, which Windows turns into about 15.6 ms by default: steps would then run up to 15 ms late, adding about 8 ms to
+`RTT` on average, and any wake-up later than one step would merge two steps into one snapshot and count as `Missed`.
+This is why `server/src/main.cpp` holds an `ecs::time::PreciseSleepScope` for the whole run (see
+[Engine Clock](clock.md#sleeping-between-two-passes)). The client needs nothing: its raylib window asks for the same
+timer period.
+
 ## Adding a metric from a game
 
 Any plugin can write to the board. A new line goes at the end, and lines never change order:
@@ -112,9 +121,9 @@ use `sudo tc qdisc add dev <interface> root netem ...`, and `sudo tc qdisc del d
 
 ### Measures
 
-One player in a real room, real server and real transport over loopback, after 8 seconds of game. This was measured with
-the windowless client of `tests/server/EndToEndTests.cpp`, which runs far more than 60 frames per second: this is why its
-RTT is lower than the 33 ms of the real client.
+One player in a real room, real server and real transport over loopback on Linux, after 8 seconds of game. This was
+measured with the windowless client of `tests/server/EndToEndTests.cpp`, which runs far more than 60 frames per second:
+this is why its RTT is lower than the 33 ms of the real client.
 
 | `netem` | RTT | Missed | Down | Up | Packets |
 |---|---|---|---|---|---|

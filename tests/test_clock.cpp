@@ -1,10 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <thread>
 
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
+#include "ecs/time/PreciseSleep.hpp"
 #include "ecs/time/Time.hpp"
 
 namespace {
@@ -180,6 +183,39 @@ TEST(Clock, LastFrameDeltaTracksRealElapsed) {
     EXPECT_EQ(clock.tick(FIXED_DT, [](const ecs::time::Time&) {}), 2U);
     EXPECT_FLOAT_EQ(clock.lastFrameDelta(), 0.030F);
     EXPECT_FLOAT_EQ(clock.frameTime().deltaTime, 0.030F);
+}
+
+TEST(PreciseSleepScope, RaisesTheTimerPeriodOnWindowsOnly) {
+    const ecs::time::PreciseSleepScope scope;
+#ifdef _WIN32
+    EXPECT_TRUE(scope.raised());
+#else
+    EXPECT_FALSE(scope.raised());
+#endif
+}
+
+TEST(PreciseSleepScope, ScopesCanBeNested) {
+    const ecs::time::PreciseSleepScope outer;
+    {
+        const ecs::time::PreciseSleepScope inner;
+        EXPECT_EQ(inner.raised(), outer.raised());
+    }
+    EXPECT_EQ(ecs::time::PreciseSleepScope().raised(), outer.raised());
+}
+
+TEST(PreciseSleepScope, OneMillisecondSleepsStayShort) {
+    constexpr int SLEEPS = 20;
+    // Half the default Windows timer period (15.6 ms): without the scope, every sleep there lasts a whole period.
+    constexpr auto MAX_AVERAGE = std::chrono::milliseconds(8);
+
+    const ecs::time::PreciseSleepScope scope;
+    const auto start = std::chrono::steady_clock::now();
+    for (int i = 0; i < SLEEPS; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    const auto average = (std::chrono::steady_clock::now() - start) / SLEEPS;
+
+    EXPECT_LT(average, MAX_AVERAGE);
 }
 
 int main(int argc, char** argv) {

@@ -2,6 +2,10 @@ target("engine_time")
     set_kind("static")
     add_files("ecs/time/*.cpp")
     add_includedirs(".", {public = true})
+    -- PreciseSleepScope asks Windows for a 1 ms timer period (timeBeginPeriod).
+    if is_plat("windows", "mingw") then
+        add_syslinks("winmm", {public = true})
+    end
 
 target("engine_core")
     set_kind("static")
