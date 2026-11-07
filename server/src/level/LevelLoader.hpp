@@ -45,6 +45,15 @@ inline constexpr float DEFAULT_SPAWN_Y = 360.0F;
 /** @brief Furthest spawn coordinate accepted on either axis, in pixels. */
 inline constexpr float MAX_SPAWN_COORDINATE = 10000.0F;
 
+/** @brief Most terrain sections a level file may declare; the extra ones are ignored with a warning. */
+inline constexpr std::size_t MAX_TERRAIN_SECTIONS = 256;
+
+/** @brief Height of a terrain section when `height` is missing, in pixels. */
+inline constexpr float DEFAULT_TERRAIN_HEIGHT = 120.0F;
+
+/** @brief Highest terrain section accepted, in pixels: half of the 720 px scene, so a corridor always stays open. */
+inline constexpr float MAX_TERRAIN_HEIGHT = 360.0F;
+
 /** @brief Longest boss script path accepted, in characters. */
 inline constexpr std::size_t MAX_SCRIPT_PATH_LENGTH = 256;
 
@@ -90,6 +99,12 @@ using PrefabFilter = std::function<bool(std::string_view)>;
  * [[events]]
  * at = 6000.0
  * type = "end"
+ *
+ * [[terrain]]
+ * from = 1800.0              # scroll distance where the section enters the screen, px
+ * to = 3200.0                # scroll distance where it ends, px; must be greater than `from`
+ * side = "bottom"            # "top" or "bottom"
+ * height = 120.0             # optional, px, at most MAX_TERRAIN_HEIGHT
  * @endcode
  *
  * Never fails: every invalid value is corrected or its event skipped, and reported in `warnings`. A wave is expanded

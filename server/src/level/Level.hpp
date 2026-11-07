@@ -24,6 +24,18 @@ inline constexpr std::string_view EVENT_SCROLL = "scroll";
  */
 inline constexpr std::string_view EVENT_BOSS = "boss";
 
+/**
+ * @brief Event type starting a terrain section, from `[[terrain]]`: `side` (`"top"` or `"bottom"`), `height` and
+ * `length` in pixels. The section enters from the right edge and scrolls with the level; touching it kills a ship.
+ */
+inline constexpr std::string_view EVENT_TERRAIN = "terrain";
+
+/** @brief `side` of a terrain section along the top edge of the screen. */
+inline constexpr std::string_view TERRAIN_TOP = "top";
+
+/** @brief `side` of a terrain section along the bottom edge of the screen. */
+inline constexpr std::string_view TERRAIN_BOTTOM = "bottom";
+
 /** @brief Event type ending the level. */
 inline constexpr std::string_view EVENT_END = "end";
 
@@ -31,7 +43,8 @@ inline constexpr std::string_view EVENT_END = "end";
  * @brief A loaded level.
  *
  * Timeline positions are scroll distances in pixels: the gameplay moves the cursor at the current scroll speed.
- * Waves are already expanded: a wave of 5 enemies is 5 `spawn` events.
+ * Waves are already expanded: a wave of 5 enemies is 5 `spawn` events. Terrain sections are `terrain` events placed
+ * at their start distance.
  */
 struct Level {
     /** @brief Display name. */

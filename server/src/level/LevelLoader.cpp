@@ -251,6 +251,53 @@ void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const
     }
 }
 
+/**
+ * @brief Adds the `terrain` events of the `[[terrain]]` sections.
+ * @param file Level file.
+ * @param reader Reader reporting corrections.
+ * @param out Level receiving the events.
+ * @param warnings Receives a message per skipped section.
+ */
+void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Level& out,
+                std::vector<std::string>& warnings) {
+    std::size_t count = file.arraySize("terrain");
+    if (count > MAX_TERRAIN_SECTIONS) {
+        warnings.push_back(
+            std::format("terrain: {} sections declared, only the first {} are kept", count, MAX_TERRAIN_SECTIONS));
+        count = MAX_TERRAIN_SECTIONS;
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::string fromKey = std::format("terrain.{}.from", i);
+        const std::string toKey = std::format("terrain.{}.to", i);
+        if (!file.getNumber(fromKey).has_value() || !file.getNumber(toKey).has_value()) {
+            warnings.push_back(std::format("terrain.{}: missing or invalid 'from' or 'to', section skipped", i));
+            continue;
+        }
+        const float from = reader.number(fromKey, 0.0F, 0.0F, MAX_LEVEL_DISTANCE);
+        const float to = reader.number(toKey, 0.0F, 0.0F, MAX_LEVEL_DISTANCE);
+        if (to <= from) {
+            warnings.push_back(std::format("terrain.{}: 'to' must be greater than 'from', section skipped", i));
+            continue;
+        }
+        const std::string side = reader.text(std::format("terrain.{}.side", i), "");
+        if (side != TERRAIN_TOP && side != TERRAIN_BOTTOM) {
+            warnings.push_back(std::format("terrain.{}: 'side' must be \"{}\" or \"{}\", section skipped", i,
+                                           TERRAIN_TOP, TERRAIN_BOTTOM));
+            continue;
+        }
+        const float height =
+            reader.number(std::format("terrain.{}.height", i), DEFAULT_TERRAIN_HEIGHT, 1.0F, MAX_TERRAIN_HEIGHT);
+        reader.reportUnknownKeys(std::format("terrain.{}", i));
+        out.timeline.add(timeline::TimelineEvent{
+            .position = from,
+            .type = std::string(EVENT_TERRAIN),
+            .params = {{"side", side},
+                       {"height", static_cast<double>(height)},
+                       {"length", static_cast<double>(to - from)}},
+        });
+    }
+}
+
 }  // namespace
 
 Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPrefab,
@@ -285,6 +332,7 @@ Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPref
             warnings.push_back(std::format("events.{}: unknown type '{}', event skipped", event.index, event.type));
         }
     }
+    addTerrain(file, reader, level, warnings);
     return level;
 }
 
