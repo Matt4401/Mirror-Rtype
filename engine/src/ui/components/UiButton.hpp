@@ -28,11 +28,32 @@ enum class UiButtonState : std::uint8_t {
  * `UiButtonClickedEvent` on the frame the button transitions to `Released`.
  */
 struct UiButton {
+    /** @brief Default width of a button in pixels. */
+    static constexpr float DEFAULT_WIDTH = 120.0F;
+
+    /** @brief Default height of a button in pixels. */
+    static constexpr float DEFAULT_HEIGHT = 36.0F;
+
+    /** @brief Default label font size in pixels. */
+    static constexpr float DEFAULT_FONT_SIZE = 20.0F;
+
+    /** @brief Default background colour when idle (dark gray). */
+    static constexpr ecs::Rgba DEFAULT_COLOR_IDLE = {.r = 80, .g = 80, .b = 80, .a = 255};
+
+    /** @brief Default background colour when hovered (light gray). */
+    static constexpr ecs::Rgba DEFAULT_COLOR_HOVERED = {.r = 120, .g = 120, .b = 120, .a = 255};
+
+    /** @brief Default background colour when pressed (darker gray). */
+    static constexpr ecs::Rgba DEFAULT_COLOR_PRESSED = {.r = 50, .g = 50, .b = 50, .a = 255};
+
+    /** @brief Default label text colour (white). */
+    static constexpr ecs::Rgba DEFAULT_COLOR_TEXT = {.r = 255, .g = 255, .b = 255, .a = 255};
+
     /** @brief Width of the button in pixels. */
-    float width = 120.0F;
+    float width = DEFAULT_WIDTH;
 
     /** @brief Height of the button in pixels. */
-    float height = 36.0F;
+    float height = DEFAULT_HEIGHT;
 
     /** @brief Label text drawn centred inside the button. */
     std::string label;
@@ -46,19 +67,19 @@ struct UiButton {
     std::string action;
 
     /** @brief Background colour when the cursor is not over the button. */
-    ecs::Rgba colorIdle = {.r = 80, .g = 80, .b = 80, .a = 255};
+    ecs::Rgba colorIdle = DEFAULT_COLOR_IDLE;
 
     /** @brief Background colour when the cursor hovers over the button. */
-    ecs::Rgba colorHovered = {.r = 120, .g = 120, .b = 120, .a = 255};
+    ecs::Rgba colorHovered = DEFAULT_COLOR_HOVERED;
 
     /** @brief Background colour while the left mouse button is held. */
-    ecs::Rgba colorPressed = {.r = 50, .g = 50, .b = 50, .a = 255};
+    ecs::Rgba colorPressed = DEFAULT_COLOR_PRESSED;
 
     /** @brief Label text colour. */
-    ecs::Rgba colorText = {.r = 255, .g = 255, .b = 255, .a = 255};
+    ecs::Rgba colorText = DEFAULT_COLOR_TEXT;
 
     /** @brief Font size for the label in pixels. */
-    float fontSize = 20.0F;
+    float fontSize = DEFAULT_FONT_SIZE;
 
     /** @brief Current interaction state; updated by UiButtonSystem. */
     UiButtonState state = UiButtonState::Idle;

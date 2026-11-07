@@ -138,27 +138,47 @@ void applySprite(ecs::Registry& registry, const ecs::Entity entity, const Entity
                                                            });
 }
 
+// Demo HUD layout. Anchors are fractions of the screen size: (0, 0) is the top-left corner, (1, 1) the bottom-right.
+constexpr float HUD_TOP_ANCHOR = 0.04F;
+constexpr float HP_BAR_LEFT_ANCHOR = 0.02F;
+constexpr float HP_BAR_WIDTH = 220.0F;
+constexpr float HP_BAR_HEIGHT = 22.0F;
+constexpr float HP_BAR_BORDER_THICKNESS = 2.0F;
+constexpr float HP_MIN = 0.0F;
+constexpr float HP_MAX = 100.0F;
+constexpr float HP_DEMO_VALUE = 75.0F;
+constexpr float SCORE_LEFT_ANCHOR = 0.75F;
+constexpr float SCORE_FONT_SIZE = 26.0F;
+constexpr ecs::Rgba COLOR_SCORE = {.r = 255, .g = 220, .b = 50, .a = 255};
+
 /** @brief Spawns the demo HUD: a health bar with its border and a score label. */
 void spawnHud(ecs::Registry& registry) {
+    const ui::UiAnchor hpBarAnchor{.anchorX = HP_BAR_LEFT_ANCHOR, .anchorY = HUD_TOP_ANCHOR};
+
     const ecs::Entity hpBar = registry.spawnEntity();
-    registry.addComponent<ui::UiAnchor>(hpBar, ui::UiAnchor{.anchorX = 0.02F, .anchorY = 0.04F});
-    registry.addComponent<ui::UiProgressBar>(
-        hpBar, ui::UiProgressBar{.value = 75.0F, .min = 0.0F, .max = 100.0F, .width = 220.0F, .height = 22.0F});
+    registry.addComponent<ui::UiAnchor>(hpBar, hpBarAnchor);
+    registry.addComponent<ui::UiProgressBar>(hpBar, ui::UiProgressBar{
+                                                        .value = HP_DEMO_VALUE,
+                                                        .min = HP_MIN,
+                                                        .max = HP_MAX,
+                                                        .width = HP_BAR_WIDTH,
+                                                        .height = HP_BAR_HEIGHT,
+                                                    });
 
     const ecs::Entity hpBorder = registry.spawnEntity();
-    registry.addComponent<ui::UiAnchor>(hpBorder, ui::UiAnchor{.anchorX = 0.02F, .anchorY = 0.04F});
+    registry.addComponent<ui::UiAnchor>(hpBorder, hpBarAnchor);
     registry.addComponent<ui::UiRect>(hpBorder, ui::UiRect{
-                                                    .width = 220.0F,
-                                                    .height = 22.0F,
-                                                    .borderColor = {.r = 255, .g = 255, .b = 255, .a = 255},
-                                                    .borderThickness = 2.0F,
+                                                    .width = HP_BAR_WIDTH,
+                                                    .height = HP_BAR_HEIGHT,
+                                                    .borderColor = COLOR_WHITE,
+                                                    .borderThickness = HP_BAR_BORDER_THICKNESS,
                                                 });
 
     const ecs::Entity scoreText = registry.spawnEntity();
-    registry.addComponent<ui::UiAnchor>(scoreText, ui::UiAnchor{.anchorX = 0.75F, .anchorY = 0.04F});
+    registry.addComponent<ui::UiAnchor>(scoreText,
+                                        ui::UiAnchor{.anchorX = SCORE_LEFT_ANCHOR, .anchorY = HUD_TOP_ANCHOR});
     registry.addComponent<ui::UiText>(
-        scoreText,
-        ui::UiText{.text = "SCORE: 1337", .fontSize = 26.0F, .color = {.r = 255, .g = 220, .b = 50, .a = 255}});
+        scoreText, ui::UiText{.text = "SCORE: 1337", .fontSize = SCORE_FONT_SIZE, .color = COLOR_SCORE});
 }
 
 }  // namespace
