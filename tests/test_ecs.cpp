@@ -510,6 +510,23 @@ TEST(ECS, ComponentRemoveListenerCanAddListenersDuringDispatch) {
     EXPECT_EQ(addedCalls, 0);
 }
 
+TEST(RegistryTest, AliveCountFollowsSpawnsAndKills) {
+    ecs::Registry registry;
+    EXPECT_EQ(registry.aliveCount(), 0U);
+
+    const ecs::Entity first = registry.spawnEntity();
+    registry.spawnEntity();
+    EXPECT_EQ(registry.aliveCount(), 2U);
+
+    registry.killEntity(first);
+    EXPECT_EQ(registry.aliveCount(), 1U);
+    registry.killEntity(first);  // a stale handle changes nothing
+    EXPECT_EQ(registry.aliveCount(), 1U);
+
+    registry.spawnEntity();  // reuses the slot of the killed entity
+    EXPECT_EQ(registry.aliveCount(), 2U);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
