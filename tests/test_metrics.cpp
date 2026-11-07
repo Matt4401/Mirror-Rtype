@@ -283,8 +283,10 @@ TEST(MetricsPlugin, PublishesFrameRateAndEntities) {
     EXPECT_EQ(side.board().find("FPS")->level, MetricLevel::Normal);
     EXPECT_EQ(side.board().find("Frame")->value, "15.6 ms avg, 15.6 ms max");
     EXPECT_EQ(side.board().find("Entities")->value, "2");
+#ifndef __APPLE__  // no process sample on macOS, so no CPU and RAM lines
     EXPECT_NE(side.board().find("CPU"), nullptr);
     EXPECT_NE(side.board().find("RAM"), nullptr);
+#endif
 }
 
 TEST(MetricsPlugin, SlowFramesRaiseTheLevel) {
