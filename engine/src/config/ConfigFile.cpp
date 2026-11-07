@@ -24,29 +24,51 @@ namespace config {
 namespace {
 
 using Values = std::map<std::string, ConfigFile::Value, std::less<>>;
+using ArraySizes = std::map<std::string, std::size_t, std::less<>>;
 
-/** @brief Copies the scalar values of `root` and of its sub-tables into `values`, under dotted keys. */
-void flatten(const toml::table& root, Values& values, std::vector<std::string>& warnings) {
-    // Sub-tables are queued with their dotted prefix instead of recursing, whatever the file nesting.
-    std::vector<std::pair<const toml::table*, std::string>> pending{{&root, std::string{}}};
+/** @brief Output of `flatten`; every pointer must be non-null. */
+struct Flattened {
+    /** @brief Scalar values by dotted key. */
+    Values* values = nullptr;
+    /** @brief Element count of every array, by dotted key. */
+    ArraySizes* arraySizes = nullptr;
+    /** @brief Ignored values. */
+    std::vector<std::string>* warnings = nullptr;
+};
+
+/**
+ * @brief Copies the scalar values of `root`, of its sub-tables and of its arrays into `out`, under dotted keys.
+ *
+ * Array elements are keyed by their index (`events.0.at`, `keys.1`), and the size of each array is recorded.
+ */
+void flatten(const toml::table& root, const Flattened& out) {
+    // Nodes are queued with their dotted name instead of recursing, so any nesting depth is handled.
+    std::vector<std::pair<const toml::node*, std::string>> pending;
+    for (const auto& [key, node] : root) {
+        pending.emplace_back(&node, std::string(key.str()));
+    }
     while (!pending.empty()) {
-        const auto [table, prefix] = std::move(pending.back());
+        auto [node, name] = std::move(pending.back());
         pending.pop_back();
-        for (const auto& [key, node] : *table) {
-            std::string name = prefix.empty() ? std::string(key.str()) : std::format("{}.{}", prefix, key.str());
-            if (const toml::table* child = node.as_table()) {
-                pending.emplace_back(child, std::move(name));
-            } else if (const auto* boolean = node.as_boolean()) {
-                values.emplace(name, boolean->get());
-            } else if (const auto* integer = node.as_integer()) {
-                values.emplace(name, integer->get());
-            } else if (const auto* floating = node.as_floating_point()) {
-                values.emplace(name, floating->get());
-            } else if (const auto* string = node.as_string()) {
-                values.emplace(name, string->get());
-            } else {
-                warnings.push_back(std::format("{}: unsupported value type (arrays and dates are ignored)", name));
+        if (const toml::table* table = node->as_table()) {
+            for (const auto& [key, child] : *table) {
+                pending.emplace_back(&child, std::format("{}.{}", name, key.str()));
             }
+        } else if (const toml::array* array = node->as_array()) {
+            for (std::size_t i = 0; i < array->size(); ++i) {
+                pending.emplace_back(array->get(i), std::format("{}.{}", name, i));
+            }
+            out.arraySizes->emplace(std::move(name), array->size());
+        } else if (const auto* boolean = node->as_boolean()) {
+            out.values->emplace(std::move(name), boolean->get());
+        } else if (const auto* integer = node->as_integer()) {
+            out.values->emplace(std::move(name), integer->get());
+        } else if (const auto* floating = node->as_floating_point()) {
+            out.values->emplace(std::move(name), floating->get());
+        } else if (const auto* string = node->as_string()) {
+            out.values->emplace(std::move(name), string->get());
+        } else {
+            out.warnings->push_back(std::format("{}: unsupported value type (dates and times are ignored)", name));
         }
     }
 }
@@ -87,7 +109,8 @@ ConfigFile ConfigFile::parse(std::string_view text, std::string_view sourceName)
     ConfigFile file;
     try {
         const toml::table table = toml::parse(text, sourceName);
-        flatten(table, file._values, file._warnings);
+        flatten(table,
+                Flattened{.values = &file._values, .arraySizes = &file._arraySizes, .warnings = &file._warnings});
     } catch (const toml::parse_error& parseError) {
         const toml::source_position& where = parseError.source().begin;
         file._error = std::format("{}:{}:{}: {}", sourceName, where.line, where.column, parseError.description());
@@ -96,6 +119,11 @@ ConfigFile ConfigFile::parse(std::string_view text, std::string_view sourceName)
 }
 
 bool ConfigFile::contains(std::string_view key) const { return _values.contains(key); }
+
+std::size_t ConfigFile::arraySize(std::string_view key) const {
+    const auto it = _arraySizes.find(key);
+    return it == _arraySizes.end() ? 0 : it->second;
+}
 
 std::optional<bool> ConfigFile::getBool(std::string_view key) const {
     const auto* value = find<bool>(_values, key);

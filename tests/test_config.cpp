@@ -71,12 +71,12 @@ TEST(ConfigFile, ListsTheKeysOfATable) {
 }
 
 TEST(ConfigFile, UnsupportedValuesAreReported) {
-    const config::ConfigFile file = config::ConfigFile::parse("keys = [1, 2, 3]");
+    const config::ConfigFile file = config::ConfigFile::parse("released = 1987-07-01");
 
     EXPECT_FALSE(file.error().has_value());
-    EXPECT_FALSE(file.contains("keys"));
+    EXPECT_FALSE(file.contains("released"));
     ASSERT_EQ(file.warnings().size(), 1U);
-    EXPECT_NE(file.warnings()[0].find("keys"), std::string::npos);
+    EXPECT_NE(file.warnings()[0].find("released"), std::string::npos);
 }
 
 TEST(ConfigFile, SyntaxErrorGivesAnEmptyConfigurationWithItsLocation) {

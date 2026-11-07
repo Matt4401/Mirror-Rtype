@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -17,8 +18,19 @@ namespace config {
  *
  * Loading never throws: a missing, oversized or malformed file gives an empty configuration and an `error()`,
  * so every lookup misses and callers fall back to their defaults. Nested tables are flattened into dotted keys;
- * only scalar values (booleans, integers, floats, strings) are kept, other types are reported in `warnings()`.
- * Holds no library type, so modules reading settings do not depend on the TOML parser.
+ * only scalar values (booleans, integers, floats, strings) are kept, other types (dates, times) are reported in
+ * `warnings()`. Holds no library type, so modules reading settings do not depend on the TOML parser.
+ *
+ * Arrays, including arrays of tables (`[[events]]`), are flattened too: each element is keyed by its index, and
+ * `arraySize()` gives the element count.
+ *
+ * ```toml
+ * keys = [10, 20]          # keys.0 = 10, keys.1 = 20, arraySize("keys") = 2
+ * [[events]]
+ * at = 400.0               # events.0.at
+ * [[events]]
+ * at = 900.0               # events.1.at, arraySize("events") = 2
+ * ```
  */
 class ConfigFile {
   public:
@@ -45,8 +57,18 @@ class ConfigFile {
      */
     [[nodiscard]] static ConfigFile parse(std::string_view text, std::string_view sourceName = "<memory>");
 
-    /** @brief Tells whether `key` holds a value of any type. */
+    /** @brief Tells whether `key` holds a scalar value of any type (false for tables and arrays). */
     [[nodiscard]] bool contains(std::string_view key) const;
+
+    /**
+     * @brief Gets the element count of an array.
+     *
+     * Elements are read with their index as the last key part: `getNumber("events.0.at")`.
+     *
+     * @param key Dotted key of the array, e.g. `"events"` or `"level.waves"`.
+     * @return Number of elements, or 0 if `key` is missing, empty or not an array.
+     */
+    [[nodiscard]] std::size_t arraySize(std::string_view key) const;
 
     /** @brief Reads a boolean, or nothing if the key is missing or holds another type. */
     [[nodiscard]] std::optional<bool> getBool(std::string_view key) const;
@@ -77,6 +99,8 @@ class ConfigFile {
   private:
     /** @brief Scalar settings by dotted key; `std::less<>` allows lookups by `std::string_view`. */
     std::map<std::string, Value, std::less<>> _values;
+    /** @brief Element count of every array by dotted key. */
+    std::map<std::string, std::size_t, std::less<>> _arraySizes;
     /** @brief Reason the file could not be used, if any. */
     std::optional<std::string> _error;
     /** @brief Ignored values. */
