@@ -21,6 +21,7 @@
 #include "net/NetworkConfig.hpp"
 #include "net/asio/EventQueue.hpp"
 #include "net/asio/TcpSession.hpp"
+#include "net/asio/TransportCounters.hpp"
 #include "net/asio/Wire.hpp"
 
 namespace ecs::net::detail {
@@ -47,6 +48,8 @@ class NetworkClient : public INetworkClient {
     void stop() override;
     /** @copydoc INetworkManager::isRunning */
     [[nodiscard]] bool isRunning() const override { return _state.load() == State::Running; }
+    /** @copydoc INetworkManager::stats */
+    [[nodiscard]] TransportStats stats() const override { return _counters.read(); }
 
     /** @copydoc INetworkClient::connect */
     bool connect(const std::string& host, std::uint16_t port) override;
@@ -98,6 +101,8 @@ class NetworkClient : public INetworkClient {
 
     /** @brief Transport settings. */
     NetworkConfig _config;
+    /** @brief Traffic of the transport; declared first because the network thread uses it until it is joined. */
+    TransportCounters _counters;
 
     /** @brief Runs every asynchronous operation, on `_thread`. */
     asio::io_context _io;

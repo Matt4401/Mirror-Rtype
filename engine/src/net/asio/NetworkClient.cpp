@@ -98,7 +98,7 @@ void NetworkClient::onTcpConnected(const asio::ip::address& server) {
     _tcp = std::make_shared<TcpSession>(
         std::move(_connecting), 0,
         TcpSession::Limits{.maxPayload = _config.maxReliablePayload, .maxQueueBytes = _config.maxReliableQueueBytes},
-        [this](PeerId, const MessageKind kind, Bytes payload) { onTcpMessage(kind, std::move(payload)); },
+        _counters, [this](PeerId, const MessageKind kind, Bytes payload) { onTcpMessage(kind, std::move(payload)); },
         [this](const PeerId peer) {
             _state = State::Stopped;
             closeUdpNow();
@@ -196,6 +196,7 @@ void NetworkClient::receiveUdp() {
                                           return;
                                       }
                                       if (!ec && _udpFrom == _serverUdp && size <= MAX_DATAGRAM) {
+                                          _counters.onReceived(size);
                                           _lastUdpReceived = std::chrono::steady_clock::now();
                                           _udpBound = true;
                                           if (size > 0) {
@@ -217,7 +218,12 @@ void NetworkClient::sendDatagram(const Bytes& payload) {
     std::ranges::copy(payload, datagram->begin() + DATAGRAM_HEADER_SIZE);
 
     _lastUdpSent = std::chrono::steady_clock::now();
-    _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp, [datagram](std::error_code, std::size_t) {});
+    _udpSocket.async_send_to(asio::buffer(*datagram), _serverUdp,
+                             [this, datagram](const std::error_code ec, const std::size_t size) {
+                                 if (!ec) {
+                                     _counters.onSent(size);
+                                 }
+                             });
 }
 
 void NetworkClient::scheduleUdpTick() {
