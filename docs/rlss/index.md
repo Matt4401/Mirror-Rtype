@@ -92,6 +92,7 @@ flowchart LR
 |--------------------------|---------|--------------------------------------------------------------------------|
 | `rlss/scripts/Match`      | server  | Fixed 120 Hz loop: steps the cars and the ball, car-ball contacts, goals, score, kickoff |
 | `rlss/scripts/Kickoff`    | server  | Teams, kickoff spots, goal celebration and countdown durations            |
+| `rlss/scripts/Shots`      | server  | Colored shots (red, purple, gold), flip and boost resets on the ball      |
 | `rlss/scripts/Simulation` | server  | Registry the `Car` / `Ball` instances join and leave                      |
 | `rlss/scripts/Car`        | server  | Whole car physics and boost, one instance per car                         |
 | `rlss/scripts/Ball`       | server  | Ball physics: drag, bounces, spin                                         |
@@ -162,30 +163,36 @@ lengths wide: cars and ball keep their Rocket League size, the camera follows th
 
 | Quantity                          | Value                                    |
 |-----------------------------------|------------------------------------------|
-| Gravity                           | 650 uu/s²                                |
+| Gravity (always down the screen)  | 900 uu/s² (estimate; Rocket League: 650) |
 | Throttle acceleration             | 1600 uu/s² at rest → 160 at 1400 → 0 at 1410 uu/s |
 | Braking / coasting                | 3500 / 525 uu/s²                         |
-| Sticky force on any surface       | 325 uu/s²                                |
-| Jump                              | 292 uu/s + 1458 uu/s² while held, 0.2 s max |
-| Second jump window                | 1.25 s after the first jump              |
+| Sticky force on any surface       | 325 uu/s² coasting, 1050 uu/s² driving (estimate) |
+| Jump                              | 292 uu/s + 1458 uu/s² while held, 0.2 s max (about 160 uu high) |
+| Second jump (flip / double jump)  | one per jump, until the car touches a surface again |
 | Dodge                             | 500 uu/s forward (533 back), scaled by speed; spins at 5.5 rad/s for 0.65 s |
 | Air control                       | 12.46 rad/s², damping 2.798, max 5.5 rad/s |
 | Max speed                         | 2300 uu/s                                |
 
 - **On the wheels**, the car follows the surface: floor, curved corners, walls, ceiling. Gravity along the surface
   slows a climb. The surface holds the car while `−g·n + v²·curvature + sticky ≥ 0`: always on the floor and walls,
-  on the curved corners only if fast enough, never on the flat ceiling. There the suspension (20 uu) extends for a
-  moment before the wheels lose contact, so the car drives on the ceiling only briefly.
+  on the curved corners only if fast enough. While the car drives (throttle or boost) the grip (1050) beats gravity
+  (900): it drives upside down on the ceiling. Once it lets go, gravity wins, the suspension (20 uu) extends and the
+  car falls.
 - The stick is screen-relative but locked while held: holding "right" drives up the right wall and along the ceiling.
   Steering against the motion brakes; below 200 uu/s it turns the car around (Sideswipe-style mirror).
+- **Gravity** always pulls toward the bottom of the screen (900 uu/s² on the cars, 600 on the ball), even when the car drives on a
+  wall or on the ceiling. It is stronger than in Rocket League, so jumps stay short and the game feels snappier.
 - **In the air**: jump hold, double jump (no direction) or dodge (toward the stick), air rotation. The four hitbox
-  corners collide with the arena; touching wheels first (roof within 60° of the wall normal) lands, otherwise the body
-  bounces and tips over. On the roof, jump rolls the car back on its wheels.
+  corners collide with the arena and the car lands when it touches them. Like in Sideswipe, it never rests on its roof
+  or its side: flying toward a surface any other way than wheels first, it spins onto its wheels in the time left
+  before the contact (within 0.25 s of it, up to 16 rad/s); if it touches anyway, it is turned onto its wheels as it
+  lands.
 
 ### Boost
 
-Boost pushes toward the nose: 991.7 uu/s² on the ground (where it also means full throttle), 1058.3 uu/s² in the air,
-up to the 2300 uu/s cap. It burns 33.3 per second (a full tank lasts 3 s) and lasts at least 0.1 s once started. Like in
+Boost pushes toward the nose: 1110 uu/s² on the ground (where it also means full throttle), 1185 uu/s² in the air
+(estimates, about 12% above Rocket League), up to the 2300 uu/s cap. In the air it beats gravity (1185 against 900):
+pointing the nose up, the car climbs. It burns 33.3 per second (a full tank lasts 3 s) and lasts at least 0.1 s once started. Like in
 Sideswipe there are no boost pads: the tank (100, full at spawn) refills while the car touches a surface, wheels or
 body. The refill rate (25 per second, empty to full in 4 s) is an estimate, not a published value.
 
@@ -194,25 +201,59 @@ body. The refill rate (25 per second, empty to full in 4 s) is an estimate, not 
 | Quantity                   | Value                                                          |
 |----------------------------|----------------------------------------------------------------|
 | Radius                     | 91.25 uu                                                       |
-| Gravity                    | 650 uu/s²                                                      |
+| Gravity                    | 600 uu/s²: floatier than the cars (900) and than Rocket League (650), estimate |
 | Air drag                   | 3% of the speed per second                                     |
 | Bounce (restitution)       | 0.6 of the speed into the wall                                 |
 | Wall friction              | 0.35: sliding turns into spin and spin into sliding            |
-| Max speed / spin           | 6000 uu/s / 6 rad/s                                            |
+| Max speed / spin           | 2600 uu/s (estimate; Rocket League: 6000) / 6 rad/s            |
+| Rolling resistance         | 300 uu/s²: a rolling ball stops after a few seconds (estimate) |
 | Mass                       | a car weighs six balls                                         |
 
-Car against ball: the rotated car hitbox is tested against the ball circle. The contact itself does not bounce
-(restitution 0, friction 2, shared by mass, using the speed of the car at the contact point so a flipping nose hits
-harder). Then Rocket League's extra impulse is added to the ball, at most every other step: along the line from the car
-center to the ball center, its vertical part scaled by 0.35 and its part along the car nose by 0.65, with a strength of
-0.65 × the relative speed up to 500 uu/s, 0.55 at 2300, 0.3 at 4600. A car hitting a ball at rest sends it about 1.3
-times faster than itself; the bumper hits the ball under its center, so it also pops up.
+Car against ball: the rotated car hitbox is tested against the ball circle. Everything depends on the **speed along
+the contact normal** (using the speed of the car at the contact point, so a flipping nose hits harder): the front of
+a car at full speed sends the ball far, its roof brushing past barely moves it, and a ball resting on the roof gets no
+push at all.
+
+1. The contact itself: restitution 0.1 on that speed (estimate), friction 2 (it spins the ball), shared by mass.
+2. Rocket League's extra impulse, scaled down by 0.7 (estimate), at most every other step: along the line from the car
+   center to the ball center, its vertical part scaled by 0.35 and its part along the car nose by 0.65, with a
+   strength of 0.65 × the contact speed up to 500 uu/s, 0.55 at 2300, 0.3 at 4600.
+3. **Flip**: a car hitting the ball while it dodges adds 550 uu/s along the same line (estimate): the main source of
+   powerful shots (from the same spot, a flip shot is about 1.5 times faster than driving into the ball).
+
+A car hitting a ball at rest sends it at about its own speed; the bumper hits the ball under its center, so it also
+pops up. The ball speed is capped at 2600 uu/s, flip and boost included.
+
+## Colored shots and resets
+
+Like in Sideswipe, the part of the car touching the ball (from the contact normal in the car frame: nose, rear,
+wheels, roof or corner) and what the car is doing make three kinds of shots; the ball then glows with their color
+for 3 s, or until the next hit (`Shots.wren`, values are estimates):
+
+| Shot   | How                                                                 | Effect                                          |
+|--------|---------------------------------------------------------------------|-------------------------------------------------|
+| Red    | flip into the ball with the nose                                    | +700 uu/s on top of the hit: the power shot     |
+| Purple | wheels against the ball, then jump without direction                | the car jumps off the ball, which takes 900 uu/s away from the wheels; with a direction the car flips instead and misses the ball |
+| Gold   | flip so that the rear swings into the ball (rear toward it, flip away) | 900 uu/s up and back: a lob                  |
+
+A flip touching the ball with another part adds 250 uu/s, without color.
+
+- **Flip reset**: touching the ball with the wheels gives the flip back (as touching any surface does); the car
+  blinks white until it uses it. Resets can be chained; the flip has no time limit.
+- **Boost reset**: a new touch of the ball with the wheels gives at least 25 boost, and boost keeps refilling while
+  the contact lasts (like on the floor or the ceiling).
+- A jump or a flip right after touching the ball needs a new touch (0.2 s apart) before the next reset.
 
 ## Tests
 
 `tests/rlss/CarPhysicsTests.cpp` runs the Wren physics headless: landing, acceleration curve, turning around, wall and
-ceiling, jump height (~230 uu), dodge, boost (past the throttle cap, 33.3 per second, refill only against a surface),
-ball bounce height (0.36 × the drop), car pushing the ball, hit speed, goals (a ball behind the line scores for the
+ceiling, jump height (~160 uu), dodge, boost (past the throttle cap, 33.3 per second, refill only against a surface,
+climbing nose up), driving upside down on the ceiling and falling when letting go, the flip still available after a
+long fall, ball bounce height (0.36 × the drop), a rolling ball stopping, the ball speed cap, car pushing the ball, hit
+speed, a front hit much stronger than the roof, a flip shot much stronger than driving, a car dropped upside down
+turning over before it touches the floor (and, in the random sequences, never lying on its back against a surface),
+the colored shots (red flip with the nose, purple jump off the ball, gold rear lob, a plain drive is not colored, a
+directional jump off the ball flips and misses it), the flip and boost resets on the ball, goals (a ball behind the line scores for the
 right team, celebration, kickoff spots, countdown freeze, play resuming; a shot in the goal scores, a shot above the
 crossbar or under the goal does not), driving above the goal and up the ramp, and 400 random input sequences (with and
 without the ball) where neither the car nor the ball may leave the arena and the goals. The test checks containment
@@ -225,7 +266,7 @@ when it drives at supersonic speed, and the view never showing past the arena.
 
 ## Protocol
 
-The transport handshake uses `protocolId = 0x524C0005` ("RL", version 5), so R-Type and RLSS peers (or two RLSS
+The transport handshake uses `protocolId = 0x524C0006` ("RL", version 6), so R-Type and RLSS peers (or two RLSS
 versions) refuse each other. Every message starts with a one-byte type; multi-byte integers are big-endian, floats
 IEEE 754 binary32. Received messages are untrusted: an unknown type, a wrong size, an out-of-range field or a
 non-finite float drops the message.
@@ -239,7 +280,8 @@ non-finite float drops the message.
 | 5    | `Welcome`     | server → client | Reliable   | `carId u32 (≠ 0)`: network id of the receiver's car, sent once it exists |
 
 A snapshot entity is 20 bytes: `id u32 (≠ 0), kind u8 (1 car, 2 ball), x f32, y f32, rotation f32, flags u8 (bit 0
-facing left, bit 1 boosting), color u8, boost u8 (0..100)`. A part carries at most 48 entities, a snapshot at most 64
+facing left, bit 1 boosting, bit 2 flip reset), color u8 (car: palette index; ball: last shot, 0 none, 1 red, 2 purple,
+3 gold), boost u8 (0..100)`. A part carries at most 48 entities, a snapshot at most 64
 parts.
 
 ## Not done yet
