@@ -12,6 +12,11 @@
 #include "core/PluginBuilder.hpp"
 #include "ecs/Entity.hpp"
 #include "events/EventBus.hpp"
+#include "protocol/Protocol.hpp"
+
+namespace ecs::time {
+struct Time;
+}
 
 namespace rlss::server {
 
@@ -24,7 +29,10 @@ namespace rlss::server {
  * - On each `ecs::net::InputApplied` (one input per car and per fixed step, from `ServerReplicationPlugin`), writes
  *   the input into the car's `input::InputState`, which the scripts read with `Input.getAxis` / `Input.isDown`.
  *
- * The physics itself is in `rlss/scripts/` (`Match`, `Car`, `Ball`).
+ * - Sends the score and phase that the `Match` script writes in the arena's `rlss::game::MatchState` to the clients
+ *   (reliable `MatchStatus` message): to everybody when they change, to a player who joins.
+ *
+ * The physics and the rules are in `rlss/scripts/` (`Match`, `Car`, `Ball`, `Kickoff`).
  */
 class CarSimulationPlugin final : public engine::IPlugin {
   public:
@@ -48,7 +56,14 @@ class CarSimulationPlugin final : public engine::IPlugin {
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Unsubscribes from the applied inputs.
+     * @brief Sends the match status if it changed since the last one sent.
+     * @param engine Host engine.
+     * @param time Frame time.
+     */
+    void update(engine::Engine& engine, const ecs::time::Time& time) override;
+
+    /**
+     * @brief Unsubscribes from the events.
      * @param engine Host engine.
      */
     void shutdown(engine::Engine& engine) override;
@@ -58,8 +73,19 @@ class CarSimulationPlugin final : public engine::IPlugin {
     ecs::Entity _arena = 0;
     /** @brief Ball entity. */
     ecs::Entity _ball = 0;
+    /**
+     * @brief Reads the arena's `MatchState` as a message.
+     * @param engine Host engine.
+     * @return The status, or nothing if the arena has no `MatchState`.
+     */
+    [[nodiscard]] std::optional<protocol::MatchStatus> currentStatus(engine::Engine& engine) const;
+
     /** @brief Subscription to `InputApplied`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _inputs;
+    /** @brief Subscription to `PeerConnected`, while initialized. */
+    std::optional<ecs::EventBus::EventToken> _connected;
+    /** @brief Last status sent to everybody. */
+    std::optional<protocol::MatchStatus> _sent;
 };
 
 }  // namespace rlss::server

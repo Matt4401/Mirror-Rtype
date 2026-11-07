@@ -34,26 +34,6 @@ namespace rlss::server {
 namespace {
 
 constexpr const char* LOG_TAG = "lobby";
-/** @brief Distance from the side walls to the first spawn point: clear of the curved corners. */
-constexpr float SPAWN_MARGIN = 420.0F;
-/** @brief Distance between two spawn points on the same side. */
-constexpr float SPAWN_SPACING = 160.0F;
-/** @brief Cars appear a little above the floor and fall onto it. */
-constexpr float SPAWN_HEIGHT = 60.0F;
-
-/** @brief Even slots start on the left facing right, odd slots on the right facing left. */
-ecs::Transform spawnTransform(const std::size_t slot) {
-    const bool left = slot % 2 == 0;
-    const std::size_t rank = slot / 2;  // position among the cars of the same side
-    const float offset = SPAWN_MARGIN + (static_cast<float>(rank) * SPAWN_SPACING);
-    const float x = left ? arena::LEFT + offset : arena::RIGHT - offset;
-    return ecs::Transform{
-        .x = std::clamp(x, arena::LEFT + SPAWN_MARGIN, arena::RIGHT - SPAWN_MARGIN),
-        .y = arena::BOTTOM - SPAWN_HEIGHT,
-        .scaleX = left ? 1.0F : -1.0F,
-    };
-}
-
 }  // namespace
 
 void LobbyPlugin::build(engine::PluginBuilder& builder) {
@@ -106,14 +86,15 @@ void LobbyPlugin::join(engine::Engine& engine, const ecs::net::PeerId peer) {
 
     ecs::Registry& registry = engine.registry();
     const ecs::Entity car = registry.spawnEntity();
-    registry.addComponent(car, spawnTransform(slot));
+    // The `Car` script moves it to its kickoff spot (`placeAtKickoff`): Kickoff.wren owns the spots.
+    registry.addComponent(car, ecs::Transform{.x = (arena::LEFT + arena::RIGHT) / 2.0F, .y = arena::BOTTOM / 2.0F});
     input::InputState controls;
     controls.playerIndex = static_cast<int>(slot);
     registry.addComponent(car, std::move(controls));
     registry.addComponent(car, ecs::InputBuffer{});
     registry.addComponent(car, ecs::NetworkOwner{.client = peer});
     registry.addComponent(car, game::CarLook{.color = static_cast<std::uint8_t>(slot % PLAYER_COLORS.size())});
-    registry.addComponent(car, game::CarStatus{});
+    registry.addComponent(car, game::CarStatus{.boost = 0.0F, .boosting = false, .placeAtKickoff = true});
     // Stepped by the `Match` script, not by its own update.
     registry.addComponent(car, ecs::ScriptComponent{
                                    .moduleName = std::string(game::CAR_SCRIPT_MODULE),
