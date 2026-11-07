@@ -85,7 +85,9 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
     match.property<&MatchState::blueScore>("blueScore")
         .property<&MatchState::orangeScore>("orangeScore")
         .property<&MatchState::phase>("phase")
-        .property<&MatchState::countdown>("countdown");
+        .property<&MatchState::countdown>("countdown")
+        .property<&MatchState::clock>("clock")
+        .property<&MatchState::overtime>("overtime");
     ok = define(vm, match) && ok;
 
     scripting::ComponentBinder<ScoreCell> cell(vm, module, "ScoreCell");

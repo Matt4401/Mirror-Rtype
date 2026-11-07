@@ -70,6 +70,7 @@ std::vector<ecs::net::Bytes> ReplicationCodec::encodeSnapshot(const std::uint32_
         const auto first = static_cast<std::ptrdiff_t>(std::min(part * perPart, _entities.size()));
         const auto last = static_cast<std::ptrdiff_t>(std::min((part + 1) * perPart, _entities.size()));
         parts.push_back(protocol::encode(protocol::Snapshot{
+            .matchId = _matchId,
             .tick = _tick,
             .lastProcessedInput = lastProcessedInput,
             .partIndex = static_cast<std::uint8_t>(part),
