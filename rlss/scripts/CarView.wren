@@ -1,4 +1,4 @@
-import "rlss/components" for Transform, CarParts
+import "rlss/components" for Transform, CarParts, CarStatus
 
 /**
  * @class CarView
@@ -19,11 +19,17 @@ class CarView {
         _rearWheel = Transform.new(parts.rearWheel)
         _frontWheel = Transform.new(parts.frontWheel)
         _headlight = Transform.new(parts.headlight)
+        _flame = Transform.new(parts.flame)
+        _gaugeBack = Transform.new(parts.gaugeBack)
+        _gaugeFill = Transform.new(parts.gaugeFill)
+        _status = CarStatus.new(_id)
         resize_(_body, 118, 20)
         resize_(_cabin, 60, 18)
         resize_(_rearWheel, 22, 22)
         resize_(_frontWheel, 22, 22)
         resize_(_headlight, 7, 7)
+        resize_(_gaugeBack, CarView.GAUGE_WIDTH + 4, 10)
+        _time = 0
         _wheelAngle = 0
         _lastX = _car.x
         _lastY = _car.y
@@ -51,9 +57,34 @@ class CarView {
         place_(_rearWheel, x, y, rotation, facing, -38, -7, _wheelAngle)
         place_(_frontWheel, x, y, rotation, facing, 38, -7, _wheelAngle)
         place_(_headlight, x, y, rotation, facing, 55, 3, 0)
+        updateBoost_(dt, x, y, rotation, facing)
+    }
+
+    // Flame behind the car while boosting, and a boost gauge above it (kept level, whatever the car rotation).
+    updateBoost_(dt, x, y, rotation, facing) {
+        _time = _time + dt
+        var boost = _status.boost
+        if (boost == null) boost = 0
+        if (_status.boosting == true) {
+            var length = 34 + 8 * (_time * 40).sin
+            resize_(_flame, length, 12)
+            place_(_flame, x, y, rotation, facing, -59 - length / 2, 0, 0)
+        } else {
+            resize_(_flame, 0, 0)
+        }
+        var gaugeY = y - CarView.GAUGE_HEIGHT
+        _gaugeBack.x = x
+        _gaugeBack.y = gaugeY
+        var fill = CarView.GAUGE_WIDTH * boost / 100
+        resize_(_gaugeFill, fill, 6)
+        _gaugeFill.x = x - CarView.GAUGE_WIDTH / 2 + fill / 2
+        _gaugeFill.y = gaugeY
     }
 
     static WHEEL_RADIUS { 11 }
+    static GAUGE_WIDTH { 60 }
+    /** @brief Height of the gauge above the car center. */
+    static GAUGE_HEIGHT { 70 }
 
     resize_(part, width, height) {
         part.scaleX = width / 32

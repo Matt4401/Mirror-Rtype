@@ -1,15 +1,18 @@
 import "core/Input" for Input
-import "rlss/components" for Transform, Controls
+import "rlss/components" for Transform, Controls, CarStatus
 import "rlss/scripts/Arena" for Arena
 import "rlss/scripts/CarTuning" for CarTuning
+import "rlss/scripts/Simulation" for Simulation
 
 /**
  * @class Car
  * @brief Server-side physics of one car, seen from the side, modelled on Rocket League.
  *
- * Attached to every car entity (`ScriptComponent`, `hasUpdate = true`). Reads the player's input through
- * `Input.getAxis(player, "steer")` / `Input.isDown(player, "jump")`, simulates at a fixed 120 Hz, and writes the
- * result into the entity `Transform` (x, y, rotation; `scaleX` = -1 when facing left), which the engine replicates.
+ * Attached to every car entity (`ScriptComponent`). The instance registers itself in `Simulation`; the `Match` script
+ * steps every car and the ball together at a fixed 120 Hz (`step(dt)`), resolves their collisions, then calls `sync()`.
+ * Reads the player's input through `Input.getAxis(player, "steer")` / `Input.isDown(player, "jump" | "boost")`, and
+ * writes the result into the entity `Transform` (x, y, rotation; `scaleX` = -1 when facing left) and `CarStatus`
+ * (boost), which the engine replicates.
  *
  * Orientation: `theta` is the car rotation, clockwise on screen. Along the car, the tangent is (cos, sin) and the roof
  * (car "up") is (sin, -cos); the nose is the tangent times `facing` (+1 or -1). Turning around mirrors the car
@@ -22,11 +25,15 @@ import "rlss/scripts/CarTuning" for CarTuning
  *   the car stays on walls but only lasts a moment on the ceiling.
  * - in the air: gravity, jump hold, double jump / dodge, air rotation; the body collides with the arena walls and lands
  *   when it touches them wheels first.
+ *
+ * Boost pushes the car toward its nose (991 uu/s² on the ground, 1058 in the air) and burns 33.3 per second. Like in
+ * Sideswipe, there are no boost pads: the tank refills while the car touches a surface.
  */
 class Car {
     construct new(entity) {
         _id = entity is Num ? entity : entity.id
         _transform = Transform.new(_id)
+        _status = CarStatus.new(_id)
         _player = Controls.new(_id).playerIndex
         _arena = Arena.fromWorld()
 
@@ -60,34 +67,56 @@ class Car {
         _contactNx = 0
         _contactNy = -1
 
-        _accumulator = 0
+        _boost = CarTuning.BOOST_START
+        _boosting = false
+        _boostTime = 0
+        _lastBallHit = -10
+
+        Simulation.addCar(this)
     }
 
-    // --- Read-only state (tests, debugging) ---
-    grounded { _grounded }
-    speed { (_vx * _vx + _vy * _vy).sqrt }
+    onDestroy() { Simulation.removeCar(this) }
+
+    // --- State read and pushed by the match (collisions), tests and debugging ---
+    x { _x }
+    y { _y }
+    theta { _theta }
+    omega { _omega }
     vx { _vx }
     vy { _vy }
     facing { _facing }
+    grounded { _grounded }
+    speed { (_vx * _vx + _vy * _vy).sqrt }
+    boost { _boost }
+    boosting { _boosting }
+    /** @brief Step of the last extra impulse this car gave the ball (see `Match.hit`). */
+    lastBallHit { _lastBallHit }
+    lastBallHit=(value) { _lastBallHit = value }
+    /** @brief Nose direction (unit vector): where boost and front dodges push. */
+    noseX { _facing * _theta.cos }
+    noseY { _facing * _theta.sin }
 
-    update(dt) {
-        if (_player == null || _transform.x == null) return
-        if (_arena == null) {
-            _arena = Arena.fromWorld()
-            if (_arena == null) return
-        }
-        _accumulator = (_accumulator + dt).min(CarTuning.MAX_FRAME_TIME)
-        while (_accumulator >= CarTuning.STEP) {
-            _accumulator = _accumulator - CarTuning.STEP
-            step_(CarTuning.STEP)
-        }
-        _transform.x = _x
-        _transform.y = _y
-        _transform.rotation = _theta
-        _transform.scaleX = _facing
+    /** @brief Changes the velocity (collision impulse divided by the car mass). */
+    addVelocity(dx, dy) {
+        _vx = _vx + dx
+        _vy = _vy + dy
     }
 
-    step_(dt) {
+    /** @brief Moves the car (collision push-out); on the wheels, the surface puts it back at ride height. */
+    move(dx, dy) {
+        _x = _x + dx
+        _y = _y + dy
+    }
+
+    /** @brief Whether the entity and the arena are there to simulate. */
+    ready {
+        if (_player == null || _transform.x == null) return false
+        if (_arena == null) _arena = Arena.fromWorld()
+        return _arena != null
+    }
+
+    /** @brief One physics step, called by the match. */
+    step(dt) {
         var steer = Input.getAxis(_player, "steer")
         if (steer == null || steer.abs < CarTuning.DEADZONE) steer = 0
         steer = steer.clamp(-1, 1)
@@ -95,11 +124,38 @@ class Car {
         var jumpPressed = jump && !_prevJump
         _prevJump = jump
         _sinceJump = _sinceJump + dt
+        updateBoost_(dt, Input.isDown(_player, "boost"))
 
         if (_grounded) {
             drive_(dt, steer, jumpPressed)
         } else {
             fly_(dt, steer, jump, jumpPressed)
+        }
+    }
+
+    /** @brief Publishes the state to the ECS, once per frame. */
+    sync() {
+        _transform.x = _x
+        _transform.y = _y
+        _transform.rotation = _theta
+        _transform.scaleX = _facing
+        _status.boost = _boost
+        _status.boosting = _boosting
+    }
+
+    // ------------------------------------------------------------------ boost
+
+    updateBoost_(dt, held) {
+        // Once started, a boost lasts at least BOOST_MIN_TIME, like in Rocket League.
+        if ((held || (_boosting && _boostTime < CarTuning.BOOST_MIN_TIME)) && _boost > 0) {
+            _boostTime = _boosting ? _boostTime + dt : 0
+            _boosting = true
+            _boost = (_boost - CarTuning.BOOST_USE_RATE * dt).max(0)
+        } else {
+            _boosting = false
+            _boostTime = 0
+            // Sideswipe has no boost pads: the tank refills while the car touches a surface.
+            if (_grounded || _contact) _boost = (_boost + CarTuning.BOOST_REFILL_RATE * dt).min(CarTuning.BOOST_MAX)
         }
     }
 
@@ -119,7 +175,8 @@ class Car {
         if (steer == 0) _steerLocked = false
         if (!_steerLocked && tx.abs > 0.35) _steerSign = tx > 0 ? 1 : -1
         if (steer != 0) _steerLocked = true
-        var throttle = steer * _steerSign
+        // Boosting means full throttle forward, whatever the stick says.
+        var throttle = _boosting ? _facing : steer * _steerSign
 
         if (throttle != 0 && throttle.sign != _facing && s.abs < CarTuning.TURN_SPEED) _facing = throttle.sign
 
@@ -130,6 +187,7 @@ class Car {
         } else {
             s = Car.towardZero_(s, CarTuning.COAST * dt)
         }
+        if (_boosting) s = s + _facing * CarTuning.BOOST_ACCEL_GROUND * dt
         s = (s + CarTuning.GRAVITY * ty * dt).clamp(-CarTuning.MAX_SPEED, CarTuning.MAX_SPEED)
 
         // Does the surface still hold the car? Gravity pulls it off the ceiling, curved corners push it in.
@@ -230,6 +288,10 @@ class Car {
             _omega = (_omega + torque * dt).clamp(-maxSpin, maxSpin)
         }
 
+        if (_boosting) {
+            _vx = _vx + noseX * CarTuning.BOOST_ACCEL_AIR * dt
+            _vy = _vy + noseY * CarTuning.BOOST_ACCEL_AIR * dt
+        }
         _vy = _vy + CarTuning.GRAVITY * dt
         limitSpeed_()
         _x = _x + _vx * dt
