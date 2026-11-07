@@ -49,13 +49,9 @@ inline constexpr std::string_view BALL_SCRIPT_MODULE = "rlss/scripts/Ball";
 inline constexpr std::string_view BALL_VIEW_SCRIPT_MODULE = "rlss/scripts/BallView";
 /** @brief Tag of the entities drawing the ball, found by the `BallView` script. */
 inline constexpr std::string_view BALL_PART_TAG = "ball_part";
-/** @brief Wren module of the client-side scoreboard. */
-inline constexpr std::string_view SCOREBOARD_SCRIPT_MODULE = "rlss/scripts/ScoreboardView";
-/** @brief Tag of the squares of the scoreboard, found by the `ScoreboardView` script. */
-inline constexpr std::string_view SCORE_CELL_TAG = "score_cell";
 /** @brief Wren module of the client camera. */
 inline constexpr std::string_view CAMERA_SCRIPT_MODULE = "rlss/scripts/CameraDirector";
-/** @brief Tag of the camera entity, found by the scripts that draw on screen (scoreboard). */
+/** @brief Tag of the camera entity. */
 inline constexpr std::string_view CAMERA_TAG = "main_camera";
 /** @brief Wren module of the client-side car visuals. */
 inline constexpr std::string_view CAR_VIEW_SCRIPT_MODULE = "rlss/scripts/CarView";
@@ -146,7 +142,7 @@ struct ShotGlow {
 
 /**
  * @brief Score and phase of the match. Server: written by the `Match` script on the arena entity, sent to the clients
- * in `MatchStatus` messages. Client: written from those messages, read by the `ScoreboardView` script.
+ * in `MatchStatus` messages. Client: written from those messages by `HudPlugin`, read by the sounds.
  */
 struct MatchState {
     /** @brief Goals of the blue team (left side, defends the left goal). */
@@ -166,7 +162,7 @@ struct MatchState {
     bool overtime = false;
 };
 
-/** @brief `MatchState::phase` of the client scoreboard while no match is joined: nothing is shown. */
+/** @brief `MatchState::phase` of the client HUD while no match is joined: nothing is shown. */
 inline constexpr int NO_MATCH = -1;
 
 /** @brief Geometry of the arena, read by the Wren physics through the `ArenaShape` class. */
@@ -193,15 +189,15 @@ struct ArenaShape {
 
 /** @brief Client: entities drawing the parts of a car, placed every frame by the `CarView` script. */
 struct CarParts {
-    /** @brief Chassis, in the player color. */
+    /** @brief Body, in the player color. */
     ecs::Entity body = 0;
-    /** @brief Cabin, on top of the chassis. */
+    /** @brief Glass, trims and lights, drawn over the body. */
     ecs::Entity cabin = 0;
     /** @brief Rear wheel. */
     ecs::Entity rearWheel = 0;
     /** @brief Front wheel. */
     ecs::Entity frontWheel = 0;
-    /** @brief Headlight, shows where the car is facing. */
+    /** @brief Headlight glow, shows where the car is facing. */
     ecs::Entity headlight = 0;
     /** @brief Boost flame behind the car, hidden when not boosting. */
     ecs::Entity flame = 0;
@@ -227,32 +223,6 @@ struct BallPart {
     bool spins = false;
     /** @brief `Shot` this piece shows (a colored halo), or 0 for a piece always shown. */
     int glow = 0;
-};
-
-/**
- * @brief Client: one square of the scoreboard, lit or hidden by the `ScoreboardView` script.
- *
- * Placed on screen, not in the world: the script converts its screen position through the camera every frame, so the
- * scoreboard stays put while the camera moves.
- */
-struct ScoreCell {
-    /** @brief What it belongs to: 0 blue score, 1 orange score, 2 kickoff countdown, 3 "GOAL" banner, 4 always shown.
-     */
-    int display = 0;
-    /** @brief Character of the display, from the left. */
-    int slot = 0;
-    /** @brief Row in the 3 x 5 glyph, from the top. */
-    int row = 0;
-    /** @brief Column in the 3 x 5 glyph, from the left. */
-    int column = 0;
-    /** @brief Center on screen, in pixels from the left. */
-    float screenX = 0.0F;
-    /** @brief Center on screen, in pixels from the top. */
-    float screenY = 0.0F;
-    /** @brief Width when lit, in pixels. */
-    float width = 0.0F;
-    /** @brief Height when lit, in pixels. */
-    float height = 0.0F;
 };
 
 /**

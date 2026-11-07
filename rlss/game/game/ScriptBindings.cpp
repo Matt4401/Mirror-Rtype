@@ -105,17 +105,6 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&MatchState::overtime>("overtime");
     ok = define(vm, match) && ok;
 
-    scripting::ComponentBinder<ScoreCell> cell(vm, module, "ScoreCell");
-    cell.property<&ScoreCell::display>("display")
-        .property<&ScoreCell::slot>("slot")
-        .property<&ScoreCell::row>("row")
-        .property<&ScoreCell::column>("column")
-        .property<&ScoreCell::screenX>("screenX")
-        .property<&ScoreCell::screenY>("screenY")
-        .property<&ScoreCell::width>("width")
-        .property<&ScoreCell::height>("height");
-    ok = define(vm, cell) && ok;
-
     scripting::ComponentBinder<ecs::CameraComponent> camera(vm, module, "Camera");
     camera.property<&ecs::CameraComponent::targetX>("targetX")
         .property<&ecs::CameraComponent::targetY>("targetY")
