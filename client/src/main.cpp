@@ -23,6 +23,7 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
+#include "ui/UiPlugin.hpp"
 
 namespace {
 
@@ -47,6 +48,7 @@ int main(int ac, char** av) {
             .addPlugin<prefabs::PrefabPlugin>()
             .addPlugin<scripting::ScriptPlugin>()
             .addPlugin<hierarchy::HierarchyPlugin>()
+            .addPlugin<ui::UiPlugin>()
             .addPlugin<client::RTypeGamePlugin>();
         client::addNetworkPlugins(engine, *options);
 

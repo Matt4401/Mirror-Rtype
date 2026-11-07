@@ -97,12 +97,36 @@ engine.addPlugin<systems::PhysicsPlugin>()
 Entity handles are generational, so a handle to a destroyed child kept somewhere else reads as dead
 (`registry.isAlive`) even after its slot is reused.
 
+## HUD elements
+
+The UI module (`engine_ui`) uses the same links to nest HUD elements. HUD elements are placed by `ui::UiAnchor`, not
+by `ecs::Transform`, so `LocalTransform` plays no role there:
+
+- An element whose `Parent` is also a HUD element (has a `UiAnchor`) is anchored **inside its parent's rectangle**:
+  `anchorX/anchorY` are fractions of the parent's size and the offset is relative to its top-left corner.
+- An element without a parent, or whose parent is not a HUD element (a ship, an enemy), is anchored against the screen.
+- `ui::computeLayout` walks each tree depth-first: a parent is drawn before (below) its children, and siblings follow
+  the order of `Children`. Buttons are hit-tested with the same rectangles.
+- An entity without a `UiAnchor` is not laid out; HUD elements below it start new screen-anchored trees.
+
+```cpp
+const ecs::Entity panel = registry.spawnEntity();
+registry.addComponent<ui::UiAnchor>(panel, ui::UiAnchor{.anchorX = 0.5F, .anchorY = 0.5F, .pivotX = 0.5F, .pivotY = 0.5F});
+registry.addComponent<ui::UiRect>(panel, ui::UiRect{.width = 400.0F, .height = 200.0F});
+
+const ecs::Entity quit = registry.spawnEntity();
+registry.addComponent<ui::UiAnchor>(quit, ui::UiAnchor{.anchorX = 0.5F, .anchorY = 1.0F, .offsetY = -16.0F,
+                                                       .pivotX = 0.5F, .pivotY = 1.0F});
+registry.addComponent<ui::UiButton>(quit, ui::UiButton{.label = "Quit", .action = "quit"});
+hierarchy::setParent(registry, quit, panel);  // bottom-centre of the panel; destroying the panel destroys it
+```
+
 ## Not done yet
 
 - **Wren bindings**: `Entity.setParent(p)`, `parent`, `children`, `detach()` in `scripts/core/Entity.wren`, to add with
   the Transform binding.
-- **UI integration**: the UI primitives (`UiAnchor`, `UiRect`, PR #91) still anchor against the screen; they should
-  resolve against the parent's rect when an element has a `Parent`.
+- **World-space HUD**: a HUD element parented to a world entity (a health bar over an enemy) is anchored against the
+  screen; following the entity through the camera is still to do.
 - **Sibling reordering**: children are always appended; an API to insert at or move to an index will be needed for UI.
 - **Network**: replicated entities send their world transform, so children replicate as independent entities; the
   link itself is not replicated.

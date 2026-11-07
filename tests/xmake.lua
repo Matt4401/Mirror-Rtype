@@ -164,6 +164,13 @@ target("test_transport")
     add_files("net/TransportTests.cpp")
     add_tests("test_transport")
 
+target("test_ui_components")
+    set_kind("binary")
+    add_deps("engine_ui", "engine_hierarchy")
+    add_packages("gtest")
+    add_files("test_ui_components.cpp")
+    add_tests("test_ui_components")
+
 target("test_server_room")
     set_kind("binary")
     add_deps("engine_core", "engine_time", "engine_events", "engine_network", "rtype_game", "rtype_gameplay")
