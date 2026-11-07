@@ -45,8 +45,8 @@ class CameraDirector : public ::testing::Test {
         _camera = _registry.spawnEntity();
         _registry.addComponent(_camera, ecs::CameraComponent{});
         _registry.addComponent(_camera, game::CameraRig{
-                                            .car = static_cast<int>(_car),
-                                            .ball = static_cast<int>(_ball),
+                                            .car = static_cast<std::int64_t>(_car),
+                                            .ball = static_cast<std::int64_t>(_ball),
                                             .viewWidth = VIEW_WIDTH,
                                             .viewHeight = VIEW_HEIGHT,
                                             .boundsLeft = BOUNDS_LEFT,
@@ -215,6 +215,18 @@ TEST_F(CameraDirector, AFastCarNeverLeavesTheScreen) {
 }
 
 }  // namespace
+
+TEST_F(CameraDirector, FollowsACarWhoseEntitySlotWasReused) {
+    // Entities are generational: a slot freed and reused gets a new generation in the high bits of the handle. The rig
+    // must carry the whole handle to the script, or the camera would look for a dead entity and lose the car.
+    _registry.killEntity(_car);
+    _car = spawnAt(arena::RIGHT - 600.0F, arena::BOTTOM - 18.0F);
+    ASSERT_GT(ecs::entityGeneration(_car), 0U);
+    _registry.getComponents<game::CameraRig>().get(_camera).car = static_cast<std::int64_t>(_car);
+    run(3.0F);
+    EXPECT_TRUE(onScreen(_car));
+    EXPECT_GT(camera().targetX, (arena::LEFT + arena::RIGHT) / 2.0F);  // over to the right, where the new car is
+}
 
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);

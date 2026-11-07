@@ -98,16 +98,19 @@ bool Registry::hasComponent(Entity e) const {
 
 template <class Component>
 Component& Registry::addComponent(Entity to, Component&& c) {
+    ensureAlive(to);
     return getComponents<Component>().insertAt(to, std::forward<Component>(c));
 }
 
 template <class Component>
 Component& Registry::addComponent(Entity to, Component const& c) {
+    ensureAlive(to);
     return getComponents<Component>().insertAt(to, c);
 }
 
 template <class Component, typename... Args>
 Component& Registry::emplaceComponent(Entity to, Args&&... args) {
+    ensureAlive(to);
     return getComponents<Component>().insertAt(to, Component{std::forward<Args>(args)...});
 }
 

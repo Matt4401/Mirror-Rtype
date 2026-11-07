@@ -150,8 +150,10 @@ std::optional<T> WrenVM::getSlotChecked(int slot) {
         if (std::isnan(d) || std::isinf(d)) {
             return std::nullopt;
         }
+        // The upper limit is exclusive: max() may round up to 2^digits once converted to double (e.g. for 64-bit
+        // types such as ecs::Entity), and converting 2^digits back to the integer type is undefined behaviour.
         if (d < static_cast<double>(std::numeric_limits<DecayedT>::lowest()) ||
-            d > static_cast<double>(std::numeric_limits<DecayedT>::max())) {
+            d >= std::ldexp(1.0, std::numeric_limits<DecayedT>::digits)) {
             return std::nullopt;
         }
         return static_cast<T>(d);

@@ -53,14 +53,14 @@ ecs::Rgba shade(const Rgb color, const float factor) {
 }
 
 /** @brief A part is placed and sized by the script: it only needs a color and a layer here. */
-std::uint32_t spawnPart(ecs::Registry& registry, const ecs::Transform& car, const ecs::Rgba color, const int layer) {
+ecs::Entity spawnPart(ecs::Registry& registry, const ecs::Transform& car, const ecs::Rgba color, const int layer) {
     const ecs::Entity part = registry.spawnEntity();
     registry.addComponent(part, ecs::Transform{.x = car.x, .y = car.y, .scaleX = 0.0F, .scaleY = 0.0F});
     registry.addComponent(part, makeRenderable(color, layer));
     return part;
 }
 
-void killPart(ecs::Registry& registry, const std::uint32_t part) {
+void killPart(ecs::Registry& registry, const ecs::Entity part) {
     if (part != 0 && registry.isAlive(part)) {
         registry.killEntity(part);
     }
@@ -114,11 +114,11 @@ void CarViewPlugin::init(engine::Engine& engine) {
                 return;
             }
             const game::CarParts parts = allParts.get(event.entity);
-            const std::array<std::uint32_t, 9> pieces{
+            const std::array<ecs::Entity, 9> pieces{
                 parts.body,  parts.cabin,     parts.rearWheel, parts.frontWheel, parts.headlight,
                 parts.flame, parts.gaugeBack, parts.gaugeFill, parts.flash,
             };
-            for (const std::uint32_t part : pieces) {
+            for (const ecs::Entity part : pieces) {
                 killPart(registry, part);
             }
             // The engine kills the car right after this event: drop its script instance first.
