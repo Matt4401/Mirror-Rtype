@@ -54,7 +54,8 @@ void UiCanvas::clear(ecs::Registry& registry) {
     _items.clear();
 }
 
-void UiCanvas::place(ecs::Registry& registry, const ecs::CameraComponent& camera) const {
+void UiCanvas::place(ecs::Registry& registry, const ecs::CameraComponent& camera, const float shiftX,
+                     const float shiftY) const {
     auto& transforms = registry.getComponents<ecs::Transform>();
     const float zoom = camera.zoom > 0.0F ? camera.zoom : 1.0F;
     for (const Item& item : _items) {
@@ -63,8 +64,8 @@ void UiCanvas::place(ecs::Registry& registry, const ecs::CameraComponent& camera
         }
         // Screen to world: world = target + (screen - offset) / zoom. A Renderable is drawn around its center.
         ecs::Transform& transform = transforms.get(item.entity);
-        transform.x = camera.targetX + ((item.rect.x + (item.rect.width / 2.0F) - camera.offsetX) / zoom);
-        transform.y = camera.targetY + ((item.rect.y + (item.rect.height / 2.0F) - camera.offsetY) / zoom);
+        transform.x = camera.targetX + ((shiftX + item.rect.x + (item.rect.width / 2.0F) - camera.offsetX) / zoom);
+        transform.y = camera.targetY + ((shiftY + item.rect.y + (item.rect.height / 2.0F) - camera.offsetY) / zoom);
         transform.rotation = 0.0F;
         transform.scaleX = item.rect.width / (PLACEHOLDER_SIZE * zoom);
         transform.scaleY = item.rect.height / (PLACEHOLDER_SIZE * zoom);

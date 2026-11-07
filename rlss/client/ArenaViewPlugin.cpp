@@ -1,7 +1,9 @@
 #include "ArenaViewPlugin.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <utility>
 
 #include "Arena.hpp"
 #include "Shapes.hpp"
@@ -57,8 +59,15 @@ ecs::Rgba darken(const Rgb color) {
 }
 
 /**
+ * @brief Half the width of a quarter circle of radius `radius` at `offset` from its center (0 past the radius).
+ */
+float chord(const float radius, const float offset) {
+    return offset >= radius ? 0.0F : std::sqrt((radius * radius) - (offset * offset));
+}
+
+/**
  * @brief Draws one goal: a frame in the wall color, an inside tinted with the defending team color, a net, the goal
- * line and the posts.
+ * line and the posts. The back corners are rounded like the physics (`arena::GOAL_CORNER_RADIUS`).
  * @param wall X of the side wall the goal opens in.
  * @param outward -1 for the left goal, +1 for the right one.
  * @param team Color of the team defending it.
@@ -67,33 +76,59 @@ void drawGoal(ecs::Registry& registry, const float wall, const float outward, co
     const float back = wall + (outward * arena::GOAL_DEPTH);
     const float near = std::min(wall, back);
     const float far = std::max(wall, back);
-    spawnRect(registry,
-              {
-                  .left = near - (outward < 0.0F ? WALL : 0.0F),
-                  .top = arena::GOAL_TOP - WALL,
-                  .right = far + (outward > 0.0F ? WALL : 0.0F),
-                  .bottom = arena::GOAL_BOTTOM + WALL,
-              },
-              WALLS, LAYER_WALLS);
+    const float radius = arena::GOAL_CORNER_RADIUS;
+    // Only the back corners are rounded: the left ones for the left goal, the right ones for the right goal.
+    const RoundedCorners backCorners{
+        .topLeft = outward < 0.0F,
+        .topRight = outward > 0.0F,
+        .bottomLeft = outward < 0.0F,
+        .bottomRight = outward > 0.0F,
+    };
+    // The frame is the inside grown by the wall thickness: its corners share their centers with the inside ones.
+    fillRoundedRect(registry,
+                    {
+                        .left = near - (outward < 0.0F ? WALL : 0.0F),
+                        .top = arena::GOAL_TOP - WALL,
+                        .right = far + (outward > 0.0F ? WALL : 0.0F),
+                        .bottom = arena::GOAL_BOTTOM + WALL,
+                    },
+                    radius + WALL, WALLS, LAYER_WALLS, backCorners);
     // Inside, overlapping the wall it cuts through.
-    spawnRect(registry,
-              {
-                  .left = near - (outward > 0.0F ? WALL : 0.0F),
-                  .top = arena::GOAL_TOP,
-                  .right = far + (outward < 0.0F ? WALL : 0.0F),
-                  .bottom = arena::GOAL_BOTTOM,
-              },
-              darken(team), LAYER_INSIDE);
+    fillRoundedRect(registry,
+                    {
+                        .left = near - (outward > 0.0F ? WALL : 0.0F),
+                        .top = arena::GOAL_TOP,
+                        .right = far + (outward < 0.0F ? WALL : 0.0F),
+                        .bottom = arena::GOAL_BOTTOM,
+                    },
+                    radius, darken(team), LAYER_INSIDE, backCorners);
+
+    // The net, cut along the rounded corners. Their centers are `radius` in front of the back, and below the crossbar
+    // / above the bottom.
+    const float cornerX = back - (outward * radius);
     const auto columns = static_cast<int>((far - near) / NET_SPACING);
     for (int i = 1; i < columns; ++i) {
         const float x = near + (static_cast<float>(i) * NET_SPACING);
-        spawnRect(registry, {.left = x, .top = arena::GOAL_TOP, .right = x + NET_WIDTH, .bottom = arena::GOAL_BOTTOM},
-                  NET, LAYER_LINES);
+        const float past = (x + (NET_WIDTH / 2.0F) - cornerX) * outward;  // how far into the corners
+        const float inset = past > 0.0F ? radius - chord(radius, past) : 0.0F;
+        if (inset >= radius) {
+            continue;
+        }
+        spawnRect(
+            registry,
+            {.left = x, .top = arena::GOAL_TOP + inset, .right = x + NET_WIDTH, .bottom = arena::GOAL_BOTTOM - inset},
+            NET, LAYER_LINES);
     }
     const auto rows = static_cast<int>(arena::GOAL_HEIGHT / NET_SPACING);
     for (int i = 1; i < rows; ++i) {
         const float y = arena::GOAL_TOP + (static_cast<float>(i) * NET_SPACING);
-        spawnRect(registry, {.left = near, .top = y, .right = far, .bottom = y + NET_WIDTH}, NET, LAYER_LINES);
+        const float middle = y + (NET_WIDTH / 2.0F);
+        const float fromEdge = std::min(middle - arena::GOAL_TOP, arena::GOAL_BOTTOM - middle);
+        const float reach = fromEdge < radius ? chord(radius, radius - fromEdge) : radius;
+        const float end = cornerX + (outward * reach);
+        spawnRect(registry,
+                  {.left = std::min(wall, end), .top = y, .right = std::max(wall, end), .bottom = y + NET_WIDTH}, NET,
+                  LAYER_LINES);
     }
     spawnRect(registry,
               {
@@ -103,9 +138,13 @@ void drawGoal(ecs::Registry& registry, const float wall, const float outward, co
                   .bottom = arena::GOAL_BOTTOM,
               },
               withAlpha(team, 170), LAYER_LINES);
-    for (const float y : {arena::GOAL_TOP, arena::GOAL_BOTTOM}) {
-        const float half = POST_SIZE / 2.0F;
-        spawnRect(registry, {.left = wall - half, .top = y - half, .right = wall + half, .bottom = y + half},
+    // The bottom post stands where the goal bottom cuts the curved corner, a little inside the arena.
+    const float drop = arena::GOAL_BOTTOM - (arena::BOTTOM - arena::CORNER_RADIUS);
+    const float postInset = drop > 0.0F ? arena::CORNER_RADIUS - chord(arena::CORNER_RADIUS, drop) : 0.0F;
+    const float half = POST_SIZE / 2.0F;
+    for (const auto& [x, y] :
+         {std::pair{wall, arena::GOAL_TOP}, std::pair{wall - (outward * postInset), arena::GOAL_BOTTOM}}) {
+        spawnRect(registry, {.left = x - half, .top = y - half, .right = x + half, .bottom = y + half},
                   withAlpha(team, 255), LAYER_POSTS);
     }
 }
