@@ -74,9 +74,16 @@ target("engine_hierarchy")
     add_includedirs(".", {public = true})
     add_deps("engine_core")
 
+-- HUD panel showing the metrics board. Draws through engine_ui, which holds no graphics-library code either.
+target("engine_metrics_overlay")
+    set_kind("static")
+    add_files("metrics/overlay/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_metrics", "engine_ui", "engine_hierarchy")
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end
