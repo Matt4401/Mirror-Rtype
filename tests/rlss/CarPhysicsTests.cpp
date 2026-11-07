@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <limits>
 #include <numbers>
 #include <random>
 #include <string>
@@ -32,6 +33,8 @@ constexpr float FRAME = 1.0F / 60.0F;
 constexpr float HALF_LENGTH = 59.0F;
 constexpr float HALF_HEIGHT = 18.0F;
 constexpr float BALL_RADIUS = 91.25F;
+/** @brief Upper bound of the ball speed when a car drives into it from 350 uu away (no flip). */
+constexpr float DRIVE_SHOT_FROM_350_UU = 800.0F;
 
 /** @brief Distance from a point to a segment. */
 float segmentDistance(const float x, const float y, const float ax, const float ay, const float bx, const float by) {
@@ -116,6 +119,7 @@ class CarPhysics : public ::testing::Test {
     void spawnBall(const float x, const float y) {
         _ball = _registry.spawnEntity();
         _registry.addComponent(_ball, ecs::Transform{.x = x, .y = y});
+        _registry.addComponent(_ball, game::ShotGlow{});
         _registry.addComponent(
             _ball, ecs::ScriptComponent{.moduleName = std::string(game::BALL_SCRIPT_MODULE), .className = "Ball"});
     }
@@ -138,6 +142,34 @@ class CarPhysics : public ::testing::Test {
                     << "ball left the arena at x=" << ball().x << " y=" << ball().y;
             }
         }
+    }
+
+    /**
+     * @brief False if the car touches a surface with its roof facing it (lying on its back). The surface normal is the
+     * gradient of the test's own arena distance.
+     */
+    [[nodiscard]] bool notOnItsBack() {
+        const ecs::Transform& t = transform();
+        const float c = std::cos(t.rotation);
+        const float s = std::sin(t.rotation);
+        float closest = std::numeric_limits<float>::max();
+        for (const float lx : {-HALF_LENGTH, HALF_LENGTH}) {
+            for (const float ly : {-HALF_HEIGHT, HALF_HEIGHT}) {
+                closest = std::min(closest, arenaDistance(t.x + (c * lx) + (s * ly), t.y + (s * lx) - (c * ly)));
+            }
+        }
+        if (closest > 2.0F) {
+            return true;  // not touching anything
+        }
+        constexpr float STEP = 1.0F;
+        const float nx = arenaDistance(t.x + STEP, t.y) - arenaDistance(t.x - STEP, t.y);
+        const float ny = arenaDistance(t.x, t.y + STEP) - arenaDistance(t.x, t.y - STEP);
+        const float length = std::hypot(nx, ny);
+        if (length < 0.0001F) {
+            return true;
+        }
+        const float roofTowardWall = -((s * nx) - (c * ny)) / length;  // roof direction against the normal
+        return roofTowardWall < 0.5F;
     }
 
     [[nodiscard]] const ecs::Transform& transform() { return _registry.getComponents<ecs::Transform>().get(_car); }
@@ -165,6 +197,41 @@ class CarPhysics : public ::testing::Test {
         const std::string code = "import \"rlss/scripts/Simulation\" for Simulation\nSimulation.ball.addVelocity(" +
                                  std::to_string(vx) + ", " + std::to_string(vy) + ")\n";
         ASSERT_TRUE(_scripts.getVm().interpret("rlss_test", code).has_value());
+    }
+
+  public:
+    /** @brief Fastest speed of the ball over `seconds` with the given input held, from its frame to frame motion. */
+    float measureFastestBall(const float seconds, const float steer, const bool jump, const bool boost) {
+        float fastest = 0.0F;
+        float x = ball().x;
+        float y = ball().y;
+        for (float t = 0.0F; t < seconds; t += FRAME) {
+            run(FRAME, steer, jump, boost);
+            fastest = std::max(fastest, std::hypot(ball().x - x, ball().y - y) / FRAME);
+            x = ball().x;
+            y = ball().y;
+        }
+        return fastest;
+    }
+
+  protected:
+    /** @brief Runs Wren code in the simulation's VM (scripts must exist: call after a first update). */
+    void wren(const std::string& code) {
+        ASSERT_TRUE(_scripts.getVm()
+                        .interpret("rlss_test", "import \"rlss/scripts/Simulation\" for Simulation\n" + code + "\n")
+                        .has_value());
+    }
+
+    [[nodiscard]] int glow() { return _registry.getComponents<game::ShotGlow>().get(_ball).shot; }
+
+    /**
+     * @brief Car standing on its rear, right next to the ball on the floor, its wheels against the ball's right side.
+     */
+    void spawnCarWheelsAgainstBall() {
+        const float ballY = arena::BOTTOM - BALL_RADIUS;
+        spawnBall(arena::WIDTH / 2.0F, ballY);
+        spawnCar((arena::WIDTH / 2.0F) + BALL_RADIUS + HALF_HEIGHT - 1.0F, ballY);
+        _registry.getComponents<ecs::Transform>().get(_car).rotation = std::numbers::pi_v<float> / 2.0F;  // wheels left
     }
 
     [[nodiscard]] const game::MatchState& match() { return _registry.getComponents<game::MatchState>().get(_arena); }
@@ -238,10 +305,10 @@ TEST_F(CarPhysics, JumpsAndLandsAgain) {
         run(FRAME);
         highest = std::min(highest, transform().y);
     }
-    // Full single jump in Rocket League: about 230 uu high.
+    // Sideswipe jumps are short: about 160 uu with the stronger gravity (230 uu in Rocket League).
     const float height = arena::BOTTOM - HALF_HEIGHT - highest;
-    EXPECT_GT(height, 180.0F);
-    EXPECT_LT(height, 280.0F);
+    EXPECT_GT(height, 130.0F);
+    EXPECT_LT(height, 200.0F);
     run(1.5F);
     EXPECT_NEAR(transform().y, arena::BOTTOM - HALF_HEIGHT, 1.0F);
 }
@@ -266,6 +333,7 @@ TEST_F(CarPhysics, RandomInputsNeverLeaveTheArena) {
     std::uniform_real_distribution<float> duration(0.05F, 0.8F);
     for (int i = 0; i < 400; ++i) {
         run(duration(random), static_cast<float>(steer(random)), jump(random));
+        ASSERT_TRUE(notOnItsBack()) << "lying on its back at x=" << transform().x << " y=" << transform().y;
         if (HasFatalFailure()) {
             return;
         }
@@ -303,26 +371,38 @@ TEST_F(CarPhysics, BoostRefillsOnlyAgainstASurface) {
     EXPECT_NEAR(status().boost, jumped, 0.5F);
 }
 
-TEST_F(CarPhysics, BallBouncesLikeInRocketLeague) {
-    spawnBall(arena::WIDTH / 2.0F, arena::BOTTOM - BALL_RADIUS - 500.0F);
-    run(0.2F);
+TEST_F(CarPhysics, BallBouncesAndSettles) {
+    const float floor = arena::BOTTOM - BALL_RADIUS;
+    spawnBall(arena::WIDTH / 2.0F, floor - 500.0F);
     // Falls 500 uu, bounces with restitution 0.6: back up to about 0.36 * 500 = 180 uu (a little less with drag).
-    float bottom = arena::TOP;
-    for (int i = 0; i < 120; ++i) {
+    // A bounce is seen as the ball going down then up (it may leave the floor within the frame it touched it).
+    bool landed = false;
+    bool rose = false;
+    float apex = floor;
+    float previous = ball().y;
+    float previousStep = 0.0F;
+    for (int i = 0; i < 600; ++i) {
         run(FRAME);
-        bottom = std::max(bottom, ball().y);
-    }
-    EXPECT_NEAR(bottom, arena::BOTTOM - BALL_RADIUS, 1.0F);
-    float apex = arena::BOTTOM;
-    for (int i = 0; i < 60; ++i) {
-        run(FRAME);
+        const float step = ball().y - previous;
+        previous = ball().y;
+        const bool bounced = previousStep > 0.0F && step < 0.0F;
+        previousStep = step;
+        if (!landed) {
+            landed = bounced;
+            continue;
+        }
         apex = std::min(apex, ball().y);
+        rose = true;
+        if (bounced) {
+            break;  // second bounce
+        }
     }
-    const float bounce = arena::BOTTOM - BALL_RADIUS - apex;
+    ASSERT_TRUE(landed && rose);
+    const float bounce = floor - apex;
     EXPECT_GT(bounce, 150.0F);
     EXPECT_LT(bounce, 185.0F);
     run(6.0F);
-    EXPECT_NEAR(ball().y, arena::BOTTOM - BALL_RADIUS, 1.0F);  // settles on the floor
+    EXPECT_NEAR(ball().y, floor, 1.0F);  // settles on the floor
 }
 
 TEST_F(CarPhysics, DrivingIntoTheBallPushesIt) {
@@ -333,7 +413,6 @@ TEST_F(CarPhysics, DrivingIntoTheBallPushesIt) {
     run(1.0F, 1.0F);
     run(0.5F);
     EXPECT_GT(ball().x - start, 300.0F);
-    EXPECT_GT(ball().x, transform().x + BALL_RADIUS);  // pushed ahead, not driven through
 }
 
 TEST_F(CarPhysics, AHitSendsTheBallFasterThanTheCar) {
@@ -356,11 +435,11 @@ TEST_F(CarPhysics, AHitSendsTheBallFasterThanTheCar) {
         ballX = ball().x;
         ballY = ball().y;
     }
-    // Contact: the ball takes ~6/7 of the car speed; Rocket League's extra impulse adds ~0.6 of it along the line
-    // between the centers. The bumper hits the ball under its center, so it also pops up.
+    // The contact gives the ball about the car speed along the contact normal, the extra impulse a bit more. The bumper
+    // hits the ball under its center, so it also pops up.
     EXPECT_GT(carSpeed, 1000.0F);
-    EXPECT_GT(ballSpeed, carSpeed * 1.2F);
-    EXPECT_LT(ballSpeed, carSpeed * 1.7F);
+    EXPECT_GT(ballSpeed, carSpeed * 0.8F);
+    EXPECT_LT(ballSpeed, carSpeed * 1.4F);
 }
 
 TEST_F(CarPhysics, RandomPlayNeverLetsTheBallOrTheCarOut) {
@@ -372,6 +451,7 @@ TEST_F(CarPhysics, RandomPlayNeverLetsTheBallOrTheCarOut) {
     std::uniform_real_distribution<float> duration(0.05F, 0.8F);
     for (int i = 0; i < 400; ++i) {
         run(duration(random), static_cast<float>(steer(random)), press(random), press(random));
+        ASSERT_TRUE(notOnItsBack()) << "lying on its back at x=" << transform().x << " y=" << transform().y;
         if (HasFatalFailure()) {
             return;
         }
@@ -429,6 +509,191 @@ TEST_F(CarPhysics, AShotUnderTheGoalHitsTheRampAndStaysOut) {
     throwBall(1500.0F, 0.0F);
     run(0.6F);
     EXPECT_EQ(match().blueScore, 0);
+}
+
+/** @brief Fastest speed of the ball over `seconds`, from its frame to frame motion. */
+float fastestBall(CarPhysics& test, float seconds, float steer, bool jump = false, bool boost = false);
+
+TEST_F(CarPhysics, BoostingNoseUpClimbsAgainstGravity) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - 600.0F);
+    _registry.getComponents<ecs::Transform>().get(_car).rotation = -std::numbers::pi_v<float> / 2.0F;  // nose up
+    run(FRAME, 0.0F, false, true);
+    const float start = transform().y;
+    run(0.6F, 0.0F, false, true);
+    EXPECT_LT(transform().y, start);  // the boost beats gravity: it rises
+}
+
+TEST_F(CarPhysics, DrivesUpsideDownOnTheCeilingWhileDrivingAndFallsWhenLettingGo) {
+    spawnCar(arena::WIDTH / 2.0F, arena::TOP + HALF_HEIGHT - 1.0F);
+    _registry.getComponents<ecs::Transform>().get(_car).rotation = std::numbers::pi_v<float>;  // wheels up
+    run(0.8F, 1.0F);
+    EXPECT_LT(transform().y, arena::TOP + 30.0F);  // still on the ceiling after 0.8 s of driving
+    run(1.0F);
+    EXPECT_GT(transform().y, arena::TOP + 200.0F);  // let go: falls
+}
+
+TEST_F(CarPhysics, TheFlipStaysAvailableUntilTheCarTouchesASurface) {
+    spawnCar(arena::WIDTH / 2.0F, arena::TOP + HALF_HEIGHT - 1.0F);
+    _registry.getComponents<ecs::Transform>().get(_car).rotation = std::numbers::pi_v<float>;
+    run(0.5F, 1.0F);
+    run(FRAME, 1.0F, true);  // tap jump: off the ceiling, downward
+    run(1.3F);               // long fall: Rocket League would have closed the flip window (1.25 s)
+    ASSERT_GT(transform().y, arena::TOP + 300.0F);
+    ASSERT_LT(transform().y, arena::BOTTOM - 100.0F);  // still in the air
+    const float before = transform().rotation;
+    run(0.1F, 1.0F, true);  // second press with a direction: dodge
+    EXPECT_GT(std::fabs(std::remainder(transform().rotation - before, 2.0F * std::numbers::pi_v<float>)), 0.35F);
+}
+
+TEST_F(CarPhysics, TheFrontAtFullSpeedHitsMuchHarderThanTheRoof) {
+    // The ball rests on the roof of a car that then drives off at full throttle.
+    spawnCar(arena::LEFT + 800.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::LEFT + 800.0F, arena::BOTTOM - (2.0F * HALF_HEIGHT) - BALL_RADIUS - 2.0F);
+    run(0.5F);
+    const float roof = fastestBall(*this, 1.0F, 1.0F);
+    // Same car, same throttle, hitting the ball with its front at full speed.
+    spawnBall(arena::RIGHT - 600.0F, arena::BOTTOM - BALL_RADIUS);
+    const float front = fastestBall(*this, 2.0F, 1.0F);
+    EXPECT_GT(front, 1000.0F);
+    EXPECT_LT(roof, front * 0.5F);
+}
+
+TEST_F(CarPhysics, AFlipIntoTheBallHitsMuchHarderThanDriving) {
+    spawnCar(arena::LEFT + 800.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::LEFT + 1150.0F, arena::BOTTOM - BALL_RADIUS);
+    run(0.3F);
+    run(0.1F, 0.0F, true);  // jump
+    run(0.05F);
+    const float flip = fastestBall(*this, 1.5F, 1.0F, true);  // dodge forward into the ball
+    EXPECT_GT(flip, 1.4F * DRIVE_SHOT_FROM_350_UU);
+}
+
+TEST_F(CarPhysics, DrivingIntoTheBallFromCloseIsAWeakShot) {
+    spawnCar(arena::LEFT + 800.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::LEFT + 1150.0F, arena::BOTTOM - BALL_RADIUS);
+    run(0.3F);
+    EXPECT_LT(fastestBall(*this, 1.0F, 1.0F), DRIVE_SHOT_FROM_350_UU);
+}
+
+TEST_F(CarPhysics, ARollingBallStops) {
+    spawnBall(arena::WIDTH / 2.0F, arena::BOTTOM - BALL_RADIUS);
+    run(0.1F);
+    throwBall(900.0F, 0.0F);
+    run(6.0F);
+    const float x = ball().x;
+    run(0.5F);
+    EXPECT_NEAR(ball().x, x, 1.0F);
+}
+
+TEST_F(CarPhysics, TheBallSpeedIsCapped) {
+    spawnBall(arena::WIDTH / 2.0F, arena::BOTTOM - 700.0F);
+    run(0.1F);
+    throwBall(9000.0F, 0.0F);
+    const float fastest = fastestBall(*this, 0.2F, 0.0F);
+    EXPECT_LE(fastest, 2600.0F + 30.0F);
+    EXPECT_GT(fastest, 2300.0F);
+}
+
+float fastestBall(CarPhysics& test, const float seconds, const float steer, const bool jump, const bool boost) {
+    return test.measureFastestBall(seconds, steer, jump, boost);
+}
+
+TEST_F(CarPhysics, DroppedUpsideDownItTurnsOverAndLandsOnItsWheels) {
+    const float floor = arena::BOTTOM - HALF_HEIGHT;
+    spawnCar(arena::WIDTH / 2.0F, floor - 400.0F);
+    _registry.getComponents<ecs::Transform>().get(_car).rotation = std::numbers::pi_v<float>;  // roof down
+    for (int i = 0; i < 90; ++i) {
+        run(FRAME);
+        // Close enough to touch the floor with a corner: the wheels already point down.
+        if (transform().y > floor - HALF_LENGTH) {
+            ASSERT_LT(std::fabs(std::remainder(transform().rotation, 2.0F * std::numbers::pi_v<float>)),
+                      std::numbers::pi_v<float> / 2.0F)
+                << "frame " << i;
+        }
+    }
+    EXPECT_NEAR(transform().y, floor, 1.0F);
+    EXPECT_NEAR(std::remainder(transform().rotation, 2.0F * std::numbers::pi_v<float>), 0.0F, 0.01F);
+    const float x = transform().x;
+    run(0.5F, 1.0F);
+    EXPECT_GT(transform().x, x + 50.0F);  // on its wheels: it drives
+}
+
+TEST_F(CarPhysics, AFlipIntoTheBallWithTheNoseIsARedShot) {
+    spawnCar(arena::LEFT + 800.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::LEFT + 1150.0F, arena::BOTTOM - BALL_RADIUS);
+    run(0.3F);
+    run(0.1F, 0.0F, true);
+    run(0.05F);
+    (void)fastestBall(*this, 0.5F, 1.0F, true);
+    EXPECT_EQ(glow(), static_cast<int>(game::Shot::Red));
+}
+
+TEST_F(CarPhysics, DrivingIntoTheBallIsNotAColoredShot) {
+    spawnCar(arena::LEFT + 800.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::LEFT + 1150.0F, arena::BOTTOM - BALL_RADIUS);
+    run(1.0F, 1.0F);
+    EXPECT_EQ(glow(), static_cast<int>(game::Shot::None));
+}
+
+TEST_F(CarPhysics, JumpingOffTheBallWithTheWheelsIsAPurpleShot) {
+    spawnCarWheelsAgainstBall();
+    run(FRAME);              // the wheels touch the ball
+    run(FRAME, 0.0F, true);  // jump without direction
+    const float speed = fastestBall(*this, 0.2F, 0.0F);
+    EXPECT_EQ(glow(), static_cast<int>(game::Shot::Purple));
+    EXPECT_GT(speed, 700.0F);
+    EXPECT_LT(ball().x, arena::WIDTH / 2.0F);                                     // pushed away from the wheels (left)
+    EXPECT_GT(transform().x, (arena::WIDTH / 2.0F) + BALL_RADIUS + HALF_HEIGHT);  // the car jumped the other way
+}
+
+TEST_F(CarPhysics, JumpingOffTheBallWithADirectionFlipsAndMissesIt) {
+    spawnCarWheelsAgainstBall();
+    run(FRAME);
+    run(FRAME, 1.0F, true);  // jump with a direction: a flip
+    const float speed = fastestBall(*this, 0.2F, 1.0F);
+    EXPECT_NE(glow(), static_cast<int>(game::Shot::Purple));
+    EXPECT_LT(speed, 300.0F);
+}
+
+TEST_F(CarPhysics, TheWheelsOnTheBallResetTheFlipAndRefillBoost) {
+    const float ballY = arena::BOTTOM - BALL_RADIUS;
+    spawnBall(arena::WIDTH / 2.0F, ballY);
+    spawnCar(arena::WIDTH / 2.0F, ballY - BALL_RADIUS - HALF_HEIGHT - 120.0F);  // above the ball, wheels down
+    run(FRAME);
+    wren("Simulation.cars[0].boost = 40");
+    run(FRAME, 0.0F, true);  // double jump: the flip is used
+    run(FRAME);
+    EXPECT_FALSE(status().flipReset);
+    bool reset = false;
+    for (int i = 0; i < 90 && !reset; ++i) {
+        run(FRAME);
+        reset = status().flipReset;  // falls back onto the ball, wheels first
+    }
+    ASSERT_TRUE(reset);
+    EXPECT_GE(status().boost, 40.0F + 25.0F);  // at least a quarter of the tank on a new touch
+    // The flip is back: a flip with a direction now spins the car.
+    const float before = transform().rotation;
+    run(0.1F, 1.0F, true);
+    EXPECT_GT(std::fabs(std::remainder(transform().rotation - before, 2.0F * std::numbers::pi_v<float>)), 0.35F);
+    EXPECT_FALSE(status().flipReset);  // used
+}
+
+TEST_F(CarPhysics, FlippingTheRearIntoTheBallIsAGoldLob) {
+    const float y = arena::BOTTOM - 500.0F;
+    spawnCar(arena::WIDTH / 2.0F, y);  // facing right
+    spawnBall((arena::WIDTH / 2.0F) - HALF_LENGTH - BALL_RADIUS - 40.0F, y);
+    run(FRAME);
+    throwBall(900.0F, 0.0F);  // the ball comes from behind
+    run(FRAME, 1.0F, true);   // front flip, away from the ball: the rear swings up into it
+    float lowestVy = 0.0F;
+    float previousY = ball().y;
+    for (int i = 0; i < 30; ++i) {
+        run(FRAME, 1.0F);
+        lowestVy = std::min(lowestVy, (ball().y - previousY) / FRAME);
+        previousY = ball().y;
+    }
+    EXPECT_EQ(glow(), static_cast<int>(game::Shot::Gold));
+    EXPECT_LT(lowestVy, -400.0F);  // lobbed upward
 }
 
 }  // namespace

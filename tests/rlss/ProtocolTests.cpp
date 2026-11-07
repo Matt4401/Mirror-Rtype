@@ -40,7 +40,8 @@ TEST(RlssProtocol, SnapshotRoundTrips) {
                       .facingLeft = true,
                       .color = 3,
                       .boost = 64,
-                      .boosting = true},
+                      .boosting = true,
+                      .flipReset = true},
                      {.id = 9, .kind = 1, .x = 0.0F, .y = 1000.0F, .rotation = -0.5F, .facingLeft = false, .color = 0}},
     };
     const auto bytes = protocol::encode(snapshot);
@@ -63,6 +64,8 @@ TEST(RlssProtocol, SnapshotRoundTrips) {
     EXPECT_EQ(decoded.entities[0].boost, 64);
     EXPECT_TRUE(decoded.entities[0].boosting);
     EXPECT_FALSE(decoded.entities[1].boosting);
+    EXPECT_TRUE(decoded.entities[0].flipReset);
+    EXPECT_FALSE(decoded.entities[1].flipReset);
     EXPECT_FALSE(decoded.entities[1].facingLeft);
 }
 
