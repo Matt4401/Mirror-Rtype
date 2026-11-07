@@ -16,6 +16,7 @@
 
 #include "ArenaViewPlugin.hpp"
 #include "BallViewPlugin.hpp"
+#include "CameraPlugin.hpp"
 #include "CarViewPlugin.hpp"
 #include "CommandLine.hpp"
 #include "Logger.hpp"
@@ -90,6 +91,7 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::ArenaViewPlugin>()
             .addPlugin<rlss::client::CarViewPlugin>()
             .addPlugin<rlss::client::BallViewPlugin>()
+            .addPlugin<rlss::client::CameraPlugin>()
             .addPlugin<rlss::client::ScoreboardPlugin>()
             .addPlugin<rlss::client::PlayerInputPlugin>();
         engine.run();
