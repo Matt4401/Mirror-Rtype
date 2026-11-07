@@ -48,7 +48,7 @@ target("engine_network")
     set_kind("static")
     add_files("net/*.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core")
+    add_deps("engine_core", "engine_metrics")
 
 -- Asio implementation of the transport, behind net/NetworkFactory.hpp. Only the executables that open sockets link it.
 target("engine_network_asio")
