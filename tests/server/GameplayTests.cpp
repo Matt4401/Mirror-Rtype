@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -8,6 +9,7 @@
 
 #include "components/Replicated.hpp"
 #include "components/RigidBody2D.hpp"
+#include "components/ScriptComponent.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
@@ -18,7 +20,9 @@
 #include "level/Level.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
+#include "prefabs/Health.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
+#include "prefabs/boss_core/BossCore.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "timeline/TimelineEvent.hpp"
 #include "timeline/TimelinePlugin.hpp"
@@ -132,6 +136,62 @@ class GameplayWithoutLevelTest : public GameplayTest {
     GameplayWithoutLevelTest() : GameplayTest(nullptr) {}
 };
 
+/** @brief Health of the test boss: a few shots. */
+constexpr std::int64_t BOSS_HEALTH = 3;
+/** @brief Height of the test boss, and of the ship fighting it. */
+constexpr float BOSS_Y = 360.0F;
+
+/** @brief Level with a boss at 1 s, driven by `scripts/Boss.wren`, then an end far away. */
+std::shared_ptr<const level::Level> bossLevel() {
+    auto built = std::make_shared<level::Level>();
+    built->scrollSpeed = LEVEL_SPEED;
+    built->timeline.add({.position = 60.0F,
+                         .type = std::string(level::EVENT_BOSS),
+                         .params = {{"prefab", std::string("boss_core")},
+                                    {"x", 1328.0},
+                                    {"y", static_cast<double>(BOSS_Y)},
+                                    {"health", BOSS_HEALTH},
+                                    {"script", std::string("scripts/Boss.wren")}}});
+    built->timeline.add({.position = 6000.0F, .type = std::string(level::EVENT_END), .params = {}});
+    return built;
+}
+
+/** @brief Room playing `bossLevel()`; no ScriptPlugin, so the script is attached but never run. */
+class BossFightTest : public GameplayTest {
+  protected:
+    BossFightTest() : GameplayTest(bossLevel()) {}
+
+    /** @brief The boss, if alive. */
+    [[nodiscard]] std::vector<ecs::Entity> bosses() { return entitiesOf(game::KIND_BOSS_CORE); }
+};
+
+/** @brief Height of the test terrain. */
+constexpr float TERRAIN_HEIGHT = 120.0F;
+/** @brief Length of the test terrain: 4 columns, the last one past the section end. */
+constexpr float TERRAIN_LENGTH = 200.0F;
+
+/** @brief Level with a bottom terrain section at 1 s, then an end far away. */
+std::shared_ptr<const level::Level> terrainLevel() {
+    auto built = std::make_shared<level::Level>();
+    built->scrollSpeed = LEVEL_SPEED;
+    built->timeline.add({.position = 60.0F,
+                         .type = std::string(level::EVENT_TERRAIN),
+                         .params = {{"side", std::string(level::TERRAIN_BOTTOM)},
+                                    {"height", static_cast<double>(TERRAIN_HEIGHT)},
+                                    {"length", static_cast<double>(TERRAIN_LENGTH)}}});
+    built->timeline.add({.position = 6000.0F, .type = std::string(level::EVENT_END), .params = {}});
+    return built;
+}
+
+/** @brief Room playing `terrainLevel()`. */
+class TerrainTest : public GameplayTest {
+  protected:
+    TerrainTest() : GameplayTest(terrainLevel()) {}
+
+    /** @brief The terrain columns on the screen or entering it. */
+    [[nodiscard]] std::vector<ecs::Entity> columns() { return entitiesOf(game::KIND_OBSTACLE); }
+};
+
 }  // namespace
 
 TEST_F(GameplayTest, LevelSpawnsEnemiesAtTheirScrollDistance) {
@@ -180,6 +240,111 @@ TEST_F(GameplayTest, EnemiesThatLeaveTheScreenAreDestroyed) {
 TEST_F(GameplayWithoutLevelTest, NoLevelSpawnsNoEnemy) {
     run(5.0F);
     EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty());
+}
+
+TEST_F(BossFightTest, BossEventStopsTheScrollAndSpawnsTheBoss) {
+    run(0.9F);
+    EXPECT_TRUE(bosses().empty());
+    run(0.2F);
+
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F);
+    const auto spawned = bosses();
+    ASSERT_EQ(spawned.size(), 1U);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(spawned.front()).health, BOSS_HEALTH);
+    EXPECT_EQ(registry().getComponents<prefabs::Health>().get(spawned.front()).points, BOSS_HEALTH);
+}
+
+TEST_F(BossFightTest, BossGetsTheScriptOfItsEvent) {
+    run(1.1F);
+    const auto spawned = bosses();
+    ASSERT_EQ(spawned.size(), 1U);
+    ASSERT_TRUE(registry().hasComponent<ecs::ScriptComponent>(spawned.front()));
+    const auto& script = registry().getComponents<ecs::ScriptComponent>().get(spawned.front());
+    EXPECT_EQ(script.moduleName, "scripts/Boss");
+    EXPECT_EQ(script.className, "Boss");
+    EXPECT_TRUE(script.hasUpdate);
+}
+
+TEST_F(BossFightTest, BossFliesInAndStopsAtItsPlace) {
+    // From x = 1328 at 120 px/s, the boss reaches stop_x (1000) after about 2.7 s.
+    run(5.0F);
+    const auto spawned = bosses();
+    ASSERT_EQ(spawned.size(), 1U);
+    const float stoppedAt = registry().getComponents<ecs::Transform>().get(spawned.front()).x;
+    EXPECT_LE(stoppedAt, prefabs::DEFAULT_BOSS_CORE_STOP_X);
+    EXPECT_GT(stoppedAt, prefabs::DEFAULT_BOSS_CORE_STOP_X - 10.0F);
+
+    run(2.0F);
+    EXPECT_FLOAT_EQ(registry().getComponents<ecs::Transform>().get(spawned.front()).x, stoppedAt);
+}
+
+TEST_F(BossFightTest, ShotsWearTheBossDownThenTheScrollResumes) {
+    run(4.0F);
+    const ecs::Entity ship = spawnShip(0, 200.0F, BOSS_Y);
+    const auto spawned = bosses();
+    ASSERT_EQ(spawned.size(), 1U);
+    const ecs::Entity boss = spawned.front();
+
+    std::int64_t lowestHealth = BOSS_HEALTH;
+    for (int volley = 0; volley < 40 && registry().isAlive(boss); ++volley) {
+        shoot(ship);
+        run(0.25F);
+        if (registry().isAlive(boss)) {
+            lowestHealth =
+                std::min<std::int64_t>(lowestHealth, registry().getComponents<prefabs::Health>().get(boss).points);
+            EXPECT_EQ(gameplay().score(0), 0U) << "only the kill scores";
+        }
+    }
+
+    EXPECT_FALSE(registry().isAlive(boss));
+    EXPECT_LT(lowestHealth, BOSS_HEALTH);
+    EXPECT_EQ(gameplay().score(0), POINTS_PER_KILL);
+    run(FIXED_DT * 2);
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
+}
+
+TEST_F(TerrainTest, TerrainEntersFromTheRightColumnByColumn) {
+    run(1.1F);
+    const auto entering = columns();
+    ASSERT_FALSE(entering.empty());
+    EXPECT_LT(entering.size(), 4U) << "columns are built as they enter the screen";
+    for (const ecs::Entity column : entering) {
+        const auto& transform = registry().getComponents<ecs::Transform>().get(column);
+        EXPECT_GT(transform.x, 1280.0F);
+        EXPECT_FLOAT_EQ(transform.y, 720.0F - (TERRAIN_HEIGHT / 2.0F));
+        EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(column).subtype,
+                  TERRAIN_HEIGHT / game::TERRAIN_HEIGHT_UNIT);
+    }
+
+    run(5.0F);
+    EXPECT_EQ(columns().size(), 4U);
+}
+
+TEST_F(TerrainTest, TerrainScrollsAtTheScrollSpeed) {
+    run(1.1F);
+    const auto entering = columns();
+    ASSERT_FALSE(entering.empty());
+    const float before = registry().getComponents<ecs::Transform>().get(entering.front()).x;
+    run(1.0F);
+    const float after = registry().getComponents<ecs::Transform>().get(entering.front()).x;
+    EXPECT_NEAR(before - after, LEVEL_SPEED, 2.0F);
+}
+
+TEST_F(TerrainTest, ShipTouchingTheTerrainIsDestroyed) {
+    const ecs::Entity grounded = spawnShip(0, 1200.0F, 700.0F);
+    const ecs::Entity flying = spawnShip(1, 1200.0F, LANE_Y);
+    run(4.0F);
+
+    EXPECT_FALSE(registry().isAlive(grounded));
+    EXPECT_TRUE(registry().isAlive(flying));
+}
+
+TEST_F(TerrainTest, TerrainLeavingTheScreenIsDestroyed) {
+    // The last column ends 256 px after the right edge: past the left one after (1280 + 256 + 64) / 60 = 27 s.
+    run(10.0F);
+    EXPECT_EQ(columns().size(), 4U);
+    run(20.0F);
+    EXPECT_TRUE(columns().empty());
 }
 
 TEST(GameplayPluginTest, OnlyKnownPrefabsCanBeSpawned) {
