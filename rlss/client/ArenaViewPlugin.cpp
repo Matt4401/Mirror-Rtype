@@ -1,6 +1,7 @@
 #include "ArenaViewPlugin.hpp"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "Arena.hpp"
 #include "Shapes.hpp"
@@ -37,6 +38,82 @@ constexpr int LAYER_WALLS = 1;
 constexpr int LAYER_GRASS = 2;
 constexpr int LAYER_INSIDE = 3;
 constexpr int LAYER_LINES = 4;
+constexpr int LAYER_POSTS = 5;
+
+/** @brief Spacing of the net lines inside the goals. */
+constexpr float NET_SPACING = 40.0F;
+constexpr float NET_WIDTH = 3.0F;
+constexpr float POST_SIZE = 16.0F;
+constexpr ecs::Rgba NET{.r = 255, .g = 255, .b = 255, .a = 30};
+
+ecs::Rgba withAlpha(const Rgb color, const std::uint8_t alpha) {
+    return ecs::Rgba{.r = color.r, .g = color.g, .b = color.b, .a = alpha};
+}
+
+ecs::Rgba darken(const Rgb color) {
+    constexpr int DIVISOR = 4;
+    constexpr int BASE = 18;
+    return ecs::Rgba{
+        .r = static_cast<std::uint8_t>(BASE + (color.r / DIVISOR)),
+        .g = static_cast<std::uint8_t>(BASE + (color.g / DIVISOR)),
+        .b = static_cast<std::uint8_t>(BASE + (color.b / DIVISOR)),
+        .a = 255,
+    };
+}
+
+/**
+ * @brief Draws one goal: a frame in the wall color, an inside tinted with the defending team color, a net, the goal
+ * line and the posts.
+ * @param wall X of the side wall the goal opens in.
+ * @param outward -1 for the left goal, +1 for the right one.
+ * @param team Color of the team defending it.
+ */
+void drawGoal(ecs::Registry& registry, const float wall, const float outward, const Rgb team) {
+    const float back = wall + (outward * arena::GOAL_DEPTH);
+    const float near = std::min(wall, back);
+    const float far = std::max(wall, back);
+    spawnRect(registry,
+              {
+                  .left = near - (outward < 0.0F ? WALL : 0.0F),
+                  .top = arena::GOAL_TOP - WALL,
+                  .right = far + (outward > 0.0F ? WALL : 0.0F),
+                  .bottom = arena::GOAL_BOTTOM + WALL,
+              },
+              WALLS, LAYER_WALLS);
+    // Inside, overlapping the wall it cuts through.
+    spawnRect(registry,
+              {
+                  .left = near - (outward > 0.0F ? WALL : 0.0F),
+                  .top = arena::GOAL_TOP,
+                  .right = far + (outward < 0.0F ? WALL : 0.0F),
+                  .bottom = arena::GOAL_BOTTOM,
+              },
+              darken(team), LAYER_INSIDE);
+    const auto columns = static_cast<int>((far - near) / NET_SPACING);
+    for (int i = 1; i < columns; ++i) {
+        const float x = near + (static_cast<float>(i) * NET_SPACING);
+        spawnRect(registry, {.left = x, .top = arena::GOAL_TOP, .right = x + NET_WIDTH, .bottom = arena::GOAL_BOTTOM},
+                  NET, LAYER_LINES);
+    }
+    const auto rows = static_cast<int>(arena::GOAL_HEIGHT / NET_SPACING);
+    for (int i = 1; i < rows; ++i) {
+        const float y = arena::GOAL_TOP + (static_cast<float>(i) * NET_SPACING);
+        spawnRect(registry, {.left = near, .top = y, .right = far, .bottom = y + NET_WIDTH}, NET, LAYER_LINES);
+    }
+    spawnRect(registry,
+              {
+                  .left = wall - (LINE_WIDTH / 2.0F),
+                  .top = arena::GOAL_TOP,
+                  .right = wall + (LINE_WIDTH / 2.0F),
+                  .bottom = arena::GOAL_BOTTOM,
+              },
+              withAlpha(team, 170), LAYER_LINES);
+    for (const float y : {arena::GOAL_TOP, arena::GOAL_BOTTOM}) {
+        const float half = POST_SIZE / 2.0F;
+        spawnRect(registry, {.left = wall - half, .top = y - half, .right = wall + half, .bottom = y + half},
+                  withAlpha(team, 255), LAYER_POSTS);
+    }
+}
 
 }  // namespace
 
@@ -71,6 +148,9 @@ void ArenaViewPlugin::init(engine::Engine& engine) {
               },
               GRASS, LAYER_GRASS);
     fillRoundedRect(registry, inside, arena::CORNER_RADIUS, INSIDE, LAYER_INSIDE);
+    // The blue team defends the left goal, the orange team the right one.
+    drawGoal(registry, arena::LEFT, -1.0F, BLUE_TEAM);
+    drawGoal(registry, arena::RIGHT, 1.0F, ORANGE_TEAM);
 
     const float centerX = (inside.left + inside.right) / 2.0F;
     const float centerY = (inside.top + inside.bottom) / 2.0F;
@@ -87,7 +167,8 @@ void ArenaViewPlugin::init(engine::Engine& engine) {
     const auto& window = engine.service<engine::IWindowService>();
     const auto width = static_cast<float>(window.width());
     const auto height = static_cast<float>(window.height());
-    const float zoom = std::min((width - (2.0F * SCREEN_MARGIN)) / (outside.right - outside.left),
+    const float fullWidth = outside.right - outside.left + (2.0F * arena::GOAL_DEPTH);
+    const float zoom = std::min((width - (2.0F * SCREEN_MARGIN)) / fullWidth,
                                 (height - (2.0F * SCREEN_MARGIN)) / (outside.bottom - outside.top));
     const ecs::Entity camera = registry.spawnEntity();
     registry.addComponent(camera, ecs::CameraComponent{

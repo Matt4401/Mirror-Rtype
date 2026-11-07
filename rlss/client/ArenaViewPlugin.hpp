@@ -14,7 +14,8 @@ namespace rlss::client {
 
 /**
  * @brief Draws the arena (`rlss::arena`) once with flat colored rectangles: backdrop, walls with rounded corners, grass
- * floor, center line and circle. Adds a camera that fits the whole arena in the window.
+ * floor, center line and circle, and the two goals (tinted with the color of the team defending them). Adds a camera
+ * that fits the whole arena in the window.
  */
 class ArenaViewPlugin final : public engine::IPlugin {
   public:
