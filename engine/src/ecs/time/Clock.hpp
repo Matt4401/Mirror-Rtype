@@ -66,6 +66,12 @@ class Clock {
     [[nodiscard]] const Time& time() const noexcept { return _time; }
 
     /**
+     * @brief Current instant of the time source, to measure real durations between two points of a frame.
+     * @return Instant in seconds, from an arbitrary origin.
+     */
+    [[nodiscard]] double now() const { return _source(); }
+
+    /**
      * @brief Real elapsed time in seconds between the two most recent tick calls.
      * @return Real frame delta time in seconds.
      */
