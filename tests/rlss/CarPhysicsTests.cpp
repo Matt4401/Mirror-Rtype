@@ -176,10 +176,12 @@ class CarPhysics : public ::testing::Test {
     }
 
     /** @brief Simulates `seconds` with the given input held. */
-    void run(const float seconds, const float steer = 0.0F, const bool jump = false, const bool boost = false) {
+    void run(const float seconds, const float steer = 0.0F, const bool jump = false, const bool boost = false,
+             const float pitch = 0.0F) {
         if (_car != 0) {
             auto& input = _registry.getComponents<input::InputState>().get(_car);
             input.setAxis(game::STEER_ID, steer);
+            input.setAxis(game::PITCH_ID, pitch);
             input.setDown(game::JUMP_ID, jump);
             input.setDown(game::BOOST_ID, boost);
         }
@@ -938,6 +940,75 @@ TEST_F(CarPhysics, ABallThrownIntoAGoalCornerFollowsTheCurve) {
         furthest = std::max(furthest, ball().x);
     }
     EXPECT_GT(furthest, back + BALL_RADIUS + 20.0F);  // pushed out of the corner, toward the goal mouth
+}
+
+// --- Air control: the stick aims, the nose follows ---
+
+namespace {
+
+/** @brief Direction of the nose on screen, in radians (0 right, -pi/2 up), from a car transform. */
+float noseAngle(const ecs::Transform& car) {
+    const float facing = car.scaleX < 0.0F ? -1.0F : 1.0F;
+    return std::atan2(facing * std::sin(car.rotation), facing * std::cos(car.rotation));
+}
+
+/** @brief Smallest angle between two directions, in radians. */
+float angleBetween(const float a, const float b) {
+    return std::fabs(std::remainder(a - b, 2.0F * std::numbers::pi_v<float>));
+}
+
+}  // namespace
+
+TEST_F(CarPhysics, PushingUpInTheAirLiftsTheNoseAndBoostingClimbs) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    run(0.3F);
+    run(0.2F, 0.0F, true, false, 1.0F);  // jump, holding up
+    run(0.4F, 0.0F, false, false, 1.0F);
+    EXPECT_LT(angleBetween(noseAngle(transform()), -std::numbers::pi_v<float> / 2.0F), 0.25F);  // nose up
+    const float start = transform().y;
+    run(1.0F, 0.0F, false, true, 1.0F);                                   // boost, nose up
+    EXPECT_LT(transform().y, start - 200.0F);                             // it climbs: 550 uu/s² against gravity
+    EXPECT_LT(std::fabs(transform().x - (arena::WIDTH / 2.0F)), 100.0F);  // straight up
+}
+
+TEST_F(CarPhysics, TheNoseFollowsTheStickInEveryDirection) {
+    constexpr float PI = std::numbers::pi_v<float>;
+    struct Aim {
+        float steer;
+        float pitch;
+        float angle;
+    };
+    for (const Aim aim : {Aim{.steer = 0.0F, .pitch = -1.0F, .angle = PI / 2.0F},     // down
+                          Aim{.steer = 1.0F, .pitch = 1.0F, .angle = -PI / 4.0F},     // up and right
+                          Aim{.steer = -1.0F, .pitch = 0.0F, .angle = PI},            // left: turns around
+                          Aim{.steer = 0.0F, .pitch = 1.0F, .angle = -PI / 2.0F}}) {  // up
+        spawnCar(arena::WIDTH / 2.0F, arena::TOP + 500.0F);                           // high in the air, falling
+        run(1.0F, aim.steer, false, false, aim.pitch);
+        EXPECT_LT(angleBetween(noseAngle(transform()), aim.angle), 0.1F)
+            << "steer " << aim.steer << " pitch " << aim.pitch << ": nose at " << noseAngle(transform());
+        _registry.killEntity(_car);
+        _scripts.update(0.0F);
+        _car = 0;
+    }
+}
+
+TEST_F(CarPhysics, AirControlTurnsCalmlyAndStopsOnTheAim) {
+    spawnCar(arena::WIDTH / 2.0F, arena::TOP + 400.0F);
+    run(FRAME);
+    float fastest = 0.0F;
+    float previous = transform().rotation;
+    for (int i = 0; i < 60; ++i) {
+        run(FRAME, 0.0F, false, false, -1.0F);  // aim down: a quarter turn
+        fastest = std::max(fastest, angleBetween(transform().rotation, previous) / FRAME);
+        previous = transform().rotation;
+    }
+    EXPECT_LE(fastest, 4.2F + 0.05F);  // slower than Rocket League's 5.5 rad/s
+    EXPECT_GT(fastest, 3.0F);
+    // Arrived: it holds the aim instead of swinging past it.
+    const float settled = noseAngle(transform());
+    run(0.3F, 0.0F, false, false, -1.0F);
+    EXPECT_LT(angleBetween(noseAngle(transform()), settled), 0.02F);
+    EXPECT_LT(angleBetween(settled, std::numbers::pi_v<float> / 2.0F), 0.05F);
 }
 
 }  // namespace

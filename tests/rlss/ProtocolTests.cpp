@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <variant>
 #include <vector>
 
@@ -215,27 +216,34 @@ TEST(RlssProtocol, SnapshotMatchOnlyReadsSnapshots) {
 }
 
 TEST(RlssProtocol, PlayerInputRoundTrips) {
-    const auto bytes =
-        protocol::encode(protocol::PlayerInput{.sequence = 300, .steer = -1.0F, .jump = true, .boost = true});
-    EXPECT_EQ(bytes.size(), 7U);
+    const auto bytes = protocol::encode(
+        protocol::PlayerInput{.sequence = 300, .steer = -1.0F, .pitch = 0.5F, .jump = true, .boost = true});
+    EXPECT_EQ(bytes.size(), 8U);
     const auto message = protocol::decode(bytes);
     ASSERT_TRUE(message.has_value());
     const auto& input = std::get<protocol::PlayerInput>(*message);
     EXPECT_EQ(input.sequence, 300U);
     EXPECT_FLOAT_EQ(input.steer, -1.0F);
+    EXPECT_NEAR(input.pitch, 0.5F, 0.01F);
     EXPECT_TRUE(input.jump);
     EXPECT_TRUE(input.boost);
 
     // Out of range or non-finite steering is clamped when encoding.
-    const auto clamped = protocol::decode(protocol::encode(protocol::PlayerInput{.sequence = 1, .steer = 7.0F}));
+    const auto clamped =
+        protocol::decode(protocol::encode(protocol::PlayerInput{.sequence = 1, .steer = 7.0F, .pitch = -7.0F}));
     EXPECT_FLOAT_EQ(std::get<protocol::PlayerInput>(*clamped).steer, 1.0F);
+    const auto nonFinite = protocol::decode(protocol::encode(
+        protocol::PlayerInput{.sequence = 1, .steer = 0.0F, .pitch = std::numeric_limits<float>::quiet_NaN()}));
+    EXPECT_FLOAT_EQ(std::get<protocol::PlayerInput>(*nonFinite).pitch, 0.0F);
+    EXPECT_FLOAT_EQ(std::get<protocol::PlayerInput>(*clamped).pitch, -1.0F);
 }
 
 TEST(RlssProtocol, RejectsMalformedInputs) {
-    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0}).has_value());        // too short
-    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0, 0}).has_value());  // too long
-    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0x80, 0}).has_value());  // steer -128
-    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0x04}).has_value());  // unknown button
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0}).has_value());        // too short
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0, 0, 0}).has_value());  // too long
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0x80, 0, 0}).has_value());  // steer -128
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0x80, 0}).has_value());  // pitch -128
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0, 0x04}).has_value());  // unknown button
 }
 
 TEST(RlssProtocol, MatchStatusRoundTrips) {

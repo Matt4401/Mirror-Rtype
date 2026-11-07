@@ -49,9 +49,13 @@ arena (with the mouse):
 
 | Action                             | Keyboard                    | Gamepad           |
 |------------------------------------|-----------------------------|-------------------|
-| Drive (ground) / rotate (air)      | A / D, Q / D, ← / →         | left stick        |
-| Jump, then double jump or dodge    | Space, W, Z, ↑              | bottom face button |
-| Boost                              | Shift, S, ↓                 | right face button, right trigger |
+| Drive (ground) / aim the nose (air) | A / D, Q / D, ← / →        | left stick        |
+| Aim the nose up / down (air)       | W / S, Z / S, ↑ / ↓         | left stick        |
+| Jump, then double jump or dodge    | Space                       | bottom face button |
+| Boost                              | Shift                       | right face button, right trigger |
+
+In the air the stick aims: the nose turns toward where it points (up, down, left, right or in between). Point it up and
+boost to fly up.
 
 ## How it plugs into the engine
 
@@ -278,7 +282,7 @@ lengths wide: cars and ball keep their Rocket League size, the camera follows th
 | Jump                              | 292 uu/s + 1458 uu/s² while held, 0.2 s max (about 160 uu high) |
 | Second jump (flip / double jump)  | one per jump, until the car touches a surface again |
 | Dodge                             | 500 uu/s forward (533 back), scaled by speed; spins at 5.5 rad/s for 0.65 s |
-| Air control                       | 12.46 rad/s², damping 2.798, max 5.5 rad/s |
+| Air control                       | aims the nose at the stick: 12.46 rad/s², max 4.2 rad/s, damping 2.798 when released |
 | Max speed                         | 2300 uu/s                                |
 
 - **On the wheels**, the car follows the surface: floor, curved corners, walls, ceiling. Gravity along the surface
@@ -290,7 +294,11 @@ lengths wide: cars and ball keep their Rocket League size, the camera follows th
   Steering against the motion brakes; below 200 uu/s it turns the car around (Sideswipe-style mirror).
 - **Gravity** always pulls toward the bottom of the screen (900 uu/s² on the cars, 600 on the ball), even when the car drives on a
   wall or on the ceiling. It is stronger than in Rocket League, so jumps stay short and the game feels snappier.
-- **In the air**: jump hold, double jump (no direction) or dodge (toward the stick), air rotation. The four hitbox
+- **In the air**: jump hold, double jump (no direction) or dodge (toward the stick), air control. The stick (steer
+  and pitch) aims: the nose turns toward the direction it points on screen, at most 4.2 rad/s (Rocket League: 5.5),
+  speeding up and slowing down at 12.46 rad/s². It plans its stop (10 rad/s²) so that it ends on the aim without
+  overshooting; aiming right behind, it turns the way it already turns, or else over the top. Released, the rotation
+  dies down (damping 2.798). The four hitbox
   corners collide with the arena and the car lands when it touches them. Like in Sideswipe, it never rests on its roof
   or its side: flying toward a surface any other way than wheels first, it spins onto its wheels in the time left
   before the contact (within 0.25 s of it, up to 16 rad/s); if it touches anyway, it is turned onto its wheels as it
@@ -298,9 +306,9 @@ lengths wide: cars and ball keep their Rocket League size, the camera follows th
 
 ### Boost
 
-Boost pushes toward the nose: 1110 uu/s² on the ground (where it also means full throttle), 1185 uu/s² in the air
-(estimates, about 12% above Rocket League), up to the 2300 uu/s cap. In the air it beats gravity (1185 against 900):
-pointing the nose up, the car climbs. It burns 33.3 per second (a full tank lasts 3 s) and lasts at least 0.1 s once started. Like in
+Boost pushes toward the nose: 1110 uu/s² on the ground (where it also means full throttle; about 12% above Rocket
+League), 1450 uu/s² in the air (1.61 times the gravity, as in Rocket League), up to the 2300 uu/s cap (estimates). In
+the air it beats gravity (1450 against 900): pointing the nose up, the car climbs at 550 uu/s² net. It burns 33.3 per second (a full tank lasts 3 s) and lasts at least 0.1 s once started. Like in
 Sideswipe there are no boost pads: the tank (100, full at spawn) refills while the car touches a surface, wheels or
 body. The refill rate (25 per second, empty to full in 4 s) is an estimate, not a published value.
 
@@ -356,7 +364,8 @@ A flip touching the ball with another part adds 250 uu/s, without color.
 
 `tests/rlss/CarPhysicsTests.cpp` runs the Wren physics headless: landing, acceleration curve, turning around, wall and
 ceiling, jump height (~160 uu), dodge, boost (past the throttle cap, 33.3 per second, refill only against a surface,
-climbing nose up), driving upside down on the ceiling and falling when letting go, the flip still available after a
+climbing nose up), the air control (pushing up lifts the nose and boosting then climbs straight up, the nose
+follows the stick in every direction, it turns at most 4.2 rad/s and stops on the aim), driving upside down on the ceiling and falling when letting go, the flip still available after a
 long fall, ball bounce height (0.36 × the drop), a rolling ball stopping, the ball speed cap, car pushing the ball, hit
 speed, a front hit much stronger than the roof, a flip shot much stronger than driving, a car dropped upside down
 turning over before it touches the floor (and, in the random sequences, never lying on its back against a surface),
@@ -388,7 +397,7 @@ when it drives at supersonic speed, and the view never showing past the arena.
 
 ## Protocol
 
-The transport handshake uses `protocolId = 0x524C0009` ("RL", version 9), so R-Type and RLSS peers (or two RLSS
+The transport handshake uses `protocolId = 0x524C000A` ("RL", version 10), so R-Type and RLSS peers (or two RLSS
 versions) refuse each other. Every message starts with a one-byte type; multi-byte integers are big-endian, floats
 IEEE 754 binary32. Received messages are untrusted: an unknown type, a wrong size, an out-of-range field or a
 non-finite float drops the message.
@@ -397,7 +406,7 @@ non-finite float drops the message.
 |------|---------------|-----------------|------------|-----------------------------------------------------------------|
 | 1    | `MatchList`   | server → client | Reliable   | `online u16, count u8 (≤ 16)`, then `count` × match (11 bytes)  |
 | 2    | `Snapshot`    | server → client | Unreliable | `matchId u16, tick u32, lastInput u32, partIndex u8, partCount u8, count u8`, then `count` × entity |
-| 3    | `PlayerInput` | client → server | Unreliable | `sequence u32, steer i8 (−127..127), buttons u8 (bit 0 jump, bit 1 boost)` |
+| 3    | `PlayerInput` | client → server | Unreliable | `sequence u32, steer i8 (−127..127), pitch i8 (−127..127, up positive), buttons u8 (bit 0 jump, bit 1 boost)` |
 | 4    | `MatchStatus` | server → client | Reliable   | `blueScore u16, orangeScore u16, phase u8 (0 playing, 1 goal, 2 kickoff, 3 ended), countdown u8 (0..9), clock u16 (≤ 5999 s), flags u8 (bit 0 overtime)` |
 | 5    | `Welcome`     | server → client | Reliable   | `carId u32 (≠ 0), team u8 (0 blue, 1 orange)`: the receiver's car, sent once it exists |
 | 6    | `CreateMatch` | client → server | Reliable   | empty                                                           |

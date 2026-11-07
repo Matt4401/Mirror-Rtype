@@ -21,13 +21,18 @@ namespace game = rlss::game;
 TEST(RlssCodec, InputSurvivesTheWire) {
     game::ReplicationCodec codec;
     const ecs::NetInput input{
-        .sequence = 42, .held = {game::JUMP_ID}, .axes = {{.action = game::STEER_ID, .value = 0.5F}}};
+        .sequence = 42,
+        .held = {game::JUMP_ID},
+        .axes = {{.action = game::STEER_ID, .value = 0.5F}, {.action = game::PITCH_ID, .value = -1.0F}}};
     const auto decoded = codec.decodeInput(codec.encodeInput(input));
     ASSERT_TRUE(decoded.has_value());
     EXPECT_EQ(decoded->sequence, 42U);
     EXPECT_EQ(decoded->held, std::vector<std::uint32_t>{game::JUMP_ID});
-    ASSERT_EQ(decoded->axes.size(), 1U);
+    ASSERT_EQ(decoded->axes.size(), 2U);
+    EXPECT_EQ(decoded->axes[0].action, game::STEER_ID);
     EXPECT_NEAR(decoded->axes[0].value, 0.5F, 0.01F);
+    EXPECT_EQ(decoded->axes[1].action, game::PITCH_ID);
+    EXPECT_NEAR(decoded->axes[1].value, -1.0F, 0.01F);
     // A snapshot is not an input.
     EXPECT_FALSE(codec.decodeInput(rlss::protocol::encode(rlss::protocol::CreateMatch{})).has_value());
 }
