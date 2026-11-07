@@ -7,6 +7,9 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
+#include <utility>
 
 namespace rlss::protocol {
 
@@ -17,7 +20,7 @@ constexpr std::uint32_t BYTE_MASK = 0xFFU;
 constexpr std::size_t MATCH_LIST_HEADER_SIZE = 4;
 constexpr std::size_t MATCH_INFO_SIZE = 11;
 constexpr std::size_t SNAPSHOT_HEADER_SIZE = 14;
-constexpr std::size_t ENTITY_SIZE = 20;
+constexpr std::size_t ENTITY_SIZE = 22;
 constexpr std::size_t PLAYER_INPUT_SIZE = 7;
 constexpr std::size_t MATCH_STATUS_SIZE = 10;
 constexpr std::size_t WELCOME_SIZE = 6;
@@ -30,9 +33,16 @@ constexpr std::uint8_t FLAG_BOOSTING = 0x02U;
 constexpr std::uint8_t FLAG_FLIP_RESET = 0x04U;
 constexpr std::uint8_t KNOWN_FLAGS = FLAG_FACING_LEFT | FLAG_BOOSTING | FLAG_FLIP_RESET;
 constexpr std::uint8_t MAX_BOOST = 100;
+constexpr unsigned NIBBLE_BITS = 4;
+constexpr std::uint8_t NIBBLE_MASK = 0x0FU;
 constexpr std::uint8_t BUTTON_JUMP = 0x01U;
 constexpr std::uint8_t BUTTON_BOOST = 0x02U;
 constexpr std::uint8_t KNOWN_BUTTONS = BUTTON_JUMP | BUTTON_BOOST;
+
+/** @brief One byte holding `low` in its low 4 bits and `high` in its high 4 bits (both wrapped to 4 bits). */
+std::uint8_t packNibbles(const std::uint8_t low, const std::uint8_t high) {
+    return static_cast<std::uint8_t>((low & NIBBLE_MASK) | ((high & NIBBLE_MASK) << NIBBLE_BITS));
+}
 
 /** @brief Appends big-endian values to a byte buffer. */
 class Writer {
@@ -95,9 +105,43 @@ class Reader {
         return value;
     }
 
+    /** @brief Reads `length` bytes as text; the caller checked `remaining()` first. */
+    std::string text(const std::size_t length) {
+        std::string value(length, ' ');
+        for (char& character : value) {
+            character = static_cast<char>(u8());
+        }
+        return value;
+    }
+
   private:
     std::span<const std::uint8_t> _data;
 };
+
+/** @brief Reads `[length u8][name]`; nothing if it runs past the end or the name is not valid. */
+std::optional<std::string> readName(Reader& reader) {
+    if (reader.remaining() < 1) {
+        return std::nullopt;
+    }
+    const std::size_t length = reader.u8();
+    if (length == 0 || length > MAX_NAME_LENGTH || reader.remaining() < length) {
+        return std::nullopt;
+    }
+    std::string name = reader.text(length);
+    if (!isValidName(name)) {
+        return std::nullopt;
+    }
+    return name;
+}
+
+/** @brief Writes `[length u8][name]`, the name cut to `MAX_NAME_LENGTH` characters. */
+void writeName(Writer& writer, const std::string_view name) {
+    const std::string_view kept = name.substr(0, MAX_NAME_LENGTH);
+    writer.u8(static_cast<std::uint8_t>(kept.size()));
+    for (const char character : kept) {
+        writer.u8(static_cast<std::uint8_t>(character));
+    }
+}
 
 std::optional<Message> decodeMatchList(Reader& reader) {
     if (reader.remaining() < MATCH_LIST_HEADER_SIZE - 1) {
@@ -139,6 +183,17 @@ std::optional<EntityState> decodeEntity(Reader& reader) {
     const std::uint8_t flags = reader.u8();
     entity.color = reader.u8();
     entity.boost = reader.u8();
+    // Sound cues: counts then values, the first cue in the low 4 bits, the second in the high 4 bits (all valid).
+    const std::uint8_t counts = reader.u8();
+    const std::uint8_t values = reader.u8();
+    entity.firstCue = {
+        .count = static_cast<std::uint8_t>(counts & NIBBLE_MASK),
+        .value = static_cast<std::uint8_t>(values & NIBBLE_MASK),
+    };
+    entity.secondCue = {
+        .count = static_cast<std::uint8_t>(counts >> NIBBLE_BITS),
+        .value = static_cast<std::uint8_t>(values >> NIBBLE_BITS),
+    };
     if (entity.id == 0 || !x || !y || !rotation || (flags & ~KNOWN_FLAGS) != 0 || entity.boost > MAX_BOOST) {
         return std::nullopt;
     }
@@ -260,6 +315,41 @@ std::optional<Message> decodeJoinResult(Reader& reader) {
     return JoinResult{.status = static_cast<JoinStatus>(status), .matchId = matchId};
 }
 
+std::optional<Message> decodeSetName(Reader& reader) {
+    auto name = readName(reader);
+    if (!name || reader.remaining() != 0) {
+        return std::nullopt;
+    }
+    return SetName{.name = std::move(*name)};
+}
+
+std::optional<Message> decodePlayerNames(Reader& reader) {
+    if (reader.remaining() < 1) {
+        return std::nullopt;
+    }
+    const std::size_t count = reader.u8();
+    if (count > MAX_PLAYERS_PER_MATCH) {
+        return std::nullopt;
+    }
+    PlayerNames names;
+    names.players.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        if (reader.remaining() < sizeof(std::uint32_t)) {
+            return std::nullopt;
+        }
+        const std::uint32_t carId = reader.u32();
+        auto name = readName(reader);
+        if (carId == 0 || !name) {
+            return std::nullopt;
+        }
+        names.players.push_back(PlayerName{.carId = carId, .name = std::move(*name)});
+    }
+    if (reader.remaining() != 0) {
+        return std::nullopt;
+    }
+    return names;
+}
+
 /** @brief A message made of its type alone. */
 Bytes encodeType(const MessageType type) { return Bytes{static_cast<std::uint8_t>(type)}; }
 
@@ -315,6 +405,8 @@ Bytes encode(const Snapshot& message) {
         writer.u8(flags);
         writer.u8(entity.color);
         writer.u8(std::min(entity.boost, MAX_BOOST));
+        writer.u8(packNibbles(entity.firstCue.count, entity.secondCue.count));
+        writer.u8(packNibbles(entity.firstCue.value, entity.secondCue.value));
     }
     return out;
 }
@@ -382,6 +474,38 @@ Bytes encode(const JoinResult& message) {
     return out;
 }
 
+Bytes encode(const SetName& message) {
+    Bytes out;
+    Writer writer(out);
+    writer.u8(static_cast<std::uint8_t>(MessageType::SetName));
+    writeName(writer, message.name);
+    return out;
+}
+
+Bytes encode(const PlayerNames& message) {
+    const std::size_t count = std::min(message.players.size(), static_cast<std::size_t>(MAX_PLAYERS_PER_MATCH));
+    Bytes out;
+    Writer writer(out);
+    writer.u8(static_cast<std::uint8_t>(MessageType::PlayerNames));
+    writer.u8(static_cast<std::uint8_t>(count));
+    for (std::size_t i = 0; i < count; ++i) {
+        const PlayerName& player = message.players.at(i);
+        writer.u32(player.carId);
+        writeName(writer, player.name);
+    }
+    return out;
+}
+
+bool isNameCharacter(const char character) noexcept {
+    return (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || character == ' ' ||
+           character == '-' || character == '.';
+}
+
+bool isValidName(const std::string_view name) noexcept {
+    return !name.empty() && name.size() <= MAX_NAME_LENGTH && name.front() != ' ' && name.back() != ' ' &&
+           std::ranges::all_of(name, isNameCharacter);
+}
+
 std::optional<Message> decode(const std::span<const std::uint8_t> data) {
     if (data.empty()) {
         return std::nullopt;
@@ -406,6 +530,10 @@ std::optional<Message> decode(const std::span<const std::uint8_t> data) {
             return decodeEmpty<LeaveMatch>(reader);
         case MessageType::JoinResult:
             return decodeJoinResult(reader);
+        case MessageType::SetName:
+            return decodeSetName(reader);
+        case MessageType::PlayerNames:
+            return decodePlayerNames(reader);
     }
     return std::nullopt;
 }
