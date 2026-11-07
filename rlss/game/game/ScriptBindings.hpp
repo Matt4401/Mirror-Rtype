@@ -17,8 +17,8 @@ inline constexpr std::string_view COMPONENTS_MODULE = "rlss/components";
 
 /**
  * @brief Defines the foreign classes `Transform` (x, y, rotation, scaleX, scaleY), `Controls` (playerIndex of the
- * entity's `input::InputState`), `ArenaShape`, `CarParts`, `CarStatus`, `BallPart`, `MatchState` and `ScoreCell` in
- * `COMPONENTS_MODULE`.
+ * entity's `input::InputState`), `ArenaShape`, `CarParts`, `CarStatus`, `BallPart`, `MatchState`, `ScoreCell`,
+ * `Camera` (the engine's `ecs::CameraComponent`) and `CameraRig` in `COMPONENTS_MODULE`.
  * @param vm VM to define them in.
  * @return False if Wren refused the generated code.
  */

@@ -4,6 +4,7 @@
 #include <variant>
 
 #include "Arena.hpp"
+#include "CameraPlugin.hpp"
 #include "CarViewPlugin.hpp"
 #include "Shapes.hpp"
 #include "components/Renderable.hpp"
@@ -12,6 +13,7 @@
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
+#include "core/services/IWindowService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "game/Components.hpp"
@@ -26,15 +28,15 @@ namespace {
 constexpr int GLYPH_COLUMNS = 3;
 constexpr int GLYPH_ROWS = 5;
 
-/** @brief Where and how big one display is drawn. */
+/** @brief Where and how big one display is drawn, on screen (pixels). */
 struct Display {
     /** @brief Index read by the script: 0 blue, 1 orange, 2 countdown, 3 "GOAL". */
     int index = 0;
     /** @brief Number of characters. */
     int slots = 0;
-    /** @brief Left edge of the first character, in world units. */
+    /** @brief Left edge of the first character. */
     float left = 0.0F;
-    /** @brief Top edge, in world units. */
+    /** @brief Top edge. */
     float top = 0.0F;
     /** @brief Side of a square. */
     float cell = 0.0F;
@@ -44,21 +46,27 @@ struct Display {
     ecs::Rgba color;
 };
 
-constexpr float SCORE_CELL = 12.0F;
-constexpr float SCORE_PITCH = 14.0F;
-constexpr float SCORE_TOP = arena::TOP + 40.0F;
-/** @brief Gap between the scores and the center line. */
-constexpr float SCORE_GAP = 40.0F;
-constexpr float BIG_CELL = 30.0F;
-/** @brief The countdown ends this far above the arena center, where the ball waits for the kickoff. */
-constexpr float COUNTDOWN_ABOVE_CENTER = 130.0F;
-constexpr float BIG_PITCH = 34.0F;
-constexpr float BANNER_CELL = 22.0F;
-constexpr float BANNER_PITCH = 26.0F;
-constexpr int LAYER_SCOREBOARD = 40;
+constexpr float SCORE_CELL = 9.0F;
+constexpr float SCORE_PITCH = 11.0F;
+constexpr float SCORE_TOP = 14.0F;
+/** @brief Gap between each score and the middle of the screen. */
+constexpr float SCORE_GAP = 26.0F;
+constexpr float DASH_WIDTH = 20.0F;
+constexpr float DASH_HEIGHT = 5.0F;
+constexpr float BIG_CELL = 24.0F;
+constexpr float BIG_PITCH = 28.0F;
+/** @brief Top of the countdown, as a share of the window height. */
+constexpr float COUNTDOWN_TOP = 0.16F;
+constexpr float BANNER_CELL = 18.0F;
+constexpr float BANNER_PITCH = 22.0F;
+constexpr float BANNER_TOP = 0.22F;
+/** @brief Above everything drawn in the world. */
+constexpr int LAYER_SCOREBOARD = 100;
 constexpr ecs::Rgba COUNTDOWN_COLOR{.r = 255, .g = 255, .b = 255, .a = 235};
 constexpr ecs::Rgba BANNER_COLOR{.r = 255, .g = 215, .b = 60, .a = 255};
 constexpr ecs::Rgba DASH_COLOR{.r = 255, .g = 255, .b = 255, .a = 150};
+/** @brief Display index of the squares always shown (the dash). */
+constexpr int ALWAYS_SHOWN = 4;
 
 /** @brief Width of a text of `slots` characters: glyphs plus one square of space between them. */
 constexpr float textWidth(const int slots, const float pitch) {
@@ -67,26 +75,34 @@ constexpr float textWidth(const int slots, const float pitch) {
 
 ecs::Rgba opaque(const Rgb color) { return ecs::Rgba{.r = color.r, .g = color.g, .b = color.b, .a = 255}; }
 
+/** @brief Spawns one square; the script places it in the world through the camera and lights it. */
+void spawnCell(ecs::Registry& registry, const game::ScoreCell& cell, const ecs::Rgba color) {
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent(entity, ecs::Transform{.x = 0.0F, .y = 0.0F, .scaleX = 0.0F, .scaleY = 0.0F});
+    registry.addComponent(entity, makeRenderable(color, LAYER_SCOREBOARD));
+    registry.addComponent(entity, ecs::Tag{.name = std::string(game::SCORE_CELL_TAG)});
+    registry.addComponent(entity, cell);
+}
+
 void spawnDisplay(ecs::Registry& registry, const Display& display) {
     for (int slot = 0; slot < display.slots; ++slot) {
         for (int row = 0; row < GLYPH_ROWS; ++row) {
             for (int column = 0; column < GLYPH_COLUMNS; ++column) {
-                const float x = display.left +
-                                (static_cast<float>((slot * (GLYPH_COLUMNS + 1)) + column) * display.pitch) +
-                                (display.pitch / 2.0F);
-                const float y = display.top + (static_cast<float>(row) * display.pitch) + (display.pitch / 2.0F);
-                const ecs::Entity cell = registry.spawnEntity();
-                // Hidden (zero size) until the script lights it.
-                registry.addComponent(cell, ecs::Transform{.x = x, .y = y, .scaleX = 0.0F, .scaleY = 0.0F});
-                registry.addComponent(cell, makeRenderable(display.color, LAYER_SCOREBOARD));
-                registry.addComponent(cell, ecs::Tag{.name = std::string(game::SCORE_CELL_TAG)});
-                registry.addComponent(cell, game::ScoreCell{
-                                                .display = display.index,
-                                                .slot = slot,
-                                                .row = row,
-                                                .column = column,
-                                                .size = display.cell,
-                                            });
+                spawnCell(
+                    registry,
+                    game::ScoreCell{
+                        .display = display.index,
+                        .slot = slot,
+                        .row = row,
+                        .column = column,
+                        .screenX = display.left +
+                                   (static_cast<float>((slot * (GLYPH_COLUMNS + 1)) + column) * display.pitch) +
+                                   (display.pitch / 2.0F),
+                        .screenY = display.top + (static_cast<float>(row) * display.pitch) + (display.pitch / 2.0F),
+                        .width = display.cell,
+                        .height = display.cell,
+                    },
+                    display.color);
             }
         }
     }
@@ -96,21 +112,22 @@ void spawnDisplay(ecs::Registry& registry, const Display& display) {
 
 void ScoreboardPlugin::build(engine::PluginBuilder& builder) {
     builder.require<CarViewPlugin>();
+    // The camera script must run before the scoreboard script, which places the squares through the camera.
+    builder.require<CameraPlugin>();
     builder.require<ecs::net::NetworkPlugin>();
 }
 
 void ScoreboardPlugin::init(engine::Engine& engine) {
     ecs::Registry& registry = engine.registry();
-    const float centerX = (arena::LEFT + arena::RIGHT) / 2.0F;
-    const float centerY = (arena::TOP + arena::BOTTOM) / 2.0F;
+    const auto& window = engine.service<engine::IWindowService>();
+    const float middle = static_cast<float>(window.width()) / 2.0F;
+    const auto height = static_cast<float>(window.height());
     const float scoreWidth = textWidth(2, SCORE_PITCH);
-    const float bigHeight = static_cast<float>(GLYPH_ROWS) * BIG_PITCH;
-    const float bannerHeight = static_cast<float>(GLYPH_ROWS) * BANNER_PITCH;
 
     spawnDisplay(registry, {
                                .index = 0,
                                .slots = 2,
-                               .left = centerX - SCORE_GAP - scoreWidth,
+                               .left = middle - SCORE_GAP - scoreWidth,
                                .top = SCORE_TOP,
                                .cell = SCORE_CELL,
                                .pitch = SCORE_PITCH,
@@ -119,7 +136,7 @@ void ScoreboardPlugin::init(engine::Engine& engine) {
     spawnDisplay(registry, {
                                .index = 1,
                                .slots = 2,
-                               .left = centerX + SCORE_GAP,
+                               .left = middle + SCORE_GAP,
                                .top = SCORE_TOP,
                                .cell = SCORE_CELL,
                                .pitch = SCORE_PITCH,
@@ -128,8 +145,8 @@ void ScoreboardPlugin::init(engine::Engine& engine) {
     spawnDisplay(registry, {
                                .index = 2,
                                .slots = 1,
-                               .left = centerX - (textWidth(1, BIG_PITCH) / 2.0F),
-                               .top = centerY - COUNTDOWN_ABOVE_CENTER - bigHeight,
+                               .left = middle - (textWidth(1, BIG_PITCH) / 2.0F),
+                               .top = height * COUNTDOWN_TOP,
                                .cell = BIG_CELL,
                                .pitch = BIG_PITCH,
                                .color = COUNTDOWN_COLOR,
@@ -137,17 +154,21 @@ void ScoreboardPlugin::init(engine::Engine& engine) {
     spawnDisplay(registry, {
                                .index = 3,
                                .slots = 4,
-                               .left = centerX - (textWidth(4, BANNER_PITCH) / 2.0F),
-                               .top = centerY - bannerHeight,
+                               .left = middle - (textWidth(4, BANNER_PITCH) / 2.0F),
+                               .top = height * BANNER_TOP,
                                .cell = BANNER_CELL,
                                .pitch = BANNER_PITCH,
                                .color = BANNER_COLOR,
                            });
-    // Dash between the two scores.
-    const float dashY = SCORE_TOP + (static_cast<float>(GLYPH_ROWS) * SCORE_PITCH / 2.0F);
-    spawnRect(registry,
-              {.left = centerX - 14.0F, .top = dashY - 3.0F, .right = centerX + 14.0F, .bottom = dashY + 3.0F},
-              DASH_COLOR, LAYER_SCOREBOARD);
+    spawnCell(registry,
+              game::ScoreCell{
+                  .display = ALWAYS_SHOWN,
+                  .screenX = middle,
+                  .screenY = SCORE_TOP + (static_cast<float>(GLYPH_ROWS) * SCORE_PITCH / 2.0F),
+                  .width = DASH_WIDTH,
+                  .height = DASH_HEIGHT,
+              },
+              DASH_COLOR);
 
     _scoreboard = registry.spawnEntity();
     registry.addComponent(_scoreboard, game::MatchState{});

@@ -13,7 +13,8 @@ rlss/
 ├── game/               -- rlss_game: game components, replication codec, Wren bindings (server + client)
 ├── server/             -- rlss_server: headless, authoritative
 ├── client/             -- rlss_client: window, arena and car drawing, controls
-└── scripts/            -- Wren: Match, Kickoff, Car, Ball, Arena, tunings (server); CarView, BallView, ScoreboardView (client)
+└── scripts/            -- Wren: Match, Kickoff, Car, Ball, Arena, tunings (server); CameraDirector, CarView, BallView,
+                           ScoreboardView (client)
 ```
 
 | Target        | Engine modules used                                                                               |
@@ -71,14 +72,17 @@ flowchart LR
       kind `KIND_CAR`. It also broadcasts the `LobbyState` when a player joins or leaves.
 - **Client** (`rlss/client/main.cpp`): connects first (no window if the server is unreachable), opens UDP, then
   `RenderPlugin`, `InputPlugin`, `NetworkPlugin` fed by `ServerLink`, `ClientReplicationPlugin`, `ScriptPlugin`, and:
-    - `ArenaViewPlugin` draws the arena with flat colored rectangles and frames it with the camera;
+    - `ArenaViewPlugin` draws the arena with flat colored rectangles;
+    - `CameraPlugin` owns the camera: it keeps a `CameraRig` up to date (local car from the server's `Welcome`, ball,
+      match phase, window size, arena bounds) for the `CameraDirector` script, which frames the action (see below);
     - `CarViewPlugin` gives each replicated car its parts (body and cabin in the player color, wheels, headlight,
       boost flame and gauge) and the `CarView` script that places them every frame;
     - `BallViewPlugin` builds the ball (a disc of strips and two seams, tagged `ball_part`) and the `BallView` script
       that places the pieces and turns the seams with the ball;
     - `ScoreboardPlugin` draws the score, the kickoff countdown and "GOAL" with small squares (until the engine can
-      render text): it creates the squares (tagged `score_cell`) and writes each `MatchStatus` into a `MatchState`, and
-      the `ScoreboardView` script lights the squares with a 3 × 5 pixel font;
+      render text): it creates the squares (tagged `score_cell`, laid out in screen pixels) and writes each
+      `MatchStatus` into a `MatchState`; the `ScoreboardView` script lights the squares with a 3 × 5 pixel font and
+      places them through the camera every frame, so the scoreboard stays on screen while the camera moves;
     - `PlayerInputPlugin` publishes the local controls as a `LocalInput` every fixed step;
     - `SessionPlugin` logs the player count and closes the game when the connection is lost.
 
@@ -95,7 +99,8 @@ flowchart LR
 | `rlss/scripts/CarTuning`, `BallTuning` | server | Rocket League constants                                     |
 | `rlss/scripts/CarView`    | client  | Size and placement of the car parts, wheel spin, boost flame and gauge    |
 | `rlss/scripts/BallView`   | client  | Placement of the ball pieces, seams turning with the ball                 |
-| `rlss/scripts/ScoreboardView` | client | Score, countdown and "GOAL" drawn with squares (3 × 5 font)          |
+| `rlss/scripts/CameraDirector` | client | Camera: aim, zoom, easing, arena bounds, kickoff wide shot         |
+| `rlss/scripts/ScoreboardView` | client | Score, countdown and "GOAL" drawn with squares (3 × 5 font), on screen |
 
 The scripts see the ECS through component classes bound by `rlss::game::installScriptBindings` in the
 `rlss/components` module: `Transform`, `Controls` (`InputState.playerIndex`), `ArenaShape`, `CarParts`. They read the
@@ -111,7 +116,7 @@ the arena drawing (hundreds of shapes created once).
 ## Goals and match
 
 Like in Sideswipe, the goals open in the side walls a little above the floor: the bottom curved corner is a ramp that
-ends at the goal mouth (280 uu above the floor, 330 uu high, 240 uu deep). There is no wall above the ramp to drive on:
+ends at the goal mouth (420 uu above the floor, 360 uu high, 240 uu deep). There is no wall above the ramp to drive on:
 a car driving fast up the ramp flies up the mouth or into the goal, and the walls above the goals are reached in the
 air. The crossbar and the bottom of each goal meet the wall at a post, a convex edge that the ball bounces off and the
 car collides with.
@@ -127,9 +132,32 @@ formula alone.
   kickoff spot (at rest, full boost) and the ball to the center of the arena. A 3-2-1 countdown follows, everybody
   frozen, then play resumes and the ball drops. A player who joins starts at their kickoff spot.
 
+## Camera
+
+The camera (`CameraDirector.wren`, client) is a fixed side view, never rotated: only its position and zoom change.
+
+1. **Aim**: a point between the local car and the ball, leaning to the ball when it is far (40% of the way when they
+   are close, 60% when they are 2000 uu apart or more), so the player sees what is coming.
+2. **Zoom**: the closest zoom that keeps both on screen with a 280 uu margin. Bounded: never closer than 1500 uu across
+   (about 13 car lengths), never wider than the arena.
+3. **Easing**: position and zoom ease toward their target every frame (rates 5/s and 2.5/s: the zoom reacts more
+   slowly, in log space so that zooming in and out feel the same).
+4. **Bounds**: the view never shows past the outer walls and goals; near a goal or a corner it stops against them and
+   the car or the ball is no longer centered.
+5. **Special cases**: wide shot on the center during the kickoff countdown; after a goal it keeps following the
+   action until the kickoff; a high ball pulls the camera up and out when the car stays on the ground.
+6. **The player comes first**: when the car and the ball do not fit on screen (too far apart, or while the zoom is
+   still pulling back after a clearance), the aim slides back so that the car stays at least 320 uu inside the screen;
+   the ball may leave it. The eased view is also held so that a fast car never gets closer than 160 uu to an edge while
+   the camera catches up.
+
+The client learns which car is its own from the server's `Welcome` message, and resolves it through the engine's
+`NetworkEntityMap`.
+
 ## Car physics
 
-Side view, y down, Rocket League units (uu). The arena is 1920 × 1024 uu with 280 uu curved corners; the car hitbox is
+Side view, y down, Rocket League units (uu). The arena is 2880 × 1536 uu with 420 uu curved corners (about 24 car
+lengths wide: cars and ball keep their Rocket League size, the camera follows the action); the car hitbox is
 118 × 36 uu. `Car.wren` steps at a fixed 120 Hz whatever the frame rate.
 
 | Quantity                          | Value                                    |
@@ -190,9 +218,14 @@ crossbar or under the goal does not), driving above the goal and up the ramp, an
 without the ball) where neither the car nor the ball may leave the arena and the goals. The test checks containment
 with its own C++ distance to the arena and goals, written independently from `Arena.wren`.
 
+`tests/rlss/CameraTests.cpp` runs `CameraDirector.wren` headless: both car and ball framed without rotation, zoom in
+when close and out when far (within its bounds), aim leaning to the ball, easing instead of jumping, stopping against
+the arena near a goal, wide shot at kickoff, high ball, the car kept on screen when the ball is cleared far away and
+when it drives at supersonic speed, and the view never showing past the arena.
+
 ## Protocol
 
-The transport handshake uses `protocolId = 0x524C0004` ("RL", version 4), so R-Type and RLSS peers (or two RLSS
+The transport handshake uses `protocolId = 0x524C0005` ("RL", version 5), so R-Type and RLSS peers (or two RLSS
 versions) refuse each other. Every message starts with a one-byte type; multi-byte integers are big-endian, floats
 IEEE 754 binary32. Received messages are untrusted: an unknown type, a wrong size, an out-of-range field or a
 non-finite float drops the message.
@@ -203,6 +236,7 @@ non-finite float drops the message.
 | 2    | `Snapshot`    | server → client | Unreliable | `tick u32, lastInput u32, partIndex u8, partCount u8, count u8`, then `count` × entity |
 | 3    | `PlayerInput` | client → server | Unreliable | `sequence u32, steer i8 (−127..127), buttons u8 (bit 0 jump, bit 1 boost)` |
 | 4    | `MatchStatus` | server → client | Reliable   | `blueScore u16, orangeScore u16, phase u8 (0 playing, 1 goal, 2 kickoff), countdown u8 (0..9)` |
+| 5    | `Welcome`     | server → client | Reliable   | `carId u32 (≠ 0)`: network id of the receiver's car, sent once it exists |
 
 A snapshot entity is 20 bytes: `id u32 (≠ 0), kind u8 (1 car, 2 ball), x f32, y f32, rotation f32, flags u8 (bit 0
 facing left, bit 1 boosting), color u8, boost u8 (0..100)`. A part carries at most 48 entities, a snapshot at most 64

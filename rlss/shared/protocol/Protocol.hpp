@@ -22,7 +22,7 @@ inline constexpr std::string_view GAME_TITLE = "RLSS";
  * @brief Transport protocol id (`ecs::net::NetworkConfig::protocolId`): an R-Type client and an RLSS server refuse
  * each other during the handshake. Bump the low byte on every incompatible protocol change.
  */
-inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0004U;  // "RL", version 4
+inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0005U;  // "RL", version 5
 
 /** @brief Port used when none is given on the command line (TCP and UDP). */
 inline constexpr std::uint16_t DEFAULT_PORT = 4250;
@@ -40,6 +40,8 @@ enum class MessageType : std::uint8_t {
     PlayerInput = 3,
     /** @brief Server → client, reliable: score and phase of the match. */
     MatchStatus = 4,
+    /** @brief Server → client, reliable: which car is the receiver's. */
+    Welcome = 5,
 };
 
 /** @brief Server → client: state of the lobby, sent to everyone when a player joins or leaves. */
@@ -130,8 +132,14 @@ struct MatchStatus {
     bool operator==(const MatchStatus&) const = default;
 };
 
+/** @brief Server → client: sent to a player once their car exists, so that the camera can follow it. */
+struct Welcome {
+    /** @brief Network id of the player's car (never 0), as found in the snapshots. */
+    std::uint32_t carId = 0;
+};
+
 /** @brief Any decoded message. */
-using Message = std::variant<LobbyState, Snapshot, PlayerInput, MatchStatus>;
+using Message = std::variant<LobbyState, Snapshot, PlayerInput, MatchStatus, Welcome>;
 
 /**
  * @brief Encodes a lobby state: `[type u8][players u16]`.
@@ -162,6 +170,13 @@ using Message = std::variant<LobbyState, Snapshot, PlayerInput, MatchStatus>;
  * @return Wire bytes.
  */
 [[nodiscard]] Bytes encode(const MatchStatus& message);
+
+/**
+ * @brief Encodes a welcome: `[type u8][carId u32]`.
+ * @param message Message to encode.
+ * @return Wire bytes.
+ */
+[[nodiscard]] Bytes encode(const Welcome& message);
 
 /**
  * @brief Decodes a message received from the network. Multi-byte integers are big-endian, floats are IEEE 754

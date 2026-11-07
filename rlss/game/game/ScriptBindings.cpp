@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "components/CameraComponent.hpp"
 #include "components/Transform.hpp"
 #include "game/Components.hpp"
 #include "input/InputState.hpp"
@@ -85,8 +86,31 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&ScoreCell::slot>("slot")
         .property<&ScoreCell::row>("row")
         .property<&ScoreCell::column>("column")
-        .property<&ScoreCell::size>("size");
+        .property<&ScoreCell::screenX>("screenX")
+        .property<&ScoreCell::screenY>("screenY")
+        .property<&ScoreCell::width>("width")
+        .property<&ScoreCell::height>("height");
     ok = define(vm, cell) && ok;
+
+    scripting::ComponentBinder<ecs::CameraComponent> camera(vm, module, "Camera");
+    camera.property<&ecs::CameraComponent::targetX>("targetX")
+        .property<&ecs::CameraComponent::targetY>("targetY")
+        .property<&ecs::CameraComponent::offsetX>("offsetX")
+        .property<&ecs::CameraComponent::offsetY>("offsetY")
+        .property<&ecs::CameraComponent::zoom>("zoom");
+    ok = define(vm, camera) && ok;
+
+    scripting::ComponentBinder<CameraRig> rig(vm, module, "CameraRig");
+    rig.property<&CameraRig::car>("car")
+        .property<&CameraRig::ball>("ball")
+        .property<&CameraRig::phase>("phase")
+        .property<&CameraRig::viewWidth>("viewWidth")
+        .property<&CameraRig::viewHeight>("viewHeight")
+        .property<&CameraRig::boundsLeft>("boundsLeft")
+        .property<&CameraRig::boundsTop>("boundsTop")
+        .property<&CameraRig::boundsRight>("boundsRight")
+        .property<&CameraRig::boundsBottom>("boundsBottom");
+    ok = define(vm, rig) && ok;
 
     return ok;
 }

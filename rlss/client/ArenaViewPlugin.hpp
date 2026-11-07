@@ -1,6 +1,6 @@
 /**
  * @file ArenaViewPlugin.hpp
- * @brief Client plugin drawing the arena and framing it with the camera.
+ * @brief Client plugin drawing the arena.
  */
 
 #pragma once
@@ -12,10 +12,13 @@
 
 namespace rlss::client {
 
+/** @brief Thickness of the walls drawn around the playing area, in uu. */
+inline constexpr float ARENA_WALL = 40.0F;
+
 /**
  * @brief Draws the arena (`rlss::arena`) once with flat colored rectangles: backdrop, walls with rounded corners, grass
- * floor, center line and circle, and the two goals (tinted with the color of the team defending them). Adds a camera
- * that fits the whole arena in the window.
+ * floor, center line and circle, and the two goals (tinted with the color of the team defending them). The camera is
+ * `CameraPlugin`'s.
  */
 class ArenaViewPlugin final : public engine::IPlugin {
   public:
@@ -32,7 +35,7 @@ class ArenaViewPlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Spawns the arena shapes and the camera.
+     * @brief Spawns the arena shapes.
      * @param engine Host engine.
      */
     void init(engine::Engine& engine) override;
