@@ -469,7 +469,7 @@ void RenderPlugin::init(engine::Engine& engine) {
 
     _windowService = std::make_shared<WindowServiceImpl>();
     _renderService = std::make_shared<RenderServiceImpl>(*_renderSystem);
-    _screenDrawService = std::make_shared<ScreenDrawService>();
+    _screenDrawService = std::make_shared<ScreenDrawService>(_textures.get());
 
     if (const auto res = engine.mediator().registerService<engine::IWindowService>(_windowService); !res) {
         throw engine::MediatorError(res.error());

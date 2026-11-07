@@ -15,6 +15,7 @@
 #include "components/Renderable.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "render/font/FontStore.hpp"
+#include "render/texture/TextureStore.hpp"
 
 namespace render {
 
@@ -27,8 +28,11 @@ namespace render {
  */
 class ScreenDrawService final : public engine::IScreenDrawService {
   public:
-    /** @brief Creates an empty service. */
-    ScreenDrawService() = default;
+    /**
+     * @brief Creates an empty service.
+     * @param textures Store `drawTexture` reads from; it must outlive the service. Null draws no texture.
+     */
+    explicit ScreenDrawService(const TextureStore* textures = nullptr) noexcept : _textures(textures) {}
 
     /**
      * @brief Loads a font file.
@@ -77,6 +81,17 @@ class ScreenDrawService final : public engine::IScreenDrawService {
                   engine::FontId font) override;
 
     /**
+     * @brief Queues a textured quad.
+     * @param texture Texture of the store given at construction; an unknown id draws nothing.
+     * @param source Region of the texture; a zero-sized region selects the whole texture.
+     * @param dest Rectangle in screen pixels.
+     * @param rotation Rotation around the center of `dest`, in radians.
+     * @param tint Color multiplied with the texture.
+     */
+    void drawTexture(ecs::TextureId texture, const ecs::TextureRect& source, const engine::ScreenRect& dest,
+                     float rotation, const ecs::Rgba& tint) override;
+
+    /**
      * @brief Draws every queued call in submission order, then empties the queue.
      *
      * Must be called between `Window::beginFrame` and `Window::endFrame`.
@@ -120,8 +135,28 @@ class ScreenDrawService final : public engine::IScreenDrawService {
         engine::FontId font = engine::NO_FONT;
     };
 
+    /** @brief Queued textured quad. */
+    struct TextureCommand {
+        /** @brief Texture identifier. */
+        ecs::TextureId texture = ecs::NO_TEXTURE;
+        /** @brief Region of the texture. */
+        ecs::TextureRect source;
+        /** @brief Rectangle in screen pixels. */
+        engine::ScreenRect dest;
+        /** @brief Rotation around the center of `dest`, in radians. */
+        float rotation = 0.0F;
+        /** @brief Tint. */
+        ecs::Rgba tint;
+    };
+
     /** @brief Any queued draw call. */
-    using Command = std::variant<FillCommand, StrokeCommand, TextCommand>;
+    using Command = std::variant<FillCommand, StrokeCommand, TextCommand, TextureCommand>;
+
+    /**
+     * @brief Draws one queued textured quad.
+     * @param command The quad.
+     */
+    void drawQueued(const TextureCommand& command) const;
 
     /**
      * @brief Resolves a font identifier, falling back to the default font.
@@ -132,6 +167,8 @@ class ScreenDrawService final : public engine::IScreenDrawService {
 
     /** @brief Fonts loaded through `loadFont`. */
     FontStore _fonts;
+    /** @brief Textures `drawTexture` reads from (not owned), or null. */
+    const TextureStore* _textures = nullptr;
     /** @brief Draw calls of the current frame; capacity is kept between frames. */
     std::vector<Command> _commands;
 };

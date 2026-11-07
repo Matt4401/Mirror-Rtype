@@ -115,6 +115,17 @@ class IScreenDrawService {
      */
     virtual void drawText(std::string_view text, float x, float y, float fontSize, float spacing,
                           const ecs::Rgba& color, FontId font) = 0;
+
+    /**
+     * @brief Queues a textured quad.
+     * @param texture Texture loaded by the render backend; an unknown id draws nothing.
+     * @param source Region of the texture; a zero-sized region selects the whole texture.
+     * @param dest Rectangle in screen pixels the region is stretched over (before rotation).
+     * @param rotation Rotation around the center of `dest`, in radians, clockwise on screen.
+     * @param tint Color multiplied with the texture; white leaves it unchanged.
+     */
+    virtual void drawTexture(ecs::TextureId texture, const ecs::TextureRect& source, const ScreenRect& dest,
+                             float rotation, const ecs::Rgba& tint) = 0;
 };
 
 }  // namespace engine
