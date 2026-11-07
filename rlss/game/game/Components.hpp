@@ -47,6 +47,10 @@ inline constexpr std::string_view BALL_PART_TAG = "ball_part";
 inline constexpr std::string_view SCOREBOARD_SCRIPT_MODULE = "rlss/scripts/ScoreboardView";
 /** @brief Tag of the squares of the scoreboard, found by the `ScoreboardView` script. */
 inline constexpr std::string_view SCORE_CELL_TAG = "score_cell";
+/** @brief Wren module of the client camera. */
+inline constexpr std::string_view CAMERA_SCRIPT_MODULE = "rlss/scripts/CameraDirector";
+/** @brief Tag of the camera entity, found by the scripts that draw on screen (scoreboard). */
+inline constexpr std::string_view CAMERA_TAG = "main_camera";
 /** @brief Wren module of the client-side car visuals. */
 inline constexpr std::string_view CAR_VIEW_SCRIPT_MODULE = "rlss/scripts/CarView";
 
@@ -135,9 +139,15 @@ struct BallPart {
     bool spins = false;
 };
 
-/** @brief Client: one square of the scoreboard, lit or hidden by the `ScoreboardView` script. */
+/**
+ * @brief Client: one square of the scoreboard, lit or hidden by the `ScoreboardView` script.
+ *
+ * Placed on screen, not in the world: the script converts its screen position through the camera every frame, so the
+ * scoreboard stays put while the camera moves.
+ */
 struct ScoreCell {
-    /** @brief What it belongs to: 0 blue score, 1 orange score, 2 kickoff countdown, 3 "GOAL" banner. */
+    /** @brief What it belongs to: 0 blue score, 1 orange score, 2 kickoff countdown, 3 "GOAL" banner, 4 always shown.
+     */
     int display = 0;
     /** @brief Character of the display, from the left. */
     int slot = 0;
@@ -145,8 +155,41 @@ struct ScoreCell {
     int row = 0;
     /** @brief Column in the 3 x 5 glyph, from the left. */
     int column = 0;
-    /** @brief Side of the square when lit, in uu. */
-    float size = 0.0F;
+    /** @brief Center on screen, in pixels from the left. */
+    float screenX = 0.0F;
+    /** @brief Center on screen, in pixels from the top. */
+    float screenY = 0.0F;
+    /** @brief Width when lit, in pixels. */
+    float width = 0.0F;
+    /** @brief Height when lit, in pixels. */
+    float height = 0.0F;
+};
+
+/** @brief "No entity" in the entity fields read by scripts (0 is a valid entity). */
+inline constexpr int NO_ENTITY = -1;
+
+/**
+ * @brief Client: what the `CameraDirector` script frames, kept up to date by `CameraPlugin` on the camera entity.
+ */
+struct CameraRig {
+    /** @brief Local player's car entity, `NO_ENTITY` while unknown. */
+    int car = NO_ENTITY;
+    /** @brief Ball entity, `NO_ENTITY` while unknown. */
+    int ball = NO_ENTITY;
+    /** @brief `protocol::MatchPhase` value: 0 playing, 1 goal celebration, 2 kickoff countdown. */
+    int phase = 0;
+    /** @brief Window size, in pixels. */
+    float viewWidth = 0.0F;
+    /** @brief Window size, in pixels. */
+    float viewHeight = 0.0F;
+    /** @brief The camera never shows anything left of this (outer side of the left goal). */
+    float boundsLeft = 0.0F;
+    /** @brief The camera never shows anything above this (outer side of the ceiling wall). */
+    float boundsTop = 0.0F;
+    /** @brief The camera never shows anything right of this. */
+    float boundsRight = 0.0F;
+    /** @brief The camera never shows anything below this (outer side of the floor). */
+    float boundsBottom = 0.0F;
 };
 
 }  // namespace rlss::game
