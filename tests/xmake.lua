@@ -274,7 +274,7 @@ target("test_rlss_server")
               "../rlss/server/RosterPlugin.cpp", "../rlss/server/CarSimulationPlugin.cpp")
     add_includedirs("../rlss/server")
     -- Each match runs the Wren scripts, loaded relative to the working directory.
-    add_defines('RLSS_PROJECT_DIR="$(projectdir)"')
+    add_rules("rlss.project_dir")
     add_tests("test_rlss_server")
 
 target("test_rlss_camera")
