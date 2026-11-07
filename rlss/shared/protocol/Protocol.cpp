@@ -23,7 +23,8 @@ constexpr std::size_t WELCOME_SIZE = 5;
 constexpr float STEER_SCALE = 127.0F;
 constexpr std::uint8_t FLAG_FACING_LEFT = 0x01U;
 constexpr std::uint8_t FLAG_BOOSTING = 0x02U;
-constexpr std::uint8_t KNOWN_FLAGS = FLAG_FACING_LEFT | FLAG_BOOSTING;
+constexpr std::uint8_t FLAG_FLIP_RESET = 0x04U;
+constexpr std::uint8_t KNOWN_FLAGS = FLAG_FACING_LEFT | FLAG_BOOSTING | FLAG_FLIP_RESET;
 constexpr std::uint8_t MAX_BOOST = 100;
 constexpr std::uint8_t BUTTON_JUMP = 0x01U;
 constexpr std::uint8_t BUTTON_BOOST = 0x02U;
@@ -119,6 +120,7 @@ std::optional<EntityState> decodeEntity(Reader& reader) {
     entity.rotation = *rotation;
     entity.facingLeft = (flags & FLAG_FACING_LEFT) != 0;
     entity.boosting = (flags & FLAG_BOOSTING) != 0;
+    entity.flipReset = (flags & FLAG_FLIP_RESET) != 0;
     return entity;
 }
 
@@ -224,6 +226,9 @@ Bytes encode(const Snapshot& message) {
         std::uint8_t flags = entity.facingLeft ? FLAG_FACING_LEFT : 0;
         if (entity.boosting) {
             flags |= FLAG_BOOSTING;
+        }
+        if (entity.flipReset) {
+            flags |= FLAG_FLIP_RESET;
         }
         writer.u8(flags);
         writer.u8(entity.color);
