@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <raylib.h>
+
 #include <string>
 #include <string_view>
 #include <variant>

@@ -8,6 +8,7 @@
 #include "components/Renderable.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "ecs/Registry.hpp"
+#include "ui/components/FontId.hpp"
 #include "ui/components/UiButton.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
