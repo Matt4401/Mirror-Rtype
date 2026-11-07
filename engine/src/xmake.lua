@@ -25,6 +25,16 @@ target("engine_prefabs")
     add_includedirs(".", {public = true})
     add_deps("engine_core")
 
+-- Measures and the board holding them: no graphics library, so a headless program can use them too.
+target("engine_metrics")
+    set_kind("static")
+    add_files("metrics/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core")
+    if is_plat("windows", "mingw") then
+        add_syslinks("psapi", {public = true})
+    end
+
 target("engine_scripting")
     set_kind("static")
     add_files("scripting/**.cpp", "systems/script/**.cpp")
@@ -66,7 +76,7 @@ target("engine_hierarchy")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end
