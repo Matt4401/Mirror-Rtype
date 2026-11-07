@@ -5,10 +5,10 @@ import "rlss/components" for Transform, BallPart, ShotGlow
  * @class BallView
  * @brief Client-side look of the ball: places its pieces around the ball `Transform` every frame.
  *
- * The ball entity itself is not drawn. Its pieces are entities tagged "ball_part", with an untextured `Renderable` and
- * a `BallPart` (offset from the center, base angle, whether it turns with the ball). The round body is a stack of
- * horizontal strips that never turn; the seams turn with the ball, so its spin shows. After a colored shot, the halo of
- * that color (pieces with `glow` set) shows behind the ball, read from the replicated `ShotGlow`.
+ * The ball entity itself is not drawn. Its pieces are entities tagged "ball_part", with a textured `Renderable` and
+ * a `BallPart` (offset from the center, base angle, whether it turns with the ball). The panels turn with the ball, so
+ * its spin shows; the lighting on top never turns. After a colored shot, the halo of that color (pieces with `glow`
+ * set) shows behind the ball, read from the replicated `ShotGlow`, and pulses.
  */
 class BallView {
     construct new(entity) {
@@ -35,12 +35,14 @@ class BallView {
         var s = rotation.sin
         var shot = _glow.shot
         if (shot == null) shot = 0
+        _time = (_time == null ? 0 : _time) + dt
+        var pulse = 1 + 0.08 * (_time * 9).sin
         for (piece in _pieces) {
             var transform = piece[0]
             if (piece[5] != 0) {
                 var shown = piece[5] == shot
-                transform.scaleX = shown ? piece[6] : 0
-                transform.scaleY = shown ? piece[7] : 0
+                transform.scaleX = shown ? piece[6] * pulse : 0
+                transform.scaleY = shown ? piece[7] * pulse : 0
             }
             var offsetX = piece[1]
             var offsetY = piece[2]

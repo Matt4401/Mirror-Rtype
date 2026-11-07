@@ -101,7 +101,7 @@ class Match {
                 kickoff_(cars, ball)
             }
         } else if (ball != null && ball.ready) {
-            checkGoal_(ball)
+            checkGoal_(cars, ball)
             if (_phase == Match.PLAYING) tick_(cars, ball, dt)
         }
     }
@@ -129,7 +129,7 @@ class Match {
         System.print("[Match] Final score: Blue %(_state.blueScore) - %(_state.orangeScore) Orange")
     }
 
-    checkGoal_(ball) {
+    checkGoal_(cars, ball) {
         var r = BallTuning.RADIUS
         if (ball.x + r < _arena.left) {
             _state.orangeScore = _state.orangeScore + 1
@@ -141,6 +141,24 @@ class Match {
         System.print("[Match] Goal! Blue %(_state.blueScore) - %(_state.orangeScore) Orange")
         _phase = Match.GOAL
         _timer = Kickoff.GOAL_CELEBRATION
+        blast_(cars, ball)
+    }
+
+    // The ball explodes in the goal: the cars around are blown away from it, harder the closer they are.
+    blast_(cars, ball) {
+        for (car in cars) {
+            if (!car.ready) continue
+            var dx = car.x - ball.x
+            var dy = car.y - ball.y
+            var distance = (dx * dx + dy * dy).sqrt
+            if (distance < Kickoff.BLAST_RADIUS) {
+                var strength = Kickoff.BLAST_SPEED * (1 - distance / Kickoff.BLAST_RADIUS)
+                // Straight up when the car is right on the ball; always a little upward, so it takes off.
+                var nx = distance > 1 ? dx / distance : 0
+                var ny = distance > 1 ? dy / distance : -1
+                car.addVelocity(nx * strength, (ny - 0.5) * strength)
+            }
+        }
     }
 
     kickoff_(cars, ball) {
@@ -157,6 +175,8 @@ class Match {
             if (car.ready) car.step(dt)
         }
         if (ball == null || !ball.ready) return
+        // After a goal the ball is gone (it exploded): it stays where it was, out of play, until the kickoff.
+        if (_phase == Match.GOAL) return
         // Purple shots: a car that just jumped off the ball pushes it away from its wheels.
         for (car in cars) {
             var purple = car.ready ? car.takePurpleShot() : null
