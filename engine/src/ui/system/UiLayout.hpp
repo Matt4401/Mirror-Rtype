@@ -8,6 +8,7 @@
 #include <functional>
 #include <vector>
 
+#include "core/services/IScreenDrawService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ui/components/UiAnchor.hpp"
@@ -15,20 +16,8 @@
 
 namespace ui {
 
-/** @brief Axis-aligned rectangle in screen pixels, origin at the top-left corner. */
-struct UiScreenRect {
-    /** @brief Left edge in pixels. */
-    float x = 0.0F;
-
-    /** @brief Top edge in pixels. */
-    float y = 0.0F;
-
-    /** @brief Width in pixels. */
-    float width = 0.0F;
-
-    /** @brief Height in pixels. */
-    float height = 0.0F;
-};
+/** @brief Axis-aligned rectangle in screen pixels, origin at the top-left corner (same type the draw service takes). */
+using UiScreenRect = engine::ScreenRect;
 
 /** @brief Size of an element in pixels. */
 struct UiSize {

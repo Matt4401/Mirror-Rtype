@@ -1,9 +1,7 @@
-/*
-** EPITECH PROJECT, 2026
-** r-type
-** File description:
-** Plugin wrapping FontStore and UiRenderSystem into the engine lifecycle.
-*/
+/**
+ * @file UiPlugin.hpp
+ * @brief Plugin driving HUD layout, button interaction and HUD drawing.
+ */
 
 #pragma once
 
@@ -14,22 +12,23 @@
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/time/Time.hpp"
-#include "ui/font/FontStore.hpp"
 #include "ui/system/UiLayout.hpp"
 #include "ui/system/UiRenderSystem.hpp"
 
 namespace ui {
 
 /**
- * @brief Engine plugin driving HUD rendering and button interaction.
+ * @brief Engine plugin driving HUD layout, button interaction and HUD drawing.
  *
- * Owns a FontStore, a UiRenderSystem, and a UiButtonSystem. Runs
- * UiButtonSystem::update() in the update phase and UiRenderSystem::update()
- * in the render phase, after the standard RenderPlugin pass.
- * Requires RenderPlugin and IWindowService.
+ * - `update`: lays the HUD out and runs `UiButtonSystem` (hover, press, click events).
+ * - `lateUpdate`: lays the HUD out again, after every plugin's `update`, and submits it to
+ *   `engine::IScreenDrawService`, which draws it on top of the world in the same frame.
  *
- * HUD elements can be nested with `hierarchy::setParent`: a child element is anchored inside its parent's
- * rectangle (see `computeLayout`). Add `hierarchy::HierarchyPlugin` so that destroying a panel destroys its widgets.
+ * Depends only on services (`engine::IWindowService`, `engine::IScreenDrawService`), never on the render backend,
+ * so this module contains no graphics-library code. Fonts are loaded through `IScreenDrawService::loadFont`.
+ *
+ * HUD elements can be nested with `hierarchy::setParent`: a child element is anchored inside its parent's rectangle
+ * (see `computeLayout`). `hierarchy::HierarchyPlugin` is required so that destroying a panel destroys its widgets.
  */
 class UiPlugin final : public engine::IPlugin {
   public:
@@ -58,40 +57,46 @@ class UiPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "UiPlugin"; }
 
     /**
-     * @brief Declares dependency on RenderPlugin and IWindowService.
+     * @brief Declares the window and screen-draw services and the hierarchy plugin as dependencies.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Initializes FontStore and UiRenderSystem.
+     * @brief Creates the UI render system.
      * @param engine Reference to host Engine.
      */
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Runs UiButtonSystem to update button interaction states.
+     * @brief Lays the HUD out and updates button interaction states.
      * @param engine Reference to host Engine.
      * @param time   Current frame time (unused).
      */
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
-     * @brief Runs the UI render pass after the main render pass.
+     * @brief Submits the HUD to the screen-draw service for this frame.
      * @param engine Reference to host Engine.
+     * @param time   Current frame time (unused).
      */
-    void render(engine::Engine& engine) override;
+    void lateUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
-     * @brief Gets mutable pointer to the FontStore, or nullptr if uninitialized.
-     * @return Pointer to the owned FontStore.
+     * @brief Releases the UI render system and the layout buffer.
+     * @param engine Reference to host Engine (unused).
      */
-    [[nodiscard]] FontStore* fonts() noexcept { return _fonts.get(); }
+    void shutdown(engine::Engine& engine) override;
 
   private:
-    /** @brief Owned font store; valid after init(). */
-    std::unique_ptr<FontStore> _fonts;
-    /** @brief Owned UI render system; valid after init(). */
+    /**
+     * @brief Gets the screen rectangle from the window service.
+     * @param engine Reference to host Engine.
+     * @return `{0, 0, windowWidth, windowHeight}`.
+     */
+    [[nodiscard]] static UiScreenRect screenOf(engine::Engine& engine);
+
+    /** @brief Owned UI render system; valid between init() and shutdown(). */
     std::unique_ptr<UiRenderSystem> _uiRenderSystem;
     /** @brief Layout computed in update() for button hit-testing; capacity is kept between frames. */
     std::vector<UiLayoutNode> _layout;

@@ -1,13 +1,18 @@
+/**
+ * @file UiRenderSystem.hpp
+ * @brief Turns HUD components into screen-space draw calls.
+ */
+
 #pragma once
 
 #include <vector>
 
+#include "core/services/IScreenDrawService.hpp"
 #include "ecs/Registry.hpp"
 #include "ui/components/UiButton.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
-#include "ui/font/FontStore.hpp"
 #include "ui/system/UiDrawItem.hpp"
 #include "ui/system/UiLayout.hpp"
 
@@ -16,56 +21,47 @@ namespace ui {
 /**
  * @brief Draws every HUD entity that has a `UiAnchor` and a drawable UI component.
  *
- * Mirrors `render::RenderSystem`: `collect` resolves positions with `computeLayout` (so children of a HUD element
- * are placed inside it) and fills the draw queue in layout order, parents below their children; `draw` issues the
- * actual raylib calls. The queues are reused across frames to avoid per-frame heap allocation.
+ * `collect` resolves positions with `computeLayout` (so children of a HUD element are placed inside it) and fills the
+ * draw queue in layout order, parents below their children; `submit` sends the queue to an
+ * `engine::IScreenDrawService`, which draws it on top of the world. No graphics library is used here. The queues are
+ * reused across frames to avoid per-frame heap allocation.
  */
 class UiRenderSystem {
   public:
-    /**
-     * @brief Creates the system.
-     *
-     * @param fonts Store used to resolve font identifiers; must outlive this system.
-     */
-    explicit UiRenderSystem(const FontStore& fonts);
+    /** @brief Letter spacing as a fraction of the font size, shared by measuring and drawing. */
+    static constexpr float SPACING_RATIO = 0.1F;
+
+    /** @brief Creates the system. */
+    UiRenderSystem();
 
     /**
      * @brief Gathers HUD entities and resolves their screen positions.
-     *
      * @param registry Registry to read from.
-     * @param screenW  Current window width in pixels.
-     * @param screenH  Current window height in pixels.
+     * @param screen   Screen rectangle, usually `{0, 0, windowWidth, windowHeight}`.
+     * @param measure  Text measuring function.
      */
-    void collect(ecs::Registry& registry, int screenW, int screenH);
+    void collect(ecs::Registry& registry, const UiScreenRect& screen, const UiTextMeasure& measure);
 
     /**
-     * @brief Draws the items gathered by the last `collect`.
-     *
-     * Must be called between `Window::beginFrame` and `Window::endFrame`.
+     * @brief Sends the items gathered by the last `collect` to a draw service.
+     * @param draw Service receiving the draw calls.
      */
-    void draw() const;
+    void submit(engine::IScreenDrawService& draw) const;
 
     /**
-     * @brief Collects then draws in one call.
-     *
+     * @brief Collects with the service's text measurement, then submits.
      * @param registry Registry to read from.
-     * @param screenW  Current window width in pixels.
-     * @param screenH  Current window height in pixels.
+     * @param screen   Screen rectangle.
+     * @param draw     Service measuring text and receiving the draw calls.
      */
-    void update(ecs::Registry& registry, int screenW, int screenH);
+    void update(ecs::Registry& registry, const UiScreenRect& screen, engine::IScreenDrawService& draw);
 
     /**
-     * @brief Measures a text element with the font it references.
-     * @param text Text to measure.
-     * @return Size of the rendered text in pixels.
+     * @brief Builds a text measuring function backed by a draw service.
+     * @param draw Service measuring the text; must outlive the returned function.
+     * @return Measuring function using `SPACING_RATIO`.
      */
-    [[nodiscard]] UiSize measureText(const UiText& text) const;
-
-    /**
-     * @brief Wraps `measureText` for `computeLayout`.
-     * @return Measuring function bound to this system; must not outlive it.
-     */
-    [[nodiscard]] UiTextMeasure measureFunction() const;
+    [[nodiscard]] static UiTextMeasure measureWith(const engine::IScreenDrawService& draw);
 
     /**
      * @brief Items gathered by the last `collect`.
@@ -75,39 +71,40 @@ class UiRenderSystem {
 
   private:
     /**
-     * @brief Draws a single `UiRect` at the given screen position.
-     * @param x Resolved screen X in pixels.
-     * @param y Resolved screen Y in pixels.
+     * @brief Submits a `UiRect`: its fill, then its border.
+     * @param draw Target service.
+     * @param x Screen X in pixels.
+     * @param y Screen Y in pixels.
      * @param rect Component to draw.
      */
-    static void drawRect(float x, float y, const UiRect& rect);
+    static void drawRect(engine::IScreenDrawService& draw, float x, float y, const UiRect& rect);
 
     /**
-     * @brief Draws a single `UiText` at the given screen position.
-     * @param x Resolved screen X in pixels.
-     * @param y Resolved screen Y in pixels.
+     * @brief Submits a `UiText`.
+     * @param draw Target service.
+     * @param x Screen X in pixels.
+     * @param y Screen Y in pixels.
      * @param text Component to draw.
      */
-    void drawText(float x, float y, const UiText& text) const;
+    static void drawText(engine::IScreenDrawService& draw, float x, float y, const UiText& text);
 
     /**
-     * @brief Draws a single `UiProgressBar` at the given screen position.
-     * @param x Resolved screen X in pixels.
-     * @param y Resolved screen Y in pixels.
+     * @brief Submits a `UiProgressBar`: its background, then its filled part.
+     * @param draw Target service.
+     * @param x Screen X in pixels.
+     * @param y Screen Y in pixels.
      * @param bar Component to draw.
      */
-    static void drawProgressBar(float x, float y, const UiProgressBar& bar);
+    static void drawProgressBar(engine::IScreenDrawService& draw, float x, float y, const UiProgressBar& bar);
 
     /**
-     * @brief Draws a single `UiButton` at the given screen position.
-     * @param x Resolved screen X in pixels.
-     * @param y Resolved screen Y in pixels.
+     * @brief Submits a `UiButton`: its background for the current state, then its centred label.
+     * @param draw Target service.
+     * @param x Screen X in pixels.
+     * @param y Screen Y in pixels.
      * @param btn Component to draw.
      */
-    void drawButton(float x, float y, const UiButton& btn) const;
-
-    /** @brief Resolves font identifiers. */
-    const FontStore* _fonts;
+    static void drawButton(engine::IScreenDrawService& draw, float x, float y, const UiButton& btn);
 
     /** @brief Items gathered for the current frame; capacity is kept between frames. */
     std::vector<UiDrawItem> _queue;

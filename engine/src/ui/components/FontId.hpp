@@ -1,13 +1,13 @@
 #pragma once
 
-#include <cstdint>
+#include "core/services/IScreenDrawService.hpp"
 
 namespace ui {
 
-/** @brief Opaque handle to a font loaded in `FontStore`. */
-using FontId = std::uint32_t;
+/** @brief Handle to a font loaded with `engine::IScreenDrawService::loadFont`. */
+using engine::FontId;
 
 /** @brief Sentinel value meaning "no font / use the default font". */
-inline constexpr FontId NO_FONT = 0;
+using engine::NO_FONT;
 
 }  // namespace ui

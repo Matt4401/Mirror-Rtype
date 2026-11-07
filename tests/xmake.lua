@@ -164,14 +164,12 @@ target("test_transport")
     add_files("net/TransportTests.cpp")
     add_tests("test_transport")
 
-if has_config("graphics") then
-    target("test_ui_components")
-        set_kind("binary")
-        add_deps("engine_ui", "engine_hierarchy")
-        add_packages("gtest")
-        add_files("test_ui_components.cpp")
-        add_tests("test_ui_components")
-end
+target("test_ui_components")
+    set_kind("binary")
+    add_deps("engine_ui", "engine_hierarchy")
+    add_packages("gtest")
+    add_files("test_ui_components.cpp")
+    add_tests("test_ui_components")
 
 target("test_server_room")
     set_kind("binary")

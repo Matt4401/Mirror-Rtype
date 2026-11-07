@@ -3,9 +3,12 @@
 #include <algorithm>
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
+#include "components/Renderable.hpp"
+#include "core/services/IScreenDrawService.hpp"
 #include "core/services/IWindowService.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
@@ -21,6 +24,7 @@
 #include "ui/system/UiButtonSystem.hpp"
 #include "ui/system/UiDrawItem.hpp"
 #include "ui/system/UiLayout.hpp"
+#include "ui/system/UiRenderSystem.hpp"
 
 namespace {
 
@@ -100,6 +104,38 @@ const ui::UiLayoutNode* findNode(const std::vector<ui::UiLayoutNode>& nodes, ecs
 
 std::ptrdiff_t indexOf(const std::vector<ui::UiLayoutNode>& nodes, ecs::Entity e) {
     return std::ranges::find(nodes, e, &ui::UiLayoutNode::entity) - nodes.begin();
+}
+
+/** @brief Records the draw calls it receives, in order. */
+struct FakeScreenDraw final : engine::IScreenDrawService {
+    struct Call {
+        std::string kind;
+        engine::ScreenRect rect;
+        ecs::Rgba color;
+        std::string text;
+    };
+    std::vector<Call> calls;
+
+    engine::FontId loadFont(const std::string& /*path*/) override { return engine::NO_FONT; }
+    [[nodiscard]] engine::TextSize measureText(std::string_view /*text*/, float /*fontSize*/, float /*spacing*/,
+                                               engine::FontId /*font*/) const override {
+        return {.width = FAKE_TEXT_SIZE.width, .height = FAKE_TEXT_SIZE.height};
+    }
+    void fillRect(const engine::ScreenRect& rect, const ecs::Rgba& color) override {
+        calls.push_back({.kind = "fill", .rect = rect, .color = color, .text = {}});
+    }
+    void strokeRect(const engine::ScreenRect& rect, float /*thickness*/, const ecs::Rgba& color) override {
+        calls.push_back({.kind = "stroke", .rect = rect, .color = color, .text = {}});
+    }
+    void drawText(std::string_view text, float x, float y, float /*fontSize*/, float /*spacing*/,
+                  const ecs::Rgba& color, engine::FontId /*font*/) override {
+        calls.push_back({.kind = "text", .rect = {.x = x, .y = y}, .color = color, .text = std::string(text)});
+    }
+};
+
+void renderUi(ecs::Registry& reg, FakeScreenDraw& draw) {
+    ui::UiRenderSystem system;
+    system.update(reg, ui::UiScreenRect{.width = 1920.0F, .height = 1080.0F}, draw);
 }
 
 }  // namespace
@@ -651,6 +687,93 @@ TEST(UiButtonSystem, NestedButtonIsHitWhereItIsDrawn) {
     win.my = 310.0F;
     updateButtons(reg, win, bus);
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(button).state, ui::UiButtonState::Hovered);
+}
+
+// --- Rendering through IScreenDrawService ---
+
+TEST(UiRenderSystem, ParentIsSubmittedBeforeChild) {
+    ecs::Registry reg;
+    constexpr ecs::Rgba PARENT_COLOR = {.r = 10, .g = 0, .b = 0, .a = 255};
+    constexpr ecs::Rgba CHILD_COLOR = {.r = 20, .g = 0, .b = 0, .a = 255};
+    // Child spawned first, so storage order alone would draw it below its parent.
+    const ecs::Entity child = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(child, ui::UiAnchor{.offsetX = 5.0F});
+    reg.addComponent<ui::UiRect>(child, ui::UiRect{.width = 10.0F, .height = 10.0F, .fillColor = CHILD_COLOR});
+    const ecs::Entity parent = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(parent, ui::UiAnchor{.offsetX = 100.0F});
+    reg.addComponent<ui::UiRect>(parent, ui::UiRect{.width = 50.0F, .height = 50.0F, .fillColor = PARENT_COLOR});
+    ASSERT_TRUE(hierarchy::setParent(reg, child, parent));
+
+    FakeScreenDraw draw;
+    renderUi(reg, draw);
+
+    ASSERT_EQ(draw.calls.size(), 2U);
+    EXPECT_EQ(draw.calls[0].color.r, PARENT_COLOR.r);
+    EXPECT_EQ(draw.calls[1].color.r, CHILD_COLOR.r);
+    EXPECT_FLOAT_EQ(draw.calls[1].rect.x, 105.0F);
+}
+
+TEST(UiRenderSystem, TransparentFillIsSkippedAndBorderDrawn) {
+    ecs::Registry reg;
+    const ecs::Entity e = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(e, ui::UiAnchor{});
+    reg.addComponent<ui::UiRect>(e, ui::UiRect{
+                                        .width = 10.0F,
+                                        .height = 10.0F,
+                                        .fillColor = {.r = 0, .g = 0, .b = 0, .a = 0},
+                                        .borderColor = {.r = 255, .g = 255, .b = 255, .a = 255},
+                                        .borderThickness = 2.0F,
+                                    });
+
+    FakeScreenDraw draw;
+    renderUi(reg, draw);
+
+    ASSERT_EQ(draw.calls.size(), 1U);
+    EXPECT_EQ(draw.calls[0].kind, "stroke");
+}
+
+TEST(UiRenderSystem, ProgressBarFillsBackgroundThenRatio) {
+    ecs::Registry reg;
+    const ecs::Entity e = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(e, ui::UiAnchor{});
+    reg.addComponent<ui::UiProgressBar>(
+        e, ui::UiProgressBar{.value = 25.0F, .min = 0.0F, .max = 100.0F, .width = 200.0F, .height = 10.0F});
+
+    FakeScreenDraw draw;
+    renderUi(reg, draw);
+
+    ASSERT_EQ(draw.calls.size(), 2U);
+    EXPECT_FLOAT_EQ(draw.calls[0].rect.width, 200.0F);
+    EXPECT_FLOAT_EQ(draw.calls[1].rect.width, 50.0F);
+}
+
+TEST(UiRenderSystem, ButtonLabelIsCentred) {
+    ecs::Registry reg;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F, 120.0F, 36.0F);
+    reg.getComponents<ui::UiButton>().get(e).label = "Play";
+
+    FakeScreenDraw draw;
+    renderUi(reg, draw);
+
+    ASSERT_EQ(draw.calls.size(), 2U);
+    EXPECT_EQ(draw.calls[0].kind, "fill");
+    EXPECT_EQ(draw.calls[1].text, "Play");
+    EXPECT_FLOAT_EQ(draw.calls[1].rect.x, (120.0F - FAKE_TEXT_SIZE.width) * 0.5F);
+    EXPECT_FLOAT_EQ(draw.calls[1].rect.y, (36.0F - FAKE_TEXT_SIZE.height) * 0.5F);
+}
+
+TEST(UiRenderSystem, TextIsAnchoredWithMeasuredSize) {
+    ecs::Registry reg;
+    const ecs::Entity e = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(e, ui::UiAnchor{.anchorX = 1.0F, .pivotX = 1.0F});
+    reg.addComponent<ui::UiText>(e, ui::UiText{.text = "SCORE"});
+
+    FakeScreenDraw draw;
+    renderUi(reg, draw);
+
+    ASSERT_EQ(draw.calls.size(), 1U);
+    EXPECT_EQ(draw.calls[0].text, "SCORE");
+    EXPECT_FLOAT_EQ(draw.calls[0].rect.x, 1920.0F - FAKE_TEXT_SIZE.width);
 }
 
 int main(int argc, char** argv) {
