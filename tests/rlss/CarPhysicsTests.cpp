@@ -185,7 +185,7 @@ TEST_F(CarPhysics, FallsAndRestsOnTheFloor) {
 }
 
 TEST_F(CarPhysics, DrivesAndReachesTheThrottleTopSpeed) {
-    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnCar(arena::LEFT + 600.0F, arena::BOTTOM - HALF_HEIGHT);
     run(0.2F);
     const float start = transform().x;
     run(0.5F, 1.0F);
@@ -273,7 +273,7 @@ TEST_F(CarPhysics, RandomInputsNeverLeaveTheArena) {
 }
 
 TEST_F(CarPhysics, BoostGoesPastTheThrottleTopSpeedAndEmptiesTheTank) {
-    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnCar(arena::LEFT + 600.0F, arena::BOTTOM - HALF_HEIGHT);
     run(0.2F);
     EXPECT_FLOAT_EQ(status().boost, 100.0F);
     float previous = transform().x;
@@ -290,7 +290,7 @@ TEST_F(CarPhysics, BoostGoesPastTheThrottleTopSpeedAndEmptiesTheTank) {
 }
 
 TEST_F(CarPhysics, BoostRefillsOnlyAgainstASurface) {
-    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnCar(arena::LEFT + 600.0F, arena::BOTTOM - HALF_HEIGHT);
     run(0.2F);
     run(0.6F, 0.0F, false, true);
     const float afterBoost = status().boost;
@@ -326,7 +326,7 @@ TEST_F(CarPhysics, BallBouncesLikeInRocketLeague) {
 }
 
 TEST_F(CarPhysics, DrivingIntoTheBallPushesIt) {
-    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnCar(arena::LEFT + 600.0F, arena::BOTTOM - HALF_HEIGHT);
     spawnBall(arena::LEFT + 900.0F, arena::BOTTOM - BALL_RADIUS);
     run(0.3F);
     const float start = ball().x;
@@ -337,7 +337,7 @@ TEST_F(CarPhysics, DrivingIntoTheBallPushesIt) {
 }
 
 TEST_F(CarPhysics, AHitSendsTheBallFasterThanTheCar) {
-    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnCar(arena::LEFT + 600.0F, arena::BOTTOM - HALF_HEIGHT);
     spawnBall(arena::RIGHT - 500.0F, arena::BOTTOM - BALL_RADIUS);
     run(0.2F);
     float carSpeed = 0.0F;
@@ -392,7 +392,7 @@ TEST_F(CarPhysics, ABallBehindTheLeftGoalLineScoresForOrangeThenKicksOff) {
     EXPECT_NEAR(ball().x, (arena::LEFT + arena::RIGHT) / 2.0F, 0.01F);
     EXPECT_NEAR(ball().y, (arena::TOP + arena::BOTTOM) / 2.0F, 0.01F);
     // Player 3 is the second orange player: second kickoff spot on the right, facing left.
-    EXPECT_NEAR(transform().x, arena::RIGHT - 420.0F - 160.0F, 0.01F);
+    EXPECT_NEAR(transform().x, arena::RIGHT - 600.0F - 160.0F, 0.01F);
     EXPECT_LT(transform().scaleX, 0.0F);
 
     const float frozenX = transform().x;

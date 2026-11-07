@@ -142,6 +142,17 @@ TEST(RlssProtocol, RejectsMalformedMatchStatus) {
     EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{4, 0, 3, 0, 12, 2, 2, 0}).has_value());  // too long
 }
 
+TEST(RlssProtocol, WelcomeRoundTrips) {
+    const auto bytes = protocol::encode(protocol::Welcome{.carId = 258});
+    EXPECT_EQ(bytes, (std::vector<std::uint8_t>{5, 0, 0, 1, 2}));
+    const auto message = protocol::decode(bytes);
+    ASSERT_TRUE(message.has_value());
+    EXPECT_EQ(std::get<protocol::Welcome>(*message).carId, 258U);
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{5, 0, 0, 0, 0}).has_value());     // no car 0
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{5, 0, 0, 1}).has_value());        // too short
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{5, 0, 0, 1, 2, 3}).has_value());  // too long
+}
+
 TEST(RlssCommandLine, ParsesPorts) {
     EXPECT_EQ(rlss::parsePort("4250"), 4250);
     EXPECT_FALSE(rlss::parsePort("0").has_value());
