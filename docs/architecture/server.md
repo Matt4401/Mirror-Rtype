@@ -90,15 +90,22 @@ The router does not change any state: game rules (damage, kills, pickups) subscr
 
 ## Gameplay
 
-Each room's engine runs `systems::PhysicsPlugin` and `gameplay::GameplayPlugin` (`server/src/gameplay/`, target
-`rtype_gameplay`). Every entity they spawn is replicated: the client only draws what the server simulates.
+Each room's engine runs `systems::PhysicsPlugin`, `timeline::TimelinePlugin`, `gameplay::GameplayPlugin`
+(`server/src/gameplay/`, target `rtype_gameplay`), `prefabs::PrefabPlugin` and `scripting::ScriptPlugin`. Every entity
+they spawn is replicated: the client only draws what the server simulates.
 
-- **Enemies:** an `alien_scout` every 1.2 s, just past the right edge, at heights cycled through deterministically.
+- **Level:** the server loads `server/levels/level_01.toml` at start-up and every room plays it. `TimelinePlugin` moves
+  a cursor at the scroll speed; `GameplayPlugin` handles the events it reaches: `spawn` creates the enemies, `scroll`
+  changes the speed, `end` restarts the level.
+- **Scripts:** each room has its own Wren VM. What a script spawns with `Engine.spawnPrefab(name, x, y)` goes through
+  `gameplay::registerScriptPrefabs()`, so it is replicated too (kind `makeEntityKind(name)`). Player ships and bullets
+  cannot be spawned by a script.
 - **Shots:** while a player's input holds `shoot`, its ship fires a `player_bullet` every 0.2 s at most. The bullet's
   `subtype` is the index of the player who fired it.
 - **Kills and scores:** a `ShotHitEvent` of a player shot on an enemy destroys both and gives 1 point to the shooter.
   Each player has their own score.
-- **Cleanup:** bullets and enemies more than 64 px off the screen are destroyed.
+- **Cleanup:** player bullets more than 64 px past the right edge, and enemies, enemy shots and power-ups more than
+  64 px past the left one, are destroyed.
 - **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`. Scores are not sent to the
   clients yet.
 
