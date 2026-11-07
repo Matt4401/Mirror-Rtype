@@ -100,7 +100,10 @@ void LobbyPlugin::join(engine::Engine& engine, const ecs::net::PeerId peer) {
                                    .moduleName = std::string(game::CAR_SCRIPT_MODULE),
                                    .className = "Car",
                                });
-    ecs::net::replicate(registry, car, game::KIND_CAR);
+    const std::uint32_t carId = ecs::net::replicate(registry, car, game::KIND_CAR);
+    // The client needs to know which car is its own: its camera follows it.
+    engine.service<ecs::net::INetworkService>().send(peer, protocol::encode(protocol::Welcome{.carId = carId}),
+                                                     ecs::net::Channel::Reliable);
     _players.emplace(peer, Player{.slot = slot, .car = car});
 }
 

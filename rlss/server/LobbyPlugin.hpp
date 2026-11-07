@@ -25,7 +25,8 @@ namespace rlss::server {
  *
  * Listens to the `PeerConnected` / `PeerDisconnected` events published by `ecs::net::NetworkPlugin`, and sends
  * through the `ecs::net::INetworkService` it registers. A car is an entity driven by the `Car` Wren script, owned by
- * its peer (`ecs::NetworkOwner`) and replicated to every client. This is where the match logic will grow.
+ * its peer (`ecs::NetworkOwner`) and replicated to every client; the peer is told its network id (`Welcome`). This is
+ * where the match logic will grow.
  */
 class LobbyPlugin final : public engine::IPlugin {
   public:
