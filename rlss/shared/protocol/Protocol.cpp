@@ -14,12 +14,16 @@ namespace {
 
 constexpr unsigned BYTE_BITS = 8;
 constexpr std::uint32_t BYTE_MASK = 0xFFU;
-constexpr std::size_t LOBBY_STATE_SIZE = 3;
-constexpr std::size_t SNAPSHOT_HEADER_SIZE = 12;
+constexpr std::size_t MATCH_LIST_HEADER_SIZE = 4;
+constexpr std::size_t MATCH_INFO_SIZE = 11;
+constexpr std::size_t SNAPSHOT_HEADER_SIZE = 14;
 constexpr std::size_t ENTITY_SIZE = 20;
 constexpr std::size_t PLAYER_INPUT_SIZE = 7;
-constexpr std::size_t MATCH_STATUS_SIZE = 7;
-constexpr std::size_t WELCOME_SIZE = 5;
+constexpr std::size_t MATCH_STATUS_SIZE = 10;
+constexpr std::size_t WELCOME_SIZE = 6;
+constexpr std::size_t JOIN_MATCH_SIZE = 3;
+constexpr std::size_t JOIN_RESULT_SIZE = 4;
+constexpr std::uint8_t FLAG_OVERTIME = 0x01U;
 constexpr float STEER_SCALE = 127.0F;
 constexpr std::uint8_t FLAG_FACING_LEFT = 0x01U;
 constexpr std::uint8_t FLAG_BOOSTING = 0x02U;
@@ -95,11 +99,34 @@ class Reader {
     std::span<const std::uint8_t> _data;
 };
 
-std::optional<Message> decodeLobbyState(Reader& reader) {
-    if (reader.remaining() != LOBBY_STATE_SIZE - 1) {
+std::optional<Message> decodeMatchList(Reader& reader) {
+    if (reader.remaining() < MATCH_LIST_HEADER_SIZE - 1) {
         return std::nullopt;
     }
-    return LobbyState{.players = reader.u16()};
+    MatchList list;
+    list.online = reader.u16();
+    const std::size_t count = reader.u8();
+    if (count > MAX_MATCHES || reader.remaining() != count * MATCH_INFO_SIZE) {
+        return std::nullopt;
+    }
+    list.matches.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        MatchInfo info;
+        info.id = reader.u16();
+        info.bluePlayers = reader.u8();
+        info.orangePlayers = reader.u8();
+        info.blueScore = reader.u16();
+        info.orangeScore = reader.u16();
+        info.clock = reader.u16();
+        const std::uint8_t flags = reader.u8();
+        if (info.id == 0 || info.bluePlayers > PLAYERS_PER_TEAM || info.orangePlayers > PLAYERS_PER_TEAM ||
+            info.clock > MAX_CLOCK || (flags & ~FLAG_OVERTIME) != 0) {
+            return std::nullopt;
+        }
+        info.overtime = (flags & FLAG_OVERTIME) != 0;
+        list.matches.push_back(info);
+    }
+    return list;
 }
 
 std::optional<EntityState> decodeEntity(Reader& reader) {
@@ -129,6 +156,7 @@ std::optional<Message> decodeSnapshot(Reader& reader) {
         return std::nullopt;
     }
     Snapshot snapshot;
+    snapshot.matchId = reader.u16();
     snapshot.tick = reader.u32();
     snapshot.lastProcessedInput = reader.u32();
     snapshot.partIndex = reader.u8();
@@ -176,10 +204,14 @@ std::optional<Message> decodeMatchStatus(Reader& reader) {
     status.orangeScore = reader.u16();
     const std::uint8_t phase = reader.u8();
     status.countdown = reader.u8();
-    if (phase > static_cast<std::uint8_t>(MatchPhase::Kickoff) || status.countdown > MAX_COUNTDOWN) {
+    status.clock = reader.u16();
+    const std::uint8_t flags = reader.u8();
+    if (phase > static_cast<std::uint8_t>(MatchPhase::Ended) || status.countdown > MAX_COUNTDOWN ||
+        status.clock > MAX_CLOCK || (flags & ~FLAG_OVERTIME) != 0) {
         return std::nullopt;
     }
     status.phase = static_cast<MatchPhase>(phase);
+    status.overtime = (flags & FLAG_OVERTIME) != 0;
     return status;
 }
 
@@ -187,21 +219,70 @@ std::optional<Message> decodeWelcome(Reader& reader) {
     if (reader.remaining() != WELCOME_SIZE - 1) {
         return std::nullopt;
     }
-    const Welcome welcome{.carId = reader.u32()};
-    if (welcome.carId == 0) {
+    const std::uint32_t carId = reader.u32();
+    const std::uint8_t team = reader.u8();
+    if (carId == 0 || team > static_cast<std::uint8_t>(Team::Orange)) {
         return std::nullopt;
     }
-    return welcome;
+    return Welcome{.carId = carId, .team = static_cast<Team>(team)};
 }
+
+/** @brief Messages made of their type alone. */
+template <typename Empty>
+std::optional<Message> decodeEmpty(const Reader& reader) {
+    if (reader.remaining() != 0) {
+        return std::nullopt;
+    }
+    return Empty{};
+}
+
+std::optional<Message> decodeJoinMatch(Reader& reader) {
+    if (reader.remaining() != JOIN_MATCH_SIZE - 1) {
+        return std::nullopt;
+    }
+    const JoinMatch join{.matchId = reader.u16()};
+    if (join.matchId == 0) {
+        return std::nullopt;
+    }
+    return join;
+}
+
+std::optional<Message> decodeJoinResult(Reader& reader) {
+    if (reader.remaining() != JOIN_RESULT_SIZE - 1) {
+        return std::nullopt;
+    }
+    const std::uint8_t status = reader.u8();
+    const std::uint16_t matchId = reader.u16();
+    if (status > static_cast<std::uint8_t>(JoinStatus::ServerFull) ||
+        ((status == static_cast<std::uint8_t>(JoinStatus::Joined)) != (matchId != 0))) {
+        return std::nullopt;
+    }
+    return JoinResult{.status = static_cast<JoinStatus>(status), .matchId = matchId};
+}
+
+/** @brief A message made of its type alone. */
+Bytes encodeType(const MessageType type) { return Bytes{static_cast<std::uint8_t>(type)}; }
 
 }  // namespace
 
-Bytes encode(const LobbyState& message) {
+Bytes encode(const MatchList& message) {
+    const std::size_t count = std::min(message.matches.size(), static_cast<std::size_t>(MAX_MATCHES));
     Bytes out;
-    out.reserve(LOBBY_STATE_SIZE);
+    out.reserve(MATCH_LIST_HEADER_SIZE + (count * MATCH_INFO_SIZE));
     Writer writer(out);
-    writer.u8(static_cast<std::uint8_t>(MessageType::LobbyState));
-    writer.u16(message.players);
+    writer.u8(static_cast<std::uint8_t>(MessageType::MatchList));
+    writer.u16(message.online);
+    writer.u8(static_cast<std::uint8_t>(count));
+    for (std::size_t i = 0; i < count; ++i) {
+        const MatchInfo& info = message.matches.at(i);
+        writer.u16(info.id);
+        writer.u8(std::min(info.bluePlayers, PLAYERS_PER_TEAM));
+        writer.u8(std::min(info.orangePlayers, PLAYERS_PER_TEAM));
+        writer.u16(info.blueScore);
+        writer.u16(info.orangeScore);
+        writer.u16(std::min(info.clock, MAX_CLOCK));
+        writer.u8(info.overtime ? FLAG_OVERTIME : 0);
+    }
     return out;
 }
 
@@ -211,6 +292,7 @@ Bytes encode(const Snapshot& message) {
     out.reserve(SNAPSHOT_HEADER_SIZE + (count * ENTITY_SIZE));
     Writer writer(out);
     writer.u8(static_cast<std::uint8_t>(MessageType::Snapshot));
+    writer.u16(message.matchId);
     writer.u32(message.tick);
     writer.u32(message.lastProcessedInput);
     writer.u8(message.partIndex);
@@ -262,6 +344,8 @@ Bytes encode(const MatchStatus& message) {
     writer.u16(message.orangeScore);
     writer.u8(static_cast<std::uint8_t>(message.phase));
     writer.u8(std::min(message.countdown, MAX_COUNTDOWN));
+    writer.u16(std::min(message.clock, MAX_CLOCK));
+    writer.u8(message.overtime ? FLAG_OVERTIME : 0);
     return out;
 }
 
@@ -271,6 +355,30 @@ Bytes encode(const Welcome& message) {
     Writer writer(out);
     writer.u8(static_cast<std::uint8_t>(MessageType::Welcome));
     writer.u32(message.carId);
+    writer.u8(static_cast<std::uint8_t>(message.team));
+    return out;
+}
+
+Bytes encode(const CreateMatch& /*message*/) { return encodeType(MessageType::CreateMatch); }
+
+Bytes encode(const JoinMatch& message) {
+    Bytes out;
+    out.reserve(JOIN_MATCH_SIZE);
+    Writer writer(out);
+    writer.u8(static_cast<std::uint8_t>(MessageType::JoinMatch));
+    writer.u16(message.matchId);
+    return out;
+}
+
+Bytes encode(const LeaveMatch& /*message*/) { return encodeType(MessageType::LeaveMatch); }
+
+Bytes encode(const JoinResult& message) {
+    Bytes out;
+    out.reserve(JOIN_RESULT_SIZE);
+    Writer writer(out);
+    writer.u8(static_cast<std::uint8_t>(MessageType::JoinResult));
+    writer.u8(static_cast<std::uint8_t>(message.status));
+    writer.u16(message.status == JoinStatus::Joined ? message.matchId : 0);
     return out;
 }
 
@@ -280,8 +388,8 @@ std::optional<Message> decode(const std::span<const std::uint8_t> data) {
     }
     Reader reader(data);
     switch (static_cast<MessageType>(reader.u8())) {
-        case MessageType::LobbyState:
-            return decodeLobbyState(reader);
+        case MessageType::MatchList:
+            return decodeMatchList(reader);
         case MessageType::Snapshot:
             return decodeSnapshot(reader);
         case MessageType::PlayerInput:
@@ -290,8 +398,24 @@ std::optional<Message> decode(const std::span<const std::uint8_t> data) {
             return decodeMatchStatus(reader);
         case MessageType::Welcome:
             return decodeWelcome(reader);
+        case MessageType::CreateMatch:
+            return decodeEmpty<CreateMatch>(reader);
+        case MessageType::JoinMatch:
+            return decodeJoinMatch(reader);
+        case MessageType::LeaveMatch:
+            return decodeEmpty<LeaveMatch>(reader);
+        case MessageType::JoinResult:
+            return decodeJoinResult(reader);
     }
     return std::nullopt;
+}
+
+std::optional<std::uint16_t> snapshotMatch(const std::span<const std::uint8_t> data) {
+    if (data.size() < SNAPSHOT_HEADER_SIZE || data.front() != static_cast<std::uint8_t>(MessageType::Snapshot)) {
+        return std::nullopt;
+    }
+    Reader reader(data.subspan(1));
+    return reader.u16();
 }
 
 }  // namespace rlss::protocol
