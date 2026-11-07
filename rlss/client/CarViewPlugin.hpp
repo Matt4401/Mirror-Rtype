@@ -18,9 +18,9 @@ namespace rlss::client {
  * @brief Builds the look of the cars sent by the server.
  *
  * When a car appears (`ecs::net::ReplicatedEntitySpawned` of kind `KIND_CAR`), spawns its parts (body and cabin in the
- * player color, wheels, headlight, boost flame and gauge) and attaches the `CarView` script, which sizes and places
- * them every frame from the car `Transform` (interpolated by `ClientReplicationPlugin`). When it disappears, removes
- * the parts and the script.
+ * player color, wheels, headlight, boost flame and gauge, white flip reset flash) and attaches the `CarView` script,
+ * which sizes and places them every frame from the car `Transform` (interpolated by `ClientReplicationPlugin`). When it
+ * disappears, removes the parts and the script.
  */
 class CarViewPlugin final : public engine::IPlugin {
   public:
