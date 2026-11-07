@@ -130,6 +130,11 @@ class CarTuning {
     static SELF_RIGHT_GAP { 20 }
     static SELF_RIGHT_MIN_TIME { 0.06 }
     static SELF_RIGHT_MAX_SPIN { 16 }
+    /**
+     * @brief A landing or the body hitting a wall faster than this (speed into the surface, uu/s) makes a sound. A full
+     * jump lands at about 540 uu/s.
+     */
+    static IMPACT_SOUND_SPEED { 250 }
     /** @brief Time a car on its roof takes to roll back on its wheels after pressing jump. */
     static RECOVERY_TIME { 0.55 }
 }

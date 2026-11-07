@@ -1,5 +1,5 @@
 import "core/Input" for Input
-import "rlss/components" for Transform, Controls, CarStatus
+import "rlss/components" for Transform, Controls, CarStatus, CarCues
 import "rlss/scripts/Arena" for Arena
 import "rlss/scripts/CarTuning" for CarTuning
 import "rlss/scripts/Kickoff" for Kickoff
@@ -32,12 +32,16 @@ import "rlss/scripts/Simulation" for Simulation
  *
  * Boost pushes the car toward its nose (991 uu/s² on the ground, 1058 in the air) and burns 33.3 per second. Like in
  * Sideswipe, there are no boost pads: the tank refills while the car touches a surface.
+ *
+ * Sounds: every jump and every hard contact with the arena (a landing, the body hitting a wall) is counted in the
+ * entity `CarCues`, which the engine replicates; the clients play a sound when a counter changes.
  */
 class Car {
     construct new(entity) {
         _id = entity is Num ? entity : entity.id
         _transform = Transform.new(_id)
         _status = CarStatus.new(_id)
+        _cues = CarCues.new(_id)
         _player = Controls.new(_id).playerIndex
         _arena = Arena.fromWorld()
 
@@ -84,6 +88,12 @@ class Car {
         _purpleShot = null
         _ballJumpCooldown = 0
 
+        // Sound cues: the counters go on from the component (a hot-reload must not replay the last sounds).
+        _jumps = Car.counter_(_cues.jumps)
+        _jumpKind = Car.JUMP
+        _impacts = Car.counter_(_cues.impacts)
+        _impactSpeed = 0
+
         // A car that just joined starts at its kickoff spot.
         if (_status.placeAtKickoff == true) {
             _status.placeAtKickoff = false
@@ -91,6 +101,20 @@ class Car {
         }
         Simulation.addCar(this)
     }
+
+    /** @brief `CarCues.jumpKind` of a first jump (or rolling back onto the wheels). */
+    static JUMP { 0 }
+    /** @brief `CarCues.jumpKind` of a second jump without direction, or of a jump off the ball. */
+    static DOUBLE_JUMP { 1 }
+    /** @brief `CarCues.jumpKind` of a flip. */
+    static DODGE { 2 }
+
+    /** @brief Jumps made so far, and the kind of the last one (`JUMP`, `DOUBLE_JUMP`, `DODGE`). */
+    jumps { _jumps }
+    jumpKind { _jumpKind }
+    /** @brief Hard contacts with the arena so far, and the speed into the surface of the last one. */
+    impacts { _impacts }
+    impactSpeed { _impactSpeed }
 
     /** @brief Back to the kickoff spot of this player: at rest, wheels down, full boost. */
     placeAtKickoff() {
@@ -261,6 +285,23 @@ class Car {
         _status.boost = _boost
         _status.boosting = _boosting
         _status.flipReset = _flipReset
+        _cues.jumps = _jumps
+        _cues.jumpKind = _jumpKind
+        _cues.impacts = _impacts
+        _cues.impactSpeed = _impactSpeed
+    }
+
+    // A jump of the given kind, for the sounds.
+    jumped_(kind) {
+        _jumps = _jumps + 1
+        _jumpKind = kind
+    }
+
+    // A contact with the arena at `speed` into the surface: a sound if it is hard enough.
+    impact_(speed) {
+        if (speed < CarTuning.IMPACT_SOUND_SPEED) return
+        _impacts = _impacts + 1
+        _impactSpeed = speed
     }
 
     // ------------------------------------------------------------------ boost
@@ -356,6 +397,7 @@ class Car {
             _jumpHold = CarTuning.JUMP_HOLD_TIME
             _omega = 0
             leaveGround_(true)
+            jumped_(Car.JUMP)
         }
     }
 
@@ -462,6 +504,7 @@ class Car {
         _purpleShot = [_ballNx, _ballNy]
         _ballWheelTime = 10
         _ballJumpCooldown = Shots.BALL_TOUCH_GAP
+        jumped_(Car.DOUBLE_JUMP)
     }
 
     // Double jump without direction, dodge (flip) toward the stick otherwise.
@@ -474,8 +517,10 @@ class Car {
         if (steer == 0) {
             _vx = _vx + _theta.sin * CarTuning.JUMP_IMPULSE
             _vy = _vy - _theta.cos * CarTuning.JUMP_IMPULSE
+            jumped_(Car.DOUBLE_JUMP)
             return
         }
+        jumped_(Car.DODGE)
         var direction = steer.sign
         var noseX = _facing * _theta.cos
         var forward = noseX.abs < 0.2 || noseX.sign == direction
@@ -501,6 +546,7 @@ class Car {
         _spinTime = CarTuning.RECOVERY_TIME
         _sinceJump = 0
         _contact = false
+        jumped_(Car.JUMP)
     }
 
     // Keeps the four corners of the hitbox inside the arena, and lands when the wheels touch first.
@@ -538,6 +584,7 @@ class Car {
 
         // The body hit the wall: bounce a little, slide with friction, tip over toward a resting position.
         if (vn < 0) {
+            impact_(-vn)
             _vx = _vx - nx * vn * (1 + CarTuning.RESTITUTION)
             _vy = _vy - ny * vn * (1 + CarTuning.RESTITUTION)
         }
@@ -592,6 +639,7 @@ class Car {
     }
 
     land_(nx, ny, vn) {
+        impact_(-vn)
         // Keep the speed along the surface, lose the speed into it.
         _vx = _vx - nx * vn
         _vy = _vy - ny * vn
@@ -625,6 +673,9 @@ class Car {
     }
 
     static towardZero_(value, amount) { value > 0 ? (value - amount).max(0) : (value + amount).min(0) }
+
+    // A counter read from a component: 0 when the component is missing (tests) or new.
+    static counter_(value) { value is Num ? value : 0 }
 
     static wrap_(angle) {
         var turn = Num.pi * 2
