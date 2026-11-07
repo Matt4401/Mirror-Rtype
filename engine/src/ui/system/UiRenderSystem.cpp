@@ -5,64 +5,66 @@
 #include <algorithm>
 #include <cstddef>
 #include <type_traits>
-#include <utility>
 #include <variant>
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ui/components/FontId.hpp"
-#include "ui/components/UiAnchor.hpp"
 #include "ui/components/UiButton.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
 #include "ui/font/FontStore.hpp"
 #include "ui/system/UiDrawItem.hpp"
+#include "ui/system/UiLayout.hpp"
 
 namespace ui {
 
 static constexpr std::size_t INITIAL_QUEUE_CAPACITY = 64;
 
-UiRenderSystem::UiRenderSystem(const FontStore& fonts) : _fonts(&fonts) { _queue.reserve(INITIAL_QUEUE_CAPACITY); }
+/** @brief Letter spacing as a fraction of the font size, shared by measuring and drawing. */
+static constexpr float SPACING_RATIO = 0.1F;
+
+UiRenderSystem::UiRenderSystem(const FontStore& fonts) : _fonts(&fonts) {
+    _queue.reserve(INITIAL_QUEUE_CAPACITY);
+    _layout.reserve(INITIAL_QUEUE_CAPACITY);
+}
 
 void UiRenderSystem::collect(ecs::Registry& registry, int screenW, int screenH) {
     _queue.clear();
+    computeLayout(registry, UiScreenRect{.width = static_cast<float>(screenW), .height = static_cast<float>(screenH)},
+                  measureFunction(), _layout);
 
-    const auto sw = static_cast<float>(screenW);
-    const auto sh = static_cast<float>(screenH);
+    // One entity may carry several drawables: they are stacked bottom to top in this fixed order.
+    for (const UiLayoutNode& node : _layout) {
+        const auto push = [this, &node](const auto& drawable) {
+            _queue.push_back(UiDrawItem{
+                .entity = node.entity, .screenX = node.rect.x, .screenY = node.rect.y, .drawable = drawable});
+        };
+        if (registry.hasComponent<UiRect>(node.entity)) {
+            push(registry.getComponents<UiRect>().get(node.entity));
+        }
+        if (registry.hasComponent<UiProgressBar>(node.entity)) {
+            push(registry.getComponents<UiProgressBar>().get(node.entity));
+        }
+        if (registry.hasComponent<UiButton>(node.entity)) {
+            push(registry.getComponents<UiButton>().get(node.entity));
+        }
+        if (registry.hasComponent<UiText>(node.entity)) {
+            push(registry.getComponents<UiText>().get(node.entity));
+        }
+    }
+}
 
-    const auto resolve = [sw, sh](const UiAnchor& anchor, float elemW, float elemH) -> std::pair<float, float> {
-        return {(anchor.anchorX * sw) + anchor.offsetX - (anchor.pivotX * elemW),
-                (anchor.anchorY * sh) + anchor.offsetY - (anchor.pivotY * elemH)};
-    };
+UiSize UiRenderSystem::measureText(const UiText& text) const {
+    const Font* stored = _fonts->get(text.fontId);
+    const Font font = (stored != nullptr) ? *stored : GetFontDefault();
+    const Vector2 measured = MeasureTextEx(font, text.text.c_str(), text.fontSize, text.fontSize * SPACING_RATIO);
+    return {.width = measured.x, .height = measured.y};
+}
 
-    registry.runSystem<UiAnchor, UiRect>(
-        [this, &resolve](ecs::Entity entity, const UiAnchor& anchor, const UiRect& rect) {
-            auto [x, y] = resolve(anchor, rect.width, rect.height);
-            _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = rect});
-        });
-
-    registry.runSystem<UiAnchor, UiText>(
-        [this, &resolve](ecs::Entity entity, const UiAnchor& anchor, const UiText& text) {
-            const Font* stored = _fonts->get(text.fontId);
-            const Font font = (stored != nullptr) ? *stored : GetFontDefault();
-            const float spacing = text.fontSize / 10.0F;
-            const Vector2 measured = MeasureTextEx(font, text.text.c_str(), text.fontSize, spacing);
-            auto [x, y] = resolve(anchor, measured.x, measured.y);
-            _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = text});
-        });
-
-    registry.runSystem<UiAnchor, UiProgressBar>(
-        [this, &resolve](ecs::Entity entity, const UiAnchor& anchor, const UiProgressBar& bar) {
-            auto [x, y] = resolve(anchor, bar.width, bar.height);
-            _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = bar});
-        });
-
-    registry.runSystem<UiAnchor, UiButton>(
-        [this, &resolve](ecs::Entity entity, const UiAnchor& anchor, const UiButton& btn) {
-            auto [x, y] = resolve(anchor, btn.width, btn.height);
-            _queue.push_back(UiDrawItem{.entity = entity, .screenX = x, .screenY = y, .drawable = btn});
-        });
+UiTextMeasure UiRenderSystem::measureFunction() const {
+    return [this](const UiText& text) { return measureText(text); };
 }
 
 void UiRenderSystem::update(ecs::Registry& registry, int screenW, int screenH) {
@@ -132,7 +134,7 @@ void UiRenderSystem::drawButton(float x, float y, const UiButton& btn) const {
     if (!btn.label.empty()) {
         const Font* stored = _fonts->get(ui::NO_FONT);
         const Font font = (stored != nullptr) ? *stored : GetFontDefault();
-        const float spacing = btn.fontSize / 10.0F;
+        const float spacing = btn.fontSize * SPACING_RATIO;
         const Vector2 measured = MeasureTextEx(font, btn.label.c_str(), btn.fontSize, spacing);
         const float tx = x + ((btn.width - measured.x) * 0.5F);
         const float ty = y + ((btn.height - measured.y) * 0.5F);
@@ -145,7 +147,7 @@ void UiRenderSystem::drawText(float x, float y, const UiText& text) const {
     const Font* stored = _fonts->get(text.fontId);
     const Font font = (stored != nullptr) ? *stored : GetFontDefault();
     const Color color{.r = text.color.r, .g = text.color.g, .b = text.color.b, .a = text.color.a};
-    const float spacing = text.fontSize / 10.0F;
+    const float spacing = text.fontSize * SPACING_RATIO;
     DrawTextEx(font, text.text.c_str(), {.x = x, .y = y}, text.fontSize, spacing, color);
 }
 

@@ -9,11 +9,13 @@
 
 #include <memory>
 #include <string_view>
+#include <vector>
 
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/time/Time.hpp"
 #include "ui/font/FontStore.hpp"
+#include "ui/system/UiLayout.hpp"
 #include "ui/system/UiRenderSystem.hpp"
 
 namespace ui {
@@ -25,6 +27,9 @@ namespace ui {
  * UiButtonSystem::update() in the update phase and UiRenderSystem::update()
  * in the render phase, after the standard RenderPlugin pass.
  * Requires RenderPlugin and IWindowService.
+ *
+ * HUD elements can be nested with `hierarchy::setParent`: a child element is anchored inside its parent's
+ * rectangle (see `computeLayout`). Add `hierarchy::HierarchyPlugin` so that destroying a panel destroys its widgets.
  */
 class UiPlugin final : public engine::IPlugin {
   public:
@@ -88,6 +93,8 @@ class UiPlugin final : public engine::IPlugin {
     std::unique_ptr<FontStore> _fonts;
     /** @brief Owned UI render system; valid after init(). */
     std::unique_ptr<UiRenderSystem> _uiRenderSystem;
+    /** @brief Layout computed in update() for button hit-testing; capacity is kept between frames. */
+    std::vector<UiLayoutNode> _layout;
 };
 
 }  // namespace ui

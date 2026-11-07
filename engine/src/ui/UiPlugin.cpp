@@ -16,6 +16,7 @@
 #include "render/RenderPlugin.hpp"
 #include "ui/font/FontStore.hpp"
 #include "ui/system/UiButtonSystem.hpp"
+#include "ui/system/UiLayout.hpp"
 #include "ui/system/UiRenderSystem.hpp"
 
 namespace ui {
@@ -32,7 +33,15 @@ void UiPlugin::init(engine::Engine& /*engine*/) {
 }
 
 void UiPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
-    UiButtonSystem::update(engine.registry(), engine.service<engine::IWindowService>(), engine.eventBus());
+    if (_uiRenderSystem == nullptr) {
+        return;
+    }
+    const auto& window = engine.service<engine::IWindowService>();
+    computeLayout(
+        engine.registry(),
+        UiScreenRect{.width = static_cast<float>(window.width()), .height = static_cast<float>(window.height())},
+        _uiRenderSystem->measureFunction(), _layout);
+    UiButtonSystem::update(engine.registry(), _layout, window, engine.eventBus());
 }
 
 void UiPlugin::render(engine::Engine& engine) {

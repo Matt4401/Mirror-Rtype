@@ -1,13 +1,17 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <variant>
+#include <vector>
 
 #include "core/services/IWindowService.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/UiEvents.hpp"
+#include "hierarchy/Hierarchy.hpp"
+#include "hierarchy/HierarchyHooks.hpp"
 #include "ui/components/FontId.hpp"
 #include "ui/components/UiAnchor.hpp"
 #include "ui/components/UiButton.hpp"
@@ -16,6 +20,7 @@
 #include "ui/components/UiText.hpp"
 #include "ui/system/UiButtonSystem.hpp"
 #include "ui/system/UiDrawItem.hpp"
+#include "ui/system/UiLayout.hpp"
 
 namespace {
 
@@ -48,6 +53,31 @@ static ecs::Entity makeButton(ecs::Registry& reg, float ancX, float ancY, float 
     reg.addComponent<ui::UiAnchor>(e, ui::UiAnchor{.anchorX = ancX, .anchorY = ancY});
     reg.addComponent<ui::UiButton>(e, ui::UiButton{.width = w, .height = h, .action = action});
     return e;
+}
+
+/** @brief Fixed text size, so layout tests do not need a window or a font. */
+constexpr ui::UiSize FAKE_TEXT_SIZE = {.width = 50.0F, .height = 10.0F};
+
+ui::UiSize fakeMeasure(const ui::UiText& /*text*/) { return FAKE_TEXT_SIZE; }
+
+std::vector<ui::UiLayoutNode> layoutOf(ecs::Registry& reg, const FakeWindow& win) {
+    std::vector<ui::UiLayoutNode> nodes;
+    ui::computeLayout(reg, ui::UiScreenRect{.width = static_cast<float>(win.w), .height = static_cast<float>(win.h)},
+                      fakeMeasure, nodes);
+    return nodes;
+}
+
+void updateButtons(ecs::Registry& reg, const FakeWindow& win, ecs::EventBus& bus) {
+    ui::UiButtonSystem::update(reg, layoutOf(reg, win), win, bus);
+}
+
+const ui::UiLayoutNode* findNode(const std::vector<ui::UiLayoutNode>& nodes, ecs::Entity e) {
+    const auto it = std::ranges::find(nodes, e, &ui::UiLayoutNode::entity);
+    return it == nodes.end() ? nullptr : &*it;
+}
+
+std::ptrdiff_t indexOf(const std::vector<ui::UiLayoutNode>& nodes, ecs::Entity e) {
+    return std::ranges::find(nodes, e, &ui::UiLayoutNode::entity) - nodes.begin();
 }
 
 }  // namespace
@@ -85,8 +115,9 @@ TEST(UiAnchor, WorksAsEcsComponent) {
 
 static std::pair<float, float> resolveAnchor(const ui::UiAnchor& anchor, float screenW, float screenH,
                                              float elemW = 0.0F, float elemH = 0.0F) {
-    return {(anchor.anchorX * screenW) + anchor.offsetX - (anchor.pivotX * elemW),
-            (anchor.anchorY * screenH) + anchor.offsetY - (anchor.pivotY * elemH)};
+    const ui::UiScreenRect rect = ui::resolveAnchor(anchor, ui::UiScreenRect{.width = screenW, .height = screenH},
+                                                    ui::UiSize{.width = elemW, .height = elemH});
+    return {rect.x, rect.y};
 }
 
 TEST(UiAnchorResolution, TopLeftCorner) {
@@ -284,7 +315,7 @@ TEST(UiButtonSystem, IdleToHoveredWhenMouseEnters) {
 
     win.mx = 60.0F;
     win.my = 18.0F;
-    ui::UiButtonSystem::update(reg, win, bus);
+    updateButtons(reg, win, bus);
 
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Hovered);
 }
@@ -298,7 +329,7 @@ TEST(UiButtonSystem, HoveredToIdleWhenMouseLeaves) {
 
     win.mx = 999.0F;
     win.my = 999.0F;
-    ui::UiButtonSystem::update(reg, win, bus);
+    updateButtons(reg, win, bus);
 
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Idle);
 }
@@ -313,7 +344,7 @@ TEST(UiButtonSystem, HoveredToPressedOnMouseDown) {
     win.mx = 60.0F;
     win.my = 18.0F;
     win.leftDown = true;
-    ui::UiButtonSystem::update(reg, win, bus);
+    updateButtons(reg, win, bus);
 
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Pressed);
 }
@@ -331,7 +362,7 @@ TEST(UiButtonSystem, PressedToHoveredAndEventOnRelease) {
     win.mx = 60.0F;
     win.my = 18.0F;
     win.leftDown = false;
-    ui::UiButtonSystem::update(reg, win, bus);
+    updateButtons(reg, win, bus);
 
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Hovered);
     EXPECT_EQ(capturedAction, "shoot");
@@ -350,7 +381,7 @@ TEST(UiButtonSystem, PressedToIdleAndEventWhenReleasedOutside) {
     win.mx = 999.0F;
     win.my = 999.0F;
     win.leftDown = false;
-    ui::UiButtonSystem::update(reg, win, bus);
+    updateButtons(reg, win, bus);
 
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Idle);
     EXPECT_EQ(capturedAction, "quit");
@@ -369,10 +400,156 @@ TEST(UiButtonSystem, NoEventWhenStillPressed) {
     win.mx = 60.0F;
     win.my = 18.0F;
     win.leftDown = true;
-    ui::UiButtonSystem::update(reg, win, bus);
+    updateButtons(reg, win, bus);
 
     EXPECT_FALSE(fired);
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Pressed);
+}
+
+// --- Layout with entity hierarchies ---
+
+TEST(UiLayout, ResolveAnchorIsRelativeToContainer) {
+    const ui::UiAnchor anchor{.anchorX = 0.5F, .anchorY = 1.0F, .offsetX = 5.0F, .pivotX = 0.5F, .pivotY = 1.0F};
+    const ui::UiScreenRect rect =
+        ui::resolveAnchor(anchor, ui::UiScreenRect{.x = 100.0F, .y = 50.0F, .width = 200.0F, .height = 80.0F},
+                          ui::UiSize{.width = 40.0F, .height = 20.0F});
+
+    EXPECT_FLOAT_EQ(rect.x, 100.0F + 100.0F + 5.0F - 20.0F);
+    EXPECT_FLOAT_EQ(rect.y, 50.0F + 80.0F - 20.0F);
+    EXPECT_FLOAT_EQ(rect.width, 40.0F);
+    EXPECT_FLOAT_EQ(rect.height, 20.0F);
+}
+
+TEST(UiLayout, ElementSizeComesFromDrawable) {
+    ecs::Registry reg;
+    const ecs::Entity rect = reg.spawnEntity();
+    reg.addComponent<ui::UiRect>(rect, ui::UiRect{.width = 30.0F, .height = 12.0F});
+    const ecs::Entity text = reg.spawnEntity();
+    reg.addComponent<ui::UiText>(text, ui::UiText{.text = "hi"});
+    const ecs::Entity group = reg.spawnEntity();
+
+    EXPECT_FLOAT_EQ(ui::elementSize(reg, rect, fakeMeasure).width, 30.0F);
+    EXPECT_FLOAT_EQ(ui::elementSize(reg, text, fakeMeasure).height, FAKE_TEXT_SIZE.height);
+    EXPECT_FLOAT_EQ(ui::elementSize(reg, group, fakeMeasure).width, 0.0F);
+}
+
+TEST(UiLayout, ChildIsAnchoredInsideParentRect) {
+    ecs::Registry reg;
+    const ecs::Entity panel = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(panel, ui::UiAnchor{.anchorX = 0.5F, .anchorY = 0.5F});
+    reg.addComponent<ui::UiRect>(panel, ui::UiRect{.width = 400.0F, .height = 200.0F});
+    const ecs::Entity button = makeButton(reg, 1.0F, 1.0F, 100.0F, 40.0F);
+    reg.getComponents<ui::UiAnchor>().get(button).pivotX = 1.0F;
+    reg.getComponents<ui::UiAnchor>().get(button).pivotY = 1.0F;
+    ASSERT_TRUE(hierarchy::setParent(reg, button, panel));
+
+    const auto nodes = layoutOf(reg, FakeWindow{});
+    const ui::UiLayoutNode* node = findNode(nodes, button);
+
+    ASSERT_NE(node, nullptr);
+    // Panel at (960, 540), 400x200: the button sits in its bottom-right corner.
+    EXPECT_FLOAT_EQ(node->rect.x, 960.0F + 400.0F - 100.0F);
+    EXPECT_FLOAT_EQ(node->rect.y, 540.0F + 200.0F - 40.0F);
+}
+
+TEST(UiLayout, NestingAccumulatesThroughSeveralLevels) {
+    ecs::Registry reg;
+    const ecs::Entity root = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(root, ui::UiAnchor{.offsetX = 10.0F, .offsetY = 10.0F});
+    const ecs::Entity mid = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(mid, ui::UiAnchor{.offsetX = 20.0F});
+    const ecs::Entity leaf = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(leaf, ui::UiAnchor{.offsetY = 5.0F});
+    ASSERT_TRUE(hierarchy::setParent(reg, mid, root));
+    ASSERT_TRUE(hierarchy::setParent(reg, leaf, mid));
+
+    const auto nodes = layoutOf(reg, FakeWindow{});
+    const ui::UiLayoutNode* node = findNode(nodes, leaf);
+
+    ASSERT_NE(node, nullptr);
+    EXPECT_FLOAT_EQ(node->rect.x, 30.0F);
+    EXPECT_FLOAT_EQ(node->rect.y, 15.0F);
+}
+
+TEST(UiLayout, ParentComesBeforeChildrenInSiblingOrder) {
+    ecs::Registry reg;
+    // Children spawned before the parent, so storage order alone would put them first.
+    const ecs::Entity second = makeButton(reg, 0.0F, 0.0F);
+    const ecs::Entity first = makeButton(reg, 0.0F, 0.0F);
+    const ecs::Entity panel = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(panel, ui::UiAnchor{});
+    ASSERT_TRUE(hierarchy::setParent(reg, first, panel));
+    ASSERT_TRUE(hierarchy::setParent(reg, second, panel));
+
+    const auto nodes = layoutOf(reg, FakeWindow{});
+
+    ASSERT_EQ(nodes.size(), 3U);
+    EXPECT_LT(indexOf(nodes, panel), indexOf(nodes, first));
+    EXPECT_LT(indexOf(nodes, first), indexOf(nodes, second));
+}
+
+TEST(UiLayout, ChildOfNonUiEntityIsAnchoredToScreen) {
+    ecs::Registry reg;
+    const ecs::Entity ship = reg.spawnEntity();
+    const ecs::Entity label = makeButton(reg, 0.5F, 0.0F);
+    ASSERT_TRUE(hierarchy::setParent(reg, label, ship));
+
+    const auto nodes = layoutOf(reg, FakeWindow{});
+    const ui::UiLayoutNode* node = findNode(nodes, label);
+
+    ASSERT_NE(node, nullptr);
+    EXPECT_FLOAT_EQ(node->rect.x, 960.0F);
+}
+
+TEST(UiLayout, ElementUnderNonUiChildIsAnchoredToScreen) {
+    ecs::Registry reg;
+    const ecs::Entity panel = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(panel, ui::UiAnchor{.offsetX = 300.0F});
+    const ecs::Entity plain = reg.spawnEntity();
+    const ecs::Entity deep = makeButton(reg, 0.0F, 0.0F);
+    ASSERT_TRUE(hierarchy::setParent(reg, plain, panel));
+    ASSERT_TRUE(hierarchy::setParent(reg, deep, plain));
+
+    const auto nodes = layoutOf(reg, FakeWindow{});
+    const ui::UiLayoutNode* node = findNode(nodes, deep);
+
+    EXPECT_EQ(findNode(nodes, plain), nullptr);
+    ASSERT_NE(node, nullptr);
+    EXPECT_FLOAT_EQ(node->rect.x, 0.0F);
+    EXPECT_EQ(std::ranges::count(nodes, deep, &ui::UiLayoutNode::entity), 1);
+}
+
+TEST(UiLayout, DestroyingPanelRemovesItsWidgets) {
+    ecs::Registry reg;
+    const hierarchy::HierarchyHooks hooks(reg);
+    const ecs::Entity panel = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(panel, ui::UiAnchor{});
+    const ecs::Entity button = makeButton(reg, 0.0F, 0.0F);
+    ASSERT_TRUE(hierarchy::setParent(reg, button, panel));
+
+    reg.killEntity(panel);
+
+    EXPECT_TRUE(layoutOf(reg, FakeWindow{}).empty());
+}
+
+TEST(UiButtonSystem, NestedButtonIsHitWhereItIsDrawn) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity panel = reg.spawnEntity();
+    reg.addComponent<ui::UiAnchor>(panel, ui::UiAnchor{.offsetX = 500.0F, .offsetY = 300.0F});
+    const ecs::Entity button = makeButton(reg, 0.0F, 0.0F);
+    ASSERT_TRUE(hierarchy::setParent(reg, button, panel));
+
+    win.mx = 10.0F;
+    win.my = 10.0F;
+    updateButtons(reg, win, bus);
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(button).state, ui::UiButtonState::Idle);
+
+    win.mx = 510.0F;
+    win.my = 310.0F;
+    updateButtons(reg, win, bus);
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(button).state, ui::UiButtonState::Hovered);
 }
 
 int main(int argc, char** argv) {

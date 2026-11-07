@@ -7,28 +7,34 @@
 
 #include "ui/system/UiButtonSystem.hpp"
 
+#include <span>
+
 #include "core/services/IWindowService.hpp"
 #include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/UiEvents.hpp"
-#include "ui/components/UiAnchor.hpp"
 #include "ui/components/UiButton.hpp"
+#include "ui/system/UiLayout.hpp"
 
 namespace ui {
 
-void UiButtonSystem::update(ecs::Registry& registry, const engine::IWindowService& window, ecs::EventBus& bus) {
-    const auto screenW = static_cast<float>(window.width());
-    const auto screenH = static_cast<float>(window.height());
+void UiButtonSystem::update(ecs::Registry& registry, std::span<const UiLayoutNode> layout,
+                            const engine::IWindowService& window, ecs::EventBus& bus) {
     const engine::MousePosition mouse = window.mousePosition();
     const bool mouseDown = window.isMouseButtonDown(engine::MouseButton::Left);
 
-    registry.runSystem<UiAnchor, UiButton>([&](ecs::Entity entity, const UiAnchor& anchor, UiButton& btn) {
-        const float x = (anchor.anchorX * screenW) + anchor.offsetX - (anchor.pivotX * btn.width);
-        const float y = (anchor.anchorY * screenH) + anchor.offsetY - (anchor.pivotY * btn.height);
+    for (const UiLayoutNode& node : layout) {
+        if (!registry.hasComponent<UiButton>(node.entity)) {
+            continue;
+        }
+        const ecs::Entity entity = node.entity;
+        UiButton& btn = registry.getComponents<UiButton>().get(entity);
+        const UiScreenRect& rect = node.rect;
 
-        const bool hovered = mouse.x >= x && mouse.x <= x + btn.width && mouse.y >= y && mouse.y <= y + btn.height;
+        const bool hovered =
+            mouse.x >= rect.x && mouse.x <= rect.x + rect.width && mouse.y >= rect.y && mouse.y <= rect.y + rect.height;
 
         switch (btn.state) {
             case UiButtonState::Idle:
@@ -53,7 +59,7 @@ void UiButtonSystem::update(ecs::Registry& registry, const engine::IWindowServic
                 btn.state = hovered ? UiButtonState::Hovered : UiButtonState::Idle;
                 break;
         }
-    });
+    }
 }
 
 }  // namespace ui

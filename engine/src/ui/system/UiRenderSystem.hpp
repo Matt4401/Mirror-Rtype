@@ -9,15 +9,16 @@
 #include "ui/components/UiText.hpp"
 #include "ui/font/FontStore.hpp"
 #include "ui/system/UiDrawItem.hpp"
+#include "ui/system/UiLayout.hpp"
 
 namespace ui {
 
 /**
  * @brief Draws every HUD entity that has a `UiAnchor` and a drawable UI component.
  *
- * Mirrors `render::RenderSystem`: `collect` resolves anchors and fills the draw
- * queue; `draw` issues the actual raylib calls. The queue is reused across frames
- * to avoid per-frame heap allocation.
+ * Mirrors `render::RenderSystem`: `collect` resolves positions with `computeLayout` (so children of a HUD element
+ * are placed inside it) and fills the draw queue in layout order, parents below their children; `draw` issues the
+ * actual raylib calls. The queues are reused across frames to avoid per-frame heap allocation.
  */
 class UiRenderSystem {
   public:
@@ -52,6 +53,19 @@ class UiRenderSystem {
      * @param screenH  Current window height in pixels.
      */
     void update(ecs::Registry& registry, int screenW, int screenH);
+
+    /**
+     * @brief Measures a text element with the font it references.
+     * @param text Text to measure.
+     * @return Size of the rendered text in pixels.
+     */
+    [[nodiscard]] UiSize measureText(const UiText& text) const;
+
+    /**
+     * @brief Wraps `measureText` for `computeLayout`.
+     * @return Measuring function bound to this system; must not outlive it.
+     */
+    [[nodiscard]] UiTextMeasure measureFunction() const;
 
     /**
      * @brief Items gathered by the last `collect`.
@@ -97,6 +111,9 @@ class UiRenderSystem {
 
     /** @brief Items gathered for the current frame; capacity is kept between frames. */
     std::vector<UiDrawItem> _queue;
+
+    /** @brief Layout computed by the last `collect`; capacity is kept between frames. */
+    std::vector<UiLayoutNode> _layout;
 };
 
 }  // namespace ui

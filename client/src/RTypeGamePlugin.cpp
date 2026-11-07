@@ -23,6 +23,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "hierarchy/Hierarchy.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
@@ -150,13 +151,12 @@ constexpr float HP_DEMO_VALUE = 75.0F;
 constexpr float SCORE_LEFT_ANCHOR = 0.75F;
 constexpr float SCORE_FONT_SIZE = 26.0F;
 constexpr ecs::Rgba COLOR_SCORE = {.r = 255, .g = 220, .b = 50, .a = 255};
+constexpr ecs::Rgba COLOR_TRANSPARENT = {.r = 0, .g = 0, .b = 0, .a = 0};
 
 /** @brief Spawns the demo HUD: a health bar with its border and a score label. */
 void spawnHud(ecs::Registry& registry) {
-    const ui::UiAnchor hpBarAnchor{.anchorX = HP_BAR_LEFT_ANCHOR, .anchorY = HUD_TOP_ANCHOR};
-
     const ecs::Entity hpBar = registry.spawnEntity();
-    registry.addComponent<ui::UiAnchor>(hpBar, hpBarAnchor);
+    registry.addComponent<ui::UiAnchor>(hpBar, ui::UiAnchor{.anchorX = HP_BAR_LEFT_ANCHOR, .anchorY = HUD_TOP_ANCHOR});
     registry.addComponent<ui::UiProgressBar>(hpBar, ui::UiProgressBar{
                                                         .value = HP_DEMO_VALUE,
                                                         .min = HP_MIN,
@@ -165,14 +165,17 @@ void spawnHud(ecs::Registry& registry) {
                                                         .height = HP_BAR_HEIGHT,
                                                     });
 
+    // Child of the bar: anchored at its top-left corner and drawn on top of it, so it follows the bar wherever it goes.
     const ecs::Entity hpBorder = registry.spawnEntity();
-    registry.addComponent<ui::UiAnchor>(hpBorder, hpBarAnchor);
+    registry.addComponent<ui::UiAnchor>(hpBorder, ui::UiAnchor{});
     registry.addComponent<ui::UiRect>(hpBorder, ui::UiRect{
                                                     .width = HP_BAR_WIDTH,
                                                     .height = HP_BAR_HEIGHT,
+                                                    .fillColor = COLOR_TRANSPARENT,
                                                     .borderColor = COLOR_WHITE,
                                                     .borderThickness = HP_BAR_BORDER_THICKNESS,
                                                 });
+    hierarchy::setParent(registry, hpBorder, hpBar);
 
     const ecs::Entity scoreText = registry.spawnEntity();
     registry.addComponent<ui::UiAnchor>(scoreText,
