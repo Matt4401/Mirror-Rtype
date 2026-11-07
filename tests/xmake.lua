@@ -96,6 +96,13 @@ target("test_timeline")
     add_files("test_timeline.cpp")
     add_tests("test_timeline")
 
+target("test_level_loader")
+    set_kind("binary")
+    add_deps("rtype_level")
+    add_packages("gtest")
+    add_files("server/LevelLoaderTests.cpp")
+    add_tests("test_level_loader")
+
 target("test_prefabs")
     set_kind("binary")
     add_deps("engine_core", "engine_prefabs", "rtype_prefabs")
