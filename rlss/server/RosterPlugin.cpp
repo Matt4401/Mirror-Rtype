@@ -1,10 +1,8 @@
-#include "LobbyPlugin.hpp"
+#include "RosterPlugin.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <iterator>
-#include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -33,32 +31,30 @@ namespace rlss::server {
 
 namespace {
 
-constexpr const char* LOG_TAG = "lobby";
+constexpr const char* LOG_TAG = "match";
 }  // namespace
 
-void LobbyPlugin::build(engine::PluginBuilder& builder) {
+void RosterPlugin::build(engine::PluginBuilder& builder) {
     builder.require<ecs::net::NetworkPlugin>();
     builder.require<CarSimulationPlugin>();
 }
 
-void LobbyPlugin::init(engine::Engine& engine) {
+void RosterPlugin::init(engine::Engine& engine) {
     auto& events = engine.eventBus();
     _connected = events.subscribe<ecs::net::PeerConnected>([this, &engine](const ecs::net::PeerConnected& event) {
-        join(engine, event.peer);
-        rtype::log::info(LOG_TAG, "player ", event.peer, " joined (", _players.size(), " connected)");
-        broadcastState(engine);
+        if (join(engine, event.peer)) {
+            rtype::log::info(LOG_TAG, "player ", event.peer, " joined (", _players.size(), " playing)");
+        }
     });
     _disconnected =
         events.subscribe<ecs::net::PeerDisconnected>([this, &engine](const ecs::net::PeerDisconnected& event) {
-            if (!leave(engine, event.peer)) {
-                return;
+            if (leave(engine, event.peer)) {
+                rtype::log::info(LOG_TAG, "player ", event.peer, " left (", _players.size(), " playing)");
             }
-            rtype::log::info(LOG_TAG, "player ", event.peer, " left (", _players.size(), " connected)");
-            broadcastState(engine);
         });
 }
 
-void LobbyPlugin::shutdown(engine::Engine& engine) {
+void RosterPlugin::shutdown(engine::Engine& engine) {
     auto& events = engine.eventBus();
     if (_connected) {
         events.unsubscribe<ecs::net::PeerConnected>(*_connected);
@@ -69,31 +65,51 @@ void LobbyPlugin::shutdown(engine::Engine& engine) {
         _disconnected.reset();
     }
     _players.clear();
-    _slots.clear();
+    _slots = {};
 }
 
-void LobbyPlugin::join(engine::Engine& engine, const ecs::net::PeerId peer) {
+std::uint8_t RosterPlugin::playersIn(const protocol::Team team) const noexcept {
+    std::uint8_t count = 0;
+    for (auto slot = static_cast<std::size_t>(team); slot < _slots.size(); slot += 2) {
+        count += _slots.at(slot) ? 1 : 0;
+    }
+    return count;
+}
+
+std::optional<std::size_t> RosterPlugin::freeSlot() const {
+    const protocol::Team team = playersIn(protocol::Team::Orange) < playersIn(protocol::Team::Blue)
+                                    ? protocol::Team::Orange
+                                    : protocol::Team::Blue;
+    for (auto slot = static_cast<std::size_t>(team); slot < _slots.size(); slot += 2) {
+        if (!_slots.at(slot)) {
+            return slot;
+        }
+    }
+    return std::nullopt;
+}
+
+bool RosterPlugin::join(engine::Engine& engine, const ecs::net::PeerId peer) {
     if (_players.contains(peer)) {
-        return;
+        return false;
     }
-    const auto freeSlot = std::ranges::find(_slots, false);
-    const auto slot = static_cast<std::size_t>(std::distance(_slots.begin(), freeSlot));
-    if (freeSlot == _slots.end()) {
-        _slots.push_back(true);
-    } else {
-        *freeSlot = true;
+    const auto slot = freeSlot();
+    if (!slot) {
+        // The MatchServer never lets a fifth player in; refuse anyway rather than overflow the teams.
+        rtype::log::warning(LOG_TAG, "match full, player ", peer, " refused");
+        return false;
     }
+    _slots.at(*slot) = true;
 
     ecs::Registry& registry = engine.registry();
     const ecs::Entity car = registry.spawnEntity();
     // The `Car` script moves it to its kickoff spot (`placeAtKickoff`): Kickoff.wren owns the spots.
     registry.addComponent(car, ecs::Transform{.x = (arena::LEFT + arena::RIGHT) / 2.0F, .y = arena::BOTTOM / 2.0F});
     input::InputState controls;
-    controls.playerIndex = static_cast<int>(slot);
+    controls.playerIndex = static_cast<int>(*slot);
     registry.addComponent(car, std::move(controls));
     registry.addComponent(car, ecs::InputBuffer{});
     registry.addComponent(car, ecs::NetworkOwner{.client = peer});
-    registry.addComponent(car, game::CarLook{.color = static_cast<std::uint8_t>(slot % PLAYER_COLORS.size())});
+    registry.addComponent(car, game::CarLook{.color = static_cast<std::uint8_t>(*slot % PLAYER_COLORS.size())});
     registry.addComponent(car, game::CarStatus{.boost = 0.0F, .boosting = false, .placeAtKickoff = true});
     // Stepped by the `Match` script, not by its own update.
     registry.addComponent(car, ecs::ScriptComponent{
@@ -101,13 +117,15 @@ void LobbyPlugin::join(engine::Engine& engine, const ecs::net::PeerId peer) {
                                    .className = "Car",
                                });
     const std::uint32_t carId = ecs::net::replicate(registry, car, game::KIND_CAR);
-    // The client needs to know which car is its own: its camera follows it.
-    engine.service<ecs::net::INetworkService>().send(peer, protocol::encode(protocol::Welcome{.carId = carId}),
-                                                     ecs::net::Channel::Reliable);
-    _players.emplace(peer, Player{.slot = slot, .car = car});
+    // The client needs to know which car is its own (its camera follows it) and its team (who won).
+    engine.service<ecs::net::INetworkService>().send(
+        peer, protocol::encode(protocol::Welcome{.carId = carId, .team = static_cast<protocol::Team>(*slot % 2)}),
+        ecs::net::Channel::Reliable);
+    _players.emplace(peer, Player{.slot = *slot, .car = car});
+    return true;
 }
 
-bool LobbyPlugin::leave(engine::Engine& engine, const ecs::net::PeerId peer) {
+bool RosterPlugin::leave(engine::Engine& engine, const ecs::net::PeerId peer) {
     const auto it = _players.find(peer);
     if (it == _players.end()) {
         return false;
@@ -117,13 +135,6 @@ bool LobbyPlugin::leave(engine::Engine& engine, const ecs::net::PeerId peer) {
     _slots.at(it->second.slot) = false;
     _players.erase(it);
     return true;
-}
-
-void LobbyPlugin::broadcastState(engine::Engine& engine) const {
-    const auto players =
-        static_cast<std::uint16_t>(std::min<std::size_t>(_players.size(), std::numeric_limits<std::uint16_t>::max()));
-    engine.service<ecs::net::INetworkService>().broadcast(protocol::encode(protocol::LobbyState{.players = players}),
-                                                          ecs::net::Channel::Reliable);
 }
 
 }  // namespace rlss::server

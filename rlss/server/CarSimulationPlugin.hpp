@@ -29,8 +29,8 @@ namespace rlss::server {
  * - On each `ecs::net::InputApplied` (one input per car and per fixed step, from `ServerReplicationPlugin`), writes
  *   the input into the car's `input::InputState`, which the scripts read with `Input.getAxis` / `Input.isDown`.
  *
- * - Sends the score and phase that the `Match` script writes in the arena's `rlss::game::MatchState` to the clients
- *   (reliable `MatchStatus` message): to everybody when they change, to a player who joins.
+ * - Sends the score, phase and clock that the `Match` script writes in the arena's `rlss::game::MatchState` to the
+ *   players (reliable `MatchStatus` message): to everybody when they change, to a player who joins.
  *
  * The physics and the rules are in `rlss/scripts/` (`Match`, `Car`, `Ball`, `Kickoff`).
  */
@@ -68,17 +68,18 @@ class CarSimulationPlugin final : public engine::IPlugin {
      */
     void shutdown(engine::Engine& engine) override;
 
-  private:
-    /** @brief Arena entity. */
-    ecs::Entity _arena = 0;
-    /** @brief Ball entity. */
-    ecs::Entity _ball = 0;
     /**
      * @brief Reads the arena's `MatchState` as a message.
      * @param engine Host engine.
      * @return The status, or nothing if the arena has no `MatchState`.
      */
     [[nodiscard]] std::optional<protocol::MatchStatus> currentStatus(engine::Engine& engine) const;
+
+  private:
+    /** @brief Arena entity. */
+    ecs::Entity _arena = 0;
+    /** @brief Ball entity. */
+    ecs::Entity _ball = 0;
 
     /** @brief Subscription to `InputApplied`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _inputs;

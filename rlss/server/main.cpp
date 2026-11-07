@@ -15,25 +15,18 @@
 #include <span>
 #include <thread>
 
-#include "CarSimulationPlugin.hpp"
 #include "CommandLine.hpp"
-#include "LobbyPlugin.hpp"
 #include "Logger.hpp"
-#include "ServerConnection.hpp"
-#include "core/Engine.hpp"
-#include "game/ReplicationCodec.hpp"
+#include "MatchServer.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkFactory.hpp"
-#include "net/NetworkPlugin.hpp"
-#include "net/ServerReplicationPlugin.hpp"
 #include "protocol/Protocol.hpp"
-#include "scripting/ScriptPlugin.hpp"
 
 namespace {
 
 constexpr int EXIT_ERROR = 84;
 constexpr const char* LOG_TAG = "server";
-/** @brief Pause between two engine frames, so that an idle server does not spin a core. */
+/** @brief Pause between two polls of the transport, so that an idle server does not spin a core. */
 constexpr std::chrono::milliseconds FRAME_SLEEP{1};
 
 // The signal handler cannot take arguments, so it reaches the main loop through a global.
@@ -65,28 +58,19 @@ int main(int ac, char** av) {
             rtype::log::error(LOG_TAG, "cannot listen on port ", *port);
             return EXIT_ERROR;
         }
-        const auto connection = std::make_shared<rlss::server::ServerConnection>(transport);
-
-        engine::Engine engine;
-        engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection)
-            .addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
-            .addPlugin<scripting::ScriptPlugin>()
-            .addPlugin<rlss::server::CarSimulationPlugin>()
-            .addPlugin<rlss::server::LobbyPlugin>();
-        engine.init();
-
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);
         rtype::log::info(LOG_TAG, rlss::protocol::GAME_TITLE, " server listening on port ", *port);
 
-        // Headless: no window ends the loop, a signal does. The engine clock keeps the simulation in real time.
-        while (g_running.load()) {
-            engine.advance();
-            std::this_thread::sleep_for(FRAME_SLEEP);
+        {
+            // The menu runs here; each match runs on its own thread, with its own engine.
+            rlss::server::MatchServer server(transport);
+            while (g_running.load()) {
+                server.update();
+                std::this_thread::sleep_for(FRAME_SLEEP);
+            }
+            rtype::log::info(LOG_TAG, "shutting down");
         }
-
-        rtype::log::info(LOG_TAG, "shutting down");
-        engine.shutdown();
         transport->stop();
     } catch (const std::exception& error) {
         std::cerr << "server error: " << error.what() << '\n';

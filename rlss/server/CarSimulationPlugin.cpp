@@ -127,9 +127,12 @@ std::optional<protocol::MatchStatus> CarSimulationPlugin::currentStatus(engine::
     return protocol::MatchStatus{
         .blueScore = score(state.blueScore),
         .orangeScore = score(state.orangeScore),
-        .phase = static_cast<protocol::MatchPhase>(std::clamp(state.phase, 0, 2)),
+        .phase = static_cast<protocol::MatchPhase>(
+            std::clamp(state.phase, 0, static_cast<int>(protocol::MatchPhase::Ended))),
         .countdown =
             static_cast<std::uint8_t>(std::clamp(state.countdown, 0, static_cast<int>(protocol::MAX_COUNTDOWN))),
+        .clock = static_cast<std::uint16_t>(std::clamp(state.clock, 0, static_cast<int>(protocol::MAX_CLOCK))),
+        .overtime = state.overtime,
     };
 }
 
