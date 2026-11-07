@@ -64,9 +64,16 @@ target("engine_hierarchy")
     add_includedirs(".", {public = true})
     add_deps("engine_core")
 
+-- Events fired in order as a cursor moves forward (level scripts, cutscenes...). Headless.
+target("engine_timeline")
+    set_kind("static")
+    add_files("timeline/**.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_prefabs", {public = true})
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_timeline")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end
