@@ -22,6 +22,7 @@ class CarView {
         _flame = Transform.new(parts.flame)
         _gaugeBack = Transform.new(parts.gaugeBack)
         _gaugeFill = Transform.new(parts.gaugeFill)
+        _flash = Transform.new(parts.flash)
         _status = CarStatus.new(_id)
         resize_(_body, 118, 20)
         resize_(_cabin, 60, 18)
@@ -58,6 +59,17 @@ class CarView {
         place_(_frontWheel, x, y, rotation, facing, 38, -7, _wheelAngle)
         place_(_headlight, x, y, rotation, facing, 55, 3, 0)
         updateBoost_(dt, x, y, rotation, facing)
+        updateFlash_(x, y, rotation, facing)
+    }
+
+    // After a flip reset on the ball the car blinks white, until the flip is used.
+    updateFlash_(x, y, rotation, facing) {
+        if (_status.flipReset == true && (_time * CarView.FLASH_RATE).sin > 0) {
+            resize_(_flash, 120, 24)
+            place_(_flash, x, y, rotation, facing, 0, 2, 0)
+        } else {
+            resize_(_flash, 0, 0)
+        }
     }
 
     // Flame behind the car while boosting, and a boost gauge above it (kept level, whatever the car rotation).
@@ -82,6 +94,8 @@ class CarView {
     }
 
     static WHEEL_RADIUS { 11 }
+    /** @brief Blinking speed of the flip reset flash, in radians per second. */
+    static FLASH_RATE { 30 }
     static GAUGE_WIDTH { 60 }
     /** @brief Height of the gauge above the car center. */
     static GAUGE_HEIGHT { 70 }

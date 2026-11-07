@@ -3,6 +3,7 @@ import "rlss/components" for Transform, Controls, CarStatus
 import "rlss/scripts/Arena" for Arena
 import "rlss/scripts/CarTuning" for CarTuning
 import "rlss/scripts/Kickoff" for Kickoff
+import "rlss/scripts/Shots" for Shots
 import "rlss/scripts/Simulation" for Simulation
 
 /**
@@ -21,11 +22,13 @@ import "rlss/scripts/Simulation" for Simulation
  *
  * Two states:
  * - on its wheels (`grounded`): the car follows the surface (floor, curved corners, walls, ceiling). Gravity along the
- *   surface slows it on a climb; the sticky force (325 uu/s²) and the push of curved corners keep it on the surface,
- *   gravity pulls it away. When the pull wins long enough for the suspension to extend fully, the wheels lose contact:
- *   the car stays on walls but only lasts a moment on the ceiling.
- * - in the air: gravity, jump hold, double jump / dodge, air rotation; the body collides with the arena walls and lands
- *   when it touches them wheels first.
+ *   surface slows it on a climb; the sticky force (325 uu/s², 1050 while driving) and the push of curved corners keep
+ *   it on the surface, gravity pulls it away. When the pull wins long enough for the suspension to extend fully, the wheels lose contact.
+ *   While driving (throttle or boost) the grip beats gravity, so the car drives upside down on the ceiling; once it
+ *   lets go, it falls.
+ * - in the air: gravity, jump hold, one double jump or dodge per jump (until the car touches a surface again), air
+ *   rotation; the body collides with the arena walls. Like in Sideswipe, the car never rests on its roof or its side:
+ *   just before touching a surface any other way than wheels first, it turns itself over and lands on its wheels.
  *
  * Boost pushes the car toward its nose (991 uu/s² on the ground, 1058 in the air) and burns 33.3 per second. Like in
  * Sideswipe, there are no boost pads: the tank refills while the car touches a surface.
@@ -61,6 +64,7 @@ class Car {
         _sinceJump = 1
         _spinTime = 0
         _spin = 0
+        _dodging = false
         _prevJump = false
 
         _contact = false
@@ -72,6 +76,13 @@ class Car {
         _boosting = false
         _boostTime = 0
         _lastBallHit = -10
+        // Wheels against the ball: time since, and the direction from the car to the ball then.
+        _ballWheelTime = 10
+        _ballNx = 0
+        _ballNy = 0
+        _flipReset = false
+        _purpleShot = null
+        _ballJumpCooldown = 0
 
         // A car that just joined starts at its kickoff spot.
         if (_status.placeAtKickoff == true) {
@@ -102,6 +113,8 @@ class Car {
         _hasJumped = false
         _secondJumpUsed = false
         _spinTime = 0
+        _dodging = false
+        _flipReset = false
         _contact = false
         _boost = CarTuning.BOOST_START
         _boosting = false
@@ -122,7 +135,38 @@ class Car {
     grounded { _grounded }
     speed { (_vx * _vx + _vy * _vy).sqrt }
     boost { _boost }
+    /** @brief Sets the boost left (clamped to the tank). */
+    boost=(value) { _boost = value.clamp(0, CarTuning.BOOST_MAX) }
     boosting { _boosting }
+    /** @brief True during a dodge (flip): hitting the ball now gives it a strong extra push (see `Match.hit`). */
+    dodging { _dodging }
+    /** @brief True after a flip reset on the ball, until the flip is used or the car lands: the car flashes white. */
+    flipReset { _flipReset }
+
+    /**
+     * @brief The wheels touch the ball (called by the match at each step of contact): the flip comes back (a flip
+     * reset), and boost refills, at least `Shots.BALL_BOOST_RESET` on a new touch.
+     * @param nx Direction from the car to the ball.
+     */
+    touchBallWithWheels(nx, ny) {
+        // Right after a jump or a flip the wheels may still touch the ball: that is not a new touch.
+        if (_grounded || _ballJumpCooldown > 0) return
+        if (_ballWheelTime > Shots.BALL_TOUCH_GAP) {
+            _boost = (_boost + Shots.BALL_BOOST_RESET).min(CarTuning.BOOST_MAX)
+        }
+        if (_secondJumpUsed || _hasJumped) _flipReset = true
+        _secondJumpUsed = false
+        _ballWheelTime = 0
+        _ballNx = nx
+        _ballNy = ny
+    }
+
+    /** @brief The direction of a purple shot this car just made (car to ball), once, or null. */
+    takePurpleShot() {
+        var shot = _purpleShot
+        _purpleShot = null
+        return shot
+    }
     /** @brief Step of the last extra impulse this car gave the ball (see `Match.hit`). */
     lastBallHit { _lastBallHit }
     lastBallHit=(value) { _lastBallHit = value }
@@ -158,6 +202,8 @@ class Car {
         var jumpPressed = jump && !_prevJump
         _prevJump = jump
         _sinceJump = _sinceJump + dt
+        _ballWheelTime = _ballWheelTime + dt
+        _ballJumpCooldown = (_ballJumpCooldown - dt).max(0)
         updateBoost_(dt, Input.isDown(_player, "boost"))
 
         if (_grounded) {
@@ -214,6 +260,7 @@ class Car {
         _transform.scaleX = _facing
         _status.boost = _boost
         _status.boosting = _boosting
+        _status.flipReset = _flipReset
     }
 
     // ------------------------------------------------------------------ boost
@@ -228,7 +275,8 @@ class Car {
             _boosting = false
             _boostTime = 0
             // Sideswipe has no boost pads: the tank refills while the car touches a surface.
-            if (_grounded || _contact) _boost = (_boost + CarTuning.BOOST_REFILL_RATE * dt).min(CarTuning.BOOST_MAX)
+            var touching = _grounded || _contact || _ballWheelTime < 2 * CarTuning.STEP
+            if (touching) _boost = (_boost + CarTuning.BOOST_REFILL_RATE * dt).min(CarTuning.BOOST_MAX)
         }
     }
 
@@ -267,7 +315,8 @@ class Car {
         s = (s + CarTuning.GRAVITY * ty * dt).clamp(-CarTuning.MAX_SPEED, CarTuning.MAX_SPEED)
 
         // Does the surface still hold the car? Gravity pulls it off the ceiling, curved corners push it in.
-        var press = -CarTuning.GRAVITY * ny + s * s * arena.curvature + CarTuning.STICKY
+        var sticky = throttle != 0 ? CarTuning.DRIVING_STICKY : CarTuning.STICKY
+        var press = -CarTuning.GRAVITY * ny + s * s * arena.curvature + sticky
         if (press >= 0) {
             _normalSpeed = 0
             _separation = (_separation - CarTuning.SUSPENSION_RECOVERY * dt).max(0)
@@ -349,16 +398,21 @@ class Car {
         }
 
         if (jumpPressed) {
-            if (_contact && _contactAlign < CarTuning.LAND_ALIGN) {
+            if (!_secondJumpUsed && steer == 0 && _ballWheelTime < Shots.PURPLE_WINDOW) {
+                purpleJump_()
+            } else if (_contact && _contactAlign < CarTuning.LAND_ALIGN) {
                 recover_()
-            } else if (!_secondJumpUsed && (!_hasJumped || _airTime < CarTuning.SECOND_JUMP_WINDOW)) {
+            } else if (!_secondJumpUsed) {
+                // One flip (or double jump) per jump, given back when the car touches a surface again.
                 secondJump_(steer)
             }
         }
 
+        selfRight_()
         if (_spinTime > 0) {
             _spinTime = _spinTime - dt
             _omega = _spin
+            if (_spinTime <= 0) _dodging = false
         } else {
             var torque = CarTuning.AIR_TORQUE * steer - CarTuning.AIR_DAMPING * _omega * (1 - steer.abs)
             var maxSpin = CarTuning.MAX_ANGULAR_SPEED
@@ -377,9 +431,45 @@ class Car {
         collide_(dt)
     }
 
+    // Sideswipe turns a car over just before it would touch a surface on its roof or its side: when the car flies toward
+    // a surface that is close and it is not wheels first, it spins onto its wheels in the time left before the contact.
+    selfRight_() {
+        _arena.sample(_x, _y)
+        var nx = _arena.nx
+        var ny = _arena.ny
+        var align = _theta.sin * nx - _theta.cos * ny
+        if (align > CarTuning.LAND_ALIGN) return
+        // Worst case: the car could touch with a corner of its full length.
+        var gap = _arena.distance - CarTuning.HALF_LENGTH
+        var approach = -(_vx * nx + _vy * ny)
+        var timeLeft = gap <= 0 ? 0 : (approach > 1 ? gap / approach : Num.largest)
+        if (timeLeft > CarTuning.SELF_RIGHT_TIME && gap > CarTuning.SELF_RIGHT_GAP) return
+        var turn = Car.wrap_((nx).atan(-ny) - _theta)
+        var duration = timeLeft.clamp(CarTuning.SELF_RIGHT_MIN_TIME, CarTuning.SELF_RIGHT_TIME)
+        var maxSpin = CarTuning.SELF_RIGHT_MAX_SPIN
+        _spin = (turn / duration).clamp(-maxSpin, maxSpin)
+        _spinTime = duration
+    }
+
+    // Purple shot: the wheels are against the ball and the player jumps without direction: the car jumps off the ball,
+    // which takes the push the other way (applied by the match).
+    purpleJump_() {
+        _secondJumpUsed = true
+        _flipReset = false
+        _jumpHold = 0
+        _vx = _vx - _ballNx * CarTuning.JUMP_IMPULSE
+        _vy = _vy - _ballNy * CarTuning.JUMP_IMPULSE
+        _purpleShot = [_ballNx, _ballNy]
+        _ballWheelTime = 10
+        _ballJumpCooldown = Shots.BALL_TOUCH_GAP
+    }
+
     // Double jump without direction, dodge (flip) toward the stick otherwise.
     secondJump_(steer) {
         _secondJumpUsed = true
+        _flipReset = false
+        // Still touching the ball right after using the flip does not give it back: it takes a new touch.
+        _ballJumpCooldown = Shots.BALL_TOUCH_GAP
         _jumpHold = 0
         if (steer == 0) {
             _vx = _vx + _theta.sin * CarTuning.JUMP_IMPULSE
@@ -397,6 +487,7 @@ class Car {
         // Pushing right spins clockwise: a front flip for a car facing right, a back flip for one facing left.
         _spin = direction * CarTuning.MAX_ANGULAR_SPEED
         _spinTime = CarTuning.DODGE_TIME
+        _dodging = true
     }
 
     // On the roof or on the side: jumping rolls the car back onto its wheels.
@@ -437,8 +528,10 @@ class Car {
         _contactNx = nx
         _contactNy = ny
 
-        if (align > CarTuning.LAND_ALIGN && _sinceJump > CarTuning.JUMP_LAND_DELAY &&
-            vn < CarTuning.LAND_MAX_SEPARATION) {
+        if (_sinceJump > CarTuning.JUMP_LAND_DELAY && vn < CarTuning.LAND_MAX_SEPARATION) {
+            // Like in Sideswipe, a car never rests on its roof or its side: if it touches a surface any other way than
+            // wheels first (the self-righting did not have time), it is turned over onto its wheels as it lands.
+            if (align <= CarTuning.LAND_ALIGN) _theta = (nx).atan(-ny)
             land_(nx, ny, vn)
             return
         }
@@ -454,11 +547,7 @@ class Car {
         var slowed = Car.towardZero_(vt, CarTuning.BODY_FRICTION * dt)
         _vx = _vx + tx * (slowed - vt)
         _vy = _vy + ty * (slowed - vt)
-        if (_spinTime <= 0) {
-            var wheelsDown = ty.atan(tx)
-            var target = align >= 0 ? wheelsDown : wheelsDown + Num.pi
-            _omega = Car.wrap_(target - _theta) * CarTuning.TIP_RATE
-        }
+        if (_spinTime <= 0) _omega = Car.wrap_(ty.atan(tx) - _theta) * CarTuning.TIP_RATE
     }
 
     /** @brief The hitbox corner deepest in a wall: [depth (negative), nx, ny], or null if none is in a wall. */
@@ -479,6 +568,12 @@ class Car {
             }
         }
         return hit
+    }
+
+    /** @brief Pushes the hitbox back inside the arena (after the ball pushed the car), stopping it against the wall. */
+    keepInArena() {
+        blockCorners_()
+        collidePosts_()
     }
 
     // On the wheels, the nose or the roof can still run into a wall (the back of a goal): stop against it.
@@ -507,6 +602,8 @@ class Car {
         _secondJumpUsed = false
         _jumpHold = 0
         _spinTime = 0
+        _dodging = false
+        _flipReset = false
         _omega = 0
         _contact = false
     }

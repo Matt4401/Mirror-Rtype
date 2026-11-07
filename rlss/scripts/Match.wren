@@ -3,6 +3,7 @@ import "rlss/scripts/Arena" for Arena
 import "rlss/scripts/BallTuning" for BallTuning
 import "rlss/scripts/CarTuning" for CarTuning
 import "rlss/scripts/Kickoff" for Kickoff
+import "rlss/scripts/Shots" for Shots
 import "rlss/scripts/Simulation" for Simulation
 
 /**
@@ -97,11 +98,23 @@ class Match {
             if (car.ready) car.step(dt)
         }
         if (ball == null || !ball.ready) return
+        // Purple shots: a car that just jumped off the ball pushes it away from its wheels.
+        for (car in cars) {
+            var purple = car.ready ? car.takePurpleShot() : null
+            if (purple != null) {
+                ball.addVelocity(purple[0] * Shots.PURPLE_IMPULSE, purple[1] * Shots.PURPLE_IMPULSE)
+                ball.shot = Shots.PURPLE
+            }
+        }
         ball.step(dt)
         for (car in cars) {
             if (car.ready) Match.hit(car, ball, _step)
         }
+        // Separating a car from the ball may have pushed either of them into a wall.
         ball.constrain()
+        for (car in cars) {
+            if (car.ready) car.keepInArena()
+        }
     }
 
     /**
@@ -145,7 +158,9 @@ class Match {
         var ny = s * normalAlong - c * normalUp
         var contactX = car.x + c * closestAlong + s * closestUp
         var contactY = car.y + s * closestAlong - c * closestUp
-        var relativeSpeed = ((ball.vx - car.vx).pow(2) + (ball.vy - car.vy).pow(2)).sqrt
+        var face = Shots.face(normalAlong, normalUp, car.facing)
+        // Wheels on the ball: flip reset and boost, even when just resting on it.
+        if (face == "wheels") car.touchBallWithWheels(nx, ny)
 
         // Separate them: the ball is six times lighter, it moves six times more.
         var carMass = BallTuning.CAR_MASS
@@ -162,24 +177,25 @@ class Match {
         var relX = ballPointX - carPointX
         var relY = ballPointY - carPointY
         var closing = relX * nx + relY * ny
-        if (closing < 0) {
-            var impulse = -(1 + BallTuning.CAR_RESTITUTION) * closing / (1 / ballMass + 1 / carMass)
-            ball.addVelocity(nx * impulse / ballMass, ny * impulse / ballMass)
-            car.addVelocity(-nx * impulse / carMass, -ny * impulse / carMass)
+        if (closing >= 0) return  // touching but not hitting (resting on the roof, moving apart)
 
-            // Friction at the contact: the ball starts to spin instead of sliding along the car.
-            var tx = -ny
-            var ty = nx
-            var sliding = relX * tx + relY * ty
-            var resistance = (1 + 1 / BallTuning.INERTIA_FACTOR) / ballMass + 1 / carMass
-            var limit = BallTuning.CAR_FRICTION * impulse
-            var friction = (-sliding / resistance).clamp(-limit, limit)
-            ball.addVelocity(tx * friction / ballMass, ty * friction / ballMass)
-            ball.addSpin(-friction / (BallTuning.INERTIA_FACTOR * ballMass * r))
-            car.addVelocity(-tx * friction / carMass, -ty * friction / carMass)
-        }
+        var impulse = -(1 + BallTuning.CAR_RESTITUTION) * closing / (1 / ballMass + 1 / carMass)
+        ball.addVelocity(nx * impulse / ballMass, ny * impulse / ballMass)
+        car.addVelocity(-nx * impulse / carMass, -ny * impulse / carMass)
 
-        // Rocket League's extra impulse: what makes hits feel strong and controllable.
+        // Friction at the contact: the ball starts to spin instead of sliding along the car.
+        var tx = -ny
+        var ty = nx
+        var sliding = relX * tx + relY * ty
+        var resistance = (1 + 1 / BallTuning.INERTIA_FACTOR) / ballMass + 1 / carMass
+        var limit = BallTuning.CAR_FRICTION * impulse
+        var friction = (-sliding / resistance).clamp(-limit, limit)
+        ball.addVelocity(tx * friction / ballMass, ty * friction / ballMass)
+        ball.addSpin(-friction / (BallTuning.INERTIA_FACTOR * ballMass * r))
+        car.addVelocity(-tx * friction / carMass, -ty * friction / carMass)
+
+        // Extra impulse, Rocket League style: its strength comes from the speed along the contact (a hit with the front
+        // at full speed, not a brush with the roof). A flip adds a shot, colored by the part of the car that hits.
         if (step - car.lastBallHit > 1) {
             car.lastBallHit = step
             var hitX = dx
@@ -188,11 +204,26 @@ class Match {
             hitX = hitX - car.noseX * forward * (1 - BallTuning.HIT_FORWARD_SCALE)
             hitY = hitY - car.noseY * forward * (1 - BallTuning.HIT_FORWARD_SCALE)
             var length = (hitX * hitX + hitY * hitY).sqrt
-            if (length > 0.0001) {
-                var speed = relativeSpeed.min(BallTuning.HIT_MAX_RELATIVE_SPEED)
-                var strength = speed * BallTuning.hitFactor(speed) / length
-                ball.addVelocity(hitX * strength, hitY * strength)
+            var speed = (-closing).min(BallTuning.HIT_MAX_RELATIVE_SPEED)
+            var push = speed * BallTuning.hitFactor(speed) * BallTuning.HIT_STRENGTH
+            var shot = Shots.NONE
+            if (car.dodging && face == "rear") {
+                // Gold shot: the rear swings into the ball and lobs it, up and back.
+                shot = Shots.GOLD
+                var lobX = -car.noseX * Shots.GOLD_BACK
+                var lobY = -car.noseY * Shots.GOLD_BACK - 1
+                var lobLength = (lobX * lobX + lobY * lobY).sqrt
+                ball.addVelocity(lobX / lobLength * Shots.GOLD_IMPULSE, lobY / lobLength * Shots.GOLD_IMPULSE)
+            } else if (car.dodging && face == "nose") {
+                shot = Shots.RED
+                push = push + Shots.RED_IMPULSE
+            } else if (car.dodging) {
+                push = push + Shots.OTHER_FLIP_IMPULSE
             }
+            if (length > 0.0001) ball.addVelocity(hitX * push / length, hitY * push / length)
+            // Any hit changes the glow: a colored shot lights the ball, a plain hit turns it off. (A car jumping off the
+            // ball after a purple shot moves away from it: no hit, the purple glow stays.)
+            ball.shot = shot
         }
     }
 }
