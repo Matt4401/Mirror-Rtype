@@ -7,7 +7,10 @@ import "rlss/components" for ArenaShape
  * (y points down).
  *
  * Like in Sideswipe, the goals open in the side walls just above the floor: the bottom curved corner is a ramp that ends
- * at the goal mouth, which goes from `goalBottom` up to `goalTop` (the crossbar) and `goalDepth` behind the wall.
+ * at the goal mouth, which goes from `goalBottom` up to `goalTop` (the crossbar) and `goalDepth` behind the wall. The
+ * two back corners of each goal are rounded (`goalCornerRadius`); the posts, where the goal meets the wall, are sharp.
+ * When the goal bottom is lower than the top of the curved corner, it cuts the ramp: the bottom post stands where the
+ * goal bottom meets the curve, a little inside the arena, and the goal floor reaches it.
  *
  * `sample(x, y)` measures the point against the walls, like a signed distance field: afterwards `distance` is how far
  * the point is inside (negative when outside), (`nx`, `ny`) is the unit normal of the closest wall, pointing inside,
@@ -15,7 +18,7 @@ import "rlss/components" for ArenaShape
  * are kept in fields instead of allocated, as the physics samples several points per step.
  */
 class Arena {
-    construct new(left, top, right, bottom, radius, goalTop, goalBottom, goalDepth) {
+    construct new(left, top, right, bottom, radius, goalTop, goalBottom, goalDepth, goalCornerRadius) {
         _left = left
         _top = top
         _right = right
@@ -24,6 +27,8 @@ class Arena {
         _goalTop = goalTop
         _goalBottom = goalBottom
         _goalDepth = goalDepth
+        // A corner cannot be rounder than the goal is deep, nor than half its height.
+        _goalCornerRadius = goalCornerRadius.clamp(0, goalDepth.min((goalBottom - goalTop) / 2).max(0))
         _distance = 0
         _nx = 0
         _ny = -1
@@ -37,8 +42,9 @@ class Arena {
         if (tagged.count == 0) return null
         var shape = ArenaShape.new(tagged[0].id)
         if (shape.left == null) return null
+        var goalCorner = shape.goalCornerRadius is Num ? shape.goalCornerRadius : 0
         return Arena.new(shape.left, shape.top, shape.right, shape.bottom, shape.cornerRadius, shape.goalTop,
-                         shape.goalBottom, shape.goalDepth)
+                         shape.goalBottom, shape.goalDepth, goalCorner)
     }
 
     left { _left }
@@ -49,6 +55,7 @@ class Arena {
     goalTop { _goalTop }
     goalBottom { _goalBottom }
     goalDepth { _goalDepth }
+    goalCornerRadius { _goalCornerRadius }
     hasGoals { _goalDepth > 0 && _goalBottom > _goalTop }
     centerX { (_left + _right) / 2 }
     centerY { (_top + _bottom) / 2 }
@@ -84,7 +91,18 @@ class Arena {
 
     insideGoal_(x, y) {
         if (!hasGoals || y < _goalTop || y > _goalBottom) return false
-        return (x >= _left - _goalDepth && x <= _left) || (x >= _right && x <= _right + _goalDepth)
+        // Below the top of the ramp, the goal mouth reaches the bottom post, on the curve.
+        var mouth = y >= _bottom - _radius ? postInset_ : 0
+        var out = 0
+        if (x >= _left - _goalDepth && x <= _left + mouth) out = -1
+        if (x >= _right - mouth && x <= _right + _goalDepth) out = 1
+        if (out == 0) return false
+        // In a rounded back corner: inside the quarter circle only.
+        var rr = _goalCornerRadius
+        var cx = (out < 0 ? _left - _goalDepth : _right + _goalDepth) - out * rr
+        var cy = y < _goalTop + rr ? _goalTop + rr : (y > _goalBottom - rr ? _goalBottom - rr : null)
+        if (rr <= 0 || cy == null || (x - cx) * out <= 0) return true
+        return (x - cx) * (x - cx) + (y - cy) * (y - cy) <= rr * rr
     }
 
     sampleRoundedRect_(x, y) {
@@ -139,14 +157,31 @@ class Arena {
 
     // ------------------------------------------------------------------ arena + goals
 
-    // The outline as straight segments [ax, ay, bx, by, nx, ny] (n points inside) and corner arcs [cx, cy, sx, sy]
-    // (the arc covers the points on the (sx, sy) side of its center).
+    // How far inside the arena the bottom posts stand: where the goal bottom meets the curved corner (0 if the goal
+    // bottom is not below the top of the curve).
+    postInset_ {
+        var drop = _goalBottom - (_bottom - _radius)
+        if (!hasGoals || drop <= 0) return 0
+        return _radius - (_radius * _radius - drop.min(_radius) * drop.min(_radius)).sqrt
+    }
+
+    // The outline as straight segments [ax, ay, bx, by, nx, ny] (n points inside) and concave arcs
+    // [cx, cy, sx, sy, radius, minY] (the arc covers the points on the (sx, sy) side of its center, below minY).
     buildOutline_() {
         var l = _left
         var t = _top
         var r = _right
         var b = _bottom
         var rad = _radius
+        var none = -Num.largest
+        // The goals cut the top of the lower curved corners: the curve only goes up to the goal bottom.
+        var rampTop = hasGoals ? _goalBottom.max(b - rad) : none
+        _arcs = [
+            [l + rad, t + rad, -1, -1, rad, none],
+            [r - rad, t + rad, 1, -1, rad, none],
+            [l + rad, b - rad, -1, 1, rad, rampTop],
+            [r - rad, b - rad, 1, 1, rad, rampTop],
+        ]
         _segments = []
         _segments.add([l + rad, t, r - rad, t, 0, 1])
         _segments.add([l + rad, b, r - rad, b, 0, -1])
@@ -155,28 +190,30 @@ class Arena {
             var d = _goalDepth
             var gt = _goalTop
             var gb = _goalBottom
+            var rr = _goalCornerRadius
             for (side in [[l, -1], [r, 1]]) {
                 var wall = side[0]
                 var out = side[1]
                 var back = wall + out * d
+                // The crossbar and the bottom stop where the rounded back corners start; the bottom reaches the post.
+                var inner = back - out * rr
+                var post = wall - out * postInset_
                 addSegment_(wall, t + rad, wall, gt, -out, 0)
-                addSegment_(wall, gb, wall, b - rad, -out, 0)
-                addSegment_(back.min(wall), gt, back.max(wall), gt, 0, 1)
-                addSegment_(back, gt, back, gb, -out, 0)
-                addSegment_(back.min(wall), gb, back.max(wall), gb, 0, -1)
+                if (gb < b - rad) addSegment_(wall, gb, wall, b - rad, -out, 0)
+                addSegment_(inner.min(wall), gt, inner.max(wall), gt, 0, 1)
+                addSegment_(back, gt + rr, back, gb - rr, -out, 0)
+                addSegment_(inner.min(post), gb, inner.max(post), gb, 0, -1)
+                if (rr > 0) {
+                    _arcs.add([inner, gt + rr, out, -1, rr, none])
+                    _arcs.add([inner, gb - rr, out, 1, rr, none])
+                }
                 _posts.add([wall, gt])
-                _posts.add([wall, gb])
+                _posts.add([post, gb])
             }
         } else {
             _segments.add([l, t + rad, l, b - rad, 1, 0])
             _segments.add([r, t + rad, r, b - rad, -1, 0])
         }
-        _arcs = [
-            [l + rad, t + rad, -1, -1],
-            [r - rad, t + rad, 1, -1],
-            [l + rad, b - rad, -1, 1],
-            [r - rad, b - rad, 1, 1],
-        ]
     }
 
     addSegment_(ax, ay, bx, by, nx, ny) {
@@ -189,7 +226,7 @@ class Arena {
         var qy = y
         var fallbackNx = 0
         var fallbackNy = -1
-        var onArc = false
+        var arcRadius = 0
         for (s in _segments) {
             var ex = s[2] - s[0]
             var ey = s[3] - s[1]
@@ -203,7 +240,7 @@ class Arena {
                 qy = py
                 fallbackNx = s[4]
                 fallbackNy = s[5]
-                onArc = false
+                arcRadius = 0
             }
         }
         for (a in _arcs) {
@@ -211,14 +248,15 @@ class Arena {
             var dy = y - a[1]
             if (dx * a[2] > 0 && dy * a[3] > 0) {
                 var length = (dx * dx + dy * dy).sqrt
-                var gap = length - _radius
-                if (gap * gap < best) {
+                var gap = length - a[4]
+                // Past the cut end of a curve: its end point belongs to a segment already measured.
+                if (gap * gap < best && a[1] + dy / length * a[4] >= a[5]) {
                     best = gap * gap
-                    qx = a[0] + dx / length * _radius
-                    qy = a[1] + dy / length * _radius
+                    qx = a[0] + dx / length * a[4]
+                    qy = a[1] + dy / length * a[4]
                     fallbackNx = -dx / length
                     fallbackNy = -dy / length
-                    onArc = true
+                    arcRadius = a[4]
                 }
             }
         }
@@ -237,8 +275,8 @@ class Arena {
         }
         _distance = inside ? distance : -distance
         _curvature = 0
-        if (onArc) {
-            _curvature = 1 / _radius
+        if (arcRadius > 0) {
+            _curvature = 1 / arcRadius
         } else if (inside && isPost_(qx, qy)) {
             // Around a post the surface wraps a convex edge: a car going over it needs grip to stay on it.
             _curvature = -1 / distance.max(1)

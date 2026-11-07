@@ -163,6 +163,7 @@ class Match {
             if (purple != null) {
                 ball.addVelocity(purple[0] * Shots.PURPLE_IMPULSE, purple[1] * Shots.PURPLE_IMPULSE)
                 ball.shot = Shots.PURPLE
+                ball.recordHit(Shots.PURPLE_IMPULSE)
             }
         }
         ball.step(dt)
@@ -280,6 +281,8 @@ class Match {
                 push = push + Shots.OTHER_FLIP_IMPULSE
             }
             if (length > 0.0001) ball.addVelocity(hitX * push / length, hitY * push / length)
+            // Sound: as loud as the meeting, or as the ball sent flying, whichever is stronger.
+            if (speed >= BallTuning.HIT_SOUND_SPEED || shot != Shots.NONE) ball.recordHit(speed.max(ball.speed))
             // Any hit changes the glow: a colored shot lights the ball, a plain hit turns it off. (A car jumping off the
             // ball after a purple shot moves away from it: no hit, the purple glow stays.)
             ball.shot = shot

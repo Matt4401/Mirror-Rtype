@@ -29,6 +29,8 @@ namespace rlss::client {
 
 /** @brief What the player sees. */
 enum class Scene : std::uint8_t {
+    /** @brief Name entry, first thing shown once connected: the player types the name shown above their car. */
+    Name,
     /** @brief Main menu: new match, join a match. */
     Menu,
     /** @brief List of the matches being played. */
@@ -45,7 +47,10 @@ enum class Scene : std::uint8_t {
  * @brief Runs the menus, drawn in screen space over the arena with flat rectangles and the block font (`UiCanvas`),
  * and clicked with the mouse.
  *
- * - Menu: "NOUVELLE PARTIE" sends `CreateMatch`, "REJOINDRE" opens the list of matches.
+ * - Name: the player types their name (letters are made upper-case, only `protocol::isNameCharacter` ones are kept, at
+ *   most `protocol::MAX_NAME_LENGTH`); Enter or "VALIDER" sends it (`SetName`) and opens the menu.
+ * - Menu: "NOUVELLE PARTIE" sends `CreateMatch`, "REJOINDRE" opens the list of matches, the name in the corner opens
+ *   the name entry again.
  * - Browser: the matches of the last `MatchList` (teams, score, clock), updated as the server sends new lists; a click
  *   on a match that is not full sends `JoinMatch`; the mouse wheel scrolls a long list.
  * - Joining: until the `JoinResult`. Joined, the player is in the match: `MatchJoined` is published and the
@@ -113,6 +118,10 @@ class MenuPlugin final : public engine::IPlugin {
         Join,
         /** @brief Leaves the match that ended. */
         Leave,
+        /** @brief Sends the typed name and opens the menu. */
+        ConfirmName,
+        /** @brief Opens the name entry. */
+        Rename,
     };
 
     /** @brief A clickable rectangle. */
@@ -172,6 +181,19 @@ class MenuPlugin final : public engine::IPlugin {
      * @param engine Host engine.
      */
     void rebuild(engine::Engine& engine);
+    /**
+     * @brief Reads the keyboard into the typed name; Enter confirms it.
+     * @param engine Host engine.
+     * @param dt Frame time, in seconds (Backspace repeats while held).
+     */
+    void type(engine::Engine& engine, float dt);
+    /**
+     * @brief Sends the typed name if it is valid, and opens the menu; shows why otherwise.
+     * @param engine Host engine.
+     */
+    void confirmName(engine::Engine& engine);
+    /** @brief Draws the name entry. */
+    void buildName(ecs::Registry& registry, float width, float height);
     /** @brief Draws the main menu. */
     void buildMenu(ecs::Registry& registry, float width, float height);
     /** @brief Draws the list of matches. */
@@ -205,7 +227,19 @@ class MenuPlugin final : public engine::IPlugin {
     /** @brief Buttons of the current screen. */
     std::vector<Button> _buttons;
     /** @brief Current screen. */
-    Scene _scene = Scene::Menu;
+    Scene _scene = Scene::Name;
+    /** @brief Name sent to the server, empty until the first one. */
+    std::string _name;
+    /** @brief Name being typed on the name entry. */
+    std::string _typed;
+    /** @brief Blinking cursor of the name entry, 0 on the other screens. */
+    ecs::Entity _cursor = 0;
+    /** @brief Time on the name entry, for the cursor blink. */
+    float _blink = 0.0F;
+    /** @brief Seconds before Backspace erases again while held; negative when it is not held. */
+    float _eraseDelay = -1.0F;
+    /** @brief Enter state of the previous frame, to confirm on the press only. */
+    bool _enterWasDown = false;
     /** @brief Screen to go back to if the server refuses a request. */
     Scene _requestedFrom = Scene::Menu;
     /** @brief True when the drawn screen no longer matches the state. */

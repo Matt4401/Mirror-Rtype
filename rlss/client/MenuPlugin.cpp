@@ -76,6 +76,25 @@ constexpr float GLYPH_HEIGHT = 7.0F;
 constexpr float NOTICE_DURATION = 3.0F;
 /** @brief Longest wait for a `JoinResult`. */
 constexpr float REQUEST_TIMEOUT = 5.0F;
+/** @brief Backspace held: first repeat after this long, then one character every `ERASE_REPEAT`. */
+constexpr float ERASE_FIRST_REPEAT = 0.45F;
+constexpr float ERASE_REPEAT = 0.05F;
+/** @brief The cursor of the name entry blinks: shown, then hidden, this long each. */
+constexpr float BLINK_TIME = 0.5F;
+constexpr float FIELD_SQUARE = 6.0F;
+constexpr ecs::Rgba FIELD_COLOR{.r = 16, .g = 22, .b = 38, .a = 245};
+
+/** @brief A typed character as a name character (letters made upper-case), or nothing if names cannot hold it. */
+std::optional<char> nameCharacter(char32_t typed) {
+    if (typed >= U'a' && typed <= U'z') {
+        typed = typed - U'a' + U'A';
+    }
+    if (typed > U'\x7F') {
+        return std::nullopt;  // accents and other scripts: the block font cannot draw them
+    }
+    const auto character = static_cast<char>(typed);
+    return protocol::isNameCharacter(character) ? std::optional<char>(character) : std::nullopt;
+}
 
 ecs::Rgba opaque(const Rgb color) { return ecs::Rgba{.r = color.r, .g = color.g, .b = color.b, .a = 255}; }
 
@@ -124,7 +143,7 @@ void MenuPlugin::init(engine::Engine& engine) {
                 onMessage(engine, *message);
             }
         });
-    show(Scene::Menu);
+    show(Scene::Name);
 }
 
 void MenuPlugin::onMessage(engine::Engine& engine, const protocol::Message& message) {
@@ -181,6 +200,9 @@ void MenuPlugin::update(engine::Engine& engine, const ecs::time::Time& time) {
         }
     }
 
+    if (_scene == Scene::Name) {
+        type(engine, time.deltaTime);
+    }
     const auto& window = engine.service<engine::IWindowService>();
     if (_scene == Scene::Browser) {
         const float wheel = window.mouseWheelDelta();
@@ -213,6 +235,12 @@ void MenuPlugin::update(engine::Engine& engine, const ecs::time::Time& time) {
         rebuild(engine);
     }
     ecs::Registry& registry = engine.registry();
+    auto& renderables = registry.getComponents<ecs::Renderable>();
+    if (_cursor != 0 && renderables.contains(_cursor)) {
+        _blink += time.deltaTime;
+        const bool shown = static_cast<int>(_blink / BLINK_TIME) % 2 == 0;
+        renderables.get(_cursor).tint = shown ? TEXT_COLOR : ecs::Rgba{.r = 0, .g = 0, .b = 0, .a = 0};
+    }
     const ecs::Entity camera = engine.getPlugin<CameraPlugin>().camera();
     auto& cameras = registry.getComponents<ecs::CameraComponent>();
     if (cameras.contains(camera)) {
@@ -238,7 +266,65 @@ void MenuPlugin::onClick(engine::Engine& engine, const Button& button) {
         case Action::Leave:
             leaveMatch(engine);
             break;
+        case Action::ConfirmName:
+            confirmName(engine);
+            break;
+        case Action::Rename:
+            _typed = _name;
+            show(Scene::Name);
+            break;
     }
+}
+
+void MenuPlugin::type(engine::Engine& engine, const float dt) {
+    auto& window = engine.service<engine::IWindowService>();
+    bool changed = false;
+    for (char32_t typed = window.nextTypedCharacter(); typed != U'\0'; typed = window.nextTypedCharacter()) {
+        const auto character = nameCharacter(typed);
+        const bool doubleSpace = character == ' ' && (_typed.empty() || _typed.back() == ' ');
+        if (character && !doubleSpace && _typed.size() < protocol::MAX_NAME_LENGTH) {
+            _typed.push_back(*character);
+            changed = true;
+        }
+    }
+
+    // Backspace erases on the press, then repeats while held.
+    if (window.isKeyDown(engine::Key::Backspace)) {
+        const bool pressed = _eraseDelay < 0.0F;
+        _eraseDelay -= dt;
+        if (pressed || _eraseDelay <= 0.0F) {
+            _eraseDelay = pressed ? ERASE_FIRST_REPEAT : ERASE_REPEAT;
+            if (!_typed.empty()) {
+                _typed.pop_back();
+                changed = true;
+            }
+        }
+    } else {
+        _eraseDelay = -1.0F;
+    }
+    if (changed) {
+        _dirty = true;
+    }
+
+    const bool enter = window.isKeyDown(engine::Key::Enter) || window.isKeyDown(engine::Key::KeypadEnter);
+    if (enter && !_enterWasDown) {
+        confirmName(engine);
+    }
+    _enterWasDown = enter;
+}
+
+void MenuPlugin::confirmName(engine::Engine& engine) {
+    while (!_typed.empty() && _typed.back() == ' ') {
+        _typed.pop_back();
+    }
+    if (!protocol::isValidName(_typed)) {
+        notify("ENTRE UN PSEUDO");
+        return;
+    }
+    _name = _typed;
+    engine.service<ecs::net::INetworkService>().send(
+        ecs::net::SERVER_PEER, protocol::encode(protocol::SetName{.name = _name}), ecs::net::Channel::Reliable);
+    show(Scene::Menu);
 }
 
 void MenuPlugin::request(engine::Engine& engine, const protocol::Bytes& request) {
@@ -286,10 +372,14 @@ void MenuPlugin::rebuild(engine::Engine& engine) {
     ecs::Registry& registry = engine.registry();
     _canvas.clear(registry);
     _buttons.clear();
+    _cursor = 0;
     const auto& window = engine.service<engine::IWindowService>();
     const auto width = static_cast<float>(window.width());
     const auto height = static_cast<float>(window.height());
     switch (_scene) {
+        case Scene::Name:
+            buildName(registry, width, height);
+            break;
         case Scene::Menu:
             buildMenu(registry, width, height);
             break;
@@ -328,6 +418,54 @@ void MenuPlugin::buildNotice(ecs::Registry& registry, const float width, const f
     }
 }
 
+void MenuPlugin::buildName(ecs::Registry& registry, const float width, const float height) {
+    constexpr float TITLE_TOP = 0.13F;
+    constexpr float HEADING_TOP = 0.36F;
+    constexpr float FIELD_TOP = 0.46F;
+    constexpr float HINT_TOP = 0.6F;
+    constexpr float BUTTON_TOP = 0.68F;
+    constexpr float NOTICE_TOP = 0.82F;
+    constexpr float FIELD_PADDING = 18.0F;
+    const float middle = width / 2.0F;
+    buildOverlay(registry, width, height);
+    _canvas.text(registry, protocol::GAME_TITLE, middle, height * TITLE_TOP, TITLE_SQUARE, TEXT_COLOR, LAYER_TEXT);
+    _canvas.text(registry, "CHOISIS TON PSEUDO", middle, height * HEADING_TOP, HEADING_SQUARE * 0.75F, TEXT_COLOR,
+                 LAYER_TEXT);
+
+    // The field fits the longest name; the text is centered, the cursor right after it.
+    const float fieldWidth = std::min(
+        width - (2.0F * SIDE_MARGIN),
+        UiCanvas::textWidth(std::string(protocol::MAX_NAME_LENGTH, 'W'), FIELD_SQUARE) + (2.0F * FIELD_PADDING));
+    const float fieldHeight = (GLYPH_HEIGHT * FIELD_SQUARE) + (2.0F * FIELD_PADDING);
+    const ScreenRect field{
+        .x = middle - (fieldWidth / 2.0F),
+        .y = height * FIELD_TOP,
+        .width = fieldWidth,
+        .height = fieldHeight,
+    };
+    _canvas.rect(registry, field, FIELD_COLOR, LAYER_PANEL);
+    const float textTop = centeredTop(field, FIELD_SQUARE);
+    const float textWidth = UiCanvas::textWidth(_typed, FIELD_SQUARE);
+    _canvas.text(registry, _typed, middle, textTop, FIELD_SQUARE, TEXT_COLOR, LAYER_TEXT);
+    const float cursorX = middle + (textWidth / 2.0F) + (_typed.empty() ? -FIELD_SQUARE / 2.0F : FIELD_SQUARE);
+    _cursor = _canvas.rect(
+        registry, ScreenRect{.x = cursorX, .y = textTop, .width = FIELD_SQUARE, .height = GLYPH_HEIGHT * FIELD_SQUARE},
+        TEXT_COLOR, LAYER_TEXT);
+    _blink = 0.0F;
+
+    _canvas.text(registry, std::to_string(protocol::MAX_NAME_LENGTH) + " CARACTERES MAX : LETTRES CHIFFRES ESPACE - .",
+                 middle, height * HINT_TOP, TINY_SQUARE, DIM_COLOR, LAYER_TEXT);
+    addButton(registry,
+              ScreenRect{
+                  .x = middle - (BUTTON_WIDTH / 2.0F),
+                  .y = height * BUTTON_TOP,
+                  .width = BUTTON_WIDTH,
+                  .height = BUTTON_HEIGHT,
+              },
+              "VALIDER", Action::ConfirmName);
+    buildNotice(registry, width, height * NOTICE_TOP);
+}
+
 void MenuPlugin::buildMenu(ecs::Registry& registry, const float width, const float height) {
     constexpr float TITLE_TOP = 0.13F;
     constexpr float TAGLINE_TOP = 0.33F;
@@ -355,6 +493,19 @@ void MenuPlugin::buildMenu(ecs::Registry& registry, const float width, const flo
     const std::uint16_t online = _matches.online;
     _canvas.text(registry, std::to_string(online) + (online > 1 ? " JOUEURS EN LIGNE" : " JOUEUR EN LIGNE"), middle,
                  height * ONLINE_TOP, SMALL_SQUARE, DIM_COLOR, LAYER_TEXT);
+
+    // The player's name in the corner: a click changes it.
+    constexpr float NAME_PADDING = 16.0F;
+    constexpr float NAME_HEIGHT = 44.0F;
+    const std::string label = "PSEUDO : " + _name;
+    addButton(registry,
+              ScreenRect{
+                  .x = SIDE_MARGIN,
+                  .y = SIDE_MARGIN,
+                  .width = UiCanvas::textWidth(label, LABEL_SQUARE) + (2.0F * NAME_PADDING),
+                  .height = NAME_HEIGHT,
+              },
+              label, Action::Rename);
 }
 
 void MenuPlugin::buildBrowser(ecs::Registry& registry, const float width, const float height) {

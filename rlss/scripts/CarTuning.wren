@@ -75,11 +75,12 @@ class CarTuning {
      */
     static BOOST_REFILL_RATE { 25 }
     /**
-     * @brief Acceleration given by boosting, toward the nose. Estimate: about 12% above Rocket League (991.7 on the
-     * ground, 1058.3 in the air), so that boosting nose up in the air climbs clearly against the stronger gravity.
+     * @brief Acceleration given by boosting, toward the nose. Estimates: on the ground, about 12% above Rocket League
+     * (991.7); in the air, 1.61 times the gravity like in Rocket League (1058.3 against 650), so that boosting nose up
+     * climbs clearly (550 uu/s² net) against the stronger gravity.
      */
     static BOOST_ACCEL_GROUND { 1110 }
-    static BOOST_ACCEL_AIR { 1185 }
+    static BOOST_ACCEL_AIR { 1450 }
     /** @brief A boost, once started, lasts at least this long. */
     static BOOST_MIN_TIME { 0.1 }
 
@@ -104,12 +105,24 @@ class CarTuning {
     static DODGE_VERTICAL_KEEP { 0.5 }
 
     // --- Air control ---
-    /** @brief Angular acceleration given by the stick in the air (Rocket League pitch). */
+    /**
+     * @brief Angular acceleration of the air control (Rocket League pitch): the car starts and stops turning this fast
+     * toward where the stick aims.
+     */
     static AIR_TORQUE { 12.46 }
     /** @brief Angular damping when the stick is released. */
     static AIR_DAMPING { 2.798 }
-    /** @brief Fastest rotation of a car. */
-    static MAX_ANGULAR_SPEED { 5.5 }
+    /** @brief Fastest rotation given by the air control (Rocket League: 5.5, slowed down for a calmer flight). */
+    static MAX_ANGULAR_SPEED { 4.2 }
+    /**
+     * @brief Deceleration the air control plans with when the nose gets close to where the stick aims (below
+     * `AIR_TORQUE`, so that it always has room to stop): it slows down in time instead of overshooting.
+     */
+    static AIM_BRAKING { 10 }
+    /** @brief Close to the aim, the rotation speed is at most this times the angle left (rad/s per rad): no jitter. */
+    static AIM_GAIN { 12 }
+    /** @brief Spin of a dodge (flip), faster than the air control. */
+    static DODGE_SPIN { 5.5 }
 
     // --- Contacts other than the wheels ---
     /** @brief Landing on the wheels needs the roof within ~60° of the surface normal (cos 60° = 0.5). */
@@ -130,6 +143,11 @@ class CarTuning {
     static SELF_RIGHT_GAP { 20 }
     static SELF_RIGHT_MIN_TIME { 0.06 }
     static SELF_RIGHT_MAX_SPIN { 16 }
+    /**
+     * @brief A landing or the body hitting a wall faster than this (speed into the surface, uu/s) makes a sound. A full
+     * jump lands at about 540 uu/s.
+     */
+    static IMPACT_SOUND_SPEED { 250 }
     /** @brief Time a car on its roof takes to roll back on its wheels after pressing jump. */
     static RECOVERY_TIME { 0.55 }
 }

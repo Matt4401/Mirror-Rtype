@@ -11,7 +11,8 @@
  */
 class BallTuning {
     // --- Ball ---
-    static RADIUS { 91.25 }
+    /** @brief A little smaller than Rocket League's 91.25. Keep `rlss::BALL_RADIUS` (shared/Arena.hpp) the same. */
+    static RADIUS { 80 }
     /** @brief Masses only matter as a ratio: a car weighs six balls. */
     static MASS { 30 }
     /**
@@ -35,6 +36,8 @@ class BallTuning {
     /** @brief Deceleration of a ball rolling on a surface. Estimate: a rolling ball stops after a few seconds. */
     static ROLLING_RESISTANCE { 300 }
     static MAX_ANGULAR_SPEED { 6 }
+    /** @brief A bounce faster than this into the wall (uu/s) makes a sound; a ball settling down stays quiet. */
+    static BOUNCE_SOUND_SPEED { 100 }
     /** @brief Moment of inertia of a solid sphere, as a share of mass * radius². */
     static INERTIA_FACTOR { 0.4 }
 
@@ -54,6 +57,8 @@ class BallTuning {
     static HIT_VERTICAL_SCALE { 0.35 }
     static HIT_FORWARD_SCALE { 0.65 }
     static HIT_MAX_RELATIVE_SPEED { 4600 }
+    /** @brief A hit makes a sound when the car and the ball meet faster than this (uu/s), or when it is a colored shot. */
+    static HIT_SOUND_SPEED { 150 }
 
     /** @brief Scale of the extra impulse below (1 in Rocket League). Estimate: softer hits, a slower ball. */
     static HIT_STRENGTH { 0.7 }

@@ -30,7 +30,7 @@ bool isMenuRequest(const ecs::net::Bytes& data) {
     }
     const auto type = static_cast<protocol::MessageType>(data.front());
     return type == protocol::MessageType::CreateMatch || type == protocol::MessageType::JoinMatch ||
-           type == protocol::MessageType::LeaveMatch;
+           type == protocol::MessageType::LeaveMatch || type == protocol::MessageType::SetName;
 }
 
 }  // namespace
@@ -103,6 +103,7 @@ void MatchServer::onConnected(const ecs::net::PeerId peer) {
 void MatchServer::onDisconnected(const ecs::net::PeerId peer) {
     leave(peer);
     _online.erase(peer);
+    _names.erase(peer);
     rtype::log::info(LOG_TAG, "player ", peer, " disconnected (", _online.size(), " online)");
 }
 
@@ -129,6 +130,10 @@ void MatchServer::onData(const ecs::net::NetworkEvent& event) {
     } else if (std::holds_alternative<protocol::LeaveMatch>(*message)) {
         leave(event.peer);
         sendList(event.peer);
+    } else if (const auto* name = std::get_if<protocol::SetName>(&*message)) {
+        rtype::log::info(LOG_TAG, "player ", event.peer, " is ", name->name);
+        _names.insert_or_assign(event.peer, name->name);
+        forwardName(event.peer);
     }
 }
 
@@ -174,6 +179,17 @@ void MatchServer::join(const ecs::net::PeerId peer, const std::uint16_t matchId)
     sendResult(peer, protocol::JoinStatus::Joined, matchId);
     it->second->addPlayer(peer);
     _matchOf.emplace(peer, matchId);
+    forwardName(peer);
+}
+
+void MatchServer::forwardName(const ecs::net::PeerId peer) {
+    const auto match = matchOf(peer);
+    const auto name = _names.find(peer);
+    if (match && name != _names.end()) {
+        // After the `Connected` event: the match spawns the car, then names it.
+        _rooms.at(*match)->deliver(peer, protocol::encode(protocol::SetName{.name = name->second}),
+                                   ecs::net::Channel::Reliable);
+    }
 }
 
 void MatchServer::leave(const ecs::net::PeerId peer) {

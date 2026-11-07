@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -22,7 +23,7 @@ inline constexpr std::string_view GAME_TITLE = "RLSS";
  * @brief Transport protocol id (`ecs::net::NetworkConfig::protocolId`): an R-Type client and an RLSS server refuse
  * each other during the handshake. Bump the low byte on every incompatible protocol change.
  */
-inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0007U;  // "RL", version 7
+inline constexpr std::uint32_t PROTOCOL_ID = 0x524C000AU;  // "RL", version 10
 
 /** @brief Port used when none is given on the command line (TCP and UDP). */
 inline constexpr std::uint16_t DEFAULT_PORT = 4250;
@@ -70,7 +71,30 @@ enum class MessageType : std::uint8_t {
     LeaveMatch = 8,
     /** @brief Server → client, reliable: answer to `CreateMatch` / `JoinMatch`. */
     JoinResult = 9,
+    /** @brief Client → server, reliable: the player's name, sent once connected (again to change it). */
+    SetName = 10,
+    /** @brief Server → client, reliable: the name of each car of the match, sent when the players change. */
+    PlayerNames = 11,
 };
+
+/** @brief Longest player name, in characters. */
+inline constexpr std::size_t MAX_NAME_LENGTH = 12;
+
+/**
+ * @brief Whether a character may be part of a player name: upper-case letters, digits, space, `-` and `.` (all drawn by
+ * the block font of the client).
+ * @param character Character.
+ * @return True if allowed.
+ */
+[[nodiscard]] bool isNameCharacter(char character) noexcept;
+
+/**
+ * @brief Whether a player name is valid: 1 to `MAX_NAME_LENGTH` allowed characters (`isNameCharacter`), not starting
+ * nor ending with a space.
+ * @param name Name.
+ * @return True if valid.
+ */
+[[nodiscard]] bool isValidName(std::string_view name) noexcept;
 
 /** @brief One match of a `MatchList`. */
 struct MatchInfo {
@@ -104,6 +128,24 @@ struct MatchList {
     bool operator==(const MatchList&) const = default;
 };
 
+/** @brief Highest `SoundCue::count` and `SoundCue::value`: each travels on 4 bits. */
+inline constexpr std::uint8_t SOUND_CUE_MAX = 15;
+
+/**
+ * @brief Something an entity did that makes a sound (a jump, a hit, ...), carried by every snapshot.
+ *
+ * `count` wraps around: the client plays the sound when it changes, so a lost snapshot only delays it.
+ */
+struct SoundCue {
+    /** @brief How many times it happened, modulo 16. */
+    std::uint8_t count = 0;
+    /** @brief Detail of the last time, 0 to `SOUND_CUE_MAX` (a jump kind, a strength). */
+    std::uint8_t value = 0;
+
+    /** @brief Field-wise equality. */
+    bool operator==(const SoundCue&) const = default;
+};
+
 /** @brief State of one replicated entity in a snapshot. */
 struct EntityState {
     /** @brief Network id (never 0). */
@@ -127,6 +169,10 @@ struct EntityState {
     bool boosting = false;
     /** @brief Car: flip regained on the ball, not used yet (the car flashes white). */
     bool flipReset = false;
+    /** @brief Car: jumps (value: jump kind). Ball: hits by a car (value: strength). */
+    SoundCue firstCue;
+    /** @brief Car: impacts against the arena (value: strength). Ball: bounces off the arena (value: strength). */
+    SoundCue secondCue;
 };
 
 /** @brief Most entities one snapshot part carries: keeps a part far below the 1192-byte unreliable payload limit. */
@@ -155,8 +201,10 @@ struct Snapshot {
 struct PlayerInput {
     /** @brief Sequence number, increasing with every input. */
     std::uint32_t sequence = 0;
-    /** @brief Horizontal stick / arrow keys, in [-1, 1]: drive on the ground, rotate in the air. */
+    /** @brief Horizontal stick / arrow keys, in [-1, 1]: drive on the ground; in the air, where the nose aims. */
     float steer = 0.0F;
+    /** @brief Vertical stick / arrow keys, in [-1, 1], up positive: in the air, where the nose aims. */
+    float pitch = 0.0F;
     /** @brief Jump button held. */
     bool jump = false;
     /** @brief Boost button held. */
@@ -237,9 +285,38 @@ struct JoinResult {
     std::uint16_t matchId = 0;
 };
 
+/** @brief Client → server: the player's name (`isValidName`), shown above their car. */
+struct SetName {
+    /** @brief Name. */
+    std::string name;
+
+    /** @brief Field-wise equality. */
+    bool operator==(const SetName&) const = default;
+};
+
+/** @brief The name of the player driving a car. */
+struct PlayerName {
+    /** @brief Network id of the car (never 0), as found in the snapshots. */
+    std::uint32_t carId = 0;
+    /** @brief Name of its player (`isValidName`). */
+    std::string name;
+
+    /** @brief Field-wise equality. */
+    bool operator==(const PlayerName&) const = default;
+};
+
+/** @brief Server → client: the names of every player of the match, sent when one joins, leaves or renames. */
+struct PlayerNames {
+    /** @brief One per car, at most `MAX_PLAYERS_PER_MATCH`. */
+    std::vector<PlayerName> players;
+
+    /** @brief Field-wise equality. */
+    bool operator==(const PlayerNames&) const = default;
+};
+
 /** @brief Any decoded message. */
 using Message = std::variant<MatchList, Snapshot, PlayerInput, MatchStatus, Welcome, CreateMatch, JoinMatch, LeaveMatch,
-                             JoinResult>;
+                             JoinResult, SetName, PlayerNames>;
 
 /**
  * @brief Encodes a match list: `[type u8][online u16][count u8]`, then per match
@@ -253,15 +330,16 @@ using Message = std::variant<MatchList, Snapshot, PlayerInput, MatchStatus, Welc
 /**
  * @brief Encodes a snapshot part: `[type u8][matchId u16][tick u32][lastInput u32][partIndex u8][partCount u8]
  * [count u8]`, then
- * per entity `[id u32][kind u8][x f32][y f32][rotation f32][flags u8][color u8][boost u8]`; flags: bit 0 facing left,
- * bit 1 boosting, bit 2 flip reset.
+ * per entity `[id u32][kind u8][x f32][y f32][rotation f32][flags u8][color u8][boost u8][cueCounts u8][cueValues u8]`;
+ * flags: bit 0 facing left, bit 1 boosting, bit 2 flip reset; cue bytes: first cue in the low 4 bits, second in the
+ * high 4 bits.
  * @param message Message to encode; entities past `MAX_ENTITIES_PER_PART` are not written.
  * @return Wire bytes.
  */
 [[nodiscard]] Bytes encode(const Snapshot& message);
 
 /**
- * @brief Encodes a player input: `[type u8][sequence u32][steer i8][buttons u8]`.
+ * @brief Encodes a player input: `[type u8][sequence u32][steer i8][pitch i8][buttons u8]`.
  * @param message Message to encode.
  * @return Wire bytes.
  */
@@ -309,6 +387,21 @@ using Message = std::variant<MatchList, Snapshot, PlayerInput, MatchStatus, Welc
  * @return Wire bytes.
  */
 [[nodiscard]] Bytes encode(const JoinResult& message);
+
+/**
+ * @brief Encodes a name: `[type u8][length u8][name]`.
+ * @param message Message to encode; the name is cut to `MAX_NAME_LENGTH` characters.
+ * @return Wire bytes.
+ */
+[[nodiscard]] Bytes encode(const SetName& message);
+
+/**
+ * @brief Encodes the names of a match: `[type u8][count u8]`, then per player `[carId u32][length u8][name]`.
+ * @param message Message to encode; players past `MAX_PLAYERS_PER_MATCH` are not written, names are cut to
+ * `MAX_NAME_LENGTH` characters.
+ * @return Wire bytes.
+ */
+[[nodiscard]] Bytes encode(const PlayerNames& message);
 
 /**
  * @brief Decodes a message received from the network. Multi-byte integers are big-endian, floats are IEEE 754

@@ -11,6 +11,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -24,9 +25,10 @@ namespace rlss::server {
 /**
  * @brief Owns the transport and routes every peer: to the menu, or to the match it plays in.
  *
- * - A peer that connects is in the menu. Every `LIST_INTERVAL`, the players in the menu get the `MatchList` (the
- *   matches not over yet, with their teams, score and clock) if it changed; a player who arrives in the menu gets it
- *   at once.
+ * - A peer that connects is in the menu. It sends its name (`SetName`), kept for every match it joins: the server
+ *   hands it to the match right after the player, and again if the player renames while playing. Every `LIST_INTERVAL`,
+ * the players in the menu get the `MatchList` (the matches not over yet, with their teams, score and clock) if it
+ * changed; a player who arrives in the menu gets it at once.
  * - `CreateMatch` starts a new `MatchRoom` (at most `protocol::MAX_MATCHES`) and puts the player in it; `JoinMatch`
  *   puts the player in a match of the list, if it is not full nor over. Both are answered with a `JoinResult`.
  * - Once in a match, what the player sends goes to the match, except `LeaveMatch`, which takes them back to the menu.
@@ -79,6 +81,8 @@ class MatchServer {
     void create(ecs::net::PeerId peer);
     /** @brief Puts the peer in a match of the list. */
     void join(ecs::net::PeerId peer, std::uint16_t matchId);
+    /** @brief Hands the peer's name, if it sent one, to the match it plays in, as if the peer had sent it there. */
+    void forwardName(ecs::net::PeerId peer);
     /** @brief Takes the peer out of its match, back to the menu; destroys the match if it is now empty. */
     void leave(ecs::net::PeerId peer);
 
@@ -101,6 +105,8 @@ class MatchServer {
     std::unordered_map<ecs::net::PeerId, std::uint16_t> _matchOf;
     /** @brief Every connected peer. */
     std::unordered_set<ecs::net::PeerId> _online;
+    /** @brief Name of each peer that sent one (`protocol::isValidName`). */
+    std::unordered_map<ecs::net::PeerId, std::string> _names;
     /** @brief Id tried first for the next match. */
     std::uint16_t _nextId = 1;
     /** @brief When the match list was last sent to the menu. */

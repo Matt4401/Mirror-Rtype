@@ -46,7 +46,8 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&ArenaShape::cornerRadius>("cornerRadius")
         .property<&ArenaShape::goalTop>("goalTop")
         .property<&ArenaShape::goalBottom>("goalBottom")
-        .property<&ArenaShape::goalDepth>("goalDepth");
+        .property<&ArenaShape::goalDepth>("goalDepth")
+        .property<&ArenaShape::goalCornerRadius>("goalCornerRadius");
     ok = define(vm, arena) && ok;
 
     scripting::ComponentBinder<CarParts> parts(vm, module, "CarParts");
@@ -67,6 +68,20 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&CarStatus::placeAtKickoff>("placeAtKickoff")
         .property<&CarStatus::flipReset>("flipReset");
     ok = define(vm, status) && ok;
+
+    scripting::ComponentBinder<CarCues> carCues(vm, module, "CarCues");
+    carCues.property<&CarCues::jumps>("jumps")
+        .property<&CarCues::jumpKind>("jumpKind")
+        .property<&CarCues::impacts>("impacts")
+        .property<&CarCues::impactSpeed>("impactSpeed");
+    ok = define(vm, carCues) && ok;
+
+    scripting::ComponentBinder<BallCues> ballCues(vm, module, "BallCues");
+    ballCues.property<&BallCues::hits>("hits")
+        .property<&BallCues::hitSpeed>("hitSpeed")
+        .property<&BallCues::bounces>("bounces")
+        .property<&BallCues::bounceSpeed>("bounceSpeed");
+    ok = define(vm, ballCues) && ok;
 
     scripting::ComponentBinder<BallPart> ballPart(vm, module, "BallPart");
     ballPart.property<&BallPart::parent>("parent")

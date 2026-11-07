@@ -40,7 +40,7 @@ ecs::Entity spawnRect(ecs::Registry& registry, const Rect& rect, const ecs::Rgba
 }
 
 void fillRoundedRect(ecs::Registry& registry, const Rect& rect, const float radius, const ecs::Rgba color,
-                     const int layer) {
+                     const int layer, const RoundedCorners rounded) {
     const float r = radius;
     spawnRect(registry, {.left = rect.left, .top = rect.top + r, .right = rect.right, .bottom = rect.bottom - r}, color,
               layer);
@@ -54,17 +54,56 @@ void fillRoundedRect(ecs::Registry& registry, const Rect& rect, const float radi
         float centerY;
         float sideX;
         float sideY;
+        bool round;
     };
     const std::array<Corner, 4> corners{
         {
-            {.centerX = rect.left + r, .centerY = rect.top + r, .sideX = -1.0F, .sideY = -1.0F},
-            {.centerX = rect.right - r, .centerY = rect.top + r, .sideX = 1.0F, .sideY = -1.0F},
-            {.centerX = rect.left + r, .centerY = rect.bottom - r, .sideX = -1.0F, .sideY = 1.0F},
-            {.centerX = rect.right - r, .centerY = rect.bottom - r, .sideX = 1.0F, .sideY = 1.0F},
+            {
+                .centerX = rect.left + r,
+                .centerY = rect.top + r,
+                .sideX = -1.0F,
+                .sideY = -1.0F,
+                .round = rounded.topLeft,
+            },
+            {
+                .centerX = rect.right - r,
+                .centerY = rect.top + r,
+                .sideX = 1.0F,
+                .sideY = -1.0F,
+                .round = rounded.topRight,
+            },
+            {
+                .centerX = rect.left + r,
+                .centerY = rect.bottom - r,
+                .sideX = -1.0F,
+                .sideY = 1.0F,
+                .round = rounded.bottomLeft,
+            },
+            {
+                .centerX = rect.right - r,
+                .centerY = rect.bottom - r,
+                .sideX = 1.0F,
+                .sideY = 1.0F,
+                .round = rounded.bottomRight,
+            },
         },
     };
     const float strip = r / static_cast<float>(CORNER_STRIPS);
     for (const Corner& corner : corners) {
+        if (!corner.round) {
+            // A square corner: one r x r square.
+            const float x1 = corner.centerX + (corner.sideX * r);
+            const float y1 = corner.centerY + (corner.sideY * r);
+            spawnRect(registry,
+                      {
+                          .left = std::fmin(corner.centerX, x1),
+                          .top = std::fmin(corner.centerY, y1),
+                          .right = std::fmax(corner.centerX, x1),
+                          .bottom = std::fmax(corner.centerY, y1),
+                      },
+                      color, layer);
+            continue;
+        }
         for (int i = 0; i < CORNER_STRIPS; ++i) {
             const float near = static_cast<float>(i) * strip;
             const float middle = near + (strip / 2.0F);

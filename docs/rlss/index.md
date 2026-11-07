@@ -12,7 +12,8 @@ rlss/
 ├── shared/             -- rlss_shared: protocol + codec, arena dimensions, player palette (no engine)
 ├── game/               -- rlss_game: game components, replication codec, Wren bindings (server + client)
 ├── server/             -- rlss_server: headless, authoritative, one engine (and thread) per match
-├── client/             -- rlss_client: window, menus, arena and car drawing, controls
+├── client/             -- rlss_client: window, menus, arena and car drawing, controls, sounds
+├── assets/             -- sounds/*.wav, synthesized by generate_sounds.py (no third-party asset)
 └── scripts/            -- Wren: Match, Kickoff, Car, Ball, Arena, tunings (server); CameraDirector, CarView, BallView,
                            ScoreboardView (client)
 ```
@@ -22,7 +23,7 @@ rlss/
 | `rlss_shared` | none                                                                                              |
 | `rlss_game`   | `engine_core`, `engine_network`, `engine_input`, `engine_scripting`                               |
 | `rlss_server` | `rlss_game` + `engine_time`, `engine_events`, `engine_network_asio`, `engine_scripting`          |
-| `rlss_client` | `rlss_game` + `engine_time`, `engine_events`, `engine_render`, `engine_network_asio`             |
+| `rlss_client` | `rlss_game` + `engine_time`, `engine_events`, `engine_render`, `engine_audio`, `engine_network_asio` |
 
 ## Running
 
@@ -32,10 +33,13 @@ xmake
 ./rlss_client [host] [port]     # default 127.0.0.1 4250, start as many as you want
 ```
 
-Run both from the repository root: the Wren scripts are loaded from `rlss/scripts/`. Scripts are hot-reloaded: save
+Run both from the repository root: the Wren scripts are loaded from `rlss/scripts/`, the sounds from
+`rlss/assets/sounds/`. Scripts are hot-reloaded: save
 `rlss/scripts/CarTuning.wren` or `BallTuning.wren` while the server runs to tune the physics live.
 
-The client opens on the menu, drawn over the arena (with the mouse):
+The client first asks for a name (keyboard: up to 12 letters, digits, spaces, `-` or `.`; Enter or **VALIDER**). It is
+shown above your car in the matches; click it in the corner of the menu to change it. Then the menu, drawn over the
+arena (with the mouse):
 
 - **NOUVELLE PARTIE** creates a 3-minute match on the server and puts you in it (blue team).
 - **REJOINDRE** lists the matches being played (teams, score, clock); click one that is not full to join it. The list
@@ -45,9 +49,13 @@ The client opens on the menu, drawn over the arena (with the mouse):
 
 | Action                             | Keyboard                    | Gamepad           |
 |------------------------------------|-----------------------------|-------------------|
-| Drive (ground) / rotate (air)      | A / D, Q / D, ← / →         | left stick        |
-| Jump, then double jump or dodge    | Space, W, Z, ↑              | bottom face button |
-| Boost                              | Shift, S, ↓                 | right face button, right trigger |
+| Drive (ground) / aim the nose (air) | A / D, Q / D, ← / →        | left stick        |
+| Aim the nose up / down (air)       | W / S, Z / S, ↑ / ↓         | left stick        |
+| Jump, then double jump or dodge    | Space                       | bottom face button |
+| Boost                              | Shift                       | right face button, right trigger |
+
+In the air the stick aims: the nose turns toward where it points (up, down, left, right or in between). Point it up and
+boost to fly up.
 
 ## How it plugs into the engine
 
@@ -96,8 +104,11 @@ flowchart LR
       each `MatchStatus` of the joined match into a `MatchState`; the `ScoreboardView` script lights the squares with a
       3 × 5 pixel font and places them through the camera every frame, so the scoreboard stays on screen while the
       camera moves. Nothing is shown in the menus;
+    - `SoundPlugin` plays the sounds through the engine `AudioPlugin` (see [Sounds](#sounds));
     - `PlayerInputPlugin` publishes the local controls as a `LocalInput` every fixed step, while in a match;
-    - `MenuPlugin` runs the menus and the end screen (see [Matches and menus](#matches-and-menus)) and publishes the
+    - `NameTagPlugin` draws each player's name above their car, from the server's `PlayerNames` (see
+      [Player names](#player-names));
+    - `MenuPlugin` runs the name entry, the menus and the end screen (see [Matches and menus](#matches-and-menus)) and publishes the
       client events `MatchJoined` / `MatchLeft`, which the scoreboard, the camera and the inputs follow;
     - `SessionPlugin` closes the game when the connection is lost.
 
@@ -133,13 +144,16 @@ the screen changes).
 ## Goals and match
 
 Like in Sideswipe, the goals open in the side walls a little above the floor: the bottom curved corner is a ramp that
-ends at the goal mouth (420 uu above the floor, 360 uu high, 240 uu deep). There is no wall above the ramp to drive on:
-a car driving fast up the ramp flies up the mouth or into the goal, and the walls above the goals are reached in the
-air. The crossbar and the bottom of each goal meet the wall at a post, a convex edge that the ball bounces off and the
-car collides with.
+ends at the goal mouth (360 uu above the floor, 540 uu high, 240 uu deep). The goal bottom is 60 uu below the top of
+the curve (`arena::GOAL_DROP`): it cuts the end of the ramp, and the bottom post stands where they meet, on the curve,
+4 uu inside the arena. There is no wall above the ramp to drive on: a car driving fast up the ramp flies up the mouth or
+into the goal, and the walls above the goals are reached in the air. The crossbar and the bottom of each goal meet the
+wall at a post, a convex edge that the ball bounces off and the car collides with. The two back corners of each goal are rounded (`arena::GOAL_CORNER_RADIUS`, 120 uu, a bit more than
+the ball): a ball or a car rising along the back of the goal follows the curve instead of stopping in a sharp corner.
+The radius travels to the scripts in `ArenaShape.goalCornerRadius`, and the client draws the same curve.
 
-`Arena.wren` is an exact signed distance to the union of the rounded rectangle and the two goal boxes (nearest point
-over all segments and arcs, sign from an inside test); away from the side walls it uses the faster rounded rectangle
+`Arena.wren` is an exact signed distance to the union of the rounded rectangle and the two goal boxes with their
+rounded back corners (nearest point over all segments and arcs, sign from an inside test); away from the side walls it uses the faster rounded rectangle
 formula alone.
 
 - **Teams**: even player slots are blue (left side, defending the left goal, cool colors), odd slots orange (right
@@ -187,6 +201,21 @@ sequenceDiagram
   replicated entities (each with its `ReplicatedEntityDespawned`), resets the engine's `SnapshotState` (the next match
   counts its steps from 0) and publishes `MatchLeft`.
 
+## Player names
+
+1. **Name entry.** `MenuPlugin` opens on the name entry. It reads the typed characters through the engine's
+   `IWindowService::nextTypedCharacter()` (layout-aware: an AZERTY keyboard types what its keys say), makes letters
+   upper-case and only keeps the characters the block font draws (`protocol::isNameCharacter`). Enter sends `SetName`.
+2. **Server.** The `MatchServer` keeps the name of each peer (a malformed one is dropped). When the peer joins a match,
+   it hands the name to the match right after the player, as a `SetName` from that peer, and again if the player
+   renames while playing.
+3. **Match.** `RosterPlugin` names each car "JOUEUR" and its slot number until the player's `SetName` arrives, and sends
+   every player of the match the names of all the cars (`PlayerNames`) when a player joins, leaves or renames.
+4. **Client.** `NameTagPlugin` keeps the last `PlayerNames` of the joined match (one arriving outside a match is late,
+   and ignored). Once a named car is in the snapshots, it builds its label: the name in the block font, in the player
+   color lightened, on a dark plate. The label is laid out in pixels (`UiCanvas`, shifted every frame to the point above
+   the car's boost gauge on screen), so it keeps its size whatever the zoom.
+
 ## Camera
 
 The camera (`CameraDirector.wren`, client) is a fixed side view, never rotated: only its position and zoom change.
@@ -209,6 +238,35 @@ The camera (`CameraDirector.wren`, client) is a fixed side view, never rotated: 
 The client learns which car is its own from the server's `Welcome` message, and resolves it through the engine's
 `NetworkEntityMap`.
 
+## Sounds
+
+The client plays every sound from the server's state: it never guesses an event from the motion it sees.
+
+- **Sound cues.** The `Car` script counts its jumps (with their kind: jump, double jump, flip) and its hard contacts
+  with the arena (a landing or the body hitting a wall faster than 250 uu/s, with that speed) in the car's `CarCues`.
+  The `Ball` script counts the hits by a car (`Match` calls `recordHit` with the strength of the hit: the speed of the
+  meeting or of the ball sent flying, from 150 uu/s, or any colored shot) and its bounces off the arena faster than
+  100 uu/s in the ball's `BallCues`. Both are replicated in every snapshot as two sound cues (a 4-bit counter and a
+  4-bit value each, see [Protocol](#protocol)). The counters only grow: the client plays a sound when one changes,
+  so a lost snapshot delays a sound instead of losing it. The scripts start their counters from the component, so a
+  hot-reload replays nothing.
+- **`SoundPlugin`** (client) loads the sounds through `engine::IAudioService` and publishes engine `PlaySoundEvent`s,
+  positioned where the car or the ball is: louder and lower-pitched for stronger hits, bounces and impacts; a colored
+  shot adds a blast on top of the hit (pitched by its color). Each car plays its engine (an `AudioEmitter` on the car,
+  pitched and louder with its speed, measured on screen) and, while it boosts, the boost roar (an emitter on its own
+  entity, which follows the car).
+- **Match sounds** come from the `MatchState`: a beep for each second of the kickoff countdown, a higher one when play
+  starts, the goal horn and the crowd cheering, a horn for the overtime, the final buzzer, and a tick for each of the
+  last 10 seconds of regular time (higher for the last 3). A crowd murmurs during the whole match.
+- **Heard from the camera.** An `AudioListener` follows the camera target: sounds pan with their place on screen and
+  keep their full volume up to 1600 uu away (everything on screen), then fade out until 4000 uu.
+
+The sounds are synthesized by `rlss/assets/generate_sounds.py` (oscillators, noise and filters, Python standard library
+only, deterministic): edit it and run `python3 rlss/assets/generate_sounds.py` to regenerate `rlss/assets/sounds/`. A
+missing file only mutes its sound, and without an audio device the game runs silent. To use another sound, put a WAV
+file under the same name (the script keeps existing files; `--force` synthesizes them all again). The format is read
+from the extension: an MP3 renamed `.wav` does not load, convert it (`ffmpeg -i sound.mp3 -ac 1 -ar 44100 sound.wav`).
+
 ## Car physics
 
 Side view, y down, Rocket League units (uu). The arena is 2880 × 1536 uu with 420 uu curved corners (about 24 car
@@ -224,7 +282,7 @@ lengths wide: cars and ball keep their Rocket League size, the camera follows th
 | Jump                              | 292 uu/s + 1458 uu/s² while held, 0.2 s max (about 160 uu high) |
 | Second jump (flip / double jump)  | one per jump, until the car touches a surface again |
 | Dodge                             | 500 uu/s forward (533 back), scaled by speed; spins at 5.5 rad/s for 0.65 s |
-| Air control                       | 12.46 rad/s², damping 2.798, max 5.5 rad/s |
+| Air control                       | aims the nose at the stick: 12.46 rad/s², max 4.2 rad/s, damping 2.798 when released |
 | Max speed                         | 2300 uu/s                                |
 
 - **On the wheels**, the car follows the surface: floor, curved corners, walls, ceiling. Gravity along the surface
@@ -236,7 +294,11 @@ lengths wide: cars and ball keep their Rocket League size, the camera follows th
   Steering against the motion brakes; below 200 uu/s it turns the car around (Sideswipe-style mirror).
 - **Gravity** always pulls toward the bottom of the screen (900 uu/s² on the cars, 600 on the ball), even when the car drives on a
   wall or on the ceiling. It is stronger than in Rocket League, so jumps stay short and the game feels snappier.
-- **In the air**: jump hold, double jump (no direction) or dodge (toward the stick), air rotation. The four hitbox
+- **In the air**: jump hold, double jump (no direction) or dodge (toward the stick), air control. The stick (steer
+  and pitch) aims: the nose turns toward the direction it points on screen, at most 4.2 rad/s (Rocket League: 5.5),
+  speeding up and slowing down at 12.46 rad/s². It plans its stop (10 rad/s²) so that it ends on the aim without
+  overshooting; aiming right behind, it turns the way it already turns, or else over the top. Released, the rotation
+  dies down (damping 2.798). The four hitbox
   corners collide with the arena and the car lands when it touches them. Like in Sideswipe, it never rests on its roof
   or its side: flying toward a surface any other way than wheels first, it spins onto its wheels in the time left
   before the contact (within 0.25 s of it, up to 16 rad/s); if it touches anyway, it is turned onto its wheels as it
@@ -244,9 +306,9 @@ lengths wide: cars and ball keep their Rocket League size, the camera follows th
 
 ### Boost
 
-Boost pushes toward the nose: 1110 uu/s² on the ground (where it also means full throttle), 1185 uu/s² in the air
-(estimates, about 12% above Rocket League), up to the 2300 uu/s cap. In the air it beats gravity (1185 against 900):
-pointing the nose up, the car climbs. It burns 33.3 per second (a full tank lasts 3 s) and lasts at least 0.1 s once started. Like in
+Boost pushes toward the nose: 1110 uu/s² on the ground (where it also means full throttle; about 12% above Rocket
+League), 1450 uu/s² in the air (1.61 times the gravity, as in Rocket League), up to the 2300 uu/s cap (estimates). In
+the air it beats gravity (1450 against 900): pointing the nose up, the car climbs at 550 uu/s² net. It burns 33.3 per second (a full tank lasts 3 s) and lasts at least 0.1 s once started. Like in
 Sideswipe there are no boost pads: the tank (100, full at spawn) refills while the car touches a surface, wheels or
 body. The refill rate (25 per second, empty to full in 4 s) is an estimate, not a published value.
 
@@ -254,7 +316,7 @@ body. The refill rate (25 per second, empty to full in 4 s) is an estimate, not 
 
 | Quantity                   | Value                                                          |
 |----------------------------|----------------------------------------------------------------|
-| Radius                     | 91.25 uu                                                       |
+| Radius                     | 80 uu (Rocket League: 91.25)                                   |
 | Gravity                    | 600 uu/s²: floatier than the cars (900) and than Rocket League (650), estimate |
 | Air drag                   | 3% of the speed per second                                     |
 | Bounce (restitution)       | 0.6 of the speed into the wall                                 |
@@ -302,12 +364,16 @@ A flip touching the ball with another part adds 250 uu/s, without color.
 
 `tests/rlss/CarPhysicsTests.cpp` runs the Wren physics headless: landing, acceleration curve, turning around, wall and
 ceiling, jump height (~160 uu), dodge, boost (past the throttle cap, 33.3 per second, refill only against a surface,
-climbing nose up), driving upside down on the ceiling and falling when letting go, the flip still available after a
+climbing nose up), the air control (pushing up lifts the nose and boosting then climbs straight up, the nose
+follows the stick in every direction, it turns at most 4.2 rad/s and stops on the aim), driving upside down on the ceiling and falling when letting go, the flip still available after a
 long fall, ball bounce height (0.36 × the drop), a rolling ball stopping, the ball speed cap, car pushing the ball, hit
 speed, a front hit much stronger than the roof, a flip shot much stronger than driving, a car dropped upside down
 turning over before it touches the floor (and, in the random sequences, never lying on its back against a surface),
 the colored shots (red flip with the nose, purple jump off the ball, gold rear lob, a plain drive is not colored, a
-directional jump off the ball flips and misses it), the flip and boost resets on the ball, goals (a ball behind the line scores for the
+directional jump off the ball flips and misses it), the sound cues (jumps counted with their kind, a landing is an
+impact, driving around is not, ball bounces counted until it settles, a shot counted with its strength, counters going
+on from the component after a hot-reload), the rounded back corners of the goals (the arena distance, a ball rising
+along the back of a goal turned out of the corner), the flip and boost resets on the ball, goals (a ball behind the line scores for the
 right team, celebration, kickoff spots, countdown freeze, play resuming; a shot in the goal scores, a shot above the
 crossbar or under the goal does not), driving above the goal and up the ramp, and 400 random input sequences (with and
 without the ball) where neither the car nor the ball may leave the arena and the goals. The test checks containment
@@ -320,8 +386,9 @@ next goal ends it.
 `tests/rlss/MatchServerTests.cpp` runs a `MatchServer` on a fake transport, with real matches (their engine and the
 Wren scripts) stepped inline: the match list, creating a match (blue team, kickoff, full clock), filling the teams two
 against two then refusing a fifth player, a leaving player's slot going back to their team, the last player closing the
-match, two matches isolated from each other (each player only gets its own match's snapshots), the 16-match limit, and
-malformed or out-of-place requests being ignored.
+match, two matches isolated from each other (each player only gets its own match's snapshots), the 16-match limit,
+malformed or out-of-place requests being ignored, and the player names (a name shown on its car, every player getting
+all the names and the departures, the default name, renaming during a match, an invalid name ignored).
 
 `tests/rlss/CameraTests.cpp` runs `CameraDirector.wren` headless: both car and ball framed without rotation, zoom in
 when close and out when far (within its bounds), aim leaning to the ball, easing instead of jumping, stopping against
@@ -330,7 +397,7 @@ when it drives at supersonic speed, and the view never showing past the arena.
 
 ## Protocol
 
-The transport handshake uses `protocolId = 0x524C0007` ("RL", version 7), so R-Type and RLSS peers (or two RLSS
+The transport handshake uses `protocolId = 0x524C000A` ("RL", version 10), so R-Type and RLSS peers (or two RLSS
 versions) refuse each other. Every message starts with a one-byte type; multi-byte integers are big-endian, floats
 IEEE 754 binary32. Received messages are untrusted: an unknown type, a wrong size, an out-of-range field or a
 non-finite float drops the message.
@@ -339,20 +406,29 @@ non-finite float drops the message.
 |------|---------------|-----------------|------------|-----------------------------------------------------------------|
 | 1    | `MatchList`   | server → client | Reliable   | `online u16, count u8 (≤ 16)`, then `count` × match (11 bytes)  |
 | 2    | `Snapshot`    | server → client | Unreliable | `matchId u16, tick u32, lastInput u32, partIndex u8, partCount u8, count u8`, then `count` × entity |
-| 3    | `PlayerInput` | client → server | Unreliable | `sequence u32, steer i8 (−127..127), buttons u8 (bit 0 jump, bit 1 boost)` |
+| 3    | `PlayerInput` | client → server | Unreliable | `sequence u32, steer i8 (−127..127), pitch i8 (−127..127, up positive), buttons u8 (bit 0 jump, bit 1 boost)` |
 | 4    | `MatchStatus` | server → client | Reliable   | `blueScore u16, orangeScore u16, phase u8 (0 playing, 1 goal, 2 kickoff, 3 ended), countdown u8 (0..9), clock u16 (≤ 5999 s), flags u8 (bit 0 overtime)` |
 | 5    | `Welcome`     | server → client | Reliable   | `carId u32 (≠ 0), team u8 (0 blue, 1 orange)`: the receiver's car, sent once it exists |
 | 6    | `CreateMatch` | client → server | Reliable   | empty                                                           |
 | 7    | `JoinMatch`   | client → server | Reliable   | `matchId u16 (≠ 0)`                                             |
 | 8    | `LeaveMatch`  | client → server | Reliable   | empty                                                           |
 | 9    | `JoinResult`  | server → client | Reliable   | `status u8 (0 joined, 1 full, 2 not found or over, 3 server full), matchId u16` (≠ 0 if and only if joined) |
+| 10   | `SetName`     | client → server | Reliable   | `length u8, name`: the player's name                            |
+| 11   | `PlayerNames` | server → client | Reliable   | `count u8 (≤ 4)`, then `count` × `carId u32 (≠ 0), length u8, name` |
+
+A name is 1 to 12 bytes among `A-Z`, `0-9`, space, `-` and `.`, not starting nor ending with a space; any other name
+drops the message.
 
 A match of the list is `id u16 (≠ 0), bluePlayers u8 (≤ 2), orangePlayers u8 (≤ 2), blueScore u16, orangeScore u16,
 clock u16 (≤ 5999), flags u8 (bit 0 overtime)`; the clock is the time left, or the overtime played.
 
-A snapshot entity is 20 bytes: `id u32 (≠ 0), kind u8 (1 car, 2 ball), x f32, y f32, rotation f32, flags u8 (bit 0
+A snapshot entity is 22 bytes: `id u32 (≠ 0), kind u8 (1 car, 2 ball), x f32, y f32, rotation f32, flags u8 (bit 0
 facing left, bit 1 boosting, bit 2 flip reset), color u8 (car: palette index; ball: last shot, 0 none, 1 red, 2 purple,
-3 gold), boost u8 (0..100)`. A part carries at most 48 entities, a snapshot at most 64
+3 gold), boost u8 (0..100), cueCounts u8, cueValues u8`. The last two bytes carry two sound cues, the first in the low 4
+bits, the second in the high 4 bits: for a car, its jumps (value: 0 jump, 1 double jump, 2 flip) and its impacts
+(value: strength); for the ball, its hits and its bounces (value: strength). A count is a counter modulo 16 that
+changes when the event happens; a strength is the speed in 16 levels, 15 standing for 2400 uu/s or faster. Every value
+of these two bytes is valid. A part carries at most 48 entities, a snapshot at most 64
 parts.
 
 ## Not done yet

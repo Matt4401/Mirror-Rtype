@@ -17,14 +17,19 @@ inline constexpr std::uint32_t KIND_CAR = 1;
 /** @brief `ecs::Replicated::kind` of the ball. */
 inline constexpr std::uint32_t KIND_BALL = 2;
 
-/** @brief Horizontal axis action in [-1, 1]: drive on the ground, rotate in the air. */
+/** @brief Horizontal axis action in [-1, 1]: drive on the ground; in the air, with `ACTION_PITCH`, where the nose aims.
+ */
 inline constexpr std::string_view ACTION_STEER = "steer";
+/** @brief Vertical axis action in [-1, 1], up positive: in the air, with `ACTION_STEER`, where the nose aims. */
+inline constexpr std::string_view ACTION_PITCH = "pitch";
 /** @brief Jump button action. */
 inline constexpr std::string_view ACTION_JUMP = "jump";
 /** @brief Boost button action. */
 inline constexpr std::string_view ACTION_BOOST = "boost";
 /** @brief Id of `ACTION_STEER`. */
 inline constexpr input::ActionId STEER_ID = input::makeActionId(ACTION_STEER);
+/** @brief Id of `ACTION_PITCH`. */
+inline constexpr input::ActionId PITCH_ID = input::makeActionId(ACTION_PITCH);
 /** @brief Id of `ACTION_JUMP`. */
 inline constexpr input::ActionId JUMP_ID = input::makeActionId(ACTION_JUMP);
 /** @brief Id of `ACTION_BOOST`. */
@@ -70,6 +75,54 @@ struct CarStatus {
     bool placeAtKickoff = false;
     /** @brief Flip regained on the ball with the wheels, not used yet: the car flashes white. Replicated. */
     bool flipReset = false;
+};
+
+/**
+ * @brief Speed (uu/s) heard at full strength in the sound cues: a hit, a bounce or an impact this fast or faster is
+ * sent as the strongest level (`protocol::SOUND_CUE_MAX`).
+ */
+inline constexpr float SOUND_CUE_FULL_SPEED = 2400.0F;
+
+/** @brief Values of `CarCues::jumpKind`, as in `rlss/scripts/Car.wren`. */
+enum class JumpKind : std::uint8_t {
+    /** @brief First jump, off a surface (or rolling back onto the wheels). */
+    Jump = 0,
+    /** @brief Second jump without direction, or jumping off the ball (purple shot). */
+    DoubleJump = 1,
+    /** @brief Second jump with a direction: a flip. */
+    Dodge = 2,
+};
+
+/**
+ * @brief Server: what a car did that makes a sound, written by the `Car` script, replicated as sound cues.
+ *
+ * The counters only grow (the wire keeps their low 4 bits): a client plays a sound when one changes, so a lost snapshot
+ * delays the sound instead of losing it.
+ */
+struct CarCues {
+    /** @brief Jumps of any kind made so far. */
+    int jumps = 0;
+    /** @brief `JumpKind` of the last jump. */
+    int jumpKind = 0;
+    /** @brief Hard contacts with the arena so far: landings and the body hitting a wall. */
+    int impacts = 0;
+    /** @brief Speed into the surface of the last impact, in uu/s. */
+    float impactSpeed = 0.0F;
+};
+
+/**
+ * @brief Server: what the ball did that makes a sound, written by the `Ball` script, replicated as sound cues. Counters
+ * work like `CarCues`.
+ */
+struct BallCues {
+    /** @brief Hits by a car so far. */
+    int hits = 0;
+    /** @brief Speed of the last hit along the contact, in uu/s. */
+    float hitSpeed = 0.0F;
+    /** @brief Bounces off the arena so far. */
+    int bounces = 0;
+    /** @brief Speed into the wall of the last bounce, in uu/s. */
+    float bounceSpeed = 0.0F;
 };
 
 /** @brief Values of `ShotGlow::shot`, as in `rlss/scripts/Shots.wren`. */
@@ -133,6 +186,8 @@ struct ArenaShape {
     float goalBottom = 0.0F;
     /** @brief Depth of the goals behind the side walls. */
     float goalDepth = 0.0F;
+    /** @brief Radius of the back corners of the goals (0: sharp corners). */
+    float goalCornerRadius = 0.0F;
 };
 
 /** @brief Client: entities drawing the parts of a car, placed every frame by the `CarView` script. */

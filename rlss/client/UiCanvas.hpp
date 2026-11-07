@@ -100,8 +100,14 @@ class UiCanvas {
      * the frame.
      * @param registry World.
      * @param camera Camera the world is drawn through.
+     * @param shiftX Moves every element right by this many pixels (a label following something in the world).
+     * @param shiftY Moves every element down by this many pixels.
      */
-    void place(ecs::Registry& registry, const ecs::CameraComponent& camera) const;
+    void place(ecs::Registry& registry, const ecs::CameraComponent& camera, float shiftX = 0.0F,
+               float shiftY = 0.0F) const;
+
+    /** @brief True when the canvas has no element. */
+    [[nodiscard]] bool empty() const noexcept { return _items.empty(); }
 
   private:
     /** @brief An element and its place on screen. */

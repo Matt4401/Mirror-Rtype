@@ -32,9 +32,11 @@ namespace game = rlss::game;
 constexpr float FRAME = 1.0F / 60.0F;
 constexpr float HALF_LENGTH = 59.0F;
 constexpr float HALF_HEIGHT = 18.0F;
-constexpr float BALL_RADIUS = 91.25F;
-/** @brief Upper bound of the ball speed when a car drives into it from 350 uu away (no flip). */
-constexpr float DRIVE_SHOT_FROM_350_UU = 800.0F;
+constexpr float BALL_RADIUS = rlss::BALL_RADIUS;
+/** @brief Gap between the car's bumper and the ball in the drive / flip shot tests, whatever the ball size. */
+constexpr float SHOT_GAP = 200.0F;
+/** @brief Upper bound of the ball speed when a car drives into it from `SHOT_GAP` away (no flip). */
+constexpr float DRIVE_SHOT_FROM_GAP = 800.0F;
 
 /** @brief Distance from a point to a segment. */
 float segmentDistance(const float x, const float y, const float ax, const float ay, const float bx, const float by) {
@@ -44,34 +46,79 @@ float segmentDistance(const float x, const float y, const float ax, const float 
     return std::hypot(x - (ax + (ex * along)), y - (ay + (ey * along)));
 }
 
+/** @brief Height of the ramp top (the top of the lower curved corners) above which the goal mouth starts. */
+constexpr float RAMP_TOP = arena::BOTTOM - arena::CORNER_RADIUS;
+
+/** @brief How far inside the arena the bottom posts stand: where the goal bottom cuts the curved corner. */
+float postInset() {
+    const float drop = arena::GOAL_BOTTOM - RAMP_TOP;
+    const float r = arena::CORNER_RADIUS;
+    return drop > 0.0F ? r - std::sqrt((r * r) - (drop * drop)) : 0.0F;
+}
+
+/**
+ * @brief True if a point is inside a goal box whose two back corners are rounded (`arena::GOAL_CORNER_RADIUS`), and
+ * whose mouth reaches the bottom post below the top of the ramp.
+ * @param wall Side wall the goal opens in.
+ * @param outward -1 for the left goal, +1 for the right one.
+ */
+bool inRoundedGoal(const float x, const float y, const float wall, const float outward) {
+    const float back = wall + (outward * arena::GOAL_DEPTH);
+    const float mouth = wall - (outward * (y >= RAMP_TOP ? postInset() : 0.0F));
+    if (y < arena::GOAL_TOP || y > arena::GOAL_BOTTOM || x < std::min(mouth, back) || x > std::max(mouth, back)) {
+        return false;
+    }
+    const float rr = arena::GOAL_CORNER_RADIUS;
+    const float cx = back - (outward * rr);
+    const float cy = std::clamp(y, arena::GOAL_TOP + rr, arena::GOAL_BOTTOM - rr);
+    if ((x - cx) * outward <= 0.0F || cy == y) {
+        return true;  // not in a corner square
+    }
+    return std::hypot(x - cx, y - cy) <= rr;
+}
+
 /**
  * @brief Distance from a point to the walls of the arena and the goals, positive inside. Written independently from
- * Arena.wren: the union of the rounded rectangle and the two goal boxes.
+ * Arena.wren: the union of the rounded rectangle and the two goal boxes with rounded back corners.
  */
 float arenaDistance(const float x, const float y) {
     const float r = arena::CORNER_RADIUS;
     const float dx = x - std::clamp(x, arena::LEFT + r, arena::RIGHT - r);
     const float dy = y - std::clamp(y, arena::TOP + r, arena::BOTTOM - r);
     const bool inRoundedRect = (dx * dx) + (dy * dy) < r * r;
-    const bool inGoal = y >= arena::GOAL_TOP && y <= arena::GOAL_BOTTOM &&
-                        ((x >= arena::LEFT - arena::GOAL_DEPTH && x <= arena::LEFT) ||
-                         (x >= arena::RIGHT && x <= arena::RIGHT + arena::GOAL_DEPTH));
+    const bool inGoal = inRoundedGoal(x, y, arena::LEFT, -1.0F) || inRoundedGoal(x, y, arena::RIGHT, 1.0F);
 
     float nearest = std::min(segmentDistance(x, y, arena::LEFT + r, arena::TOP, arena::RIGHT - r, arena::TOP),
                              segmentDistance(x, y, arena::LEFT + r, arena::BOTTOM, arena::RIGHT - r, arena::BOTTOM));
+    const float rr = arena::GOAL_CORNER_RADIUS;
     for (const float wall : {arena::LEFT, arena::RIGHT}) {
-        const float back = wall == arena::LEFT ? wall - arena::GOAL_DEPTH : wall + arena::GOAL_DEPTH;
+        const float outward = wall == arena::LEFT ? -1.0F : 1.0F;
+        const float back = wall + (outward * arena::GOAL_DEPTH);
+        const float inner = back - (outward * rr);  // where the crossbar and the bottom turn into the corners
+        const float post = wall - (outward * postInset());
         nearest = std::min({nearest, segmentDistance(x, y, wall, arena::TOP + r, wall, arena::GOAL_TOP),
-                            segmentDistance(x, y, back, arena::GOAL_TOP, wall, arena::GOAL_TOP),
-                            segmentDistance(x, y, back, arena::GOAL_TOP, back, arena::GOAL_BOTTOM),
-                            segmentDistance(x, y, back, arena::GOAL_BOTTOM, wall, arena::GOAL_BOTTOM)});
+                            segmentDistance(x, y, inner, arena::GOAL_TOP, wall, arena::GOAL_TOP),
+                            segmentDistance(x, y, back, arena::GOAL_TOP + rr, back, arena::GOAL_BOTTOM - rr),
+                            segmentDistance(x, y, inner, arena::GOAL_BOTTOM, post, arena::GOAL_BOTTOM)});
+        if (arena::GOAL_BOTTOM < RAMP_TOP) {
+            nearest = std::min(nearest, segmentDistance(x, y, wall, arena::GOAL_BOTTOM, wall, RAMP_TOP));
+        }
+        for (const float cy : {arena::GOAL_TOP + rr, arena::GOAL_BOTTOM - rr}) {
+            const float sideY = cy < (arena::GOAL_TOP + arena::GOAL_BOTTOM) / 2.0F ? -1.0F : 1.0F;
+            if ((x - inner) * outward > 0.0F && (y - cy) * sideY > 0.0F) {
+                nearest = std::min(nearest, std::fabs(std::hypot(x - inner, y - cy) - rr));
+            }
+        }
     }
     for (const float cx : {arena::LEFT + r, arena::RIGHT - r}) {
         for (const float cy : {arena::TOP + r, arena::BOTTOM - r}) {
             const bool sideX = cx < (arena::LEFT + arena::RIGHT) / 2.0F ? x < cx : x > cx;
             const bool sideY = cy < (arena::TOP + arena::BOTTOM) / 2.0F ? y < cy : y > cy;
-            if (sideX && sideY) {
-                nearest = std::min(nearest, std::fabs(std::hypot(x - cx, y - cy) - r));
+            const float length = std::hypot(x - cx, y - cy);
+            // The goals cut the top of the lower curves: they only go up to the goal bottom.
+            const bool cut = cy > arena::TOP + r && cy + ((y - cy) * r / length) < arena::GOAL_BOTTOM;
+            if (sideX && sideY && !cut) {
+                nearest = std::min(nearest, std::fabs(length - r));
             }
         }
     }
@@ -95,7 +142,8 @@ class CarPhysics : public ::testing::Test {
                                                              .cornerRadius = arena::CORNER_RADIUS,
                                                              .goalTop = arena::GOAL_TOP,
                                                              .goalBottom = arena::GOAL_BOTTOM,
-                                                             .goalDepth = arena::GOAL_DEPTH});
+                                                             .goalDepth = arena::GOAL_DEPTH,
+                                                             .goalCornerRadius = arena::GOAL_CORNER_RADIUS});
         // Most tests want the ball in play at once: a match already running (a new one starts with a kickoff).
         _registry.addComponent(arenaEntity, game::MatchState{.clock = MATCH_DURATION});
         _arena = arenaEntity;
@@ -112,6 +160,7 @@ class CarPhysics : public ::testing::Test {
         controls.playerIndex = 3;
         _registry.addComponent(_car, std::move(controls));
         _registry.addComponent(_car, game::CarStatus{});
+        _registry.addComponent(_car, game::CarCues{});
         _registry.addComponent(
             _car, ecs::ScriptComponent{.moduleName = std::string(game::CAR_SCRIPT_MODULE), .className = "Car"});
     }
@@ -121,15 +170,18 @@ class CarPhysics : public ::testing::Test {
         _ball = _registry.spawnEntity();
         _registry.addComponent(_ball, ecs::Transform{.x = x, .y = y});
         _registry.addComponent(_ball, game::ShotGlow{});
+        _registry.addComponent(_ball, game::BallCues{});
         _registry.addComponent(
             _ball, ecs::ScriptComponent{.moduleName = std::string(game::BALL_SCRIPT_MODULE), .className = "Ball"});
     }
 
     /** @brief Simulates `seconds` with the given input held. */
-    void run(const float seconds, const float steer = 0.0F, const bool jump = false, const bool boost = false) {
+    void run(const float seconds, const float steer = 0.0F, const bool jump = false, const bool boost = false,
+             const float pitch = 0.0F) {
         if (_car != 0) {
             auto& input = _registry.getComponents<input::InputState>().get(_car);
             input.setAxis(game::STEER_ID, steer);
+            input.setAxis(game::PITCH_ID, pitch);
             input.setDown(game::JUMP_ID, jump);
             input.setDown(game::BOOST_ID, boost);
         }
@@ -224,6 +276,8 @@ class CarPhysics : public ::testing::Test {
     }
 
     [[nodiscard]] int glow() { return _registry.getComponents<game::ShotGlow>().get(_ball).shot; }
+    [[nodiscard]] const game::CarCues& carCues() { return _registry.getComponents<game::CarCues>().get(_car); }
+    [[nodiscard]] const game::BallCues& ballCues() { return _registry.getComponents<game::BallCues>().get(_ball); }
 
     /**
      * @brief Car standing on its rear, right next to the ball on the floor, its wheels against the ball's right side.
@@ -642,19 +696,19 @@ TEST_F(CarPhysics, TheFrontAtFullSpeedHitsMuchHarderThanTheRoof) {
 
 TEST_F(CarPhysics, AFlipIntoTheBallHitsMuchHarderThanDriving) {
     spawnCar(arena::LEFT + 800.0F, arena::BOTTOM - HALF_HEIGHT);
-    spawnBall(arena::LEFT + 1150.0F, arena::BOTTOM - BALL_RADIUS);
+    spawnBall(arena::LEFT + 800.0F + HALF_LENGTH + SHOT_GAP + BALL_RADIUS, arena::BOTTOM - BALL_RADIUS);
     run(0.3F);
     run(0.1F, 0.0F, true);  // jump
     run(0.05F);
     const float flip = fastestBall(*this, 1.5F, 1.0F, true);  // dodge forward into the ball
-    EXPECT_GT(flip, 1.4F * DRIVE_SHOT_FROM_350_UU);
+    EXPECT_GT(flip, 1.4F * DRIVE_SHOT_FROM_GAP);
 }
 
 TEST_F(CarPhysics, DrivingIntoTheBallFromCloseIsAWeakShot) {
     spawnCar(arena::LEFT + 800.0F, arena::BOTTOM - HALF_HEIGHT);
-    spawnBall(arena::LEFT + 1150.0F, arena::BOTTOM - BALL_RADIUS);
+    spawnBall(arena::LEFT + 800.0F + HALF_LENGTH + SHOT_GAP + BALL_RADIUS, arena::BOTTOM - BALL_RADIUS);
     run(0.3F);
-    EXPECT_LT(fastestBall(*this, 1.0F, 1.0F), DRIVE_SHOT_FROM_350_UU);
+    EXPECT_LT(fastestBall(*this, 1.0F, 1.0F), DRIVE_SHOT_FROM_GAP);
 }
 
 TEST_F(CarPhysics, ARollingBallStops) {
@@ -776,6 +830,185 @@ TEST_F(CarPhysics, FlippingTheRearIntoTheBallIsAGoldLob) {
     }
     EXPECT_EQ(glow(), static_cast<int>(game::Shot::Gold));
     EXPECT_LT(lowestVy, -400.0F);  // lobbed upward
+}
+
+// --- Sound cues: what the clients hear comes from these counters ---
+
+TEST_F(CarPhysics, JumpsAreCountedWithTheirKindAndTheLandingIsAnImpact) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    run(0.3F);
+    const int landed = carCues().impacts;  // spawned a little above the floor
+    EXPECT_EQ(carCues().jumps, 0);
+    run(0.1F, 0.0F, true);
+    EXPECT_EQ(carCues().jumps, 1);
+    EXPECT_EQ(carCues().jumpKind, static_cast<int>(game::JumpKind::Jump));
+    run(0.05F);
+    run(0.05F, 1.0F, true);  // flip
+    EXPECT_EQ(carCues().jumps, 2);
+    EXPECT_EQ(carCues().jumpKind, static_cast<int>(game::JumpKind::Dodge));
+    run(1.5F);
+    EXPECT_GT(carCues().impacts, landed);
+    EXPECT_GT(carCues().impactSpeed, 250.0F);
+}
+
+TEST_F(CarPhysics, ADoubleJumpIsCountedAsSuch) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    run(0.3F);
+    run(0.1F, 0.0F, true);
+    run(0.05F);
+    run(0.05F, 0.0F, true);
+    EXPECT_EQ(carCues().jumps, 2);
+    EXPECT_EQ(carCues().jumpKind, static_cast<int>(game::JumpKind::DoubleJump));
+}
+
+TEST_F(CarPhysics, DrivingAroundTheArenaMakesNoImpact) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    run(0.3F);
+    const int landed = carCues().impacts;
+    run(1.0F, 1.0F);
+    run(1.0F, -1.0F);
+    EXPECT_EQ(carCues().impacts, landed);
+    EXPECT_EQ(carCues().jumps, 0);
+}
+
+TEST_F(CarPhysics, BallBouncesAreCountedAndASettledBallIsQuiet) {
+    spawnBall(arena::WIDTH / 2.0F, arena::BOTTOM - BALL_RADIUS - 500.0F);
+    run(1.5F);
+    EXPECT_GE(ballCues().bounces, 1);
+    EXPECT_GT(ballCues().bounceSpeed, 300.0F);
+    run(6.0F);
+    const int settled = ballCues().bounces;
+    run(2.0F);
+    EXPECT_EQ(ballCues().bounces, settled);
+    EXPECT_EQ(ballCues().hits, 0);
+}
+
+TEST_F(CarPhysics, AShotIsCountedWithItsStrength) {
+    spawnCar(arena::LEFT + 800.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnBall(arena::LEFT + 1150.0F, arena::BOTTOM - BALL_RADIUS);
+    run(0.3F);
+    run(0.1F, 0.0F, true);
+    run(0.05F);
+    (void)fastestBall(*this, 0.5F, 1.0F, true);
+    EXPECT_GE(ballCues().hits, 1);
+    EXPECT_GT(ballCues().hitSpeed, 1000.0F);
+}
+
+TEST_F(CarPhysics, SoundCountersGoOnFromTheComponent) {
+    // A hot-reload recreates the script: the counters must go on, not restart and replay a sound on the clients.
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    _registry.getComponents<game::CarCues>().get(_car).jumps = 7;
+    run(0.3F);
+    EXPECT_EQ(carCues().jumps, 7);
+    run(0.1F, 0.0F, true);
+    EXPECT_EQ(carCues().jumps, 8);
+}
+
+// --- Rounded goal corners ---
+
+TEST_F(CarPhysics, TheBackCornersOfTheGoalsAreRounded) {
+    run(FRAME);  // the match script builds the arena
+    // Just inside the sharp corner of a box: outside once the corner is rounded. The middle of the back stays a wall.
+    const float back = arena::LEFT - arena::GOAL_DEPTH;
+    wren(
+        "import \"rlss/scripts/Arena\" for Arena\n"
+        "var arena = Arena.fromWorld()\n"
+        "if (arena.goalCornerRadius != " +
+        std::to_string(arena::GOAL_CORNER_RADIUS) +
+        ") Fiber.abort(\"radius\")\n"
+        "arena.sample(" +
+        std::to_string(back + 10.0F) + ", " + std::to_string(arena::GOAL_TOP + 10.0F) +
+        ")\n"
+        "if (arena.distance >= 0) Fiber.abort(\"sharp corner\")\n"
+        "if (arena.curvature <= 0) Fiber.abort(\"not on the arc\")\n"
+        "arena.sample(" +
+        std::to_string(back + 10.0F) + ", " + std::to_string((arena::GOAL_TOP + arena::GOAL_BOTTOM) / 2.0F) +
+        ")\n"
+        "if ((arena.distance - 10).abs > 0.01 || arena.nx != 1) Fiber.abort(\"back wall\")");
+    EXPECT_FALSE(HasFailure());
+}
+
+TEST_F(CarPhysics, ABallThrownIntoAGoalCornerFollowsTheCurve) {
+    // A ball rising along the back of the left goal: the rounded corner turns it toward the field instead of stopping
+    // it dead in a sharp corner.
+    const float back = arena::LEFT - arena::GOAL_DEPTH;
+    spawnBall(back + BALL_RADIUS + 1.0F, arena::GOAL_BOTTOM - BALL_RADIUS - 100.0F);
+    throwBall(0.0F, -1500.0F);
+    float furthest = ball().x;
+    for (int i = 0; i < 40; ++i) {
+        run(FRAME);
+        furthest = std::max(furthest, ball().x);
+    }
+    EXPECT_GT(furthest, back + BALL_RADIUS + 20.0F);  // pushed out of the corner, toward the goal mouth
+}
+
+// --- Air control: the stick aims, the nose follows ---
+
+namespace {
+
+/** @brief Direction of the nose on screen, in radians (0 right, -pi/2 up), from a car transform. */
+float noseAngle(const ecs::Transform& car) {
+    const float facing = car.scaleX < 0.0F ? -1.0F : 1.0F;
+    return std::atan2(facing * std::sin(car.rotation), facing * std::cos(car.rotation));
+}
+
+/** @brief Smallest angle between two directions, in radians. */
+float angleBetween(const float a, const float b) {
+    return std::fabs(std::remainder(a - b, 2.0F * std::numbers::pi_v<float>));
+}
+
+}  // namespace
+
+TEST_F(CarPhysics, PushingUpInTheAirLiftsTheNoseAndBoostingClimbs) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    run(0.3F);
+    run(0.2F, 0.0F, true, false, 1.0F);  // jump, holding up
+    run(0.4F, 0.0F, false, false, 1.0F);
+    EXPECT_LT(angleBetween(noseAngle(transform()), -std::numbers::pi_v<float> / 2.0F), 0.25F);  // nose up
+    const float start = transform().y;
+    run(1.0F, 0.0F, false, true, 1.0F);                                   // boost, nose up
+    EXPECT_LT(transform().y, start - 200.0F);                             // it climbs: 550 uu/s² against gravity
+    EXPECT_LT(std::fabs(transform().x - (arena::WIDTH / 2.0F)), 100.0F);  // straight up
+}
+
+TEST_F(CarPhysics, TheNoseFollowsTheStickInEveryDirection) {
+    constexpr float PI = std::numbers::pi_v<float>;
+    struct Aim {
+        float steer;
+        float pitch;
+        float angle;
+    };
+    for (const Aim aim : {Aim{.steer = 0.0F, .pitch = -1.0F, .angle = PI / 2.0F},     // down
+                          Aim{.steer = 1.0F, .pitch = 1.0F, .angle = -PI / 4.0F},     // up and right
+                          Aim{.steer = -1.0F, .pitch = 0.0F, .angle = PI},            // left: turns around
+                          Aim{.steer = 0.0F, .pitch = 1.0F, .angle = -PI / 2.0F}}) {  // up
+        spawnCar(arena::WIDTH / 2.0F, arena::TOP + 500.0F);                           // high in the air, falling
+        run(1.0F, aim.steer, false, false, aim.pitch);
+        EXPECT_LT(angleBetween(noseAngle(transform()), aim.angle), 0.1F)
+            << "steer " << aim.steer << " pitch " << aim.pitch << ": nose at " << noseAngle(transform());
+        _registry.killEntity(_car);
+        _scripts.update(0.0F);
+        _car = 0;
+    }
+}
+
+TEST_F(CarPhysics, AirControlTurnsCalmlyAndStopsOnTheAim) {
+    spawnCar(arena::WIDTH / 2.0F, arena::TOP + 400.0F);
+    run(FRAME);
+    float fastest = 0.0F;
+    float previous = transform().rotation;
+    for (int i = 0; i < 60; ++i) {
+        run(FRAME, 0.0F, false, false, -1.0F);  // aim down: a quarter turn
+        fastest = std::max(fastest, angleBetween(transform().rotation, previous) / FRAME);
+        previous = transform().rotation;
+    }
+    EXPECT_LE(fastest, 4.2F + 0.05F);  // slower than Rocket League's 5.5 rad/s
+    EXPECT_GT(fastest, 3.0F);
+    // Arrived: it holds the aim instead of swinging past it.
+    const float settled = noseAngle(transform());
+    run(0.3F, 0.0F, false, false, -1.0F);
+    EXPECT_LT(angleBetween(noseAngle(transform()), settled), 0.02F);
+    EXPECT_LT(angleBetween(settled, std::numbers::pi_v<float> / 2.0F), 0.05F);
 }
 
 }  // namespace

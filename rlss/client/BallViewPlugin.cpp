@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "Arena.hpp"
 #include "CarViewPlugin.hpp"
 #include "Shapes.hpp"
 #include "components/Renderable.hpp"
@@ -26,7 +27,7 @@ namespace rlss::client {
 namespace {
 
 /** @brief Same radius as the physics (`BallTuning.RADIUS`). */
-constexpr float BALL_RADIUS = 91.25F;
+constexpr float BALL_RADIUS = rlss::BALL_RADIUS;
 /** @brief Strips making the disc. */
 constexpr int STRIPS = 22;
 constexpr float SEAM_WIDTH = 6.0F;

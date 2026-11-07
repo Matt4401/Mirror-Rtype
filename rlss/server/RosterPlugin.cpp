@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 #include "Arena.hpp"
 #include "CarSimulationPlugin.hpp"
@@ -32,6 +33,8 @@ namespace rlss::server {
 namespace {
 
 constexpr const char* LOG_TAG = "match";
+/** @brief Name of a player who has not sent one, followed by its slot number. */
+constexpr const char* DEFAULT_NAME = "JOUEUR ";
 }  // namespace
 
 void RosterPlugin::build(engine::PluginBuilder& builder) {
@@ -52,6 +55,26 @@ void RosterPlugin::init(engine::Engine& engine) {
                 rtype::log::info(LOG_TAG, "player ", event.peer, " left (", _players.size(), " playing)");
             }
         });
+    _packets = events.subscribe<ecs::net::PacketReceived>([this, &engine](const ecs::net::PacketReceived& packet) {
+        const auto player = _players.find(packet.peer);
+        if (player == _players.end()) {
+            return;
+        }
+        const auto message = protocol::decode(packet.data);  // untrusted: a malformed name is dropped
+        const auto* name = message ? std::get_if<protocol::SetName>(&*message) : nullptr;
+        if (name != nullptr && name->name != player->second.name) {
+            player->second.name = name->name;
+            broadcastNames(engine);
+        }
+    });
+}
+
+void RosterPlugin::broadcastNames(engine::Engine& engine) const {
+    protocol::PlayerNames names;
+    for (const auto& [peer, player] : _players) {
+        names.players.push_back(protocol::PlayerName{.carId = player.carId, .name = player.name});
+    }
+    engine.service<ecs::net::INetworkService>().broadcast(protocol::encode(names), ecs::net::Channel::Reliable);
 }
 
 void RosterPlugin::shutdown(engine::Engine& engine) {
@@ -63,6 +86,10 @@ void RosterPlugin::shutdown(engine::Engine& engine) {
     if (_disconnected) {
         events.unsubscribe<ecs::net::PeerDisconnected>(*_disconnected);
         _disconnected.reset();
+    }
+    if (_packets) {
+        events.unsubscribe<ecs::net::PacketReceived>(*_packets);
+        _packets.reset();
     }
     _players.clear();
     _slots = {};
@@ -111,6 +138,7 @@ bool RosterPlugin::join(engine::Engine& engine, const ecs::net::PeerId peer) {
     registry.addComponent(car, ecs::NetworkOwner{.client = peer});
     registry.addComponent(car, game::CarLook{.color = static_cast<std::uint8_t>(*slot % PLAYER_COLORS.size())});
     registry.addComponent(car, game::CarStatus{.boost = 0.0F, .boosting = false, .placeAtKickoff = true});
+    registry.addComponent(car, game::CarCues{});
     // Stepped by the `Match` script, not by its own update.
     registry.addComponent(car, ecs::ScriptComponent{
                                    .moduleName = std::string(game::CAR_SCRIPT_MODULE),
@@ -121,7 +149,13 @@ bool RosterPlugin::join(engine::Engine& engine, const ecs::net::PeerId peer) {
     engine.service<ecs::net::INetworkService>().send(
         peer, protocol::encode(protocol::Welcome{.carId = carId, .team = static_cast<protocol::Team>(*slot % 2)}),
         ecs::net::Channel::Reliable);
-    _players.emplace(peer, Player{.slot = *slot, .car = car});
+    _players.emplace(peer, Player{
+                               .slot = *slot,
+                               .car = car,
+                               .carId = carId,
+                               .name = DEFAULT_NAME + std::to_string(*slot + 1),
+                           });
+    broadcastNames(engine);
     return true;
 }
 
@@ -134,6 +168,7 @@ bool RosterPlugin::leave(engine::Engine& engine, const ecs::net::PeerId peer) {
     engine.getPlugin<scripting::ScriptPlugin>().scriptSystem().queueDestroyEntity(it->second.car);
     _slots.at(it->second.slot) = false;
     _players.erase(it);
+    broadcastNames(engine);
     return true;
 }
 

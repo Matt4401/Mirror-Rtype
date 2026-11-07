@@ -21,10 +21,13 @@
 #include "CommandLine.hpp"
 #include "Logger.hpp"
 #include "MenuPlugin.hpp"
+#include "NameTagPlugin.hpp"
 #include "PlayerInputPlugin.hpp"
 #include "ScoreboardPlugin.hpp"
 #include "ServerLink.hpp"
 #include "SessionPlugin.hpp"
+#include "SoundPlugin.hpp"
+#include "audio/AudioPlugin.hpp"
 #include "core/Engine.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "input/InputPlugin.hpp"
@@ -84,6 +87,7 @@ int main(int ac, char** av) {
         engine::Engine engine;
         engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.title = std::string(rlss::protocol::GAME_TITLE)})
             .addPlugin<input::InputPlugin>(rlss::client::makeControls())
+            .addPlugin<audio::AudioPlugin>()
             .addPlugin<ecs::net::NetworkPlugin>(link, link)
             .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
             // After the replication: the CarView scripts read the car transforms once interpolated.
@@ -94,6 +98,8 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::BallViewPlugin>()
             .addPlugin<rlss::client::CameraPlugin>()
             .addPlugin<rlss::client::ScoreboardPlugin>()
+            .addPlugin<rlss::client::NameTagPlugin>()
+            .addPlugin<rlss::client::SoundPlugin>()
             .addPlugin<rlss::client::PlayerInputPlugin>()
             .addPlugin<rlss::client::MenuPlugin>(link);
         engine.run();

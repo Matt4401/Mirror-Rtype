@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <limits>
 #include <variant>
 #include <vector>
 
@@ -125,11 +126,13 @@ TEST(RlssProtocol, SnapshotRoundTrips) {
                       .color = 3,
                       .boost = 64,
                       .boosting = true,
-                      .flipReset = true},
+                      .flipReset = true,
+                      .firstCue = {.count = 9, .value = 2},
+                      .secondCue = {.count = 15, .value = 11}},
                      {.id = 9, .kind = 1, .x = 0.0F, .y = 1000.0F, .rotation = -0.5F, .facingLeft = false, .color = 0}},
     };
     const auto bytes = protocol::encode(snapshot);
-    EXPECT_EQ(bytes.size(), 14U + (2U * 20U));
+    EXPECT_EQ(bytes.size(), 14U + (2U * 22U));
     EXPECT_EQ(protocol::snapshotMatch(bytes), 4);
 
     const auto message = protocol::decode(bytes);
@@ -153,6 +156,22 @@ TEST(RlssProtocol, SnapshotRoundTrips) {
     EXPECT_TRUE(decoded.entities[0].flipReset);
     EXPECT_FALSE(decoded.entities[1].flipReset);
     EXPECT_FALSE(decoded.entities[1].facingLeft);
+    EXPECT_EQ(decoded.entities[0].firstCue, (protocol::SoundCue{.count = 9, .value = 2}));
+    EXPECT_EQ(decoded.entities[0].secondCue, (protocol::SoundCue{.count = 15, .value = 11}));
+    EXPECT_EQ(decoded.entities[1].firstCue, protocol::SoundCue{});
+}
+
+TEST(RlssProtocol, SoundCuesKeepTheirLowBits) {
+    // Counters only grow on the server: the wire keeps their low 4 bits, which is enough to see them change.
+    const protocol::Snapshot snapshot{
+        .partCount = 1,
+        .entities = {{.id = 1, .kind = 2, .firstCue = {.count = 17, .value = 15}, .secondCue = {.count = 32}}},
+    };
+    const auto message = protocol::decode(protocol::encode(snapshot));
+    ASSERT_TRUE(message.has_value());
+    const auto& entity = std::get<protocol::Snapshot>(*message).entities.at(0);
+    EXPECT_EQ(entity.firstCue, (protocol::SoundCue{.count = 1, .value = 15}));
+    EXPECT_EQ(entity.secondCue, (protocol::SoundCue{.count = 0, .value = 0}));
 }
 
 TEST(RlssProtocol, RejectsMalformedSnapshots) {
@@ -182,7 +201,7 @@ TEST(RlssProtocol, RejectsMalformedSnapshots) {
     EXPECT_FALSE(protocol::decode(zeroId).has_value());
 
     auto tooMuchBoost = bytes;
-    tooMuchBoost.back() = 101;
+    tooMuchBoost[tooMuchBoost.size() - 3] = 101;  // boost, before the two sound cue bytes
     EXPECT_FALSE(protocol::decode(tooMuchBoost).has_value());
 
     auto tooMany = bytes;
@@ -197,27 +216,34 @@ TEST(RlssProtocol, SnapshotMatchOnlyReadsSnapshots) {
 }
 
 TEST(RlssProtocol, PlayerInputRoundTrips) {
-    const auto bytes =
-        protocol::encode(protocol::PlayerInput{.sequence = 300, .steer = -1.0F, .jump = true, .boost = true});
-    EXPECT_EQ(bytes.size(), 7U);
+    const auto bytes = protocol::encode(
+        protocol::PlayerInput{.sequence = 300, .steer = -1.0F, .pitch = 0.5F, .jump = true, .boost = true});
+    EXPECT_EQ(bytes.size(), 8U);
     const auto message = protocol::decode(bytes);
     ASSERT_TRUE(message.has_value());
     const auto& input = std::get<protocol::PlayerInput>(*message);
     EXPECT_EQ(input.sequence, 300U);
     EXPECT_FLOAT_EQ(input.steer, -1.0F);
+    EXPECT_NEAR(input.pitch, 0.5F, 0.01F);
     EXPECT_TRUE(input.jump);
     EXPECT_TRUE(input.boost);
 
     // Out of range or non-finite steering is clamped when encoding.
-    const auto clamped = protocol::decode(protocol::encode(protocol::PlayerInput{.sequence = 1, .steer = 7.0F}));
+    const auto clamped =
+        protocol::decode(protocol::encode(protocol::PlayerInput{.sequence = 1, .steer = 7.0F, .pitch = -7.0F}));
     EXPECT_FLOAT_EQ(std::get<protocol::PlayerInput>(*clamped).steer, 1.0F);
+    const auto nonFinite = protocol::decode(protocol::encode(
+        protocol::PlayerInput{.sequence = 1, .steer = 0.0F, .pitch = std::numeric_limits<float>::quiet_NaN()}));
+    EXPECT_FLOAT_EQ(std::get<protocol::PlayerInput>(*nonFinite).pitch, 0.0F);
+    EXPECT_FLOAT_EQ(std::get<protocol::PlayerInput>(*clamped).pitch, -1.0F);
 }
 
 TEST(RlssProtocol, RejectsMalformedInputs) {
-    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0}).has_value());        // too short
-    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0, 0}).has_value());  // too long
-    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0x80, 0}).has_value());  // steer -128
-    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0x04}).has_value());  // unknown button
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0}).has_value());        // too short
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0, 0, 0}).has_value());  // too long
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0x80, 0, 0}).has_value());  // steer -128
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0x80, 0}).has_value());  // pitch -128
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0, 0x04}).has_value());  // unknown button
 }
 
 TEST(RlssProtocol, MatchStatusRoundTrips) {
@@ -258,6 +284,74 @@ TEST(RlssProtocol, WelcomeRoundTrips) {
     EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{5, 0, 0, 1, 2, 2}).has_value());     // unknown team
     EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{5, 0, 0, 1, 2}).has_value());        // too short
     EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{5, 0, 0, 1, 2, 0, 3}).has_value());  // too long
+}
+
+TEST(RlssProtocol, NamesAreValidated) {
+    EXPECT_TRUE(protocol::isValidName("ZIDANE"));
+    EXPECT_TRUE(protocol::isValidName("MR. ROCKET-2"));
+    EXPECT_FALSE(protocol::isValidName(""));
+    EXPECT_FALSE(protocol::isValidName("zidane"));         // lower case: the client makes it upper case first
+    EXPECT_FALSE(protocol::isValidName(" ZIDANE"));        // leading space
+    EXPECT_FALSE(protocol::isValidName("ZIDANE "));        // trailing space
+    EXPECT_FALSE(protocol::isValidName("ZI_DANE"));        // no glyph
+    EXPECT_FALSE(protocol::isValidName("ABCDEFGHIJKLM"));  // 13 characters
+    EXPECT_TRUE(protocol::isValidName("ABCDEFGHIJKL"));    // 12
+}
+
+TEST(RlssProtocol, SetNameRoundTrips) {
+    const auto bytes = protocol::encode(protocol::SetName{.name = "ZIDANE"});
+    EXPECT_EQ(bytes.size(), 2U + 6U);
+    const auto message = protocol::decode(bytes);
+    ASSERT_TRUE(message.has_value());
+    EXPECT_EQ(std::get<protocol::SetName>(*message).name, "ZIDANE");
+}
+
+TEST(RlssProtocol, RejectsMalformedNames) {
+    const auto valid = protocol::encode(protocol::SetName{.name = "ABC"});
+    auto truncated = valid;
+    truncated.pop_back();
+    EXPECT_FALSE(protocol::decode(truncated).has_value());
+    auto trailing = valid;
+    trailing.push_back('D');  // more bytes than the length says
+    EXPECT_FALSE(protocol::decode(trailing).has_value());
+    auto badCharacter = valid;
+    badCharacter.back() = 0x00;
+    EXPECT_FALSE(protocol::decode(badCharacter).has_value());
+    auto empty = valid;
+    empty.resize(2);
+    empty[1] = 0;
+    EXPECT_FALSE(protocol::decode(empty).has_value());
+    auto tooLong = std::vector<std::uint8_t>{static_cast<std::uint8_t>(protocol::MessageType::SetName), 200};
+    tooLong.resize(202, 'A');
+    EXPECT_FALSE(protocol::decode(tooLong).has_value());
+}
+
+TEST(RlssProtocol, PlayerNamesRoundTrip) {
+    const protocol::PlayerNames names{.players = {{.carId = 3, .name = "BLEU"}, {.carId = 70000, .name = "ORANGE 2"}}};
+    const auto bytes = protocol::encode(names);
+    EXPECT_EQ(bytes.size(), 2U + (5U + 4U) + (5U + 8U));
+    const auto message = protocol::decode(bytes);
+    ASSERT_TRUE(message.has_value());
+    EXPECT_EQ(std::get<protocol::PlayerNames>(*message), names);
+    const auto none = protocol::decode(protocol::encode(protocol::PlayerNames{}));
+    ASSERT_TRUE(none.has_value());
+    EXPECT_TRUE(std::get<protocol::PlayerNames>(*none).players.empty());
+}
+
+TEST(RlssProtocol, RejectsMalformedPlayerNames) {
+    const auto valid = protocol::encode(protocol::PlayerNames{.players = {{.carId = 3, .name = "BLEU"}}});
+    auto zeroCar = valid;
+    zeroCar[5] = 0;  // carId = 0
+    EXPECT_FALSE(protocol::decode(zeroCar).has_value());
+    auto tooMany = valid;
+    tooMany[1] = protocol::MAX_PLAYERS_PER_MATCH + 1;
+    EXPECT_FALSE(protocol::decode(tooMany).has_value());
+    auto missing = valid;
+    missing[1] = 2;  // says two players, carries one
+    EXPECT_FALSE(protocol::decode(missing).has_value());
+    auto truncated = valid;
+    truncated.pop_back();
+    EXPECT_FALSE(protocol::decode(truncated).has_value());
 }
 
 TEST(RlssCommandLine, ParsesPorts) {

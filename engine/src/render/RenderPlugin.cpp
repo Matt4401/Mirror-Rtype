@@ -391,6 +391,11 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
 
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return GetMouseWheelMove(); }
 
+    [[nodiscard]] char32_t nextTypedCharacter() noexcept override {
+        const int character = GetCharPressed();
+        return character > 0 ? static_cast<char32_t>(character) : U'\0';
+    }
+
   private:
     /** @brief Stored window configuration. */
     WindowConfig _config;
