@@ -42,7 +42,10 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&ArenaShape::top>("top")
         .property<&ArenaShape::right>("right")
         .property<&ArenaShape::bottom>("bottom")
-        .property<&ArenaShape::cornerRadius>("cornerRadius");
+        .property<&ArenaShape::cornerRadius>("cornerRadius")
+        .property<&ArenaShape::goalTop>("goalTop")
+        .property<&ArenaShape::goalBottom>("goalBottom")
+        .property<&ArenaShape::goalDepth>("goalDepth");
     ok = define(vm, arena) && ok;
 
     scripting::ComponentBinder<CarParts> parts(vm, module, "CarParts");
@@ -57,7 +60,9 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
     ok = define(vm, parts) && ok;
 
     scripting::ComponentBinder<CarStatus> status(vm, module, "CarStatus");
-    status.property<&CarStatus::boost>("boost").property<&CarStatus::boosting>("boosting");
+    status.property<&CarStatus::boost>("boost")
+        .property<&CarStatus::boosting>("boosting")
+        .property<&CarStatus::placeAtKickoff>("placeAtKickoff");
     ok = define(vm, status) && ok;
 
     scripting::ComponentBinder<BallPart> ballPart(vm, module, "BallPart");
@@ -67,6 +72,21 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&BallPart::angle>("angle")
         .property<&BallPart::spins>("spins");
     ok = define(vm, ballPart) && ok;
+
+    scripting::ComponentBinder<MatchState> match(vm, module, "MatchState");
+    match.property<&MatchState::blueScore>("blueScore")
+        .property<&MatchState::orangeScore>("orangeScore")
+        .property<&MatchState::phase>("phase")
+        .property<&MatchState::countdown>("countdown");
+    ok = define(vm, match) && ok;
+
+    scripting::ComponentBinder<ScoreCell> cell(vm, module, "ScoreCell");
+    cell.property<&ScoreCell::display>("display")
+        .property<&ScoreCell::slot>("slot")
+        .property<&ScoreCell::row>("row")
+        .property<&ScoreCell::column>("column")
+        .property<&ScoreCell::size>("size");
+    ok = define(vm, cell) && ok;
 
     return ok;
 }

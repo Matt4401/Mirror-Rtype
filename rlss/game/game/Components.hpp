@@ -43,6 +43,10 @@ inline constexpr std::string_view BALL_SCRIPT_MODULE = "rlss/scripts/Ball";
 inline constexpr std::string_view BALL_VIEW_SCRIPT_MODULE = "rlss/scripts/BallView";
 /** @brief Tag of the entities drawing the ball, found by the `BallView` script. */
 inline constexpr std::string_view BALL_PART_TAG = "ball_part";
+/** @brief Wren module of the client-side scoreboard. */
+inline constexpr std::string_view SCOREBOARD_SCRIPT_MODULE = "rlss/scripts/ScoreboardView";
+/** @brief Tag of the squares of the scoreboard, found by the `ScoreboardView` script. */
+inline constexpr std::string_view SCORE_CELL_TAG = "score_cell";
 /** @brief Wren module of the client-side car visuals. */
 inline constexpr std::string_view CAR_VIEW_SCRIPT_MODULE = "rlss/scripts/CarView";
 
@@ -58,6 +62,23 @@ struct CarStatus {
     float boost = 0.0F;
     /** @brief Boosting right now. */
     bool boosting = false;
+    /** @brief Set by the server on a new car: its script moves it to its kickoff spot. Not replicated. */
+    bool placeAtKickoff = false;
+};
+
+/**
+ * @brief Score and phase of the match. Server: written by the `Match` script on the arena entity, sent to the clients
+ * in `MatchStatus` messages. Client: written from those messages, read by the `ScoreboardView` script.
+ */
+struct MatchState {
+    /** @brief Goals of the blue team (left side, defends the left goal). */
+    int blueScore = 0;
+    /** @brief Goals of the orange team (right side, defends the right goal). */
+    int orangeScore = 0;
+    /** @brief `protocol::MatchPhase` value: 0 playing, 1 goal celebration, 2 kickoff countdown. */
+    int phase = 0;
+    /** @brief Kickoff countdown shown to the players (3, 2, 1), 0 outside the kickoff. */
+    int countdown = 0;
 };
 
 /** @brief Geometry of the arena, read by the Wren physics through the `ArenaShape` class. */
@@ -72,6 +93,12 @@ struct ArenaShape {
     float bottom = 0.0F;
     /** @brief Radius of the curved corners. */
     float cornerRadius = 0.0F;
+    /** @brief Top of both goal mouths (the crossbar). */
+    float goalTop = 0.0F;
+    /** @brief Bottom of both goal mouths. */
+    float goalBottom = 0.0F;
+    /** @brief Depth of the goals behind the side walls. */
+    float goalDepth = 0.0F;
 };
 
 /** @brief Client: entities drawing the parts of a car, placed every frame by the `CarView` script. */
@@ -106,6 +133,20 @@ struct BallPart {
     float angle = 0.0F;
     /** @brief True if the piece turns with the ball (its pattern); false for the round body. */
     bool spins = false;
+};
+
+/** @brief Client: one square of the scoreboard, lit or hidden by the `ScoreboardView` script. */
+struct ScoreCell {
+    /** @brief What it belongs to: 0 blue score, 1 orange score, 2 kickoff countdown, 3 "GOAL" banner. */
+    int display = 0;
+    /** @brief Character of the display, from the left. */
+    int slot = 0;
+    /** @brief Row in the 3 x 5 glyph, from the top. */
+    int row = 0;
+    /** @brief Column in the 3 x 5 glyph, from the left. */
+    int column = 0;
+    /** @brief Side of the square when lit, in uu. */
+    float size = 0.0F;
 };
 
 }  // namespace rlss::game
