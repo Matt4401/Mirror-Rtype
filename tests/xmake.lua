@@ -200,6 +200,8 @@ target("test_server_gameplay")
     add_deps("engine_core", "engine_time", "engine_events", "engine_physics", "engine_network", "rtype_gameplay")
     add_packages("gtest")
     add_files("server/GameplayTests.cpp")
+    -- The shipped boss script is loaded from the source tree, whatever the directory the tests run from.
+    add_defines('RTYPE_SCRIPTS_DIR="$(projectdir)/scripts"')
     add_tests("test_server_gameplay")
 
 target("test_protocol")

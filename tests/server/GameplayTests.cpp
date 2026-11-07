@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -386,13 +387,18 @@ class TestBoss {
  */
 class ScriptedBossTest : public ::testing::Test {
   protected:
-    ScriptedBossTest()
-        : scriptPath(std::filesystem::temp_directory_path() /
-                     ("rtype_test_boss_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed())) /
-                     "TestBoss.wren"),
+    /**
+     * @param shipped Script of the game to play; none writes `TEST_BOSS_SCRIPT` to a temporary file instead.
+     */
+    explicit ScriptedBossTest(const std::optional<std::filesystem::path>& shipped = std::nullopt)
+        : tempDir(std::filesystem::temp_directory_path() /
+                  ("rtype_test_boss_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()))),
+          scriptPath(shipped.value_or(tempDir / "TestBoss.wren")),
           engine([this] { return now; }) {
-        std::filesystem::create_directories(scriptPath.parent_path());
-        std::ofstream(scriptPath) << TEST_BOSS_SCRIPT;
+        if (!shipped) {
+            std::filesystem::create_directories(tempDir);
+            std::ofstream(scriptPath) << TEST_BOSS_SCRIPT;
+        }
 
         auto built = std::make_shared<level::Level>();
         built->scrollSpeed = LEVEL_SPEED;
@@ -419,7 +425,7 @@ class ScriptedBossTest : public ::testing::Test {
 
     ~ScriptedBossTest() override {
         std::error_code ignored;
-        std::filesystem::remove_all(scriptPath.parent_path(), ignored);
+        std::filesystem::remove_all(tempDir, ignored);
     }
 
     ScriptedBossTest(const ScriptedBossTest&) = delete;
@@ -447,6 +453,7 @@ class ScriptedBossTest : public ::testing::Test {
         return found;
     }
 
+    std::filesystem::path tempDir;
     std::filesystem::path scriptPath;
     double now = 0.0;
     engine::Engine engine;
@@ -472,6 +479,31 @@ TEST_F(ScriptedBossTest, ScriptOfADeadBossDoesNotCrashTheRoom) {
     ASSERT_EQ(bosses.size(), 1U);
     engine.registry().killEntity(bosses.front());
     run(1.0F);
+    EXPECT_TRUE(entitiesOf(game::KIND_BOSS_CORE).empty());
+}
+
+/** @brief Same room, playing the boss script shipped with the game. */
+class ShippedBossScriptTest : public ScriptedBossTest {
+  protected:
+    ShippedBossScriptTest() : ScriptedBossTest(std::filesystem::path(RTYPE_SCRIPTS_DIR) / "Boss.wren") {}
+};
+
+TEST_F(ShippedBossScriptTest, BossScriptAttacksAndDropsAPowerUpWhenKilled) {
+    ASSERT_TRUE(bound);
+    run(1.0F);
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    ASSERT_TRUE(engine.getPlugin<scripting::ScriptPlugin>().scriptSystem().hasScriptInstance(bosses.front()));
+    const float startY = engine.registry().getComponents<ecs::Transform>().get(bosses.front()).y;
+
+    run(4.0F);
+    EXPECT_NE(engine.registry().getComponents<ecs::Transform>().get(bosses.front()).y, startY) << "the boss swings";
+    EXPECT_FALSE(entitiesOf(rtype::protocol::makeEntityKind("missile")).empty()) << "the boss fires";
+
+    engine.registry().killEntity(bosses.front());
+    run(0.1F);
+    EXPECT_EQ(entitiesOf(rtype::protocol::makeEntityKind("power_up")).size(), 1U);
+    run(10.0F);
     EXPECT_TRUE(entitiesOf(game::KIND_BOSS_CORE).empty());
 }
 
