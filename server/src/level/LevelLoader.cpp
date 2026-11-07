@@ -281,7 +281,7 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Le
         }
         const std::string side = reader.text(std::format("terrain.{}.side", i), "");
         if (side != TERRAIN_TOP && side != TERRAIN_BOTTOM) {
-            warnings.push_back(std::format("terrain.{}: 'side' must be \"{}\" or \"{}\", section skipped", i,
+            warnings.push_back(std::format(R"(terrain.{}: 'side' must be "{}" or "{}", section skipped)", i,
                                            TERRAIN_TOP, TERRAIN_BOTTOM));
             continue;
         }

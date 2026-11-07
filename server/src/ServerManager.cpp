@@ -11,6 +11,7 @@
 #include "LogTag.hpp"
 #include "Logger.hpp"
 #include "Room.hpp"
+#include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "protocol/Messages.hpp"
