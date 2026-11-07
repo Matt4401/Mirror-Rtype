@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <stdexcept>
 #include <utility>
 
@@ -46,11 +47,20 @@ void Registry::killEntity(Entity e) {
     std::uint32_t const idx = entityIndex(e);
     _isAlive[idx] = false;
 
+    // A throwing listener must not leave the entity half-destroyed: the other listeners still run, the components are
+    // still removed and the slot still recycled, then the first exception is rethrown.
+    std::exception_ptr listenerError;
     ++_destroyDispatchDepth;
     const std::size_t count = _destroyListeners.size();
     for (std::size_t i = 0; i < count; ++i) {
         if (_destroyListeners[i].active && _destroyListeners[i].callback) {
-            _destroyListeners[i].callback(e);
+            try {
+                _destroyListeners[i].callback(e);
+            } catch (...) {
+                if (!listenerError) {
+                    listenerError = std::current_exception();
+                }
+            }
         }
     }
     --_destroyDispatchDepth;
@@ -65,6 +75,10 @@ void Registry::killEntity(Entity e) {
     }
     _generations[idx] = (_generations[idx] + 1) & MAX_ENTITY_GENERATION;
     _deadEntities.push(idx);
+
+    if (listenerError) {
+        std::rethrow_exception(listenerError);
+    }
 }
 
 std::size_t Registry::addDestroyListener(DestroyListener listener) {

@@ -121,7 +121,10 @@ class Registry {
      * @brief Kills an entity, removing all its components across all sparse arrays and recycling its slot.
      *
      * Does nothing if the handle is not alive, including a stale handle whose slot now holds another entity.
+     * If a destroy listener throws, the other listeners still run and the entity is still fully destroyed before the
+     * first exception is rethrown.
      * @param e Entity to destroy.
+     * @throws Whatever the first throwing destroy listener threw.
      */
     void killEntity(Entity e);
 

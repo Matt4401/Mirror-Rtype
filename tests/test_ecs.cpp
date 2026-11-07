@@ -64,6 +64,32 @@ TEST(ECS, DestroyListenerRunsBeforeComponentsAreRemoved) {
     registry.removeDestroyListener(listenerId);
 }
 
+TEST(ECS, ThrowingDestroyListenerStillDestroysEntity) {
+    ecs::Registry registry;
+    registry.registerComponent<Position>();
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent<Position>(entity, Position{.x = 1.0F, .y = 2.0F});
+
+    bool secondNotified = false;
+    const std::size_t throwingId =
+        registry.addDestroyListener([](ecs::Entity /*destroyed*/) { throw std::runtime_error("listener failure"); });
+    const std::size_t secondId = registry.addDestroyListener([&](ecs::Entity /*destroyed*/) { secondNotified = true; });
+
+    EXPECT_THROW(registry.killEntity(entity), std::runtime_error);
+
+    EXPECT_TRUE(secondNotified);
+    EXPECT_FALSE(registry.isAlive(entity));
+    EXPECT_FALSE(registry.getComponents<Position>().contains(entity));
+    const ecs::Entity recycled = registry.spawnEntity();
+    EXPECT_EQ(ecs::entityIndex(recycled), ecs::entityIndex(entity));
+    EXPECT_NE(recycled, entity);
+
+    // The dispatch depth was restored: a listener removed now is compacted at once and no longer notified.
+    registry.removeDestroyListener(throwingId);
+    EXPECT_NO_THROW(registry.killEntity(recycled));
+    registry.removeDestroyListener(secondId);
+}
+
 TEST(ECS, DestroyListenerCannotDestroyEntityRecursively) {
     ecs::Registry registry;
     registry.registerComponent<Position>();
