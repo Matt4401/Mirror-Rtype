@@ -19,13 +19,15 @@
 #include "core/PluginBuilder.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
+#include "level/Level.hpp"
 #include "net/ReplicationEvents.hpp"
+#include "prefabs/PrefabParams.hpp"
 #include "protocol/Messages.hpp"
+#include "timeline/TimelineEvents.hpp"
+#include "timeline/TimelinePlugin.hpp"
 
 namespace rtype::server::gameplay {
 
-/** @brief Seconds between two enemy spawns. */
-inline constexpr float ENEMY_SPAWN_INTERVAL = 1.2F;
 /** @brief Seconds between two shots of the same player while the shoot button is held. */
 inline constexpr float SHOT_COOLDOWN = 0.2F;
 /** @brief Seconds of game time between two score logs. */
@@ -36,7 +38,9 @@ inline constexpr std::uint32_t POINTS_PER_KILL = 1;
 /**
  * @brief R-Type rules of one room, run by the room's engine.
  *
- * - Spawns an `alien_scout` every `ENEMY_SPAWN_INTERVAL` seconds, at heights cycled through deterministically.
+ * - Plays its level with `timeline::TimelinePlugin`, the cursor moving at the scroll speed: `spawn` events create
+ *   the enemies, `scroll` events change the speed, and the `end` event restarts the level (until there are several
+ *   levels).
  * - Fires a `player_bullet` from a ship while its input holds `game::ACTION_SHOOT`, at most every `SHOT_COOLDOWN`.
  *   The bullet's `EntityNetState::subtype` is the index of the player who fired it.
  * - Turns physics contacts into R-Type events with a `collision::CollisionRouter`; a player shot touching an enemy
@@ -48,8 +52,11 @@ inline constexpr std::uint32_t POINTS_PER_KILL = 1;
  */
 class GameplayPlugin final : public engine::IPlugin {
   public:
-    /** @brief Creates the plugin; scores start at 0. */
-    GameplayPlugin() = default;
+    /**
+     * @brief Creates the plugin; scores start at 0.
+     * @param level Level to play, shared by every room; `nullptr` plays no level (no enemy spawns).
+     */
+    explicit GameplayPlugin(std::shared_ptr<const level::Level> level = nullptr);
     /** @brief Destructor. */
     ~GameplayPlugin() override = default;
     /** @brief Deleted copy constructor. */
@@ -65,19 +72,20 @@ class GameplayPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "RTypeGameplayPlugin"; }
 
     /**
-     * @brief Requires `systems::PhysicsPlugin`, which publishes the contacts.
+     * @brief Requires `systems::PhysicsPlugin`, which publishes the contacts, and `timeline::TimelinePlugin`, which
+     * plays the level.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Subscribes to the inputs and creates the collision router.
+     * @brief Subscribes to the inputs and to the level events, creates the collision router and starts the level.
      * @param engine Engine of the room.
      */
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Fires the pending shots, spawns enemies, removes off-screen entities and logs the scores when due.
+     * @brief Fires the pending shots, removes off-screen entities and logs the scores when due.
      * @param engine Engine of the room.
      * @param time Fixed step timing.
      */
@@ -102,6 +110,13 @@ class GameplayPlugin final : public engine::IPlugin {
      */
     [[nodiscard]] std::uint32_t score(std::size_t playerIndex) const noexcept;
 
+    /**
+     * @brief Tells whether a level may spawn a prefab: the ones this plugin knows how to build and replicate.
+     * @param prefab Prefab name.
+     * @return True if `prefab` can be used in a level `spawn` event.
+     */
+    [[nodiscard]] static bool canSpawn(std::string_view prefab) noexcept;
+
   private:
     /** @brief A shot requested by an input, fired at the next fixed step. */
     struct PendingShot {
@@ -119,8 +134,12 @@ class GameplayPlugin final : public engine::IPlugin {
     void onShotHit(const collision::ShotHitEvent& hit);
     /** @brief Spawns a replicated player bullet. */
     void fire(const PendingShot& shot);
-    /** @brief Spawns a replicated enemy at the next spawn height. */
-    void spawnEnemy();
+    /** @brief Handles a level event: spawn, scroll speed change or end of level. */
+    void onLevelEvent(const timeline::TimelineEventFired& fired);
+    /** @brief Spawns the replicated entity of a level `spawn` event. */
+    void spawnFromLevel(const prefabs::PrefabParams& params);
+    /** @brief Puts the level at its start: events pending again, initial scroll speed. */
+    void startLevel();
     /** @brief Kills the bullets and enemies outside the screen. */
     void killOffscreenEntities();
     /** @brief Writes the scores in the server log. */
@@ -144,10 +163,12 @@ class GameplayPlugin final : public engine::IPlugin {
     std::array<std::uint32_t, protocol::MAX_PLAYERS> _scores{};
     /** @brief Number of players whose score is logged. */
     std::size_t _playerCount = 0;
-    /** @brief Seconds left before the next enemy spawns. */
-    float _enemySpawnTimer = ENEMY_SPAWN_INTERVAL;
-    /** @brief Number of enemies spawned so far, used to pick the next spawn height. */
-    std::size_t _enemiesSpawned = 0;
+    /** @brief Level played by the room, if any. */
+    std::shared_ptr<const level::Level> _level;
+    /** @brief Plays the level, set by `init()`. */
+    timeline::TimelinePlugin* _timeline = nullptr;
+    /** @brief Subscription to the level events. */
+    std::optional<ecs::EventBus::EventToken> _levelToken;
     /** @brief Seconds left before the next score log. */
     float _scoreLogTimer = SCORE_LOG_INTERVAL;
 };

@@ -9,16 +9,26 @@
 #include <csignal>
 #include <cstddef>
 #include <iostream>
+#include <memory>
 #include <span>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "LogTag.hpp"
 #include "Logger.hpp"
 #include "ServerManager.hpp"
+#include "gameplay/GameplayPlugin.hpp"
+#include "level/Level.hpp"
+#include "level/LevelLoader.hpp"
 #include "net/NetworkFactory.hpp"
 #include "parsing/Parsing.hpp"
 #include "protocol/Messages.hpp"
 
 namespace {
 constexpr int EXIT_ERROR = 84;
+/** @brief Level played by every room, relative to the directory the server is started from (the project root). */
+constexpr const char* LEVEL_PATH = "server/levels/level_01.toml";
 
 // The signal handler cannot take arguments, so it reaches the server through a global.
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
@@ -41,7 +51,23 @@ int main(int ac, char** av) {
     rtype::log::setVerbose(options->logs);
     rtype::log::setColored(options->colors);
 
-    rtype::server::ServerManager server(ecs::net::createServer({.protocolId = rtype::protocol::TRANSPORT_PROTOCOL_ID}));
+    std::vector<std::string> warnings;
+    auto level =
+        rtype::server::level::loadLevel(LEVEL_PATH, rtype::server::gameplay::GameplayPlugin::canSpawn, warnings);
+    for (const std::string& warning : warnings) {
+        rtype::log::warning(rtype::server::LOG_TAG, "level: ", warning);
+    }
+    if (!level) {
+        rtype::log::error(rtype::server::LOG_TAG, "cannot load the level: ", level.error(),
+                          " (run the server from the project root)");
+        return EXIT_ERROR;
+    }
+    rtype::log::info(rtype::server::LOG_TAG, "level '", level->name, "' loaded: ", level->timeline.events().size(),
+                     " events");
+
+    rtype::server::ServerManager server(ecs::net::createServer({.protocolId = rtype::protocol::TRANSPORT_PROTOCOL_ID}),
+                                        rtype::server::HANDSHAKE_TIMEOUT,
+                                        std::make_shared<const rtype::server::level::Level>(std::move(*level)));
 
     g_server = &server;
     std::signal(SIGINT, onSignal);

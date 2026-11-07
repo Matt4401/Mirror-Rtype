@@ -1,11 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 #include "Room.hpp"
+#include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "protocol/Messages.hpp"
@@ -35,8 +38,10 @@ class Lobby {
     /**
      * @brief Creates an empty lobby.
      * @param network Transport shared by every room; must outlive the lobby.
+     * @param level Level played by every room, shared; `nullptr` plays no level.
      */
-    explicit Lobby(ecs::net::INetworkServer& network) : _network(&network) {}
+    explicit Lobby(ecs::net::INetworkServer& network, std::shared_ptr<const level::Level> level = nullptr)
+        : _network(&network), _level(std::move(level)) {}
 
     /** @brief A client's `Hello` was accepted: it can now use the lobby. @param client The client. */
     void addClient(ClientId client);
@@ -96,6 +101,8 @@ class Lobby {
 
     /** @brief Transport, to reach the clients. */
     ecs::net::INetworkServer* _network;
+    /** @brief Level given to every new room. */
+    std::shared_ptr<const level::Level> _level;
     /**
      * @brief Rooms in progress or waiting for players, by id.
      *

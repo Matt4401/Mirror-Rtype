@@ -21,6 +21,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "gameplay/GameplayPlugin.hpp"
+#include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkPlugin.hpp"
@@ -29,6 +30,7 @@
 #include "net/ReplicationSystems.hpp"
 #include "net/ServerReplicationPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
+#include "timeline/TimelinePlugin.hpp"
 
 namespace rtype::server {
 
@@ -44,7 +46,7 @@ constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
 }  // namespace
 
 Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, const float fixedDt,
-           ecs::time::Clock::TimeSource timeSource)
+           ecs::time::Clock::TimeSource timeSource, std::shared_ptr<const level::Level> level)
     : _maxPlayers(maxPlayers),
       _connection(std::make_shared<ecs::net::PeerGroupConnection>(network)),
       _engine(std::move(timeSource)) {
@@ -52,7 +54,8 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
     _engine.addPlugin<systems::PhysicsPlugin>();
-    _engine.addPlugin<gameplay::GameplayPlugin>();
+    _engine.addPlugin<timeline::TimelinePlugin>();
+    _engine.addPlugin<gameplay::GameplayPlugin>(std::move(level));
     // TODO(ecs): add ScriptPlugin for the scripted enemies.
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();

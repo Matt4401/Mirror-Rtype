@@ -6,6 +6,9 @@
 #include <cstdint>
 #include <memory>
 #include <sstream>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "LogTag.hpp"
@@ -21,6 +24,7 @@
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
+#include "level/Level.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/CollisionCategories.hpp"
@@ -28,6 +32,9 @@
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
+#include "timeline/TimelineEvent.hpp"
+#include "timeline/TimelineEvents.hpp"
+#include "timeline/TimelinePlugin.hpp"
 
 namespace rtype::server::gameplay {
 
@@ -36,16 +43,21 @@ namespace {
 constexpr float SCENE_WIDTH = 1280.0F;
 /** @brief Margin past the screen edges after which bullets and enemies are destroyed. */
 constexpr float OFFSCREEN_MARGIN = 64.0F;
-/** @brief Spawn abscissa of the enemies, just past the right edge. */
-constexpr float ENEMY_SPAWN_X = SCENE_WIDTH + 48.0F;
-/** @brief Spawn heights, cycled through so the waves are deterministic. */
-constexpr std::array<float, 6> ENEMY_SPAWN_HEIGHTS{160.0F, 420.0F, 280.0F, 560.0F, 220.0F, 480.0F};
 /** @brief Horizontal offset of a bullet from the center of the ship that fires it. */
 constexpr float SHOT_OFFSET_X = 40.0F;
 
 }  // namespace
 
-void GameplayPlugin::build(engine::PluginBuilder& builder) { builder.require<systems::PhysicsPlugin>(); }
+GameplayPlugin::GameplayPlugin(std::shared_ptr<const level::Level> level) : _level(std::move(level)) {}
+
+void GameplayPlugin::build(engine::PluginBuilder& builder) {
+    builder.require<systems::PhysicsPlugin>();
+    builder.require<timeline::TimelinePlugin>();
+}
+
+bool GameplayPlugin::canSpawn(const std::string_view prefab) noexcept {
+    return prefab == ::prefabs::ALIEN_SCOUT_PREFAB;
+}
 
 void GameplayPlugin::init(engine::Engine& engine) {
     _registry = &engine.registry();
@@ -55,9 +67,50 @@ void GameplayPlugin::init(engine::Engine& engine) {
         _bus->subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) { onInput(event); });
     _hitToken =
         _bus->subscribe<collision::ShotHitEvent>([this](const collision::ShotHitEvent& hit) { onShotHit(hit); });
+    _levelToken = _bus->subscribe<timeline::TimelineEventFired>(
+        [this](const timeline::TimelineEventFired& fired) { onLevelEvent(fired); });
+    _timeline = &engine.getPlugin<timeline::TimelinePlugin>();
+    startLevel();
+}
+
+void GameplayPlugin::startLevel() {
+    if (_timeline == nullptr || _level == nullptr) {
+        return;
+    }
+    _timeline->timeline() = _level->timeline;
+    _timeline->setSpeed(_level->scrollSpeed);
+}
+
+void GameplayPlugin::onLevelEvent(const timeline::TimelineEventFired& fired) {
+    const timeline::TimelineEvent& event = fired.event;
+    if (event.type == level::EVENT_SPAWN) {
+        spawnFromLevel(event.params);
+    } else if (event.type == level::EVENT_SCROLL) {
+        _timeline->setSpeed(event.params.get("speed", _timeline->speed()));
+    } else if (event.type == level::EVENT_END) {
+        log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete, restarting it");
+        startLevel();
+    }
+}
+
+void GameplayPlugin::spawnFromLevel(const ::prefabs::PrefabParams& params) {
+    // The loader only keeps the prefabs accepted by canSpawn(), so the name is known here.
+    if (params.get<std::string>("prefab", "") != ::prefabs::ALIEN_SCOUT_PREFAB) {
+        return;
+    }
+    ecs::Registry& registry = *_registry;
+    const ecs::Entity enemy = registry.spawnEntity();
+    ::prefabs::buildAlienScout(enemy, registry, params);
+    registry.addComponent(enemy, game::EntityNetState{});
+    ecs::net::replicate(registry, enemy, game::KIND_ALIEN_SCOUT);
 }
 
 void GameplayPlugin::shutdown(engine::Engine& /*engine*/) {
+    if (_levelToken) {
+        _bus->unsubscribe<timeline::TimelineEventFired>(*_levelToken);
+        _levelToken.reset();
+    }
+    _timeline = nullptr;
     if (_hitToken) {
         _bus->unsubscribe<collision::ShotHitEvent>(*_hitToken);
         _hitToken.reset();
@@ -123,12 +176,6 @@ void GameplayPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Ti
     }
     _pendingShots.clear();
 
-    _enemySpawnTimer -= time.deltaTime;
-    if (_enemySpawnTimer <= 0.0F) {
-        _enemySpawnTimer += ENEMY_SPAWN_INTERVAL;
-        spawnEnemy();
-    }
-
     killOffscreenEntities();
 
     _scoreLogTimer -= time.deltaTime;
@@ -144,16 +191,6 @@ void GameplayPlugin::fire(const PendingShot& shot) {
     ::prefabs::buildPlayerBullet(bullet, registry, {{"x", shot.x + SHOT_OFFSET_X}, {"y", shot.y}});
     registry.addComponent(bullet, game::EntityNetState{.subtype = shot.playerIndex});
     ecs::net::replicate(registry, bullet, game::KIND_PLAYER_BULLET);
-}
-
-void GameplayPlugin::spawnEnemy() {
-    ecs::Registry& registry = *_registry;
-    const float y = ENEMY_SPAWN_HEIGHTS.at(_enemiesSpawned % ENEMY_SPAWN_HEIGHTS.size());
-    ++_enemiesSpawned;
-    const ecs::Entity enemy = registry.spawnEntity();
-    ::prefabs::buildAlienScout(enemy, registry, {{"x", ENEMY_SPAWN_X}, {"y", y}});
-    registry.addComponent(enemy, game::EntityNetState{});
-    ecs::net::replicate(registry, enemy, game::KIND_ALIEN_SCOUT);
 }
 
 void GameplayPlugin::killOffscreenEntities() {

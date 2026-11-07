@@ -7,6 +7,7 @@
 #include "LogTag.hpp"
 #include "Logger.hpp"
 #include "Room.hpp"
+#include "ecs/time/Time.hpp"
 #include "net/INetworkManager.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
@@ -63,7 +64,8 @@ void Lobby::onLobbyCreate(const ClientId client) {
         return;
     }
     const RoomId id = _nextRoomId++;
-    Room& room = _rooms.try_emplace(id, *_network, MAX_PLAYERS_PER_ROOM).first->second;
+    Room& room = _rooms.try_emplace(id, *_network, MAX_PLAYERS_PER_ROOM, ecs::time::DEFAULT_FIXED_DT, nullptr, _level)
+                     .first->second;
     room.addPlayer(client);
     _roomOf[client] = id;
     log::debug(LOG_TAG, "client ", client, " created room ", id);
