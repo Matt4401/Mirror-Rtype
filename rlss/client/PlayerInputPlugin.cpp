@@ -35,18 +35,20 @@ input::ActionMapping makeControls() {
     mapping.bindAxisComposite(game::ACTION_STEER, engine::Key::Left, engine::Key::Right);
     mapping.bindGamepadAxis(game::ACTION_STEER, engine::GamepadAxis::LeftX, 1.0F);
 
+    // Up / down: where the nose aims in the air. W (QWERTY) and Z (AZERTY) are the same key, like A and Q.
+    mapping.registerAction(game::ACTION_PITCH, input::ActionType::Axis);
+    mapping.bindAxisComposite(game::ACTION_PITCH, engine::Key::S, engine::Key::W);
+    mapping.bindAxisComposite(game::ACTION_PITCH, engine::Key::S, engine::Key::Z);
+    mapping.bindAxisComposite(game::ACTION_PITCH, engine::Key::Down, engine::Key::Up);
+    mapping.bindGamepadAxis(game::ACTION_PITCH, engine::GamepadAxis::LeftY, -1.0F);  // the stick is negative up
+
     mapping.registerAction(game::ACTION_JUMP, input::ActionType::Button);
     mapping.bindKey(game::ACTION_JUMP, engine::Key::Space);
-    mapping.bindKey(game::ACTION_JUMP, engine::Key::W);
-    mapping.bindKey(game::ACTION_JUMP, engine::Key::Z);
-    mapping.bindKey(game::ACTION_JUMP, engine::Key::Up);
     mapping.bindGamepadButton(game::ACTION_JUMP, engine::GamepadButton::RightFaceDown);
 
     mapping.registerAction(game::ACTION_BOOST, input::ActionType::Button);
     mapping.bindKey(game::ACTION_BOOST, engine::Key::LeftShift);
     mapping.bindKey(game::ACTION_BOOST, engine::Key::RightShift);
-    mapping.bindKey(game::ACTION_BOOST, engine::Key::S);
-    mapping.bindKey(game::ACTION_BOOST, engine::Key::Down);
     mapping.bindGamepadButton(game::ACTION_BOOST, engine::GamepadButton::RightFaceRight);
     mapping.bindGamepadButton(game::ACTION_BOOST, engine::GamepadButton::RightTrigger2);
     return mapping;
@@ -88,6 +90,8 @@ void PlayerInputPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Tim
         }
         input.axes.push_back(
             {.action = game::STEER_ID, .value = std::clamp(state.getAxis(game::STEER_ID), -1.0F, 1.0F)});
+        input.axes.push_back(
+            {.action = game::PITCH_ID, .value = std::clamp(state.getAxis(game::PITCH_ID), -1.0F, 1.0F)});
         if (state.isDown(game::BOOST_ID)) {
             input.held.push_back(game::BOOST_ID);
         }
