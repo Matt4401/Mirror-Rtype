@@ -7,7 +7,6 @@
 #include <type_traits>
 #include <variant>
 
-#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ui/components/FontId.hpp"
 #include "ui/components/UiButton.hpp"
@@ -39,7 +38,11 @@ void UiRenderSystem::collect(ecs::Registry& registry, int screenW, int screenH) 
     for (const UiLayoutNode& node : _layout) {
         const auto push = [this, &node](const auto& drawable) {
             _queue.push_back(UiDrawItem{
-                .entity = node.entity, .screenX = node.rect.x, .screenY = node.rect.y, .drawable = drawable});
+                .entity = node.entity,
+                .screenX = node.rect.x,
+                .screenY = node.rect.y,
+                .drawable = drawable,
+            });
         };
         if (registry.hasComponent<UiRect>(node.entity)) {
             push(registry.getComponents<UiRect>().get(node.entity));
