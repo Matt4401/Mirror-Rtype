@@ -24,7 +24,8 @@ namespace rlss::game {
  * @brief Translates between the ECS and the RLSS messages for `ecs::net::ServerReplicationPlugin` and
  * `ecs::net::ClientReplicationPlugin`.
  *
- * A replicated entity carries its `ecs::Transform` (facing = sign of `scaleX`) and its `CarLook`. On the client, a new
+ * A replicated entity carries its `ecs::Transform` (facing = sign of `scaleX`); a car also its `CarLook` and
+ * `CarStatus`. On the client, a new
  * entity also gets `ecs::Interpolated`, so that it moves smoothly between snapshots.
  */
 class ReplicationCodec final : public ecs::net::IReplicationCodec {
@@ -55,7 +56,7 @@ class ReplicationCodec final : public ecs::net::IReplicationCodec {
     /**
      * @brief Server: reads a `PlayerInput` message.
      * @param data Untrusted payload.
-     * @return The input (`JUMP_ID` held, `STEER_ID` axis), or nothing for any other payload.
+     * @return The input (`JUMP_ID` / `BOOST_ID` held, `STEER_ID` axis), or nothing for any other payload.
      */
     [[nodiscard]] std::optional<ecs::NetInput> decodeInput(const ecs::net::Bytes& data) override;
 

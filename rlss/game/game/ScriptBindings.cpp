@@ -50,8 +50,23 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&CarParts::cabin>("cabin")
         .property<&CarParts::rearWheel>("rearWheel")
         .property<&CarParts::frontWheel>("frontWheel")
-        .property<&CarParts::headlight>("headlight");
+        .property<&CarParts::headlight>("headlight")
+        .property<&CarParts::flame>("flame")
+        .property<&CarParts::gaugeBack>("gaugeBack")
+        .property<&CarParts::gaugeFill>("gaugeFill");
     ok = define(vm, parts) && ok;
+
+    scripting::ComponentBinder<CarStatus> status(vm, module, "CarStatus");
+    status.property<&CarStatus::boost>("boost").property<&CarStatus::boosting>("boosting");
+    ok = define(vm, status) && ok;
+
+    scripting::ComponentBinder<BallPart> ballPart(vm, module, "BallPart");
+    ballPart.property<&BallPart::parent>("parent")
+        .property<&BallPart::offsetX>("offsetX")
+        .property<&BallPart::offsetY>("offsetY")
+        .property<&BallPart::angle>("angle")
+        .property<&BallPart::spins>("spins");
+    ok = define(vm, ballPart) && ok;
 
     return ok;
 }
