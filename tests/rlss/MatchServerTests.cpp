@@ -253,3 +253,86 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+// --- Player names ---
+
+TEST_F(MatchServerTest, ThePlayersNameIsShownOnItsCarInTheMatch) {
+    connect(1);
+    receive(1, protocol::encode(protocol::SetName{.name = "ZIDANE"}));
+    receive(1, protocol::encode(protocol::CreateMatch{}));
+    server->update();  // the match spawns the car, then names it
+    const auto welcome = lastTo<protocol::Welcome>(1);
+    const auto names = lastTo<protocol::PlayerNames>(1);
+    ASSERT_TRUE(welcome.has_value());
+    ASSERT_TRUE(names.has_value());
+    ASSERT_EQ(names->players.size(), 1U);
+    EXPECT_EQ(names->players[0], (protocol::PlayerName{.carId = welcome->carId, .name = "ZIDANE"}));
+}
+
+TEST_F(MatchServerTest, EveryPlayerGetsTheNamesOfAllTheCars) {
+    connect(1);
+    connect(2);
+    receive(1, protocol::encode(protocol::SetName{.name = "BLEU"}));
+    receive(2, protocol::encode(protocol::SetName{.name = "ORANGE"}));
+    receive(1, protocol::encode(protocol::CreateMatch{}));
+    receive(2, protocol::encode(protocol::JoinMatch{.matchId = resultOf(1).matchId}));
+    server->update();
+    const auto car1 = lastTo<protocol::Welcome>(1);
+    const auto car2 = lastTo<protocol::Welcome>(2);
+    ASSERT_TRUE(car1.has_value());
+    ASSERT_TRUE(car2.has_value());
+    for (const PeerId peer : {1U, 2U}) {
+        const auto names = lastTo<protocol::PlayerNames>(peer);
+        ASSERT_TRUE(names.has_value());
+        ASSERT_EQ(names->players.size(), 2U);
+        for (const protocol::PlayerName& player : names->players) {
+            EXPECT_EQ(player.name, player.carId == car1->carId ? "BLEU" : "ORANGE");
+        }
+    }
+
+    // The one who stays is told the other left.
+    disconnect(2);
+    server->update();
+    const auto names = lastTo<protocol::PlayerNames>(1);
+    ASSERT_TRUE(names.has_value());
+    ASSERT_EQ(names->players.size(), 1U);
+    EXPECT_EQ(names->players[0].name, "BLEU");
+}
+
+TEST_F(MatchServerTest, APlayerWithoutANameIsNamedAfterItsSlot) {
+    connect(1);
+    receive(1, protocol::encode(protocol::CreateMatch{}));
+    server->update();
+    const auto names = lastTo<protocol::PlayerNames>(1);
+    ASSERT_TRUE(names.has_value());
+    ASSERT_EQ(names->players.size(), 1U);
+    EXPECT_EQ(names->players[0].name, "JOUEUR 1");
+}
+
+TEST_F(MatchServerTest, RenamingDuringAMatchRenamesTheCar) {
+    connect(1);
+    receive(1, protocol::encode(protocol::SetName{.name = "AVANT"}));
+    receive(1, protocol::encode(protocol::CreateMatch{}));
+    server->update();
+    receive(1, protocol::encode(protocol::SetName{.name = "APRES"}));
+    server->update();
+    const auto names = lastTo<protocol::PlayerNames>(1);
+    ASSERT_TRUE(names.has_value());
+    ASSERT_EQ(names->players.size(), 1U);
+    EXPECT_EQ(names->players[0].name, "APRES");
+}
+
+TEST_F(MatchServerTest, AnInvalidNameIsIgnored) {
+    connect(1);
+    receive(1, protocol::encode(protocol::SetName{.name = "OK"}));
+    // Lower case is not allowed on the wire: the server drops the message and keeps the previous name.
+    Bytes lowerCase = protocol::encode(protocol::SetName{.name = "XX"});
+    lowerCase.at(2) = 'x';
+    receive(1, lowerCase);
+    receive(1, protocol::encode(protocol::CreateMatch{}));
+    server->update();
+    const auto names = lastTo<protocol::PlayerNames>(1);
+    ASSERT_TRUE(names.has_value());
+    ASSERT_EQ(names->players.size(), 1U);
+    EXPECT_EQ(names->players[0].name, "OK");
+}
