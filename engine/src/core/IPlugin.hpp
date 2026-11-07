@@ -91,6 +91,20 @@ class IPlugin {
     }
 
     /**
+     * @brief Late frame tick, run after every plugin's `update` and before `render`.
+     *
+     * Intended for work that depends on the final state of the frame, once gameplay, scripts and physics have moved
+     * entities: transform propagation, camera follow, UI layout...
+     *
+     * @param engine Reference to the hosting Engine.
+     * @param time Frame timing information (same value as the frame's `update`).
+     */
+    virtual void lateUpdate(Engine& engine, const ecs::time::Time& time) {
+        (void)engine;
+        (void)time;
+    }
+
+    /**
      * @brief Frame rendering phase.
      * @param engine Reference to the hosting Engine.
      */

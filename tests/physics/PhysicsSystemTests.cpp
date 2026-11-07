@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
@@ -11,6 +10,7 @@
 #include "components/Collider2D.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/Transform.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/PhysicsEvents.hpp"
@@ -256,6 +256,30 @@ TEST(PhysicsSystemContacts, SensorShotCrossingTargetPublishesBeginThenEnd) {
     EXPECT_EQ(shotFirst ? begin.entityB : begin.entityA, target);
     EXPECT_EQ(shotFirst ? begin.categoryA : begin.categoryB, SHOT);
     EXPECT_EQ(shotFirst ? begin.categoryB : begin.categoryA, TARGET);
+}
+
+TEST(PhysicsSystemContacts, EventsCarryFullGenerationalHandles) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    systems::PhysicsSystem physicsSystem(registry, bus);
+    ContactLog log(bus);
+
+    const ecs::Entity firstDead = registry.spawnEntity();
+    const ecs::Entity secondDead = registry.spawnEntity();
+    registry.killEntity(firstDead);
+    registry.killEntity(secondDead);
+    const ecs::Entity target = spawnTarget(registry, 100.0F);
+    const ecs::Entity shot = spawnShot(registry, 0.0F, 600.0F);
+    ASSERT_NE(ecs::entityGeneration(target), 0U);
+    ASSERT_NE(ecs::entityGeneration(shot), 0U);
+
+    stepFor(physicsSystem, 30);
+
+    ASSERT_EQ(log.begins.size(), 1U);
+    const events::CollisionBeginEvent& begin = log.begins.front();
+    const bool shotFirst = begin.entityA == shot;
+    EXPECT_EQ(shotFirst ? begin.entityA : begin.entityB, shot);
+    EXPECT_EQ(shotFirst ? begin.entityB : begin.entityA, target);
 }
 
 TEST(PhysicsSystemContacts, MaskFilteringSuppressesEvents) {

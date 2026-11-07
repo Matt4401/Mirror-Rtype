@@ -32,7 +32,7 @@ struct RoomPlayer {
     /** @brief Network id of the player. */
     ClientId client = 0;
     /** @brief Ship of the player; its network state is in its components. */
-    ecs::Entity entity = 0;
+    ecs::Entity entity = ecs::NULL_ENTITY;
     /** @brief Ready state in the lobby. */
     bool ready = false;
 };

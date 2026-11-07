@@ -101,6 +101,20 @@ class IWindowService {
     [[nodiscard]] virtual bool isMouseButtonDown(MouseButton button) const noexcept = 0;
 
     /**
+     * @brief Queries whether a mouse button went down during the current frame.
+     * @param button Mouse button.
+     * @return True only on the frame the button was pressed, not while it is held.
+     */
+    [[nodiscard]] virtual bool isMouseButtonPressed(MouseButton button) const noexcept = 0;
+
+    /**
+     * @brief Queries whether a mouse button went up during the current frame.
+     * @param button Mouse button.
+     * @return True only on the frame the button was released.
+     */
+    [[nodiscard]] virtual bool isMouseButtonReleased(MouseButton button) const noexcept = 0;
+
+    /**
      * @brief Samples the mouse cursor position.
      * @return Cursor position in window pixels.
      */

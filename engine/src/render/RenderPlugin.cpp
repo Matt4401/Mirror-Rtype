@@ -16,8 +16,10 @@
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "core/services/IRenderService.hpp"
+#include "core/services/IScreenDrawService.hpp"
 #include "core/services/IWindowService.hpp"
 #include "core/services/InputCodes.hpp"
+#include "render/screen/ScreenDrawService.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
 #include "render/window/WindowConfig.hpp"
@@ -346,21 +348,16 @@ namespace {
  */
 class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
   public:
-    /**
-     * @brief Constructs WindowServiceImpl with specified window configuration.
-     * @param config Window dimension and display configuration.
-     */
-    explicit WindowServiceImpl(WindowConfig config) : _config(std::move(config)) {}
-
     [[nodiscard]] bool shouldClose() const noexcept override { return Window::shouldClose(); }
 
     void beginFrame() override { Window::beginFrame(); }
 
     void endFrame() override { Window::endFrame(); }
 
-    [[nodiscard]] int width() const noexcept override { return _config.width; }
+    // The real size of the window, which differs from the configured one once it is resized.
+    [[nodiscard]] int width() const noexcept override { return GetScreenWidth(); }
 
-    [[nodiscard]] int height() const noexcept override { return _config.height; }
+    [[nodiscard]] int height() const noexcept override { return GetScreenHeight(); }
 
     [[nodiscard]] bool isKeyDown(engine::Key key) const noexcept override {
         const int code = toRaylib(key);
@@ -384,6 +381,16 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
         return code != INVALID_MOUSE_BUTTON && IsMouseButtonDown(code);
     }
 
+    [[nodiscard]] bool isMouseButtonPressed(engine::MouseButton button) const noexcept override {
+        const int code = toRaylib(button);
+        return code != INVALID_MOUSE_BUTTON && IsMouseButtonPressed(code);
+    }
+
+    [[nodiscard]] bool isMouseButtonReleased(engine::MouseButton button) const noexcept override {
+        const int code = toRaylib(button);
+        return code != INVALID_MOUSE_BUTTON && IsMouseButtonReleased(code);
+    }
+
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override {
         const Vector2 position = GetMousePosition();
         return engine::MousePosition{.x = position.x, .y = position.y};
@@ -395,10 +402,6 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
         const int character = GetCharPressed();
         return character > 0 ? static_cast<char32_t>(character) : U'\0';
     }
-
-  private:
-    /** @brief Stored window configuration. */
-    WindowConfig _config;
 };
 
 /**
@@ -444,6 +447,7 @@ class RenderPlugin::RenderServiceImpl final : public engine::IRenderService {
 RenderPlugin::RenderPlugin(WindowConfig config) : _config(std::move(config)) {}
 
 RenderPlugin::~RenderPlugin() {
+    _screenDrawService.reset();
     _renderService.reset();
     _windowService.reset();
     _renderSystem.reset();
@@ -455,6 +459,7 @@ void RenderPlugin::build(engine::PluginBuilder& builder) {
     builder.require<engine::CorePlugin>();
     builder.provides<engine::IWindowService>();
     builder.provides<engine::IRenderService>();
+    builder.provides<engine::IScreenDrawService>();
 }
 
 void RenderPlugin::init(engine::Engine& engine) {
@@ -462,13 +467,19 @@ void RenderPlugin::init(engine::Engine& engine) {
     _textures = std::make_unique<TextureStore>();
     _renderSystem = std::make_unique<RenderSystem>(*_textures);
 
-    _windowService = std::make_shared<WindowServiceImpl>(_config);
+    _windowService = std::make_shared<WindowServiceImpl>();
     _renderService = std::make_shared<RenderServiceImpl>(*_renderSystem);
+    _screenDrawService = std::make_shared<ScreenDrawService>();
 
     if (const auto res = engine.mediator().registerService<engine::IWindowService>(_windowService); !res) {
         throw engine::MediatorError(res.error());
     }
     if (const auto res = engine.mediator().registerService<engine::IRenderService>(_renderService); !res) {
+        engine.mediator().removeService<engine::IWindowService>();
+        throw engine::MediatorError(res.error());
+    }
+    if (const auto res = engine.mediator().registerService<engine::IScreenDrawService>(_screenDrawService); !res) {
+        engine.mediator().removeService<engine::IRenderService>();
         engine.mediator().removeService<engine::IWindowService>();
         throw engine::MediatorError(res.error());
     }
@@ -479,10 +490,17 @@ void RenderPlugin::render(engine::Engine& engine) {
     if (_renderSystem != nullptr) {
         _renderSystem->update(engine.registry());
     }
+    // Overlays queued during update/lateUpdate go on top of the world, before the frame is presented.
+    if (_screenDrawService != nullptr) {
+        _screenDrawService->flush();
+    }
     Window::endFrame();
 }
 
 void RenderPlugin::shutdown(engine::Engine& engine) {
+    if (engine.mediator().hasService<engine::IScreenDrawService>()) {
+        engine.mediator().removeService<engine::IScreenDrawService>();
+    }
     if (engine.mediator().hasService<engine::IRenderService>()) {
         engine.mediator().removeService<engine::IRenderService>();
     }
@@ -493,6 +511,7 @@ void RenderPlugin::shutdown(engine::Engine& engine) {
     if (_renderService != nullptr) {
         _renderService->setSystem(nullptr);
     }
+    _screenDrawService.reset();
     _renderService.reset();
     _windowService.reset();
     _renderSystem.reset();
