@@ -40,6 +40,14 @@ input::ActionMapping makeControls() {
     mapping.bindKey(game::ACTION_JUMP, engine::Key::Z);
     mapping.bindKey(game::ACTION_JUMP, engine::Key::Up);
     mapping.bindGamepadButton(game::ACTION_JUMP, engine::GamepadButton::RightFaceDown);
+
+    mapping.registerAction(game::ACTION_BOOST, input::ActionType::Button);
+    mapping.bindKey(game::ACTION_BOOST, engine::Key::LeftShift);
+    mapping.bindKey(game::ACTION_BOOST, engine::Key::RightShift);
+    mapping.bindKey(game::ACTION_BOOST, engine::Key::S);
+    mapping.bindKey(game::ACTION_BOOST, engine::Key::Down);
+    mapping.bindGamepadButton(game::ACTION_BOOST, engine::GamepadButton::RightFaceRight);
+    mapping.bindGamepadButton(game::ACTION_BOOST, engine::GamepadButton::RightTrigger2);
     return mapping;
 }
 
@@ -63,6 +71,9 @@ void PlayerInputPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Tim
         }
         input.axes.push_back(
             {.action = game::STEER_ID, .value = std::clamp(state.getAxis(game::STEER_ID), -1.0F, 1.0F)});
+        if (state.isDown(game::BOOST_ID)) {
+            input.held.push_back(game::BOOST_ID);
+        }
         if (state.isDown(game::JUMP_ID)) {
             input.held.push_back(game::JUMP_ID);
         }

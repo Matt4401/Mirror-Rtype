@@ -15,6 +15,7 @@
 #include <utility>
 
 #include "ArenaViewPlugin.hpp"
+#include "BallViewPlugin.hpp"
 #include "CarViewPlugin.hpp"
 #include "CommandLine.hpp"
 #include "Logger.hpp"
@@ -87,6 +88,7 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::SessionPlugin>(transport)
             .addPlugin<rlss::client::ArenaViewPlugin>()
             .addPlugin<rlss::client::CarViewPlugin>()
+            .addPlugin<rlss::client::BallViewPlugin>()
             .addPlugin<rlss::client::PlayerInputPlugin>();
         engine.run();
         return engine.getPlugin<rlss::client::SessionPlugin>().connectionLost() ? EXIT_ERROR : 0;
