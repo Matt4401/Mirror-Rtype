@@ -68,6 +68,26 @@ struct CarStatus {
     bool boosting = false;
     /** @brief Set by the server on a new car: its script moves it to its kickoff spot. Not replicated. */
     bool placeAtKickoff = false;
+    /** @brief Flip regained on the ball with the wheels, not used yet: the car flashes white. Replicated. */
+    bool flipReset = false;
+};
+
+/** @brief Values of `ShotGlow::shot`, as in `rlss/scripts/Shots.wren`. */
+enum class Shot : std::uint8_t {
+    /** @brief No glow. */
+    None = 0,
+    /** @brief Power shot: flipping into the ball with the nose. */
+    Red = 1,
+    /** @brief Underside shot: jumping off the ball with the wheels. */
+    Purple = 2,
+    /** @brief Back shot: flipping the rear into the ball, a lob. */
+    Gold = 3,
+};
+
+/** @brief Ball: color of the last shot, written by the `Ball` script, replicated, shown by the `BallView` script. */
+struct ShotGlow {
+    /** @brief `Shot` value. */
+    int shot = 0;
 };
 
 /**
@@ -123,6 +143,8 @@ struct CarParts {
     std::uint32_t gaugeBack = 0;
     /** @brief Filled part of the boost gauge. */
     std::uint32_t gaugeFill = 0;
+    /** @brief White body overlay, blinking after a flip reset. */
+    std::uint32_t flash = 0;
 };
 
 /** @brief Client: one piece of the ball drawing, placed every frame by the `BallView` script. */
@@ -137,6 +159,8 @@ struct BallPart {
     float angle = 0.0F;
     /** @brief True if the piece turns with the ball (its pattern); false for the round body. */
     bool spins = false;
+    /** @brief `Shot` this piece shows (a colored halo), or 0 for a piece always shown. */
+    int glow = 0;
 };
 
 /**
