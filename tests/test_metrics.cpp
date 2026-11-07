@@ -245,6 +245,8 @@ TEST(RefreshTimer, FiresOncePerPeriodWithTheTimeElapsed) {
 
 // --- Process ---------------------------------------------------------------------------------------------------------
 
+// macOS has no /proc, so sampleProcess() has nothing to read there and returns no sample.
+#ifndef __APPLE__
 TEST(ProcessUsage, ReportsThisProcess) {
     const auto sample = metrics::sampleProcess();
 
@@ -252,6 +254,7 @@ TEST(ProcessUsage, ReportsThisProcess) {
     EXPECT_GT(sample->residentBytes, 0U);
     EXPECT_GE(sample->cpuSeconds, 0.0);
 }
+#endif
 
 // --- MetricsPlugin ---------------------------------------------------------------------------------------------------
 
