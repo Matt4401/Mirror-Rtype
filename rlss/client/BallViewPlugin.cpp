@@ -78,49 +78,46 @@ void BallViewPlugin::build(engine::PluginBuilder& builder) {
 
 void BallViewPlugin::init(engine::Engine& engine) {
     auto& events = engine.eventBus();
-    _spawned = events.subscribe<ecs::net::ReplicatedEntitySpawned>(
-        [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) {
-            if (event.kind != game::KIND_BALL) {
-                return;
-            }
-            ecs::Registry& registry = engine.registry();
-            std::vector<ecs::Entity>& pieces = _pieces[event.entity];
-            const float strip = 2.0F * BALL_RADIUS / static_cast<float>(STRIPS);
+    _spawned = events.subscribe<ecs::net::ReplicatedEntitySpawned>([this, &engine](
+                                                                       const ecs::net::ReplicatedEntitySpawned& event) {
+        if (event.kind != game::KIND_BALL) {
+            return;
+        }
+        ecs::Registry& registry = engine.registry();
+        std::vector<ecs::Entity>& pieces = _pieces[event.entity];
+        const float strip = 2.0F * BALL_RADIUS / static_cast<float>(STRIPS);
+        for (int i = 0; i < STRIPS; ++i) {
+            const float middle = -BALL_RADIUS + ((static_cast<float>(i) + 0.5F) * strip);
+            const float halfWidth = std::sqrt((BALL_RADIUS * BALL_RADIUS) - (middle * middle));
+            pieces.push_back(spawnPiece(registry, game::BallPart{.parent = event.entity, .offsetY = middle},
+                                        2.0F * halfWidth, strip + 0.5F, BALL_COLOR, LAYER_BALL));
+        }
+        // One halo per shot color, hidden until the ball glows with it.
+        const float haloRadius = BALL_RADIUS + HALO_WIDTH;
+        const float haloStrip = 2.0F * haloRadius / static_cast<float>(STRIPS);
+        for (const game::Shot shot : {game::Shot::Red, game::Shot::Purple, game::Shot::Gold}) {
             for (int i = 0; i < STRIPS; ++i) {
-                const float middle = -BALL_RADIUS + ((static_cast<float>(i) + 0.5F) * strip);
-                const float halfWidth = std::sqrt((BALL_RADIUS * BALL_RADIUS) - (middle * middle));
-                pieces.push_back(spawnPiece(
-                    registry, game::BallPart{.parent = static_cast<std::uint32_t>(event.entity), .offsetY = middle},
-                    2.0F * halfWidth, strip + 0.5F, BALL_COLOR, LAYER_BALL));
+                const float middle = -haloRadius + ((static_cast<float>(i) + 0.5F) * haloStrip);
+                const float halfWidth = std::sqrt((haloRadius * haloRadius) - (middle * middle));
+                const game::BallPart halo{
+                    .parent = event.entity,
+                    .offsetY = middle,
+                    .glow = static_cast<int>(shot),
+                };
+                pieces.push_back(
+                    spawnPiece(registry, halo, 2.0F * halfWidth, haloStrip + 0.5F, shotColor(shot), LAYER_HALO));
             }
-            // One halo per shot color, hidden until the ball glows with it.
-            const float haloRadius = BALL_RADIUS + HALO_WIDTH;
-            const float haloStrip = 2.0F * haloRadius / static_cast<float>(STRIPS);
-            for (const game::Shot shot : {game::Shot::Red, game::Shot::Purple, game::Shot::Gold}) {
-                for (int i = 0; i < STRIPS; ++i) {
-                    const float middle = -haloRadius + ((static_cast<float>(i) + 0.5F) * haloStrip);
-                    const float halfWidth = std::sqrt((haloRadius * haloRadius) - (middle * middle));
-                    const game::BallPart halo{
-                        .parent = static_cast<std::uint32_t>(event.entity),
-                        .offsetY = middle,
-                        .glow = static_cast<int>(shot),
-                    };
-                    pieces.push_back(
-                        spawnPiece(registry, halo, 2.0F * halfWidth, haloStrip + 0.5F, shotColor(shot), LAYER_HALO));
-                }
-            }
-            for (const float angle : {0.0F, std::numbers::pi_v<float> / 2.0F}) {
-                pieces.push_back(spawnPiece(
-                    registry,
-                    game::BallPart{.parent = static_cast<std::uint32_t>(event.entity), .angle = angle, .spins = true},
-                    2.0F * BALL_RADIUS * 0.9F, SEAM_WIDTH, SEAM_COLOR, LAYER_SEAM));
-            }
-            registry.addComponent(event.entity, ecs::ScriptComponent{
-                                                    .moduleName = std::string(game::BALL_VIEW_SCRIPT_MODULE),
-                                                    .className = "BallView",
-                                                    .hasUpdate = true,
-                                                });
-        });
+        }
+        for (const float angle : {0.0F, std::numbers::pi_v<float> / 2.0F}) {
+            pieces.push_back(spawnPiece(registry, game::BallPart{.parent = event.entity, .angle = angle, .spins = true},
+                                        2.0F * BALL_RADIUS * 0.9F, SEAM_WIDTH, SEAM_COLOR, LAYER_SEAM));
+        }
+        registry.addComponent(event.entity, ecs::ScriptComponent{
+                                                .moduleName = std::string(game::BALL_VIEW_SCRIPT_MODULE),
+                                                .className = "BallView",
+                                                .hasUpdate = true,
+                                            });
+    });
     _despawned = events.subscribe<ecs::net::ReplicatedEntityDespawned>(
         [this, &engine](const ecs::net::ReplicatedEntityDespawned& event) {
             const auto it = _pieces.find(event.entity);
