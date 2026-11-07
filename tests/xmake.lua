@@ -102,7 +102,10 @@ target("test_level_loader")
     add_packages("gtest")
     add_files("server/LevelLoaderTests.cpp")
     -- The shipped levels are loaded from the source tree, whatever the directory the tests run from.
-    add_defines('RTYPE_LEVELS_DIR="$(projectdir)/server/levels"')
+    -- path.unix: a Windows path would put backslashes, read as escape sequences, in the string literal.
+    on_load(function (target)
+        target:add("defines", 'RTYPE_LEVELS_DIR="' .. path.unix(path.join(os.projectdir(), "server", "levels")) .. '"')
+    end)
     add_tests("test_level_loader")
 
 target("test_prefabs")
@@ -201,7 +204,10 @@ target("test_server_gameplay")
     add_packages("gtest")
     add_files("server/GameplayTests.cpp")
     -- The shipped boss script is loaded from the source tree, whatever the directory the tests run from.
-    add_defines('RTYPE_SCRIPTS_DIR="$(projectdir)/scripts"')
+    -- path.unix: a Windows path would put backslashes, read as escape sequences, in the string literal.
+    on_load(function (target)
+        target:add("defines", 'RTYPE_SCRIPTS_DIR="' .. path.unix(path.join(os.projectdir(), "scripts")) .. '"')
+    end)
     add_tests("test_server_gameplay")
 
 target("test_protocol")
