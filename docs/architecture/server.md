@@ -96,7 +96,9 @@ they spawn is replicated: the client only draws what the server simulates.
 
 - **Level:** the server loads `server/levels/level_01.toml` at start-up and every room plays it. `TimelinePlugin` moves
   a cursor at the scroll speed; `GameplayPlugin` handles the events it reaches: `spawn` creates the enemies, `scroll`
-  changes the speed, `end` restarts the level.
+  changes the speed, `end` restarts the level. A `boss` event stops the scroll until its `boss_core` is destroyed, and
+  `[[terrain]]` sections scroll as 64 px columns that destroy the ships touching them. See
+  [Level Files](../gameplay/levels.md).
 - **Scripts:** each room has its own Wren VM. What a script spawns with `Engine.spawnPrefab(name, x, y)` goes through
   `gameplay::registerScriptPrefabs()`, so it is replicated too (kind `makeEntityKind(name)`). Player ships and bullets
   cannot be spawned by a script.
