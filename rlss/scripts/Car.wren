@@ -12,7 +12,8 @@ import "rlss/scripts/Simulation" for Simulation
  *
  * Attached to every car entity (`ScriptComponent`). The instance registers itself in `Simulation`; the `Match` script
  * steps every car and the ball together at a fixed 120 Hz (`step(dt)`), resolves their collisions, then calls `sync()`.
- * Reads the player's input through `Input.getAxis(player, "steer")` / `Input.isDown(player, "jump" | "boost")`, and
+ * Reads the player's input through `Input.getAxis(player, "steer" | "pitch")` / `Input.isDown(player, "jump" | "boost")`,
+ * and
  * writes the result into the entity `Transform` (x, y, rotation; `scaleX` = -1 when facing left) and `CarStatus`
  * (boost), which the engine replicates.
  *
@@ -27,7 +28,9 @@ import "rlss/scripts/Simulation" for Simulation
  *   While driving (throttle or boost) the grip beats gravity, so the car drives upside down on the ceiling; once it
  *   lets go, it falls.
  * - in the air: gravity, jump hold, one double jump or dodge per jump (until the car touches a surface again), air
- *   rotation; the body collides with the arena walls. Like in Sideswipe, the car never rests on its roof or its side:
+ *   control; the body collides with the arena walls. The stick (steer and pitch) aims: the nose turns toward where it
+ *   points on screen (up, down, left, right or in between), at most 4.2 rad/s, slowing down as it gets there. Pointing
+ *   the nose up and boosting climbs. Like in Sideswipe, the car never rests on its roof or its side:
  *   just before touching a surface any other way than wheels first, it turns itself over and lands on its wheels.
  *
  * Boost pushes the car toward its nose (991 uu/s² on the ground, 1058 in the air) and burns 33.3 per second. Like in
@@ -222,6 +225,9 @@ class Car {
         var steer = Input.getAxis(_player, "steer")
         if (steer == null || steer.abs < CarTuning.DEADZONE) steer = 0
         steer = steer.clamp(-1, 1)
+        var pitch = Input.getAxis(_player, "pitch")
+        if (pitch == null || pitch.abs < CarTuning.DEADZONE) pitch = 0
+        pitch = pitch.clamp(-1, 1)
         var jump = Input.isDown(_player, "jump")
         var jumpPressed = jump && !_prevJump
         _prevJump = jump
@@ -233,7 +239,7 @@ class Car {
         if (_grounded) {
             drive_(dt, steer, jumpPressed)
         } else {
-            fly_(dt, steer, jump, jumpPressed)
+            fly_(dt, steer, pitch, jump, jumpPressed)
         }
         collidePosts_()
     }
@@ -424,7 +430,7 @@ class Car {
 
     // ------------------------------------------------------------------ in the air
 
-    fly_(dt, steer, jump, jumpPressed) {
+    fly_(dt, steer, pitch, jump, jumpPressed) {
         _airTime = _airTime + dt
 
         // Holding jump keeps pushing for a short while: a longer press jumps higher.
@@ -456,9 +462,7 @@ class Car {
             _omega = _spin
             if (_spinTime <= 0) _dodging = false
         } else {
-            var torque = CarTuning.AIR_TORQUE * steer - CarTuning.AIR_DAMPING * _omega * (1 - steer.abs)
-            var maxSpin = CarTuning.MAX_ANGULAR_SPEED
-            _omega = (_omega + torque * dt).clamp(-maxSpin, maxSpin)
+            airControl_(dt, steer, pitch)
         }
 
         if (_boosting) {
@@ -471,6 +475,26 @@ class Car {
         _y = _y + _vy * dt
         _theta = Car.wrap_(_theta + _omega * dt)
         collide_(dt)
+    }
+
+    // The stick aims: the nose turns toward where it points on screen. The car turns at most MAX_ANGULAR_SPEED, speeds
+    // up and slows down at AIR_TORQUE, and plans its stop (AIM_BRAKING) so that it ends on the aim without overshooting.
+    // Released, the rotation dies down.
+    airControl_(dt, steer, pitch) {
+        if (steer == 0 && pitch == 0) {
+            _omega = _omega - CarTuning.AIR_DAMPING * _omega * dt
+            return
+        }
+        // Screen y points down: pushing up aims at -y. The nose is the car tangent times `facing`.
+        var aim = (-pitch).atan(steer)
+        if (_facing < 0) aim = aim + Num.pi
+        var error = Car.wrap_(aim - _theta)
+        // Aiming right behind: keep turning the way the car already turns, or else lift the nose (over the top).
+        if (error.abs > Num.pi - 0.05) error = error.abs * (_omega.abs > 0.1 ? _omega.sign : -_facing)
+        var speed = (2 * CarTuning.AIM_BRAKING * error.abs).sqrt.min(CarTuning.AIM_GAIN * error.abs)
+        var wanted = error.sign * speed.min(CarTuning.MAX_ANGULAR_SPEED)
+        var step = CarTuning.AIR_TORQUE * dt
+        _omega = _omega + (wanted - _omega).clamp(-step, step)
     }
 
     // Sideswipe turns a car over just before it would touch a surface on its roof or its side: when the car flies toward
@@ -530,7 +554,7 @@ class Car {
         _vx = _vx + direction * impulse
         _vy = _vy > 0 ? 0 : _vy * CarTuning.DODGE_VERTICAL_KEEP
         // Pushing right spins clockwise: a front flip for a car facing right, a back flip for one facing left.
-        _spin = direction * CarTuning.MAX_ANGULAR_SPEED
+        _spin = direction * CarTuning.DODGE_SPIN
         _spinTime = CarTuning.DODGE_TIME
         _dodging = true
     }
