@@ -1,18 +1,19 @@
 /**
  * @file UiCanvas.hpp
- * @brief Flat rectangles and block text placed on screen, drawn through the game camera.
+ * @brief Screen-space layer of rectangles, pictures and text, drawn on top of the world every frame.
  */
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
-#include "components/CameraComponent.hpp"
 #include "components/Renderable.hpp"
-#include "ecs/Entity.hpp"
-#include "ecs/Registry.hpp"
+#include "core/services/IScreenDrawService.hpp"
 
 namespace rlss::client {
 
@@ -49,76 +50,163 @@ enum class Align : std::uint8_t {
 };
 
 /**
- * @brief Owns the entities of a screen-space layer: menus, buttons, labels.
+ * @brief A font and the service that measures and draws it. Texts are sized by the height of their capital letters,
+ * so that layouts do not depend on the font's line spacing.
+ */
+class Typeface {
+  public:
+    /** @brief No font: measures nothing, draws nothing (until `bind`). */
+    Typeface() = default;
+
+    /**
+     * @brief Uses a font.
+     * @param draw Service drawing it; must outlive the typeface.
+     * @param font Font loaded by `draw` (`engine::NO_FONT`: the backend's default font).
+     */
+    Typeface(engine::IScreenDrawService& draw, engine::FontId font) noexcept : _draw(&draw), _font(font) {}
+
+    /**
+     * @brief Width of a text.
+     * @param text Text.
+     * @param capHeight Height of its capital letters, in pixels.
+     * @return Width in pixels, 0 without a service.
+     */
+    [[nodiscard]] float width(std::string_view text, float capHeight) const;
+
+    /**
+     * @brief Queues a text.
+     * @param text Text.
+     * @param x Anchor, in pixels; see `align`.
+     * @param capTop Top of the capital letters, in pixels.
+     * @param capHeight Height of the capital letters, in pixels.
+     * @param color Color.
+     * @param align What `x` is.
+     */
+    void draw(std::string_view text, float x, float capTop, float capHeight, ecs::Rgba color, Align align) const;
+
+    /** @brief The drawing service, or null. */
+    [[nodiscard]] engine::IScreenDrawService* service() const noexcept { return _draw; }
+
+  private:
+    /** @brief Service, or null. */
+    engine::IScreenDrawService* _draw = nullptr;
+    /** @brief Font. */
+    engine::FontId _font = engine::NO_FONT;
+};
+
+/** @brief Index of an element of a `UiCanvas`, to change its color later. */
+using UiHandle = std::size_t;
+
+/**
+ * @brief Retained list of screen-space elements (menus, labels), drawn through `engine::IScreenDrawService`.
  *
- * The engine only draws in the world, through the camera; `place()` moves and scales every element each frame so that
- * it stays put on screen whatever the camera does. Elements are untextured `Renderable` rectangles; a text is one
- * rectangle per run of lit squares of its `font` glyphs.
+ * Build the elements when the screen changes, then call `draw()` every frame: they are drawn in the order they were
+ * added, on top of the world.
  */
 class UiCanvas {
   public:
     /**
-     * @brief Spawns a rectangle.
-     * @param registry World.
+     * @brief Adds a filled rectangle.
      * @param rect Place on screen.
      * @param color Fill color.
-     * @param layer Draw layer.
-     * @return The entity, to change its tint later.
+     * @return Its handle.
      */
-    ecs::Entity rect(ecs::Registry& registry, const ScreenRect& rect, ecs::Rgba color, int layer);
+    UiHandle rect(const ScreenRect& rect, ecs::Rgba color);
 
     /**
-     * @brief Spawns a text in the block font.
-     * @param registry World.
-     * @param text Text (see `font::forEachRun` for the characters drawn).
-     * @param x Anchor, in pixels; see `align`.
-     * @param top Top edge, in pixels.
-     * @param square Side of one square of a glyph, in pixels (a glyph is 5 x 7 squares).
-     * @param color Text color.
-     * @param layer Draw layer.
-     * @param align What `x` is.
+     * @brief Adds a rectangle outline (drawn inside the rectangle).
+     * @param rect Place on screen.
+     * @param thickness Line thickness, in pixels.
+     * @param color Line color.
+     * @return Its handle.
      */
-    void text(ecs::Registry& registry, std::string_view text, float x, float top, float square, ecs::Rgba color,
-              int layer, Align align = Align::Center);
+    UiHandle outline(const ScreenRect& rect, float thickness, ecs::Rgba color);
 
     /**
-     * @brief Width of a text drawn by `text()`.
+     * @brief Adds a picture.
+     * @param texture Texture (`ecs::NO_TEXTURE` draws nothing).
+     * @param rect Place on screen, the whole texture stretched over it.
+     * @param tint Color multiplied with the texture.
+     * @return Its handle.
+     */
+    UiHandle image(ecs::TextureId texture, const ScreenRect& rect, ecs::Rgba tint);
+
+    /**
+     * @brief Adds a text.
      * @param text Text.
-     * @param square Side of one square, in pixels.
-     * @return Width in pixels.
+     * @param x Anchor, in pixels; see `align`.
+     * @param capTop Top of the capital letters, in pixels.
+     * @param capHeight Height of the capital letters, in pixels.
+     * @param color Text color.
+     * @param align What `x` is.
+     * @return Its handle.
      */
-    [[nodiscard]] static float textWidth(std::string_view text, float square) noexcept;
+    UiHandle text(std::string_view text, float x, float capTop, float capHeight, ecs::Rgba color,
+                  Align align = Align::Center);
 
     /**
-     * @brief Kills every element.
-     * @param registry World.
+     * @brief Changes the color (or tint) of an element.
+     * @param handle Element; an unknown one is ignored.
+     * @param color New color.
      */
-    void clear(ecs::Registry& registry);
+    void setColor(UiHandle handle, ecs::Rgba color);
+
+    /** @brief Removes every element. */
+    void clear() noexcept { _items.clear(); }
 
     /**
-     * @brief Moves every element to its place on screen, seen through a camera. Call it once the camera is final for
-     * the frame.
-     * @param registry World.
-     * @param camera Camera the world is drawn through.
+     * @brief Queues every element, in the order they were added.
+     * @param typeface Font of the texts, and the service everything is drawn with (nothing without one).
      * @param shiftX Moves every element right by this many pixels (a label following something in the world).
      * @param shiftY Moves every element down by this many pixels.
      */
-    void place(ecs::Registry& registry, const ecs::CameraComponent& camera, float shiftX = 0.0F,
-               float shiftY = 0.0F) const;
+    void draw(const Typeface& typeface, float shiftX = 0.0F, float shiftY = 0.0F) const;
 
     /** @brief True when the canvas has no element. */
     [[nodiscard]] bool empty() const noexcept { return _items.empty(); }
 
   private:
-    /** @brief An element and its place on screen. */
-    struct Item {
-        /** @brief Entity. */
-        ecs::Entity entity = 0;
-        /** @brief Place on screen. */
+    /** @brief Filled rectangle. */
+    struct Fill {
+        /** @brief Place. */
         ScreenRect rect;
     };
+    /** @brief Rectangle outline. */
+    struct Outline {
+        /** @brief Place. */
+        ScreenRect rect;
+        /** @brief Line thickness. */
+        float thickness = 1.0F;
+    };
+    /** @brief Picture. */
+    struct Image {
+        /** @brief Texture. */
+        ecs::TextureId texture = ecs::NO_TEXTURE;
+        /** @brief Place. */
+        ScreenRect rect;
+    };
+    /** @brief Text. */
+    struct Text {
+        /** @brief Text. */
+        std::string text;
+        /** @brief Anchor. */
+        float x = 0.0F;
+        /** @brief Top of the capitals. */
+        float capTop = 0.0F;
+        /** @brief Height of the capitals. */
+        float capHeight = 0.0F;
+        /** @brief Anchoring. */
+        Align align = Align::Center;
+    };
+    /** @brief An element and its color. */
+    struct Item {
+        /** @brief What it is. */
+        std::variant<Fill, Outline, Image, Text> shape;
+        /** @brief Color or tint. */
+        ecs::Rgba color;
+    };
 
-    /** @brief Elements, in spawn order. */
+    /** @brief Elements, in the order they are drawn. */
     std::vector<Item> _items;
 };
 

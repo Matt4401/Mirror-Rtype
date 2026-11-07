@@ -17,8 +17,9 @@ namespace rlss::client {
 /**
  * @brief Builds the look of the cars sent by the server.
  *
- * When a car appears (`ecs::net::ReplicatedEntitySpawned` of kind `KIND_CAR`), spawns its parts (body and cabin in the
- * player color, wheels, headlight, boost flame and gauge, white flip reset flash) and attaches the `CarView` script,
+ * When a car appears (`ecs::net::ReplicatedEntitySpawned` of kind `KIND_CAR`), spawns its parts, textured with
+ * `GameAssets` (body tinted with the player color, untinted glass and trims, wheels, headlight glow, boost flame, boost
+ * gauge, white flip reset flash) and attaches the `CarView` script,
  * which sizes and places them every frame from the car `Transform` (interpolated by `ClientReplicationPlugin`). When it
  * disappears, removes the parts and the script.
  */
@@ -31,7 +32,7 @@ class CarViewPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "CarViewPlugin"; }
 
     /**
-     * @brief Declares the dependencies on the render, script and client replication plugins.
+     * @brief Declares the dependencies on the assets, script and client replication plugins.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;

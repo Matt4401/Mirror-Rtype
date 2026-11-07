@@ -24,7 +24,7 @@ struct Time;
 namespace rlss::client {
 
 /**
- * @brief Draws the name of each player above their car, in the block font, on a dark label in the player color.
+ * @brief Draws the name of each player above their car, on a dark label underlined in the player color.
  *
  * The names come from the server's `PlayerNames` messages (car network id → name), sent when a player joins, leaves or
  * renames. A label is built once its car has arrived in the snapshots (the names and the car may come in any order),
@@ -90,6 +90,8 @@ class NameTagPlugin final : public engine::IPlugin {
 
     /** @brief Names of the match, by car network id. */
     std::unordered_map<std::uint32_t, std::string> _names;
+    /** @brief Font of the labels. */
+    Typeface _typeface;
     /** @brief Labels drawn, by car network id. */
     std::unordered_map<std::uint32_t, Tag> _tags;
     /** @brief True between `MatchJoined` and `MatchLeft`: names received outside a match are late, and ignored. */

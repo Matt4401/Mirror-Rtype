@@ -68,10 +68,12 @@ enum class Sound : std::uint8_t {
     MatchEnd,
     /** @brief One tick of the last seconds of the clock. */
     ClockTick,
+    /** @brief The ball exploding in the goal. */
+    GoalExplosion,
 };
 
 /** @brief Number of `Sound` values. */
-inline constexpr std::size_t SOUND_COUNT = static_cast<std::size_t>(Sound::ClockTick) + 1;
+inline constexpr std::size_t SOUND_COUNT = static_cast<std::size_t>(Sound::GoalExplosion) + 1;
 
 /**
  * @brief File name of a sound, in `SOUND_DIRECTORY`.
@@ -112,7 +114,7 @@ struct BallAudio {
  *   `ecs::AudioEmitter`s that follow the cars;
  * - the `CarCues` and `BallCues` counters, replicated with the snapshots, play the jumps, flips, impacts, hits and
  *   bounces where they happen, louder when stronger; a colored shot adds its own blast;
- * - the `MatchState` written by `ScoreboardPlugin` plays the countdown, the kickoff, the goals, the overtime, the
+ * - the `MatchState` written by `HudPlugin` plays the countdown, the kickoff, the goals, the overtime, the
  *   end of the match and the last seconds of the clock; a crowd murmurs during the whole match.
  *
  * Positioned sounds are heard from the camera (an `ecs::AudioListener` follows its target): the cars and the ball

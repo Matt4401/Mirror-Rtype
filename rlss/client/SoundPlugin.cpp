@@ -9,8 +9,8 @@
 
 #include "CameraPlugin.hpp"
 #include "ClientEvents.hpp"
+#include "HudPlugin.hpp"
 #include "Logger.hpp"
-#include "ScoreboardPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "audio/spatial/SpatialConfig.hpp"
 #include "audio/types/AudioConstants.hpp"
@@ -76,6 +76,7 @@ constexpr float POWER_SHOT_VOLUME = 0.9F;
 constexpr float BOUNCE_MIN_VOLUME = 0.1F;
 constexpr float COUNTDOWN_VOLUME = 0.6F;
 constexpr float KICKOFF_VOLUME = 0.7F;
+constexpr float EXPLOSION_VOLUME = 1.0F;
 constexpr float GOAL_VOLUME = 0.85F;
 constexpr float CHEER_VOLUME = 0.7F;
 constexpr float OVERTIME_VOLUME = 0.8F;
@@ -152,6 +153,8 @@ std::string_view fileName(const Sound sound) noexcept {
             return "match_end.wav";
         case Sound::ClockTick:
             return "clock_tick.wav";
+        case Sound::GoalExplosion:
+            return "goal_explosion.wav";
     }
     return "";
 }
@@ -160,7 +163,7 @@ void SoundPlugin::build(engine::PluginBuilder& builder) {
     builder.require<audio::AudioPlugin>();
     builder.require<ecs::net::ClientReplicationPlugin>();
     builder.require<CameraPlugin>();
-    builder.require<ScoreboardPlugin>();
+    builder.require<HudPlugin>();
 }
 
 void SoundPlugin::init(engine::Engine& engine) {
@@ -374,6 +377,7 @@ void SoundPlugin::updateMatch(engine::Engine& engine) {
         play(engine, Sound::Kickoff, KICKOFF_VOLUME, 1.0F);
     }
     if (previous.phase != PHASE_GOAL && now.phase == PHASE_GOAL) {
+        play(engine, Sound::GoalExplosion, EXPLOSION_VOLUME, 1.0F);
         play(engine, Sound::GoalHorn, GOAL_VOLUME, 1.0F);
         play(engine, Sound::Cheer, CHEER_VOLUME, 1.0F);
     }

@@ -6,6 +6,7 @@
 #include <string>
 
 #include "Arena.hpp"
+#include "AssetsPlugin.hpp"
 #include "Shapes.hpp"
 #include "components/Renderable.hpp"
 #include "components/ScriptComponent.hpp"
@@ -18,45 +19,47 @@
 #include "game/ScriptBindings.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/ReplicationEvents.hpp"
-#include "render/RenderPlugin.hpp"
 #include "scripting/ScriptPlugin.hpp"
 
 namespace rlss::client {
 
 namespace {
 
-constexpr ecs::Rgba WHEEL_COLOR{.r = 85, .g = 88, .b = 96, .a = 255};
-constexpr ecs::Rgba HEADLIGHT_COLOR{.r = 255, .g = 240, .b = 170, .a = 255};
-constexpr ecs::Rgba FLAME_COLOR{.r = 255, .g = 150, .b = 30, .a = 230};
-constexpr ecs::Rgba GAUGE_BACK_COLOR{.r = 10, .g = 12, .b = 20, .a = 200};
-constexpr ecs::Rgba GAUGE_FILL_COLOR{.r = 255, .g = 190, .b = 40, .a = 255};
-constexpr ecs::Rgba FLASH_COLOR{.r = 255, .g = 255, .b = 255, .a = 220};
-/** @brief The cabin is the player color, darkened by this factor. */
-constexpr float CABIN_SHADE = 0.6F;
+constexpr ecs::Rgba WHITE{.r = 255, .g = 255, .b = 255, .a = 255};
+constexpr ecs::Rgba HEADLIGHT_COLOR{.r = 255, .g = 236, .b = 170, .a = 170};
+constexpr ecs::Rgba GAUGE_BACK_COLOR{.r = 6, .g = 10, .b = 22, .a = 190};
+constexpr ecs::Rgba GAUGE_FILL_COLOR{.r = 255, .g = 176, .b = 32, .a = 255};
+constexpr ecs::Rgba FLASH_COLOR{.r = 255, .g = 255, .b = 255, .a = 210};
+/** @brief The body texture is greyscale: the player color, slightly lightened, keeps it bright. */
+constexpr float BODY_LIGHTEN = 0.18F;
 
 constexpr int LAYER_FLAME = 9;
 constexpr int LAYER_WHEELS = 10;
-constexpr int LAYER_CABIN = 11;
-constexpr int LAYER_BODY = 12;
+constexpr int LAYER_BODY = 11;
+constexpr int LAYER_DETAILS = 12;
 constexpr int LAYER_LIGHT = 13;
+constexpr int LAYER_FLASH = 14;
 constexpr int LAYER_GAUGE_BACK = 30;
 constexpr int LAYER_GAUGE_FILL = 31;
-constexpr int LAYER_FLASH = 14;
 
-ecs::Rgba shade(const Rgb color, const float factor) {
-    return ecs::Rgba{
-        .r = static_cast<std::uint8_t>(static_cast<float>(color.r) * factor),
-        .g = static_cast<std::uint8_t>(static_cast<float>(color.g) * factor),
-        .b = static_cast<std::uint8_t>(static_cast<float>(color.b) * factor),
-        .a = 255,
+ecs::Rgba lighten(const Rgb color, const float amount) {
+    const auto channel = [amount](const std::uint8_t value) {
+        return static_cast<std::uint8_t>(static_cast<float>(value) + ((255.0F - static_cast<float>(value)) * amount));
     };
+    return ecs::Rgba{.r = channel(color.r), .g = channel(color.g), .b = channel(color.b), .a = 255};
 }
 
-/** @brief A part is placed and sized by the script: it only needs a color and a layer here. */
-ecs::Entity spawnPart(ecs::Registry& registry, const ecs::Transform& car, const ecs::Rgba color, const int layer) {
+/**
+ * @brief A part is placed and sized by the script: it only needs its look and layer here. Hidden (scale 0) until the
+ * script places it.
+ */
+ecs::Entity spawnPart(ecs::Registry& registry, const ecs::Transform& car, const ecs::TextureId texture,
+                      const ecs::Rgba color, const int layer) {
     const ecs::Entity part = registry.spawnEntity();
     registry.addComponent(part, ecs::Transform{.x = car.x, .y = car.y, .scaleX = 0.0F, .scaleY = 0.0F});
-    registry.addComponent(part, makeRenderable(color, layer));
+    ecs::Renderable renderable = makeRenderable(color, layer);
+    renderable.textureId = texture;
+    registry.addComponent(part, ecs::Renderable{renderable});
     return part;
 }
 
@@ -69,7 +72,7 @@ void killPart(ecs::Registry& registry, const ecs::Entity part) {
 }  // namespace
 
 void CarViewPlugin::build(engine::PluginBuilder& builder) {
-    builder.require<render::RenderPlugin>();
+    builder.require<AssetsPlugin>();
     builder.require<scripting::ScriptPlugin>();
     builder.require<ecs::net::ClientReplicationPlugin>();
 }
@@ -88,18 +91,20 @@ void CarViewPlugin::init(engine::Engine& engine) {
             const ecs::Transform car = registry.getComponents<ecs::Transform>().get(event.entity);
             const auto& looks = registry.getComponents<game::CarLook>();
             const Rgb color = playerColor(looks.contains(event.entity) ? looks.get(event.entity).color : 0);
-            registry.addComponent(event.entity,
-                                  game::CarParts{
-                                      .body = spawnPart(registry, car, shade(color, 1.0F), LAYER_BODY),
-                                      .cabin = spawnPart(registry, car, shade(color, CABIN_SHADE), LAYER_CABIN),
-                                      .rearWheel = spawnPart(registry, car, WHEEL_COLOR, LAYER_WHEELS),
-                                      .frontWheel = spawnPart(registry, car, WHEEL_COLOR, LAYER_WHEELS),
-                                      .headlight = spawnPart(registry, car, HEADLIGHT_COLOR, LAYER_LIGHT),
-                                      .flame = spawnPart(registry, car, FLAME_COLOR, LAYER_FLAME),
-                                      .gaugeBack = spawnPart(registry, car, GAUGE_BACK_COLOR, LAYER_GAUGE_BACK),
-                                      .gaugeFill = spawnPart(registry, car, GAUGE_FILL_COLOR, LAYER_GAUGE_FILL),
-                                      .flash = spawnPart(registry, car, FLASH_COLOR, LAYER_FLASH),
-                                  });
+            const GameAssets& assets = registry.getResource<GameAssets>();
+            registry.addComponent(
+                event.entity,
+                game::CarParts{
+                    .body = spawnPart(registry, car, assets.carBody, lighten(color, BODY_LIGHTEN), LAYER_BODY),
+                    .cabin = spawnPart(registry, car, assets.carDetails, WHITE, LAYER_DETAILS),
+                    .rearWheel = spawnPart(registry, car, assets.wheel, WHITE, LAYER_WHEELS),
+                    .frontWheel = spawnPart(registry, car, assets.wheel, WHITE, LAYER_WHEELS),
+                    .headlight = spawnPart(registry, car, assets.glow, HEADLIGHT_COLOR, LAYER_LIGHT),
+                    .flame = spawnPart(registry, car, assets.flame, WHITE, LAYER_FLAME),
+                    .gaugeBack = spawnPart(registry, car, ecs::NO_TEXTURE, GAUGE_BACK_COLOR, LAYER_GAUGE_BACK),
+                    .gaugeFill = spawnPart(registry, car, ecs::NO_TEXTURE, GAUGE_FILL_COLOR, LAYER_GAUGE_FILL),
+                    .flash = spawnPart(registry, car, assets.carBody, FLASH_COLOR, LAYER_FLASH),
+                });
             registry.addComponent(event.entity, ecs::ScriptComponent{
                                                     .moduleName = std::string(game::CAR_VIEW_SCRIPT_MODULE),
                                                     .className = "CarView",

@@ -7,15 +7,16 @@
 #include <vector>
 
 #include "Arena.hpp"
+#include "AssetsPlugin.hpp"
 #include "CameraPlugin.hpp"
 #include "ClientEvents.hpp"
-#include "PixelFont.hpp"
 #include "UiCanvas.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/Renderable.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
+#include "core/services/IScreenDrawService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
@@ -31,17 +32,15 @@ namespace rlss::client {
 
 namespace {
 
-/** @brief Above the world and the scoreboard, below the menus. */
-constexpr int LAYER_BACKGROUND = 150;
-constexpr int LAYER_TEXT = 151;
-
-constexpr ecs::Rgba BACKGROUND_COLOR{.r = 8, .g = 12, .b = 22, .a = 170};
-/** @brief Side of one square of a letter, in pixels: the label keeps its size whatever the zoom. */
-constexpr float SQUARE = 2.0F;
+constexpr ecs::Rgba BACKGROUND_COLOR{.r = 6, .g = 10, .b = 22, .a = 165};
+/** @brief Height of the capital letters, in pixels: the label keeps its size whatever the zoom. */
+constexpr float CAP_HEIGHT = 13.0F;
 /** @brief Space around the letters, in pixels. */
-constexpr float PADDING = 4.0F;
+constexpr float PADDING = 6.0F;
+/** @brief Thickness of the line in the player color under the name, in pixels. */
+constexpr float ACCENT = 3.0F;
 /** @brief The bottom of the label is this far above the car center, in world units: above the boost gauge. */
-constexpr float HEIGHT_ABOVE_CAR = 82.0F;
+constexpr float HEIGHT_ABOVE_CAR = 74.0F;
 /** @brief The player color is mixed with this much white, to read well on the dark label. */
 constexpr float WHITE_MIX = 0.45F;
 
@@ -61,9 +60,12 @@ void NameTagPlugin::build(engine::PluginBuilder& builder) {
     // The camera script runs in the ScriptPlugin update: the labels are placed after it, with the final camera.
     builder.require<scripting::ScriptPlugin>();
     builder.require<CameraPlugin>();
+    builder.require<AssetsPlugin>();
 }
 
 void NameTagPlugin::init(engine::Engine& engine) {
+    _typeface =
+        Typeface(engine.service<engine::IScreenDrawService>(), engine.registry().getResource<GameAssets>().font);
     auto& events = engine.eventBus();
     _packets = events.subscribe<ecs::net::PacketReceived>([this](const ecs::net::PacketReceived& packet) {
         const auto message = protocol::decode(packet.data);
@@ -99,7 +101,6 @@ void NameTagPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time
         }
     }
     for (const std::uint32_t carId : stale) {
-        _tags.at(carId).canvas.clear(registry);
         _tags.erase(carId);
     }
 
@@ -114,18 +115,18 @@ void NameTagPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time
         tag.car = *car;
         tag.name = name;
         // Around the anchor point (0, 0): the middle of the bottom edge of the label.
-        const float textWidth = UiCanvas::textWidth(name, SQUARE);
-        const float textHeight = static_cast<float>(font::GLYPH_ROWS) * SQUARE;
-        tag.canvas.rect(registry,
-                        ScreenRect{
-                            .x = -(textWidth / 2.0F) - PADDING,
-                            .y = -textHeight - (2.0F * PADDING),
-                            .width = textWidth + (2.0F * PADDING),
-                            .height = textHeight + (2.0F * PADDING),
-                        },
-                        BACKGROUND_COLOR, LAYER_BACKGROUND);
         const Rgb color = playerColor(looks.contains(*car) ? looks.get(*car).color : 0);
-        tag.canvas.text(registry, name, 0.0F, -textHeight - PADDING, SQUARE, lighter(color), LAYER_TEXT);
+        const float textWidth = _typeface.width(name, CAP_HEIGHT);
+        const ScreenRect plate{
+            .x = -(textWidth / 2.0F) - PADDING,
+            .y = -CAP_HEIGHT - (2.0F * PADDING) - ACCENT,
+            .width = textWidth + (2.0F * PADDING),
+            .height = CAP_HEIGHT + (2.0F * PADDING),
+        };
+        tag.canvas.rect(plate, BACKGROUND_COLOR);
+        tag.canvas.rect({.x = plate.x, .y = plate.y + plate.height, .width = plate.width, .height = ACCENT},
+                        ecs::Rgba{.r = color.r, .g = color.g, .b = color.b, .a = 255});
+        tag.canvas.text(name, 0.0F, plate.y + PADDING, CAP_HEIGHT, lighter(color));
     }
 
     // Follow the cars: the labels are laid out in pixels, shifted to the point above each car on screen.
@@ -140,16 +141,11 @@ void NameTagPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time
         const ecs::Transform& car = transforms.get(tag.car);
         const float screenX = camera.offsetX + ((car.x - camera.targetX) * zoom);
         const float screenY = camera.offsetY + ((car.y - HEIGHT_ABOVE_CAR - camera.targetY) * zoom);
-        tag.canvas.place(registry, camera, screenX, screenY);
+        tag.canvas.draw(_typeface, screenX, screenY);
     }
 }
 
-void NameTagPlugin::clearTags(engine::Engine& engine) {
-    for (auto& [carId, tag] : _tags) {
-        tag.canvas.clear(engine.registry());
-    }
-    _tags.clear();
-}
+void NameTagPlugin::clearTags(engine::Engine& /*engine*/) { _tags.clear(); }
 
 void NameTagPlugin::shutdown(engine::Engine& engine) {
     auto& events = engine.eventBus();

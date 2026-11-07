@@ -129,8 +129,8 @@ class MenuPlugin final : public engine::IPlugin {
     struct Button {
         /** @brief Place on screen. */
         ScreenRect rect;
-        /** @brief Background entity, whose tint shows the hover. */
-        ecs::Entity background = 0;
+        /** @brief Background element, whose color shows the hover. */
+        UiHandle background = 0;
         /** @brief What a click does. */
         Action action = Action::Create;
         /** @brief Match to join, for `Action::Join`. */
@@ -194,24 +194,25 @@ class MenuPlugin final : public engine::IPlugin {
      */
     void confirmName(engine::Engine& engine);
     /** @brief Draws the name entry. */
-    void buildName(ecs::Registry& registry, float width, float height);
+    void buildName(float width, float height);
     /** @brief Draws the main menu. */
-    void buildMenu(ecs::Registry& registry, float width, float height);
+    void buildMenu(float width, float height);
     /** @brief Draws the list of matches. */
-    void buildBrowser(ecs::Registry& registry, float width, float height);
+    void buildBrowser(float width, float height);
     /** @brief Draws one match of the list. */
-    void buildMatchRow(ecs::Registry& registry, const protocol::MatchInfo& match, const ScreenRect& row);
+    void buildMatchRow(const protocol::MatchInfo& match, const ScreenRect& row);
     /** @brief Draws the waiting screen. */
-    void buildJoining(ecs::Registry& registry, float width, float height);
+    void buildJoining(float width, float height);
     /** @brief Draws the end of match screen. */
-    void buildEnded(ecs::Registry& registry, float width, float height);
+    void buildEnded(float width, float height);
     /** @brief Draws the dark veil over the arena. */
-    void buildOverlay(ecs::Registry& registry, float width, float height);
+    void buildOverlay(float width, float height);
+    /** @brief Draws the game title, centered at `capTop`, with its two team-colored bars. */
+    void buildTitle(float middle, float capTop, float capHeight);
     /** @brief Draws a button with a centered label and registers it. */
-    void addButton(ecs::Registry& registry, const ScreenRect& rect, std::string_view label, Action action,
-                   std::uint16_t matchId = 0);
+    void addButton(const ScreenRect& rect, std::string_view label, Action action, std::uint16_t matchId = 0);
     /** @brief Draws the current message, if any, centered at `top`. */
-    void buildNotice(ecs::Registry& registry, float width, float top);
+    void buildNotice(float width, float top);
 
     /**
      * @brief Tints the button under the mouse.
@@ -225,6 +226,10 @@ class MenuPlugin final : public engine::IPlugin {
     std::shared_ptr<ServerLink> _link;
     /** @brief Screen-space elements of the current screen. */
     UiCanvas _canvas;
+    /** @brief Font of the menus and the service they are drawn with. */
+    Typeface _typeface;
+    /** @brief Soft band texture, behind the title. */
+    ecs::TextureId _band = ecs::NO_TEXTURE;
     /** @brief Buttons of the current screen. */
     std::vector<Button> _buttons;
     /** @brief Current screen. */
@@ -233,8 +238,8 @@ class MenuPlugin final : public engine::IPlugin {
     std::string _name;
     /** @brief Name being typed on the name entry. */
     std::string _typed;
-    /** @brief Blinking cursor of the name entry, 0 on the other screens. */
-    ecs::Entity _cursor = 0;
+    /** @brief Blinking cursor of the name entry, none on the other screens. */
+    std::optional<UiHandle> _cursor;
     /** @brief Time on the name entry, for the cursor blink. */
     float _blink = 0.0F;
     /** @brief Seconds before Backspace erases again while held; negative when it is not held. */
