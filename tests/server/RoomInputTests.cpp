@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <thread>
@@ -94,6 +95,23 @@ class RoomInputTest : public ::testing::Test {
     void send(const std::uint32_t sequence, std::vector<protocol::AxisValue> axes) {
         room.onPacket(
             PLAYER, protocol::encode(protocol::PlayerInput{.sequence = sequence, .held = {}, .axes = std::move(axes)}));
+    }
+
+    /** @brief Sends an input with the shoot button held, then runs one step. */
+    void stepHoldingShoot(const std::uint32_t sequence) {
+        room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{
+                                  .sequence = sequence, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
+        step();
+    }
+
+    /** @brief Bullets of the last snapshot the player received. */
+    [[nodiscard]] std::vector<protocol::EntityState> bullets() const {
+        const auto snapshots = network.snapshotsOf(PLAYER);
+        std::vector<protocol::EntityState> found;
+        std::ranges::copy_if(
+            snapshots.at(snapshots.size() - 1).entities, std::back_inserter(found),
+            [](const protocol::EntityState& entity) { return entity.kind == rtype::game::KIND_PLAYER_BULLET; });
+        return found;
     }
 
     /** @brief Position of the player's ship. */
@@ -261,6 +279,103 @@ TEST_F(RoomInputTest, RemovedPlayerNoLongerReceivesSnapshots) {
     step();
 
     EXPECT_TRUE(network.snapshotsOf(PLAYER).empty());
+}
+
+TEST_F(RoomInputTest, InputWithoutTheShootButtonSpawnsNoBullet) {
+    send(1);
+    step();
+
+    EXPECT_TRUE(bullets().empty());
+}
+
+TEST_F(RoomInputTest, HoldingShootSpawnsABulletInFrontOfTheShip) {
+    const ecs::Transform ship = shipOf(PLAYER);
+
+    stepHoldingShoot(1);
+
+    const auto spawned = bullets();
+    ASSERT_EQ(spawned.size(), 1U);
+    EXPECT_NE(spawned[0].entityId, 0U);
+    EXPECT_EQ(spawned[0].subtype, 0) << "the index of the player who shot";
+    EXPECT_GT(spawned[0].x, ship.x);
+    EXPECT_FLOAT_EQ(spawned[0].y, ship.y);
+}
+
+TEST_F(RoomInputTest, HoldingShootIsLimitedByTheCooldown) {
+    // Steps of 0.1 s and a shot every 0.2 s: the steps 1 and 3 shoot.
+    stepHoldingShoot(1);
+    stepHoldingShoot(2);
+    EXPECT_EQ(bullets().size(), 1U);
+
+    stepHoldingShoot(3);
+    stepHoldingShoot(4);
+    EXPECT_EQ(bullets().size(), 2U);
+}
+
+TEST_F(RoomInputTest, InputsSentInBurstCannotShootFaster) {
+    for (std::uint32_t sequence = 1; sequence <= MAX_PENDING_INPUTS; ++sequence) {
+        room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{
+                                  .sequence = sequence, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
+    }
+
+    step();
+
+    EXPECT_EQ(bullets().size(), 1U);
+}
+
+TEST_F(RoomInputTest, CooldownElapsesWithoutInputs) {
+    stepHoldingShoot(1);
+    step();
+    step();
+
+    stepHoldingShoot(2);
+
+    EXPECT_EQ(bullets().size(), 2U);
+}
+
+TEST_F(RoomInputTest, BulletFliesForwardOnTheServer) {
+    stepHoldingShoot(1);
+    const float firstX = bullets().at(0).x;
+
+    step();
+
+    EXPECT_GT(bullets().at(0).x, firstX);
+}
+
+TEST_F(RoomInputTest, OffscreenBulletIsRemoved) {
+    stepHoldingShoot(1);
+    ASSERT_EQ(bullets().size(), 1U);
+    ASSERT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().size(), 2U) << "the ship and the bullet";
+
+    for (int steps = 0; steps < 100 && !bullets().empty(); ++steps) {
+        step();
+    }
+
+    EXPECT_TRUE(bullets().empty());
+    const auto snapshots = network.snapshotsOf(PLAYER);
+    EXPECT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().size(),
+              snapshots.at(snapshots.size() - 1).entities.size())
+        << "the id of the bullet is released";
+}
+
+TEST(Room, BulletCarriesTheIndexOfThePlayerWhoShot) {
+    FakeServer network;
+    double now = 0.0;
+    Room room(network, 2, FIXED_DT, [&now] { return now; });
+    room.addPlayer(PLAYER);
+    room.addPlayer(OTHER_PLAYER);
+    room.start();
+
+    room.onPacket(OTHER_PLAYER, protocol::encode(protocol::PlayerInput{
+                                    .sequence = 1, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
+    now += static_cast<double>(FIXED_DT);
+    room.advance();
+
+    const auto snapshots = network.snapshotsOf(PLAYER);
+    const auto& entities = snapshots.at(0).entities;
+    const auto bullet = std::ranges::find(entities, rtype::game::KIND_PLAYER_BULLET, &protocol::EntityState::kind);
+    ASSERT_NE(bullet, entities.end()) << "both players see the shot";
+    EXPECT_EQ(bullet->subtype, 1);
 }
 
 TEST(Room, DoesNothingUntilStartedAndDropsThePayloads) {

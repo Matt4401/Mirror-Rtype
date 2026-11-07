@@ -34,6 +34,10 @@ class LifecycleRecorderPlugin final : public engine::IPlugin {
 
     void update(engine::Engine& /*engine*/, const ecs::time::Time& /*time*/) override { _log.push_back("update"); }
 
+    void lateUpdate(engine::Engine& /*engine*/, const ecs::time::Time& /*time*/) override {
+        _log.push_back("lateUpdate");
+    }
+
     void render(engine::Engine& /*engine*/) override { _log.push_back("render"); }
 
     void shutdown(engine::Engine& /*engine*/) override { _log.push_back("shutdown"); }
@@ -118,8 +122,8 @@ TEST(Engine, RunExecutesPhasesInSequence) {
     now = static_cast<double>(engineInstance.fixedDeltaTime()) * 1.5;
     engineInstance.run();
 
-    EXPECT_EQ(log,
-              (std::vector<std::string>{"build", "init", "preUpdate", "fixedUpdate", "update", "render", "shutdown"}));
+    EXPECT_EQ(log, (std::vector<std::string>{"build", "init", "preUpdate", "fixedUpdate", "update", "lateUpdate",
+                                             "render", "shutdown"}));
 }
 
 TEST(Engine, RunPassesRealDeltaTimeToUpdate) {
@@ -209,7 +213,7 @@ TEST_F(EngineAdvanceTest, RunsPhasesInOrder) {
     engine.advance();
 
     const std::vector<std::string> frame(log.begin() + 2, log.end());
-    EXPECT_EQ(frame, (std::vector<std::string>{"preUpdate", "fixedUpdate", "update"}));
+    EXPECT_EQ(frame, (std::vector<std::string>{"preUpdate", "fixedUpdate", "update", "lateUpdate"}));
 }
 
 TEST_F(EngineAdvanceTest, KeepsTheRemainderForTheNextCall) {

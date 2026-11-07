@@ -10,8 +10,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -74,7 +74,7 @@ struct PhysicsSystem::Impl {
     void synchronizeCollider(ecs::Entity entity, const ecs::Transform& transform, b2Body& body);
     static void destroyFixtures(b2Body& body);
     void destroyBody(ecs::Entity entity);
-    [[nodiscard]] bool isCurrent(const ContactSide& side) const;
+    [[nodiscard]] std::optional<ecs::Entity> entityOf(const ContactSide& side) const;
     void publishContacts();
 
     ecs::Registry* registry;
@@ -83,6 +83,7 @@ struct PhysicsSystem::Impl {
     Box2DContactListener listener;
     std::vector<PendingContact> dispatch;
     std::unordered_map<ecs::Entity, BodyRecord> bodies;
+    std::unordered_map<BodySerial, ecs::Entity> entitiesBySerial;
     std::unordered_map<ecs::Entity, b2Vec2> colliderScales;
     BodySerial nextSerial = 1;
     std::size_t destroyListenerId;
@@ -163,6 +164,7 @@ void PhysicsSystem::Impl::createBody(ecs::Entity entity, const ecs::Transform& t
 
     b2Body* body = world.CreateBody(&bodyDef);
     bodies.insert_or_assign(entity, BodyRecord{.body = body, .serial = nextSerial});
+    entitiesBySerial.insert_or_assign(nextSerial, entity);
     ++nextSerial;
     synchronizeCollider(entity, transform, *body);
 }
@@ -244,7 +246,6 @@ void PhysicsSystem::Impl::synchronizeCollider(ecs::Entity entity, const ecs::Tra
     fixtureDef.isSensor = collider.isSensor;
     fixtureDef.filter.categoryBits = collider.categoryBits;
     fixtureDef.filter.maskBits = collider.maskBits;
-    fixtureDef.userData.pointer = static_cast<std::uintptr_t>(entity);
 
     b2CircleShape circle;
     b2PolygonShape box;
@@ -267,28 +268,35 @@ void PhysicsSystem::Impl::destroyBody(ecs::Entity entity) {
     listener.setSuppressed(true);
     world.DestroyBody(it->second.body);
     listener.setSuppressed(false);
+    entitiesBySerial.erase(it->second.serial);
     bodies.erase(it);
     colliderScales.erase(entity);
 }
 
-bool PhysicsSystem::Impl::isCurrent(const ContactSide& side) const {
-    if (!registry->isAlive(side.entity)) {
-        return false;
+std::optional<ecs::Entity> PhysicsSystem::Impl::entityOf(const ContactSide& side) const {
+    const auto owner = entitiesBySerial.find(side.serial);
+    if (owner == entitiesBySerial.end() || !registry->isAlive(owner->second)) {
+        return std::nullopt;
     }
-    const auto it = bodies.find(side.entity);
-    return it != bodies.end() && it->second.serial == side.serial;
+    const auto it = bodies.find(owner->second);
+    if (it == bodies.end() || it->second.serial != side.serial) {
+        return std::nullopt;
+    }
+    return owner->second;
 }
 
 void PhysicsSystem::Impl::publishContacts() {
     listener.swapPending(dispatch);
     for (const PendingContact& contact : dispatch) {
-        if (!isCurrent(contact.a) || !isCurrent(contact.b)) {
+        const std::optional<ecs::Entity> entityA = entityOf(contact.a);
+        const std::optional<ecs::Entity> entityB = entityOf(contact.b);
+        if (!entityA.has_value() || !entityB.has_value()) {
             continue;
         }
         if (contact.begin) {
             bus->publish(events::CollisionBeginEvent{
-                .entityA = contact.a.entity,
-                .entityB = contact.b.entity,
+                .entityA = *entityA,
+                .entityB = *entityB,
                 .categoryA = contact.a.category,
                 .categoryB = contact.b.category,
                 .isSensor = contact.isSensor,
@@ -300,8 +308,8 @@ void PhysicsSystem::Impl::publishContacts() {
             });
         } else {
             bus->publish(events::CollisionEndEvent{
-                .entityA = contact.a.entity,
-                .entityB = contact.b.entity,
+                .entityA = *entityA,
+                .entityB = *entityB,
                 .categoryA = contact.a.category,
                 .categoryB = contact.b.category,
                 .isSensor = contact.isSensor,
