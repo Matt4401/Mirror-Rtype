@@ -5,9 +5,15 @@
 #include <box2d/b2_fixture.h>
 #include <box2d/b2_math.h>
 #include <box2d/b2_polygon_shape.h>
+#include <box2d/b2_world.h>
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <vector>
 
 #include "components/Collider2D.hpp"
 #include "components/RigidBody2D.hpp"
@@ -15,64 +21,138 @@
 #include "ecs/ComponentType.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "events/EventBus.hpp"
+#include "events/PhysicsEvents.hpp"
 #include "systems/physics/PhysicsConstants.hpp"
-#include "systems/physics/PhysicsHelpers.hpp"
+#include "systems/physics/detail/Box2DContactListener.hpp"
 
 namespace systems {
 
-PhysicsSystem::PhysicsSystem(ecs::Registry& registry)
-    : _registry(&registry),
-      _world(b2Vec2_zero),
-      _destroyListenerId(_registry->addDestroyListener([this](ecs::Entity entity) { destroyBody(entity); })),
-      _rigidBodyRemoveListenerId(
-          _registry->addComponentRemoveListener([this](ecs::Entity entity, ecs::ComponentTypeId componentType) {
-              if (componentType == ecs::getComponentTypeId<ecs::RigidBody2D>()) {
-                  destroyBody(entity);
-              }
-          })) {}
+namespace {
 
-PhysicsSystem::~PhysicsSystem() {
-    _registry->removeDestroyListener(_destroyListenerId);
-    _registry->removeComponentRemoveListener(_rigidBodyRemoveListenerId);
+using physics::detail::BodySerial;
+using physics::detail::Box2DContactListener;
+using physics::detail::ContactSide;
+using physics::detail::PendingContact;
+
+/** @brief Converts an ECS rigid-body mode to its Box2D equivalent. */
+b2BodyType toBox2DBodyType(ecs::BodyType bodyType) {
+    switch (bodyType) {
+        case ecs::BodyType::Static:
+            return b2_staticBody;
+        case ecs::BodyType::Kinematic:
+            return b2_kinematicBody;
+        case ecs::BodyType::Dynamic:
+            return b2_dynamicBody;
+    }
+    return b2_staticBody;
 }
 
-void PhysicsSystem::update(float fixedDt) {
+/** @brief Box2D body owned by an entity. */
+struct BodyRecord {
+    /** @brief Box2D body handle. */
+    b2Body* body = nullptr;
+    /** @brief Serial given to the body at creation. */
+    BodySerial serial = 0;
+};
+
+}  // namespace
+
+/** @brief Box2D-backed state of a PhysicsSystem. */
+struct PhysicsSystem::Impl {
+    Impl(ecs::Registry& registry, ecs::EventBus& bus);
+    ~Impl();
+
+    Impl(const Impl&) = delete;
+    Impl& operator=(const Impl&) = delete;
+    Impl(Impl&&) = delete;
+    Impl& operator=(Impl&&) = delete;
+
+    void update(float fixedDt);
+    void createBody(ecs::Entity entity, const ecs::Transform& transform, const ecs::RigidBody2D& rigidBody);
+    void synchronizeBody(ecs::Entity entity, ecs::Transform& transform, ecs::RigidBody2D& rigidBody);
+    void synchronizeCollider(ecs::Entity entity, const ecs::Transform& transform, b2Body& body);
+    static void destroyFixtures(b2Body& body);
+    void destroyBody(ecs::Entity entity);
+    [[nodiscard]] std::optional<ecs::Entity> entityOf(const ContactSide& side) const;
+    void publishContacts();
+
+    ecs::Registry* registry;
+    ecs::EventBus* bus;
+    b2World world;
+    Box2DContactListener listener;
+    std::vector<PendingContact> dispatch;
+    std::unordered_map<ecs::Entity, BodyRecord> bodies;
+    std::unordered_map<BodySerial, ecs::Entity> entitiesBySerial;
+    std::unordered_map<ecs::Entity, b2Vec2> colliderScales;
+    BodySerial nextSerial = 1;
+    std::size_t destroyListenerId;
+    std::size_t componentRemoveListenerId;
+};
+
+PhysicsSystem::Impl::Impl(ecs::Registry& registry, ecs::EventBus& bus)
+    : registry(&registry),
+      bus(&bus),
+      world(b2Vec2_zero),
+      destroyListenerId(registry.addDestroyListener([this](ecs::Entity entity) { destroyBody(entity); })),
+      componentRemoveListenerId(
+          registry.addComponentRemoveListener([this](ecs::Entity entity, ecs::ComponentTypeId componentType) {
+              if (componentType == ecs::getComponentTypeId<ecs::RigidBody2D>() ||
+                  componentType == ecs::getComponentTypeId<ecs::Transform>()) {
+                  destroyBody(entity);
+              }
+          })) {
+    dispatch.reserve(physics::INITIAL_CONTACT_CAPACITY);
+    world.SetContactListener(&listener);
+}
+
+PhysicsSystem::Impl::~Impl() {
+    registry->removeDestroyListener(destroyListenerId);
+    registry->removeComponentRemoveListener(componentRemoveListenerId);
+    listener.setSuppressed(true);
+    world.SetContactListener(nullptr);
+}
+
+void PhysicsSystem::Impl::update(float fixedDt) {
     if (fixedDt <= 0.0F) {
         return;
     }
 
-    _registry->runSystem<ecs::Transform, ecs::RigidBody2D>(
+    registry->runSystem<ecs::Transform, ecs::RigidBody2D>(
         [this](ecs::Entity entity, ecs::Transform& transform, ecs::RigidBody2D& rigidBody) {
             synchronizeBody(entity, transform, rigidBody);
         });
 
-    _world.Step(fixedDt, physics::VELOCITY_ITERATIONS, physics::POSITION_ITERATIONS);
+    world.Step(fixedDt, physics::VELOCITY_ITERATIONS, physics::POSITION_ITERATIONS);
 
-    _registry->runSystem<ecs::Transform, ecs::RigidBody2D>(
+    registry->runSystem<ecs::Transform, ecs::RigidBody2D>(
         [this](ecs::Entity entity, ecs::Transform& transform, ecs::RigidBody2D& rigidBody) {
             if (rigidBody.bodyType == ecs::BodyType::Static) {
                 return;
             }
 
-            const auto it = _bodies.find(entity);
-            if (it == _bodies.end()) {
+            const auto it = bodies.find(entity);
+            if (it == bodies.end()) {
                 return;
             }
 
-            const b2Vec2 position = it->second->GetPosition();
-            const b2Vec2 velocity = it->second->GetLinearVelocity();
+            const b2Body& body = *it->second.body;
+            const b2Vec2 position = body.GetPosition();
+            const b2Vec2 velocity = body.GetLinearVelocity();
             transform.x = position.x * physics::PPM;
             transform.y = position.y * physics::PPM;
-            transform.rotation = it->second->GetAngle();
+            transform.rotation = body.GetAngle();
             rigidBody.velocityX = velocity.x * physics::PPM;
             rigidBody.velocityY = velocity.y * physics::PPM;
         });
+
+    publishContacts();
 }
 
-b2Body* PhysicsSystem::createBody(ecs::Entity entity, const ecs::Transform& transform,
-                                  const ecs::RigidBody2D& rigidBody) {
+void PhysicsSystem::Impl::createBody(ecs::Entity entity, const ecs::Transform& transform,
+                                     const ecs::RigidBody2D& rigidBody) {
     b2BodyDef bodyDef;
-    bodyDef.type = physics::toBox2DBodyType(rigidBody.bodyType);
+    bodyDef.type = toBox2DBodyType(rigidBody.bodyType);
     bodyDef.position.Set(transform.x / physics::PPM, transform.y / physics::PPM);
     bodyDef.angle = transform.rotation;
     bodyDef.linearVelocity.Set(rigidBody.velocityX / physics::PPM, rigidBody.velocityY / physics::PPM);
@@ -80,22 +160,24 @@ b2Body* PhysicsSystem::createBody(ecs::Entity entity, const ecs::Transform& tran
     bodyDef.angularDamping = rigidBody.angularDamping;
     bodyDef.fixedRotation = rigidBody.fixedRotation;
     bodyDef.bullet = rigidBody.bullet;
+    bodyDef.userData.pointer = nextSerial;
 
-    b2Body* body = _world.CreateBody(&bodyDef);
-    _bodies.emplace(entity, body);
+    b2Body* body = world.CreateBody(&bodyDef);
+    bodies.insert_or_assign(entity, BodyRecord{.body = body, .serial = nextSerial});
+    entitiesBySerial.insert_or_assign(nextSerial, entity);
+    ++nextSerial;
     synchronizeCollider(entity, transform, *body);
-    return body;
 }
 
-void PhysicsSystem::synchronizeBody(ecs::Entity entity, ecs::Transform& transform, ecs::RigidBody2D& rigidBody) {
-    auto it = _bodies.find(entity);
-    if (it == _bodies.end()) {
+void PhysicsSystem::Impl::synchronizeBody(ecs::Entity entity, ecs::Transform& transform, ecs::RigidBody2D& rigidBody) {
+    auto it = bodies.find(entity);
+    if (it == bodies.end()) {
         createBody(entity, transform, rigidBody);
         return;
     }
 
-    b2Body& body = *it->second;
-    body.SetType(physics::toBox2DBodyType(rigidBody.bodyType));
+    b2Body& body = *it->second.body;
+    body.SetType(toBox2DBodyType(rigidBody.bodyType));
     body.SetLinearDamping(rigidBody.linearDamping);
     body.SetAngularDamping(rigidBody.angularDamping);
     body.SetFixedRotation(rigidBody.fixedRotation);
@@ -124,34 +206,36 @@ void PhysicsSystem::synchronizeBody(ecs::Entity entity, ecs::Transform& transfor
     synchronizeCollider(entity, transform, body);
 }
 
-void PhysicsSystem::synchronizeCollider(ecs::Entity entity, const ecs::Transform& transform, b2Body& body) {
-    if (!_registry->hasComponent<ecs::Collider2D>(entity)) {
-        while (b2Fixture* fixture = body.GetFixtureList()) {
-            body.DestroyFixture(fixture);
-        }
-        _colliderScales.erase(entity);
+void PhysicsSystem::Impl::destroyFixtures(b2Body& body) {
+    while (b2Fixture* fixture = body.GetFixtureList()) {
+        body.DestroyFixture(fixture);
+    }
+}
+
+void PhysicsSystem::Impl::synchronizeCollider(ecs::Entity entity, const ecs::Transform& transform, b2Body& body) {
+    if (!registry->hasComponent<ecs::Collider2D>(entity)) {
+        destroyFixtures(body);
+        colliderScales.erase(entity);
         return;
     }
 
     const b2Vec2 scale{std::fabs(transform.scaleX), std::fabs(transform.scaleY)};
-    const auto scaleIt = _colliderScales.find(entity);
-    const bool scaleChanged = scaleIt == _colliderScales.end() ||
+    const auto scaleIt = colliderScales.find(entity);
+    const bool scaleChanged = scaleIt == colliderScales.end() ||
                               std::fabs(scaleIt->second.x - scale.x) > physics::POSITION_EPSILON ||
                               std::fabs(scaleIt->second.y - scale.y) > physics::POSITION_EPSILON;
     if (body.GetFixtureList() != nullptr && !scaleChanged) {
         return;
     }
 
-    while (b2Fixture* fixture = body.GetFixtureList()) {
-        body.DestroyFixture(fixture);
-    }
+    destroyFixtures(body);
 
-    const ecs::Collider2D& collider = _registry->getComponents<ecs::Collider2D>().get(entity);
+    const ecs::Collider2D& collider = registry->getComponents<ecs::Collider2D>().get(entity);
     const bool hasValidDimensions = collider.shape == ecs::ColliderShape::Circle
                                         ? std::max(scale.x, scale.y) > physics::POSITION_EPSILON
                                         : scale.x > physics::POSITION_EPSILON && scale.y > physics::POSITION_EPSILON;
     if (!hasValidDimensions) {
-        _colliderScales.insert_or_assign(entity, scale);
+        colliderScales.insert_or_assign(entity, scale);
         return;
     }
 
@@ -163,30 +247,85 @@ void PhysicsSystem::synchronizeCollider(ecs::Entity entity, const ecs::Transform
     fixtureDef.filter.categoryBits = collider.categoryBits;
     fixtureDef.filter.maskBits = collider.maskBits;
 
+    b2CircleShape circle;
+    b2PolygonShape box;
     if (collider.shape == ecs::ColliderShape::Circle) {
-        b2CircleShape shape;
-        shape.m_radius = collider.radius * std::max(scale.x, scale.y) / physics::PPM;
-        fixtureDef.shape = &shape;
-        body.CreateFixture(&fixtureDef);
-        _colliderScales.insert_or_assign(entity, scale);
-        return;
+        circle.m_radius = collider.radius * std::max(scale.x, scale.y) / physics::PPM;
+        fixtureDef.shape = &circle;
+    } else {
+        box.SetAsBox(collider.halfWidth * scale.x / physics::PPM, collider.halfHeight * scale.y / physics::PPM);
+        fixtureDef.shape = &box;
     }
-
-    b2PolygonShape shape;
-    shape.SetAsBox(collider.halfWidth * scale.x / physics::PPM, collider.halfHeight * scale.y / physics::PPM);
-    fixtureDef.shape = &shape;
     body.CreateFixture(&fixtureDef);
-    _colliderScales.insert_or_assign(entity, scale);
+    colliderScales.insert_or_assign(entity, scale);
 }
 
-void PhysicsSystem::destroyBody(ecs::Entity entity) {
-    const auto it = _bodies.find(entity);
-    if (it == _bodies.end()) {
+void PhysicsSystem::Impl::destroyBody(ecs::Entity entity) {
+    const auto it = bodies.find(entity);
+    if (it == bodies.end()) {
         return;
     }
-    _world.DestroyBody(it->second);
-    _bodies.erase(it);
-    _colliderScales.erase(entity);
+    listener.setSuppressed(true);
+    world.DestroyBody(it->second.body);
+    listener.setSuppressed(false);
+    entitiesBySerial.erase(it->second.serial);
+    bodies.erase(it);
+    colliderScales.erase(entity);
 }
+
+std::optional<ecs::Entity> PhysicsSystem::Impl::entityOf(const ContactSide& side) const {
+    const auto owner = entitiesBySerial.find(side.serial);
+    if (owner == entitiesBySerial.end() || !registry->isAlive(owner->second)) {
+        return std::nullopt;
+    }
+    const auto it = bodies.find(owner->second);
+    if (it == bodies.end() || it->second.serial != side.serial) {
+        return std::nullopt;
+    }
+    return owner->second;
+}
+
+void PhysicsSystem::Impl::publishContacts() {
+    listener.swapPending(dispatch);
+    for (const PendingContact& contact : dispatch) {
+        const std::optional<ecs::Entity> entityA = entityOf(contact.a);
+        const std::optional<ecs::Entity> entityB = entityOf(contact.b);
+        if (!entityA.has_value() || !entityB.has_value()) {
+            continue;
+        }
+        if (contact.begin) {
+            bus->publish(events::CollisionBeginEvent{
+                .entityA = *entityA,
+                .entityB = *entityB,
+                .categoryA = contact.a.category,
+                .categoryB = contact.b.category,
+                .isSensor = contact.isSensor,
+                .hasContactPoint = contact.hasContactPoint,
+                .normalX = contact.normalX,
+                .normalY = contact.normalY,
+                .pointX = contact.pointX,
+                .pointY = contact.pointY,
+            });
+        } else {
+            bus->publish(events::CollisionEndEvent{
+                .entityA = *entityA,
+                .entityB = *entityB,
+                .categoryA = contact.a.category,
+                .categoryB = contact.b.category,
+                .isSensor = contact.isSensor,
+            });
+        }
+    }
+    dispatch.clear();
+}
+
+PhysicsSystem::PhysicsSystem(ecs::Registry& registry, ecs::EventBus& bus)
+    : _impl(std::make_unique<Impl>(registry, bus)) {}
+
+PhysicsSystem::~PhysicsSystem() = default;
+
+void PhysicsSystem::update(float fixedDt) { _impl->update(fixedDt); }
+
+std::size_t PhysicsSystem::bodyCount() const noexcept { return _impl->bodies.size(); }
 
 }  // namespace systems

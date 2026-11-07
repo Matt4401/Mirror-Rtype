@@ -4,8 +4,12 @@
  */
 
 #pragma once
+#include <cstddef>
 #include <filesystem>
 #include <functional>
+#include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -17,6 +21,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
+#include "prefabs/PrefabManager.hpp"
 #include "scripting/WrenVM.hpp"            // IWYU pragma: export
 #include "scripting/detail/WrenTypes.hpp"  // IWYU pragma: export
 
@@ -37,7 +42,8 @@ struct SleepingFiber {
  *
  * Responsibilities:
  * - Instantiates `ScriptComponent` instances when entities are spawned (`onSpawn()`).
- * - Dispatches engine events (`CollisionEvent`, etc.) directly to magic script methods (`onCollision(otherId)`).
+ * - Dispatches engine events (`events::CollisionBeginEvent`, etc.) directly to magic script methods
+ * (`onCollision(otherId)`).
  * - Manages asynchronous coroutines via `Engine.wait(seconds)`.
  * - Executes optional `update(dt)` loop for entities opting in via `hasUpdate = true`.
  * - Flushes deferred ECS mutations safely using an internal `CommandBuffer`.
@@ -113,6 +119,24 @@ class ScriptSystem {
     void registerEventForwarding(ecs::EventBus& bus, std::string const& methodName, ArgExtractor&& extractor);
 
     /**
+     * @brief Forwards `events::CollisionBeginEvent` to the `onCollision(other)` method of both entities' scripts.
+     *
+     * Only scripts whose `ScriptComponent::hasCollision` is set are called. A contact is skipped for a side when
+     * either entity is dead (killed by an earlier subscriber) or already queued for destruction this frame
+     * (`Entity.destroy()`), so a script never hits an entity that another system or script just destroyed. Script
+     * mutations stay deferred through the command buffer. Calling it again moves the subscription to `bus`.
+     *
+     * @param bus The EventBus receiving the physics contact events.
+     */
+    void forwardCollisions(ecs::EventBus& bus);
+
+    /**
+     * @brief Unsubscribes the collision forwarding set up by `forwardCollisions`, if any. Safe to call twice.
+     * @throws std::bad_alloc `EventBus::unsubscribe` rebuilds the listener list.
+     */
+    void stopForwardingCollisions();
+
+    /**
      * @brief Returns a reference to the embedded WrenVM wrapper.
      */
     [[nodiscard]] scripting::WrenVM& getVm() noexcept;
@@ -121,6 +145,33 @@ class ScriptSystem {
      * @brief Returns a reference to the deferred command buffer.
      */
     [[nodiscard]] ecs::CommandBuffer& getCommandBuffer() noexcept;
+
+    /**
+     * @brief Sets the prefab registry used by `Engine.spawnPrefab(name, x, y)`.
+     *
+     * Without a manager, `spawnPrefab` logs an error and spawns nothing.
+     *
+     * @param manager Non-owning pointer; must outlive this system (nullptr to detach).
+     */
+    void setPrefabManager(prefabs::PrefabManager const* manager) noexcept;
+
+    /**
+     * @brief Returns the prefab registry used by `Engine.spawnPrefab`, or nullptr if none is set.
+     */
+    [[nodiscard]] prefabs::PrefabManager const* getPrefabManager() const noexcept;
+
+    /**
+     * @brief Returns the scratch buffer reused by the `World` query bindings to avoid per-call allocations.
+     */
+    [[nodiscard]] std::vector<ecs::Entity>& getQueryBuffer() noexcept;
+
+    /** @brief Whether an entity is queued for destruction by a script this frame. */
+    [[nodiscard]] bool isPendingDestroy(ecs::Entity e) const noexcept;
+
+    /** @brief Entities queued for destruction by a script this frame. */
+    [[nodiscard]] std::span<ecs::Entity const> getPendingDestroyEntities() const noexcept {
+        return _pendingDestroyEntities;
+    }
 
     /**
      * @brief Returns a non-owning pointer to the active ECS Registry.
@@ -182,6 +233,20 @@ class ScriptSystem {
 
   private:
     /**
+     * @brief Calls `signature` (a one-argument method) on the script instance of `target`, passing `arg` wrapped in an
+     * `Entity` (or as the raw number when `core/Entity` is not loaded). Does nothing if the instance or handle is
+     * missing.
+     * @param target Entity whose script instance receives the call.
+     * @param signature Cached method signature (e.g. "onCollision(_)").
+     * @param arg Numeric argument, kept as a `double` so values that are not entity ids are not truncated.
+     */
+    void invokeEntityMethod(ecs::Entity target, std::string const& signature, double arg);
+
+    /** @brief Calls `onCollision(other)` on `target` if it opted in and both entities are alive and not pending
+     * destruction. */
+    void forwardCollision(ecs::Entity target, ecs::Entity other);
+
+    /**
      * @brief Registers built-in engine foreign functions and classes with the VM.
      * @param vm Target WrenVM instance.
      */
@@ -216,6 +281,22 @@ class ScriptSystem {
      * @brief Processes queued entity destructions and flushes deferred mutations.
      */
     void flushPendingDestructions();
+
+    /**
+     * @brief Registers the registry destroy listener that releases script instances of killed entities.
+     *
+     * Entities destroyed by C++ code (game rules, physics, network despawn, ...) never go through
+     * `queueDestroyEntity`. The listener runs their `onDestroy()` hook while their components still exist, then
+     * releases the instance so it is neither updated nor kept alive once the entity is dead.
+     * The listener captures `this`, so it is re-registered by the move operations.
+     *
+     * @warning The hook calls into Wren synchronously: `Registry::killEntity` must not be called from inside a
+     *          foreign method. Scripts destroy entities through `queueDestroyEntity`, which is deferred.
+     */
+    void attachDestroyListener();
+
+    /** @brief Unregisters the destroy listener registered by `attachDestroyListener`, if any. */
+    void detachDestroyListener() noexcept;
 
     /**
      * @brief Ensures a script module is compiled and imported into the VM, tracking it for changes.
@@ -257,8 +338,12 @@ class ScriptSystem {
 
     /** @brief Non-owning pointer to the ECS Registry. */
     ecs::Registry* _registry = nullptr;
+    /** @brief Id of the registry destroy listener releasing script instances, if registered. */
+    std::optional<std::size_t> _destroyListenerId;
     /** @brief Non-owning pointer to the EventBus. */
     ecs::EventBus* _bus = nullptr;
+    /** @brief Non-owning pointer to the prefab registry used by `Engine.spawnPrefab`. */
+    prefabs::PrefabManager const* _prefabs = nullptr;
     /** @brief Internal command buffer buffering mutations during script execution. */
     ecs::CommandBuffer _commandBuffer;
     /** @brief Embedded Wren Virtual Machine instance. */
@@ -268,6 +353,8 @@ class ScriptSystem {
     std::vector<ecs::Entity> _updatingEntities;
     /** @brief Queue of entities pending deferred destruction with onDestroy hook. */
     std::vector<ecs::Entity> _pendingDestroyEntities;
+    /** @brief Scratch buffer reused by the `World` spatial query bindings. */
+    std::vector<ecs::Entity> _queryBuffer;
     /** @brief Collection of suspended coroutine fibers awaiting timeout. */
     std::vector<SleepingFiber> _sleepingFibers;
     /** @brief Active script instance handles indexed by entity ID. */
@@ -281,6 +368,18 @@ class ScriptSystem {
     scripting::detail::UniqueWrenHandle _onSpawnHandle;
     /** @brief Call handle for resuming suspended fibers (`call()`). */
     scripting::detail::UniqueWrenHandle _fiberCallHandle;
+
+    /** @brief Bus the collision forwarding is subscribed to, or nullptr. */
+    ecs::EventBus* _collisionBus = nullptr;
+    /** @brief Subscription token of the collision forwarding. */
+    ecs::EventBus::EventToken _collisionToken = 0;
+    /**
+     * @brief Heap slot holding the system that receives the forwarded collisions.
+     *
+     * The bus callback reads the system through this slot instead of capturing `this`, so a move only redirects the
+     * slot to the new instance. It never touches the bus, which allocates, and the moves stay `noexcept`.
+     */
+    std::unique_ptr<ScriptSystem*> _collisionTarget;
 
     /** @brief Cache of pre-compiled method call handles indexed by signature. */
     std::unordered_map<std::string, scripting::detail::UniqueWrenHandle> _cachedMethodHandles;

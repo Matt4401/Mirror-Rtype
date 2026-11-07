@@ -24,6 +24,8 @@ Checks: >
 
 # Header filter: Check all headers in your project, ignore system headers
 HeaderFilterRegex: '.*'
+# Third-party packages (protobuf/abseil are passed with -I, not -isystem) and generated code (rtype.pb.h)
+ExcludeHeaderFilterRegex: '.*/\.xmake/packages/.*|(.*/)?build/\.gens/.*'
 
 # Check Options: Customize how strict certain checks are
 CheckOptions:

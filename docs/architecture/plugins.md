@@ -2,13 +2,19 @@
 
 ## 1. Overview & Motivation
 
-The R-Type engine is designed according to **Track #1 (Advanced Architecture)**: it must remain a generic, standalone, and decoupled game engine library that can power multiple distinct games.
+The R-Type engine is designed according to **Track #1 (Advanced Architecture)**: it must remain a generic, standalone,
+and decoupled game engine library that can power multiple distinct games.
 
 To achieve true modularity, the engine introduces three interconnected architectural patterns:
 
-1. **The Plugin System (`engine::IPlugin`)**: Replaces manual procedural wiring with an inversion-of-control lifecycle (`build`, `init`, `preUpdate`, `fixedUpdate`, `update`, `render`, `shutdown`).
-2. **The Dependency Graph (`engine::PluginGraph`)**: Resolves compile-time and runtime inter-plugin requirements as a Directed Acyclic Graph (DAG) using **Kahn's topological sort algorithm**, providing early cycle and missing-dependency detection.
-3. **The Mediator (`engine::Mediator`)**: A typed service registry where plugins register and query **abstract interfaces** (`IWindowService`, `IRenderService`, `IInputService`, `IPhysicsService`) rather than concrete subsystems, decoupling modules entirely.
+1. **The Plugin System (`engine::IPlugin`)**: Replaces manual procedural wiring with an inversion-of-control lifecycle
+   (`build`, `init`, `preUpdate`, `fixedUpdate`, `update`, `lateUpdate`, `render`, `shutdown`).
+2. **The Dependency Graph (`engine::PluginGraph`)**: Resolves compile-time and runtime inter-plugin requirements as a
+   Directed Acyclic Graph (DAG) using **Kahn's topological sort algorithm**, providing early cycle and
+   missing-dependency detection.
+3. **The Mediator (`engine::Mediator`)**: A typed service registry where plugins register and query **abstract
+   interfaces** (`IWindowService`, `IRenderService`, `IInputService`, `IPhysicsService`) rather than concrete
+   subsystems, decoupling modules entirely.
 
 ```mermaid
 flowchart TD
@@ -59,6 +65,7 @@ class IPlugin {
     virtual void preUpdate(Engine& engine) {}
     virtual void fixedUpdate(Engine& engine, const ecs::time::Time& time) {}
     virtual void update(Engine& engine, const ecs::time::Time& time) {}
+    virtual void lateUpdate(Engine& engine, const ecs::time::Time& time) {}
     virtual void render(Engine& engine) {}
     virtual void shutdown(Engine& engine) {}
 };
@@ -67,48 +74,58 @@ class IPlugin {
 ### Lifecycle Stages & Order
 
 1. **`build(PluginBuilder& builder)`**:
-   - Declares mandatory dependencies (`builder.require<T>()`) and optional dependencies (`builder.optionally<T>()`).
-   - Declares provided services (`builder.provides<S>()`) and required services (`builder.requireService<S>()`). Prefer a service requirement when any implementation fits: the graph orders each provider before its consumers, and fails if a required service has no provider or a service has two.
+    - Declares mandatory dependencies (`builder.require<T>()`) and optional dependencies (`builder.optionally<T>()`).
+    - Declares provided services (`builder.provides<S>()`) and required services (`builder.requireService<S>()`). Prefer a service requirement when any implementation fits: the graph orders each provider before its consumers, and fails if a required service has no provider or a service has two.
    - Invoked during `engine.init()` before topological resolution.
 2. **`init(Engine& engine)`**:
-   - Executed in **topological order** (dependencies initialize before dependents).
-   - Instantiates subsystem resources and registers abstract services into `engine.mediator()`.
+    - Executed in **topological order** (dependencies initialize before dependents).
+    - Instantiates subsystem resources and registers abstract services into `engine.mediator()`.
 3. **`preUpdate(Engine& engine)`**:
-   - Executed in **topological order** once per frame, before any fixed-timestep step.
-   - Used for sampling external state that the frame's simulation must observe, such as hardware input.
+    - Executed in **topological order** once per frame, before any fixed-timestep step.
+    - Used for sampling external state that the frame's simulation must observe, such as hardware input.
 4. **`fixedUpdate(Engine& engine, const Time& time)`**:
-   - Executed in **topological order** inside constant `fixedDt` simulation steps.
-   - Used for deterministic physics, movement, and network synchronization.
+    - Executed in **topological order** inside constant `fixedDt` simulation steps.
+    - Used for deterministic physics, movement, and network synchronization.
 5. **`update(Engine& engine, const Time& time)`**:
-   - Executed in **topological order** on every frame with variable delta time.
-   - Used for state updates, animations, and gameplay triggers.
-6. **`render(Engine& engine)`**:
-   - Executed in **topological order** during the frame presentation phase.
-   - Collects and draws entities through active cameras.
-7. **`shutdown(Engine& engine)`**:
-   - Executed in **reverse topological order** (dependents shut down before their dependencies).
-   - Unregisters services and safely releases GPU / hardware resources.
+    - Executed in **topological order** on every frame with variable delta time.
+    - Used for state updates, animations, and gameplay triggers.
+6. **`lateUpdate(Engine& engine, const Time& time)`**:
+    - Executed in **topological order** on every frame, after **every** plugin's `update` and before `render`, with
+      the same frame time.
+    - Used for work that needs the final state of the frame without depending on the plugins that produced it:
+      transform propagation (`HierarchyPlugin`), camera follow, UI layout.
+7. **`render(Engine& engine)`**:
+    - Executed in **topological order** during the frame presentation phase.
+    - Collects and draws entities through active cameras.
+8. **`shutdown(Engine& engine)`**:
+    - Executed in **reverse topological order** (dependents shut down before their dependencies).
+    - Unregisters services and safely releases GPU / hardware resources.
 
 ---
 
 ## 3. Dependency Graph & Resolution (`PluginGraph`)
 
-The `engine::PluginGraph` constructs a directed graph of all registered plugins and applies **Kahn's algorithm** for topological ordering:
+The `engine::PluginGraph` constructs a directed graph of all registered plugins and applies **Kahn's algorithm** for
+topological ordering:
 
 1. **Required Dependencies (`builder.require<T>()`)**:
-   - Must be present in the graph. If absent, `PluginDependencyException` is thrown immediately with the missing plugin name.
+    - Must be present in the graph. If absent, `PluginDependencyException` is thrown immediately with the missing plugin
+      name.
 2. **Optional Dependencies (`builder.optionally<T>()`)**:
-   - If present, topological ordering ensures the dependency executes before the consumer.
-   - If absent, resolution proceeds normally without error.
+    - If present, topological ordering ensures the dependency executes before the consumer.
+    - If absent, resolution proceeds normally without error.
 3. **Cycle Detection**:
-   - If a circular dependency exists ($A \rightarrow B \rightarrow A$ or $A \rightarrow B \rightarrow C \rightarrow A$), Kahn's algorithm fails to visit all nodes.
-   - A `PluginDependencyException` is thrown listing all unresolved plugins (not necessarily only plugins participating in the cycle, but also any downstream plugins that depend on them).
+    - If a circular dependency exists ($A \rightarrow B \rightarrow A$
+      or $A \rightarrow B \rightarrow C \rightarrow A$), Kahn's algorithm fails to visit all nodes.
+    - A `PluginDependencyException` is thrown listing all unresolved plugins (not necessarily only plugins participating
+      in the cycle, but also any downstream plugins that depend on them).
 
 ---
 
 ## 4. The Mediator & Decoupled Services
 
-The `engine::Mediator` acts as an in-process service locator allowing plugins to communicate through abstract interfaces rather than concrete types:
+The `engine::Mediator` acts as an in-process service locator allowing plugins to communicate through abstract interfaces
+rather than concrete types:
 
 ```cpp
 // Consuming a service through the Mediator
@@ -124,26 +141,27 @@ if (windowService && !windowService->get().shouldClose()) {
 
 ### Standard Abstract Interfaces
 
-| Interface | Header | Purpose | Provided By |
-| ----------- | -------- | --------- | ------------- |
-| `IWindowService` | `core/services/IWindowService.hpp` | Window state, frame bracketing, close queries, keyboard, gamepad and mouse sampling through engine input codes | `RenderPlugin` |
-| `IRenderService` | `core/services/IRenderService.hpp` | 2D entity draw collection and presentation | `RenderPlugin` |
-| `IInputService` | `core/services/IInputService.hpp` | Action mapping configuration and controller indices | `InputPlugin` |
-| `IPhysicsService` | `core/services/IPhysicsService.hpp` | Physics simulation stepping and body stats | `PhysicsPlugin` |
-| `PrefabManager` | `prefabs/PrefabManager.hpp` | Entity template registry and spawning factory | `PrefabPlugin` |
+| Interface         | Header                              | Purpose                                             | Provided By     |
+|-------------------|-------------------------------------|-----------------------------------------------------|-----------------|
+| `IWindowService`  | `core/services/IWindowService.hpp`  | Window state, frame bracketing, close queries      , keyboard, gamepad and mouse sampling through engine input codes | `RenderPlugin`  |
+| `IRenderService`  | `core/services/IRenderService.hpp`  | 2D entity draw collection and presentation          | `RenderPlugin`  |
+| `IInputService`   | `core/services/IInputService.hpp`   | Action mapping configuration and controller indices | `InputPlugin`   |
+| `IPhysicsService` | `core/services/IPhysicsService.hpp` | Physics simulation stepping and body stats          | `PhysicsPlugin` |
+| `PrefabManager`   | `prefabs/PrefabManager.hpp`         | Entity template registry and spawning factory       | `PrefabPlugin`  |
 
 ---
 
 ## 5. Implicit Foundation Plugins
 
-To guarantee that the ECS Registry and simulation Clock are always available, `engine::Engine` automatically injects two foundational plugins during `engine.init()` if they are not explicitly registered:
+To guarantee that the ECS Registry and simulation Clock are always available, `engine::Engine` automatically injects two
+foundational plugins during `engine.init()` if they are not explicitly registered:
 
 1. **`engine::CorePlugin`**:
-   - Root node in the dependency graph.
-   - Coordinates registry lifecycle and base cleanup.
+    - Root node in the dependency graph.
+    - Coordinates registry lifecycle and base cleanup.
 2. **`engine::TimePlugin`**:
-   - Depends on `CorePlugin`.
-   - Manages the `ecs::time::Time` resource in the ECS Registry across both `fixedUpdate` and `update` phases.
+    - Depends on `CorePlugin`.
+    - Manages the `ecs::time::Time` resource in the ECS Registry across both `fixedUpdate` and `update` phases.
 
 ---
 
@@ -204,5 +222,35 @@ int main() {
 
     engine.run();
     return 0;
+}
+```
+
+### Driving the Loop
+
+The engine offers two ways to run frames. Both call `init()` first if it was not called yet.
+
+| Method      | Blocking | Fixed steps per call                             | Renders | Use it for                                                                                 |
+|-------------|----------|--------------------------------------------------|---------|--------------------------------------------------------------------------------------------|
+| `run()`     | yes      | as many as real time requires                    | yes     | a client: loops until `stop()` or the window closes, then shuts down                       |
+| `advance()` | no       | as many as real time requires; returns the count | no      | a loop owned by someone else, e.g. a server running one engine per room in a single thread |
+
+Tests that need a deterministic frame give the engine a fake time source: `Engine([&now] { return now; })`.
+`shutdown()` is final: an engine that was shut down is not initialized again, and `run()` and `advance()` do nothing.
+
+`run()` is a loop over `advance()` followed by `render`, so both produce the same frames. `advance()` returns the
+number of fixed steps it executed, `0` when less than one `fixedDt` has elapsed: the caller uses it to know whether the
+simulation moved (for example, to send a snapshot only when it did). The clock caps the steps per call at
+`Clock::DEFAULT_MAX_STEPS_PER_TICK`; call `engine.clock().reset()` before the first `advance()` when the engine was
+idle for a long time (a room waiting in a lobby), otherwise that wait counts as elapsed time.
+
+```cpp
+// One thread, several engines: each one runs only the steps its own clock requires.
+while (serving) {
+    pollAndRouteNetworkEvents();
+    for (auto& room : rooms) {
+        if (room.engine.advance() > 0) {
+            // the simulation of this room moved this frame
+        }
+    }
 }
 ```

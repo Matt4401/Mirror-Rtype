@@ -94,9 +94,29 @@ Instead of checking states every frame, implement convention-based event methods
 | `onSpawn()` | When entity and script are initialized | None | Initial state setup and one-time registration |
 | `onReload()` | When script file is modified on disk and hot-reloaded | None | Re-initializing transient variables without losing ECS component state |
 | `onDestroy()` | When entity is scheduled for deletion via command buffer | None | Spawning particle effects, audio cues, or notifying other game objects before destruction |
-| `onCollision(other)` | When physics detects a collision | `other` (`Entity`) | Reactive collision resolution |
+| `onCollision(other)` | When a physics collision begins (requires `hasCollision = true`) | `other` (`Entity`) | Reactive collision resolution |
 | `onDamage(amount)` | When this entity takes damage | `amount` (Number) | Damage handling, shield reduction, visual flashing |
 | `update(dt)` | *(Optional)* Called every frame for continuous logic | `dt` (Delta time in seconds) | Continuous steering, trajectories, or timers |
+
+### Collisions: `onCollision(other)`
+
+`ScriptPlugin` forwards every `events::CollisionBeginEvent` from the physics module to the scripts of **both** entities of the contact. A script receives it only if it opts in, like `update(dt)`:
+
+```cpp
+registry.addComponent<ScriptComponent>(entity, ScriptComponent{
+    .moduleName = "scripts/gameplay/Boss",
+    .className = "Boss",
+    .hasCollision = true  // the class must define onCollision(other)
+});
+```
+
+Wren cannot check whether a class defines a method, so the flag is required. Without it, every contact would raise a runtime error for scripts that don't handle collisions.
+
+* `other` is the `Entity` that was hit. `other.destroy()` is deferred through the command buffer and applied at the end of the script update. It is never applied during the collision callback.
+* A contact is skipped for a script when either entity is already dead, for example killed by a C++ rule that handled the same contact first.
+* An entity queued for destruction is ignored until it is actually destroyed. Once the first script destroys `other`, `other`'s own `onCollision` is not called, and neither are its later contacts in the same frame. This means a projectile can't hit twice.
+* Only the start of a contact is forwarded. Subscribe to `events::CollisionEndEvent` in C++ if you need the end.
+* **Known limitation:** a script is instantiated during `ScriptSystem::update`, while physics runs in the fixed update. An entity that is spawned already overlapping another collider can start its contact before its script exists, and that first `onCollision` is lost. It is not replayed later. Spawn such entities away from what they should hit, or handle the case in C++.
 
 ### Example: Reactive Defense Drone with Lifecycle Hooks
 
@@ -247,6 +267,25 @@ class HomingMissile {
     }
 }
 ```
+
+---
+
+### Reference
+
+| Call | Returns |
+| --- | --- |
+| `World.getEntitiesWithTag(tag)` | `List` of `Entity` whose `Tag` equals `tag` (exact, case-sensitive) |
+| `World.getNearestWithTag(x, y, tag)` | Closest tagged `Entity` that has a `Transform`, or `null` |
+| `World.getEntitiesInRadius(x, y, radius)` | `List` of `Entity` whose `Transform` is within `radius` (boundary included) |
+
+* Entities are labelled from C++ with the generic `ecs::Tag` component (`registry.addComponent<ecs::Tag>(e, {.name = "enemy"})`);
+  the engine gives no meaning to the strings, each game picks its own.
+* Coordinates and radius are in `Transform` world units. The queries scan the ECS directly, so they work on the
+  headless server and do not need a physics body.
+* `radius` is clamped to `ecs::MAX_QUERY_RADIUS`; a negative radius returns an empty list.
+* No match returns an empty list or `null`, never a VM error. Entities destroyed by a script during the current
+  frame are skipped. Wrong argument types abort the calling fiber.
+* The same queries are available in C++ in `ecs/SpatialQueries.hpp`.
 
 ---
 

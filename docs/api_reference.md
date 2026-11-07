@@ -2,7 +2,9 @@
 
 Welcome to the automated C++ API Reference for the R-Type engine and subsystems.
 
-The documentation in this section is **automatically extracted from code docstrings** using [Doxygen](https://www.doxygen.nl/index.html) and generated into MkDocs Material via [MkDoxy](https://github.com/JakubAndrysek/MkDoxy).
+The documentation in this section is **automatically extracted from code docstrings**
+using [Doxygen](https://www.doxygen.nl/index.html) and generated into MkDocs Material
+via [MkDoxy](https://github.com/JakubAndrysek/MkDoxy).
 
 ---
 
@@ -21,34 +23,35 @@ The documentation in this section is **automatically extracted from code docstri
 
 The core architecture framework orchestrating the game loop, DAG dependency resolution, and decoupled abstract services.
 
-| Class / Struct | Role & Description |
-| :--- | :--- |
-| [`engine::Engine`](rtype/classengine_1_1Engine.md) | Central coordinator owning Registry, EventBus, Mediator, Clock, and the continuous game loop. |
-| [`engine::IPlugin`](rtype/classengine_1_1IPlugin.md) | Base interface providing lifecycle stages (`build`, `init`, `fixedUpdate`, `update`, `render`, `shutdown`). |
-| [`engine::PluginBuilder`](rtype/classengine_1_1PluginBuilder.md) | Fluent dependency configuration builder for declaring required and optional constraints. |
-| [`engine::PluginGraph`](rtype/classengine_1_1PluginGraph.md) | Topological sorter (Kahn's algorithm) managing dependency DAGs and cycle detection. |
-| [`engine::Mediator`](rtype/classengine_1_1Mediator.md) | Decoupled typed service registry supporting abstract interface resolution with `std::expected`. |
-| [`engine::IWindowService`](rtype/classengine_1_1IWindowService.md) | Abstract window lifecycle interface for close state and frame presentation. |
-| [`engine::IRenderService`](rtype/classengine_1_1IRenderService.md) | Abstract 2D rendering service interface for entity collection and camera views. |
-| [`engine::IInputService`](rtype/classengine_1_1IInputService.md) | Abstract input service interface providing action mappings and controller state. |
-| [`engine::IPhysicsService`](rtype/classengine_1_1IPhysicsService.md) | Abstract physics service interface for simulation stepping and rigid body metrics. |
+| Class / Struct                                                       | Role & Description                                                                                          |
+|:---------------------------------------------------------------------|:------------------------------------------------------------------------------------------------------------|
+| [`engine::Engine`](rtype/classengine_1_1Engine.md)                   | Central coordinator owning Registry, EventBus, Mediator, Clock, and the continuous game loop.               |
+| [`engine::IPlugin`](rtype/classengine_1_1IPlugin.md)                 | Base interface providing lifecycle stages (`build`, `init`, `fixedUpdate`, `update`, `render`, `shutdown`). |
+| [`engine::PluginBuilder`](rtype/classengine_1_1PluginBuilder.md)     | Fluent dependency configuration builder for declaring required and optional constraints.                    |
+| [`engine::PluginGraph`](rtype/classengine_1_1PluginGraph.md)         | Topological sorter (Kahn's algorithm) managing dependency DAGs and cycle detection.                         |
+| [`engine::Mediator`](rtype/classengine_1_1Mediator.md)               | Decoupled typed service registry supporting abstract interface resolution with `std::expected`.             |
+| [`engine::IWindowService`](rtype/classengine_1_1IWindowService.md)   | Abstract window lifecycle interface for close state and frame presentation.                                 |
+| [`engine::IRenderService`](rtype/classengine_1_1IRenderService.md)   | Abstract 2D rendering service interface for entity collection and camera views.                             |
+| [`engine::IInputService`](rtype/classengine_1_1IInputService.md)     | Abstract input service interface providing action mappings and controller state.                            |
+| [`engine::IPhysicsService`](rtype/classengine_1_1IPhysicsService.md) | Abstract physics service interface for simulation stepping and rigid body metrics.                          |
 
 ---
 
 ### 2. Scripting Subsystem (`scripting` & `systems`)
 
-The scripting module embeds the Wren lightweight VM into the C++23 engine, providing safe, high-performance scripting for gameplay designers without macro dependencies.
+The scripting module embeds the Wren lightweight VM into the C++23 engine, providing safe, high-performance scripting
+for gameplay designers without macro dependencies.
 
-| Class / Struct | Role & Description |
-| :--- | :--- |
-| [`scripting::WrenVM`](rtype/classscripting_1_1WrenVM.md) | High-level C++23 RAII facade managing the Wren VM instance, template slots (`setSlot<T>`, `getSlot<T>`), and `std::expected` interpretation. |
-| [`scripting::ComponentBinder<T>`](rtype/classscripting_1_1ComponentBinder.md) | Type-safe fluent builder binding C++ ECS component properties to Wren foreign classes using compile-time pointer-to-members (NTTP). |
-| [`scripting::ComponentBinderBase`](rtype/classscripting_1_1ComponentBinderBase.md) | Non-template base managing foreign class allocation, property storage, and Wren script generation. |
-| [`systems::ScriptSystem`](rtype/classsystems_1_1ScriptSystem.md) | ECS system managing script lifecycles (`onSpawn`), timed coroutines (`Engine.wait`), opt-in frame updates (`update`), and event forwarding. |
-| [`systems::SleepingFiber`](rtype/structsystems_1_1SleepingFiber.md) | Holds a suspended Wren Fiber and countdown timer for non-blocking coroutines. |
-| [`ecs::ScriptComponent`](rtype/structecs_1_1ScriptComponent.md) | ECS component attaching a Wren script class instance to an entity. |
-| [`scripting::detail::PropertyAccessor`](rtype/structscripting_1_1detail_1_1PropertyAccessor.md) | Internal FFI template helper converting C++ struct fields to/from Wren VM slots. |
-| [`scripting::detail::UniqueWrenHandle`](rtype/namespacescripting_1_1detail.md) | RAII `std::unique_ptr` ensuring automatic release of Wren VM handles. |
+| Class / Struct                                                                                  | Role & Description                                                                                                                           |
+|:------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------|
+| [`scripting::WrenVM`](rtype/classscripting_1_1WrenVM.md)                                        | High-level C++23 RAII facade managing the Wren VM instance, template slots (`setSlot<T>`, `getSlot<T>`), and `std::expected` interpretation. |
+| [`scripting::ComponentBinder<T>`](rtype/classscripting_1_1ComponentBinder.md)                   | Type-safe fluent builder binding C++ ECS component properties to Wren foreign classes using compile-time pointer-to-members (NTTP).          |
+| [`scripting::ComponentBinderBase`](rtype/classscripting_1_1ComponentBinderBase.md)              | Non-template base managing foreign class allocation, property storage, and Wren script generation.                                           |
+| [`systems::ScriptSystem`](rtype/classsystems_1_1ScriptSystem.md)                                | ECS system managing script lifecycles (`onSpawn`), timed coroutines (`Engine.wait`), opt-in frame updates (`update`), and event forwarding.  |
+| [`systems::SleepingFiber`](rtype/structsystems_1_1SleepingFiber.md)                             | Holds a suspended Wren Fiber and countdown timer for non-blocking coroutines.                                                                |
+| [`ecs::ScriptComponent`](rtype/structecs_1_1ScriptComponent.md)                                 | ECS component attaching a Wren script class instance to an entity.                                                                           |
+| [`scripting::detail::PropertyAccessor`](rtype/structscripting_1_1detail_1_1PropertyAccessor.md) | Internal FFI template helper converting C++ struct fields to/from Wren VM slots.                                                             |
+| [`scripting::detail::UniqueWrenHandle`](rtype/namespacescripting_1_1detail.md)                  | RAII `std::unique_ptr` ensuring automatic release of Wren VM handles.                                                                        |
 
 ---
 
@@ -56,31 +59,36 @@ The scripting module embeds the Wren lightweight VM into the C++23 engine, provi
 
 High-performance data-oriented ECS architecture utilizing sparse sets and deferred mutations.
 
-| Class / Struct | Role & Description |
-| :--- | :--- |
-| [`ecs::Registry`](rtype/classecs_1_1Registry.md) | Central ECS coordinator managing entity lifecycles, component sparse arrays, and views. |
+| Class / Struct                                             | Role & Description                                                                                              |
+|:-----------------------------------------------------------|:----------------------------------------------------------------------------------------------------------------|
+| [`ecs::Registry`](rtype/classecs_1_1Registry.md)           | Central ECS coordinator managing entity lifecycles, component sparse arrays, and views.                         |
 | [`ecs::CommandBuffer`](rtype/classecs_1_1CommandBuffer.md) | Deferred command buffer for safe structural mutations (`deferSpawn`, `deferDestroy`, `flush`) during iteration. |
-| [`ecs::SparseArray<T>`](rtype/classecs_1_1SparseArray.md) | Contiguous packed storage indexed via sparse entity IDs for cache-friendly iteration. |
-| [`ecs::EventBus`](rtype/classecs_1_1EventBus.md) | Decoupled publish/subscribe event dispatcher connecting systems and scripts. |
+| [`ecs::SparseArray<T>`](rtype/classecs_1_1SparseArray.md)  | Contiguous packed storage indexed via sparse entity IDs for cache-friendly iteration.                           |
+| [`ecs::EventBus`](rtype/classecs_1_1EventBus.md)           | Decoupled publish/subscribe event dispatcher connecting systems and scripts.                                    |
 
 ---
 
-### 3. Network Subsystem (`rtype::net`)
+### 3. Network Subsystem (`ecs::net`)
 
-Asynchronous networking architecture providing TCP sessions and client/server network management.
+Engine transport (`engine_network` interfaces, `engine_network_asio` implementation): TCP + UDP byte transport with a
+game-defined `NetworkConfig`. Game code only uses the interfaces and the factory.
 
-| Class / Struct | Role & Description |
-| :--- | :--- |
-| [`rtype::net::client::NetworkClient`](rtype/classrtype_1_1net_1_1client_1_1NetworkClient.md) | High-level client managing network connection lifecycle, event-driven socket multiplexing, and packet queues. |
-| [`rtype::net::server::NetworkServer`](rtype/classrtype_1_1net_1_1server_1_1NetworkServer.md) | Network server coordinating client sessions, connection accept loops, and incoming packet routing. |
-| [`rtype::net::session::TcpSession`](rtype/classrtype_1_1net_1_1session_1_1TcpSession.md) | Asynchronous TCP session handling serialized packet framing, message callbacks, and connection states. |
-| [`rtype::net::queue::EventQueue`](rtype/classrtype_1_1net_1_1queue_1_1EventQueue.md) | Thread-safe event queue for network event dispatching and buffering. |
+| Class / Struct                                                                           | Role & Description                                                    |
+|:-----------------------------------------------------------------------------------------|:----------------------------------------------------------------------|
+| [`ecs::net::INetworkServer`](rtype/classecs_1_1net_1_1INetworkServer.md)                 | Server transport: start, send, broadcast, kick, poll events.          |
+| [`ecs::net::INetworkClient`](rtype/classecs_1_1net_1_1INetworkClient.md)                 | Client transport: connect, open/close UDP, send, poll events.         |
+| [`ecs::net::NetworkConfig`](rtype/structecs_1_1net_1_1NetworkConfig.md)                  | Game-chosen settings: protocol id, peer limit, timeouts, size limits. |
+| [`ecs::net::NetworkEntityMap`](rtype/classecs_1_1net_1_1NetworkEntityMap.md)             | Registry resource mapping network ids to local entities.              |
+| [`ecs::net::detail::NetworkServer`](rtype/classecs_1_1net_1_1detail_1_1NetworkServer.md) | Asio server: accept loop, handshake, UDP binding, timeouts (private). |
+| [`ecs::net::detail::NetworkClient`](rtype/classecs_1_1net_1_1detail_1_1NetworkClient.md) | Asio client: handshake, UDP bind and keepalives (private).            |
+| [`ecs::net::detail::TcpSession`](rtype/classecs_1_1net_1_1detail_1_1TcpSession.md)       | Framed TCP connection with a bounded write queue (private).           |
 
 ---
 
 ## How to Document New Code
 
-All classes, methods, and structures must include Doxygen docstrings (`/** ... */`) in their `.hpp` headers. MkDoxy automatically parses these tags upon running `mkdocs build`.
+All classes, methods, and structures must include Doxygen docstrings (`/** ... */`) in their `.hpp` headers. MkDoxy
+automatically parses these tags upon running `mkdocs build`.
 
 ```cpp
 /**

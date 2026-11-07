@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <expected>
 #include <functional>
 #include <vector>
@@ -125,17 +126,15 @@ class Engine {
 
     /**
      * @brief Resolves dependencies and initializes all plugins in topological order.
+     *
+     * Does nothing if already initialized, or once shut down: an engine is never initialized twice.
      */
     void init();
 
     /**
-     * @brief Executes a single frame step (useful for testing and headless servers).
-     * @param dt Frame delta time in seconds.
-     */
-    void step(float dt);
-
-    /**
-     * @brief Runs the continuous main game loop until stopped or window is closed.
+     * @brief Runs the continuous main game loop until stopped or window is closed, then shuts down.
+     *
+     * Returns at once if the engine was already shut down.
      */
     void run();
 
@@ -157,9 +156,19 @@ class Engine {
     [[nodiscard]] const std::vector<IPlugin*>& executionOrder() const { return _pluginGraph.executionOrder(); }
 
     /**
-     * @brief Shuts down all initialized plugins in reverse topological order.
+     * @brief Shuts down all initialized plugins in reverse topological order. This is final: `init()`, `run()` and
+     * `advance()` do nothing afterwards.
      */
     void shutdown();
+
+    /**
+     * @brief Runs one non-blocking frame: preUpdate, the fixed steps due since the last call, then update.
+     *
+     * For loops driven from outside the engine (e.g. a server running several engines in one thread).
+     * Does not render.
+     * @return Number of fixed steps executed (0 if less than one fixed step has elapsed, or once shut down).
+     */
+    std::size_t advance();
 
   private:
     /**
@@ -181,6 +190,8 @@ class Engine {
     float _fixedDt = ecs::time::DEFAULT_FIXED_DT;
     /** @brief Flag indicating whether plugins have completed the init phase. */
     bool _initialized = false;
+    /** @brief Flag set by `shutdown()`: plugins are released for good and must not be initialized again. */
+    bool _shutdown = false;
     /** @brief Flag controlling the active game loop execution state. */
     bool _running = false;
 };

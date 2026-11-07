@@ -89,12 +89,6 @@ class Clock {
      */
     void reset();
 
-    /**
-     * @brief Manually advances the simulation clock by a fixed step duration.
-     * @param fixedDt Duration of the step to advance by in seconds.
-     */
-    void advance(float fixedDt) noexcept;
-
   private:
     /** @brief Queries time source and computes seconds elapsed since last call. */
     double pollElapsed();

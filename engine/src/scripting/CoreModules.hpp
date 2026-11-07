@@ -49,13 +49,25 @@ class Entity {
  * @brief Core Wren script source code for the `core/World` module.
  *
  * Provides static spatial query methods for scripters (`getEntitiesWithTag`, `getNearestWithTag`,
- * `getEntitiesInRadius`).
+ * `getEntitiesInRadius`). Results are `Entity` wrappers; positions are in `Transform` world units.
+ * The foreign methods return entity ids and the id list is converted in place, so one list is allocated per query.
  */
 inline constexpr std::string_view CORE_WORLD_SOURCE = R"wren(
+import "core/Entity" for Entity
 class World {
-    foreign static getEntitiesWithTag(tag)
-    foreign static getNearestWithTag(x, y, tag)
-    foreign static getEntitiesInRadius(x, y, radius)
+    foreign static idsWithTag_(tag)
+    foreign static nearestIdWithTag_(x, y, tag)
+    foreign static idsInRadius_(x, y, radius)
+    static getEntitiesWithTag(tag) { wrap_(idsWithTag_(tag)) }
+    static getNearestWithTag(x, y, tag) {
+        var id = nearestIdWithTag_(x, y, tag)
+        return id == null ? null : Entity.new(id)
+    }
+    static getEntitiesInRadius(x, y, radius) { wrap_(idsInRadius_(x, y, radius)) }
+    static wrap_(ids) {
+        for (i in 0...ids.count) ids[i] = Entity.new(ids[i])
+        return ids
+    }
 }
 )wren";
 

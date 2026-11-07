@@ -1,16 +1,22 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <utility>
 
 #include "components/ScriptComponent.hpp"
+#include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
+#include "events/PhysicsEvents.hpp"
 #include "input/InputState.hpp"
+#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabParams.hpp"
 #include "scripting/ComponentBinder.hpp"
 #include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
@@ -470,6 +476,142 @@ TEST(Scripting, LifecycleOnDestroy) {
     EXPECT_FALSE(registry.getComponents<ecs::ScriptComponent>().contains(e1));
 }
 
+namespace {
+int g_externalDestroyCount = 0;
+double g_externalDestroyX = 0.0;
+int g_replacementUpdateCount = 0;
+void recordExternalDestroy(scripting::ForeignCall& call) {
+    ++g_externalDestroyCount;
+    g_externalDestroyX = call.arg<double>(1).value_or(-1.0);
+}
+void recordReplacementUpdate(scripting::ForeignCall& /*call*/) { ++g_replacementUpdateCount; }
+}  // namespace
+
+TEST(Scripting, LifecycleOnDestroyWhenKilledOutsideScripts) {
+    g_externalDestroyCount = 0;
+    g_externalDestroyX = 0.0;
+    g_replacementUpdateCount = 0;
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<Position>();
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    scripting::ComponentBinder<Position> binder(scriptSystem.getVm(), "core/Position", "Position");
+    binder.property<&Position::x>("x");
+    EXPECT_TRUE(scriptSystem.getVm().interpret("core/Position", binder.generateWrenClass()));
+
+    scriptSystem.getVm().registerForeignMethod<&recordExternalDestroy>("gameplay_external", "ExternalDestroyScript",
+                                                                       true, "recordDestroyed(_)");
+    scriptSystem.getVm().registerForeignMethod<&recordReplacementUpdate>("gameplay_external", "ReplacementScript", true,
+                                                                         "recordUpdate()");
+
+    const char* scriptCode =
+        "import \"core/Entity\" for Entity\n"
+        "import \"core/Position\" for Position\n"
+        "class ExternalDestroyScript {\n"
+        "    construct new(entity) {\n"
+        "        _entity = entity\n"
+        "    }\n"
+        "    onDestroy() {\n"
+        "        ExternalDestroyScript.recordDestroyed(Position.new(_entity.id).x)\n"
+        "    }\n"
+        "    foreign static recordDestroyed(x)\n"
+        "}\n"
+        "class ReplacementScript {\n"
+        "    construct new(entity) {}\n"
+        "    update(dt) { ReplacementScript.recordUpdate() }\n"
+        "    foreign static recordUpdate()\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret("gameplay_external", scriptCode));
+
+    ecs::Entity const e1 = registry.spawnEntity();
+    registry.addComponent<Position>(e1, Position{.x = 7.0F, .y = 0.0F});
+    registry.addComponent<ecs::ScriptComponent>(e1, ecs::ScriptComponent{.moduleName = "gameplay_external",
+                                                                         .className = "ExternalDestroyScript",
+                                                                         .hasUpdate = false,
+                                                                         .initialized = false});
+    scriptSystem.update(0.016F);
+    ASSERT_NE(scriptSystem.getScriptInstance(e1), nullptr);
+
+    // Killed by C++ code (game rule, physics, network despawn...), not through Entity.destroy().
+    registry.killEntity(e1);
+
+    // onDestroy() ran synchronously, while the entity's components still existed.
+    EXPECT_EQ(g_externalDestroyCount, 1);
+    EXPECT_DOUBLE_EQ(g_externalDestroyX, 7.0);
+    EXPECT_EQ(scriptSystem.getScriptInstance(e1), nullptr);
+
+    // The slot is recycled with a new generation and its own script: it must not be affected by the old instance.
+    ecs::Entity const e2 = registry.spawnEntity();
+    ASSERT_EQ(ecs::entityIndex(e2), ecs::entityIndex(e1));
+    ASSERT_NE(e2, e1);
+    registry.addComponent<ecs::ScriptComponent>(e2, ecs::ScriptComponent{.moduleName = "gameplay_external",
+                                                                         .className = "ReplacementScript",
+                                                                         .hasUpdate = true,
+                                                                         .initialized = false});
+
+    scriptSystem.update(0.016F);
+    scriptSystem.update(0.016F);
+
+    EXPECT_EQ(g_externalDestroyCount, 1);  // released once only
+    EXPECT_EQ(scriptSystem.getScriptInstance(e1), nullptr);
+    EXPECT_NE(scriptSystem.getScriptInstance(e2), nullptr);
+    EXPECT_GE(g_replacementUpdateCount, 1);
+}
+
+TEST(Scripting, DestroyListenerFollowsMovedScriptSystem) {
+    g_externalDestroyCount = 0;
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem original;
+    original.init(registry, bus);
+    original.getVm().registerForeignMethod<&recordExternalDestroy>("gameplay_moved", "MovedScript", true,
+                                                                   "recordDestroyed(_)");
+    EXPECT_TRUE(original.getVm().interpret("gameplay_moved",
+                                           "class MovedScript {\n"
+                                           "    construct new(entity) {}\n"
+                                           "    onDestroy() { MovedScript.recordDestroyed(1) }\n"
+                                           "    foreign static recordDestroyed(x)\n"
+                                           "}\n"));
+
+    ecs::Entity const e = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(
+        e, ecs::ScriptComponent{
+               .moduleName = "gameplay_moved", .className = "MovedScript", .hasUpdate = false, .initialized = false});
+    original.update(0.016F);
+
+    systems::ScriptSystem moved(std::move(original));
+    ASSERT_NE(moved.getScriptInstance(e), nullptr);
+
+    // Only the moved-to system reacts, exactly once, and the moved-from one no longer listens.
+    registry.killEntity(e);
+    EXPECT_EQ(g_externalDestroyCount, 1);
+    EXPECT_EQ(moved.getScriptInstance(e), nullptr);
+}
+
+TEST(Scripting, GetSlotRejectsOutOfRangeUnsigned64) {
+    scripting::WrenVM vm;
+    vm.ensureSlots(1);
+
+    vm.setSlot(0, std::ldexp(1.0, 64));
+    EXPECT_FALSE(vm.getSlotChecked<std::uint64_t>(0).has_value());
+
+    vm.setSlot(0, std::ldexp(1.0, 52));
+    ASSERT_TRUE(vm.getSlotChecked<std::uint64_t>(0).has_value());
+    EXPECT_EQ(vm.getSlotChecked<std::uint64_t>(0).value(), std::uint64_t{1} << 52U);
+
+    // Largest double below 2^64 is still a valid uint64_t.
+    double const belowLimit = std::nextafter(std::ldexp(1.0, 64), 0.0);
+    vm.setSlot(0, belowLimit);
+    ASSERT_TRUE(vm.getSlotChecked<std::uint64_t>(0).has_value());
+    EXPECT_EQ(vm.getSlotChecked<std::uint64_t>(0).value(), static_cast<std::uint64_t>(belowLimit));
+}
+
 TEST(Scripting, LifecycleOnReload) {
     g_reloadHookCallCount = 0;
     ecs::Registry registry;
@@ -858,7 +1000,271 @@ TEST(Scripting, RobustnessForeignCallNumericConversions) {
     EXPECT_FLOAT_EQ(registry.getComponents<Position>().get(entity).x, 1.5F);
 }
 
+namespace {
+
+/** @brief Wren scripts counting their `onCollision` calls; `DestroyerScript` also destroys what it hits. */
+constexpr const char* COLLISION_SCRIPTS =
+    "import \"core/Entity\" for Entity\n"
+    "class HitScript {\n"
+    "    construct new(entity) {\n"
+    "        _hits = 0\n"
+    "        _last = -1\n"
+    "    }\n"
+    "    onCollision(other) {\n"
+    "        _hits = _hits + 1\n"
+    "        _last = other.id\n"
+    "    }\n"
+    "    hits { _hits }\n"
+    "    last { _last }\n"
+    "}\n"
+    "class DestroyerScript {\n"
+    "    construct new(entity) {\n"
+    "        _hits = 0\n"
+    "        _last = -1\n"
+    "    }\n"
+    "    onCollision(other) {\n"
+    "        _hits = _hits + 1\n"
+    "        _last = other.id\n"
+    "        other.destroy()\n"
+    "    }\n"
+    "    hits { _hits }\n"
+    "    last { _last }\n"
+    "}\n";
+
+ecs::Entity spawnScripted(ecs::Registry& registry, const char* className, bool hasCollision) {
+    const ecs::Entity e = registry.spawnEntity();
+    registry.addComponent<ecs::ScriptComponent>(e, ecs::ScriptComponent{.moduleName = "collisions",
+                                                                        .className = className,
+                                                                        .hasUpdate = false,
+                                                                        .hasCollision = hasCollision,
+                                                                        .initialized = false});
+    return e;
+}
+
+double readGetter(systems::ScriptSystem& scriptSystem, ecs::Entity e, const char* getter) {
+    auto handle = scriptSystem.getVm().makeCallHandle(getter);
+    EXPECT_EQ(scriptSystem.getVm().call(handle, scriptSystem.getScriptInstance(e)), WREN_RESULT_SUCCESS);
+    return scriptSystem.getVm().getSlot<double>(0);
+}
+
+/** @brief A ScriptSystem forwarding the collisions of its bus, with the collision scripts loaded. */
+struct CollisionFixture {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    systems::ScriptSystem scriptSystem;
+
+    CollisionFixture() {
+        registry.registerComponent<ecs::ScriptComponent>();
+        scriptSystem.init(registry, bus);
+        scriptSystem.forwardCollisions(bus);
+        EXPECT_TRUE(scriptSystem.getVm().interpret("collisions", COLLISION_SCRIPTS));
+    }
+};
+
+}  // namespace
+
+TEST(Scripting, CollisionForwardingCallsBothFlaggedScripts) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, e1, "hits"), 1.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, e1, "last"), static_cast<double>(e2));
+    EXPECT_EQ(readGetter(fx.scriptSystem, e2, "hits"), 1.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, e2, "last"), static_cast<double>(e1));
+}
+
+TEST(Scripting, CollisionForwardingSkipsUnflaggedScripts) {
+    CollisionFixture fx;
+    const ecs::Entity flagged = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity unflagged = spawnScripted(fx.registry, "HitScript", false);
+    fx.scriptSystem.update(0.016F);
+
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = unflagged, .entityB = flagged});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, flagged, "hits"), 1.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, unflagged, "hits"), 0.0);
+}
+
+TEST(Scripting, CollisionForwardingSkipsPendingDestroy) {
+    CollisionFixture fx;
+    const ecs::Entity destroyer = spawnScripted(fx.registry, "DestroyerScript", true);
+    const ecs::Entity victim = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    // The destroyer runs first and queues the victim for destruction: the victim's script is then skipped.
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = destroyer, .entityB = victim});
+    EXPECT_EQ(readGetter(fx.scriptSystem, destroyer, "hits"), 1.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, victim, "hits"), 0.0);
+    EXPECT_TRUE(fx.registry.isAlive(victim));  // deferred through the CommandBuffer
+
+    // Later contacts of the queued entity are ignored too, until the deferred destruction is flushed.
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = destroyer, .entityB = victim});
+    EXPECT_EQ(readGetter(fx.scriptSystem, destroyer, "hits"), 1.0);
+
+    fx.scriptSystem.update(0.016F);
+    EXPECT_FALSE(fx.registry.isAlive(victim));
+}
+
+TEST(Scripting, CollisionForwardingSkipsDeadEntities) {
+    CollisionFixture fx;
+    const ecs::Entity survivor = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity victim = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    // A C++ rule handled the contact first and killed the victim: the survivor must not see a dead entity.
+    fx.registry.killEntity(victim);
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = survivor, .entityB = victim});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, survivor, "hits"), 0.0);
+}
+
+TEST(Scripting, StopForwardingCollisionsUnsubscribes) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    fx.scriptSystem.stopForwardingCollisions();
+    fx.scriptSystem.stopForwardingCollisions();  // idempotent, as ScriptPlugin::shutdown then the destructor call it
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+    EXPECT_EQ(readGetter(fx.scriptSystem, e1, "hits"), 0.0);
+    EXPECT_EQ(readGetter(fx.scriptSystem, e2, "hits"), 0.0);
+}
+
+TEST(Scripting, CollisionForwardingFollowsAMove) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    systems::ScriptSystem moved(std::move(fx.scriptSystem));
+    fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+    EXPECT_EQ(readGetter(moved, e1, "hits"), 1.0);
+    EXPECT_EQ(readGetter(moved, e2, "hits"), 1.0);
+}
+
+TEST(Scripting, CollisionForwardingFollowsAMoveAssignment) {
+    CollisionFixture fx;
+    const ecs::Entity e1 = spawnScripted(fx.registry, "HitScript", true);
+    const ecs::Entity e2 = spawnScripted(fx.registry, "HitScript", true);
+    fx.scriptSystem.update(0.016F);
+
+    {
+        // The target forwards on the same bus: after the assignment, each contact must be delivered exactly once.
+        systems::ScriptSystem target;
+        target.init(fx.registry, fx.bus);
+        target.forwardCollisions(fx.bus);
+        target = std::move(fx.scriptSystem);
+        fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2});
+
+        EXPECT_EQ(readGetter(target, e1, "hits"), 1.0);
+        EXPECT_EQ(readGetter(target, e2, "hits"), 1.0);
+    }
+    // Both systems are gone: publishing must not reach a dangling slot.
+    EXPECT_NO_FATAL_FAILURE(fx.bus.publish(events::CollisionBeginEvent{.entityA = e1, .entityB = e2}));
+}
+
+TEST(Scripting, CollisionForwardingStopsWithTheSystem) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    {
+        CollisionFixture fx;
+        (void)fx;
+    }
+    {
+        systems::ScriptSystem scriptSystem;
+        registry.registerComponent<ecs::ScriptComponent>();
+        scriptSystem.init(registry, bus);
+        scriptSystem.forwardCollisions(bus);
+    }
+    // The destroyed system unsubscribed: publishing must not reach a dangling `this`.
+    EXPECT_NO_FATAL_FAILURE(bus.publish(events::CollisionBeginEvent{.entityA = 0, .entityB = 1}));
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+namespace {
+
+/**
+ * @brief Runs `Engine.spawnPrefab(<prefabName>, 12, 34)` from a Wren static method.
+ * @return The Wren call result.
+ */
+WrenInterpretResult callSpawnPrefab(systems::ScriptSystem& scriptSystem, std::string const& prefabName) {
+    std::string const module = "spawn_" + prefabName;
+    std::string const code =
+        "import \"core/Engine\" for Engine\n"
+        "class Spawner {\n"
+        "    static run() { Engine.spawnPrefab(\"" +
+        prefabName +
+        "\", 12, 34) }\n"
+        "}\n";
+    EXPECT_TRUE(scriptSystem.getVm().interpret(module, code));
+    auto handle = scriptSystem.getVm().makeCallHandle("run()");
+    scriptSystem.getVm().ensureSlots(1);
+    scriptSystem.getVm().getVariable(module, "Spawner", 0);
+    return scriptSystem.getVm().call(handle);
+}
+
+}  // namespace
+
+TEST(Scripting, SpawnPrefabInstantiatesRegisteredPrefab) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+    registry.registerComponent<ecs::Transform>();
+
+    prefabs::PrefabManager manager;
+    manager.registerPrefab("probe", [](ecs::Entity e, ecs::Registry& reg, prefabs::PrefabParams const& params) {
+        reg.addComponent<ecs::Transform>(e, prefabs::makeTransform(params));
+    });
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+    scriptSystem.setPrefabManager(&manager);
+
+    EXPECT_EQ(callSpawnPrefab(scriptSystem, "probe"), WREN_RESULT_SUCCESS);
+    EXPECT_FALSE(scriptSystem.getCommandBuffer().empty());
+    EXPECT_TRUE(registry.getComponents<ecs::Transform>().getDense().empty());
+
+    scriptSystem.update(0.016F);
+
+    auto const& transforms = registry.getComponents<ecs::Transform>().getDense();
+    ASSERT_EQ(transforms.size(), 1U);
+    EXPECT_FLOAT_EQ(transforms.front().x, 12.0F);
+    EXPECT_FLOAT_EQ(transforms.front().y, 34.0F);
+}
+
+TEST(Scripting, SpawnPrefabUnknownNameQueuesNothing) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    prefabs::PrefabManager const manager;
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+    scriptSystem.setPrefabManager(&manager);
+
+    EXPECT_EQ(callSpawnPrefab(scriptSystem, "does_not_exist"), WREN_RESULT_SUCCESS);
+    EXPECT_TRUE(scriptSystem.getCommandBuffer().empty());
+}
+
+TEST(Scripting, SpawnPrefabWithoutManagerQueuesNothing) {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    registry.registerComponent<ecs::ScriptComponent>();
+
+    systems::ScriptSystem scriptSystem;
+    scriptSystem.init(registry, bus);
+
+    EXPECT_EQ(callSpawnPrefab(scriptSystem, "probe"), WREN_RESULT_SUCCESS);
+    EXPECT_TRUE(scriptSystem.getCommandBuffer().empty());
 }

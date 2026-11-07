@@ -16,6 +16,8 @@ namespace systems {
 
 /**
  * @brief Plugin responsible for synchronizing ECS transforms with the Box2D physics world.
+ *
+ * Contact events (`events::CollisionBeginEvent` / `events::CollisionEndEvent`) are published on the engine event bus.
  */
 class PhysicsPlugin final : public engine::IPlugin {
   public:

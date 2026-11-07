@@ -21,6 +21,8 @@ xmake run test_clock         # Fixed-timestep simulation clock
 xmake run test_input         # Action mapping and input normalization
 xmake run test_physics       # Box2D physics simulation
 xmake run test_scripting     # Wren scripting integration
+xmake run test_replication   # Network replication, with a codec independent of R-Type
+xmake run test_server_e2e    # Real server and clients over loopback sockets
 ```
 
 ## Running the Server
@@ -63,10 +65,21 @@ rtype::log::debug("server", "client ", client, " joined room ", roomId);
 
 ## Running the Client
 
-The graphical client initializes the `engine::Engine` and loads modular plugins (`RenderPlugin`, `InputPlugin`, `PhysicsPlugin`, `RTypeGamePlugin`) via Raylib:
+The graphical client connects to a server, so start one first:
 
 ```bash
-xmake run r-type_client
+xmake run r-type_client                   # connects to 127.0.0.1:4242
+xmake run r-type_client 192.168.1.10 5000
 ```
 
-*(Note: At this prototype stage, network connections and IP configuration are hardcoded or rely on defaults. Future versions will accept CLI arguments).*
+Usage: `r-type_client [host] [port]`. It exits with code 84 if the server cannot be reached, and stops when the connection
+is lost. Use `xmake run` rather than the binary at the root: raylib's libraries are found through the environment it sets.
+
+## Playing a Game
+
+1. Start the server, then a client. It finds no room and creates one.
+2. Once the first client says `in room 1` in its terminal, start the others: each one joins the first room waiting for
+   players, up to 4. Clients started at the very same moment may each create their own room.
+3. Press **R** in each window to get ready: the game starts when everyone is ready. There is no lobby screen yet: the state
+   of the room is printed in the terminal.
+4. Move with WASD (ZQSD on AZERTY keyboards), the arrow keys or a gamepad.

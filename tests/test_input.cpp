@@ -347,7 +347,7 @@ TEST(InputPlugin, PollsAnyWindowServiceProvider) {
     const ecs::Entity player = engine.registry().spawnEntity();
     engine.registry().addComponent<input::InputState>(player, input::InputState{.playerIndex = 0, .actions = {}});
 
-    engine.step(0.016F);
+    engine.advance();
 
     EXPECT_TRUE(engine.registry().getComponents<input::InputState>().get(player).isDown("shoot"));
 }

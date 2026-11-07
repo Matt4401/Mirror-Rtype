@@ -15,6 +15,7 @@ namespace ecs {
 namespace detail {
 
 template <std::size_t DriverIdx, class TargetComponent, class... Components>
+// NOLINTNEXTLINE(misc-use-internal-linkage)
 decltype(auto) getComponentFor(std::tuple<SparseArray<Components>&...>& arrays, Entity e, std::size_t driverIndex) {
     using DriverComponent = std::tuple_element_t<DriverIdx, std::tuple<Components...>>;
     if constexpr (std::is_same_v<TargetComponent, DriverComponent>) {
@@ -27,11 +28,14 @@ decltype(auto) getComponentFor(std::tuple<SparseArray<Components>&...>& arrays, 
 }
 
 template <std::size_t DriverIdx, class... Components, std::size_t... Is>
-bool checkOtherContains(const std::tuple<SparseArray<Components>&...>& arrays, Entity e, std::index_sequence<Is...>) {
+// NOLINTNEXTLINE(misc-use-internal-linkage)
+bool checkOtherContains(const std::tuple<SparseArray<Components>&...>& arrays, Entity e,
+                        std::index_sequence<Is...> /*indices*/) {
     return ((Is == DriverIdx || std::get<Is>(arrays).contains(e)) && ...);
 }
 
 template <std::size_t DriverIdx, class... Components, class Func>
+// NOLINTNEXTLINE(misc-use-internal-linkage)
 void runSystemWithDriver(std::tuple<SparseArray<Components>&...>& arrays, Func& func) {
     auto& driverArray = std::get<DriverIdx>(arrays);
     const auto& driverEntities = driverArray.getDenseEntities();
@@ -75,6 +79,15 @@ SparseArray<Component> const& Registry::getComponents() const {
 }
 
 template <class Component>
+SparseArray<Component> const* Registry::findComponents() const noexcept {
+    const ComponentTypeId id = getComponentTypeId<Component>();
+    if (id >= _componentsArrays.size() || !_componentsArrays[id]) {
+        return nullptr;
+    }
+    return static_cast<SparseArray<Component> const*>(_componentsArrays[id].get());
+}
+
+template <class Component>
 bool Registry::hasComponent(Entity e) const {
     const ComponentTypeId id = getComponentTypeId<Component>();
     if (id >= _componentsArrays.size() || !_componentsArrays[id]) {
@@ -85,16 +98,19 @@ bool Registry::hasComponent(Entity e) const {
 
 template <class Component>
 Component& Registry::addComponent(Entity to, Component&& c) {
+    ensureAlive(to);
     return getComponents<Component>().insertAt(to, std::forward<Component>(c));
 }
 
 template <class Component>
 Component& Registry::addComponent(Entity to, Component const& c) {
+    ensureAlive(to);
     return getComponents<Component>().insertAt(to, c);
 }
 
 template <class Component, typename... Args>
 Component& Registry::emplaceComponent(Entity to, Args&&... args) {
+    ensureAlive(to);
     return getComponents<Component>().insertAt(to, Component{std::forward<Args>(args)...});
 }
 

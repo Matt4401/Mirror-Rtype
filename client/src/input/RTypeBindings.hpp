@@ -1,8 +1,12 @@
 #pragma once
 
+#include "input/ActionId.hpp"
 #include "input/ActionMapping.hpp"
 
 namespace client::input {
+
+/** @brief Button action that toggles the ready state in the lobby; it is never sent as a game input. */
+inline constexpr ::input::ActionId ACTION_READY = ::input::makeActionId("ready");
 
 /**
  * @brief Configures standard key and gamepad bindings for the R-Type game.

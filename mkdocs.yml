@@ -38,7 +38,7 @@ plugins:
   - mkdoxy:
       projects:
         rtype:
-          src-dirs: "engine/src client/src server/src network/src shared/src log/src common/include"
+          src-dirs: "engine/src client/src server/src log/src common/src game/src"
           full-doc: True
           doxy-cfg:
             FILE_PATTERNS: "*.cpp *.hpp *.h"
@@ -67,12 +67,14 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Engine: architecture/engine.md
+      - Entity Hierarchy: architecture/hierarchy.md
       - Plugins & Mediator: architecture/plugins.md
       - Engine Clock: architecture/clock.md
       - Physics: architecture/physics.md
       - Audio: architecture/audio.md
       - Server: architecture/server.md
       - Client: architecture/client.md
+      - Client ↔ Server: architecture/client-server.md
       - Network: architecture/network.md
   - Prefabs:
       - Overview: prefabs/index.md
@@ -99,6 +101,7 @@ nav:
       - Index: getting-started/index.md
       - Building: getting-started/building.md
       - Running: getting-started/running.md
+      - Add the Network to a Game: getting-started/networked-game.md
       - Scripting Guide: getting-started/scripting-guide.md
   - Accessibility: accessibility/index.md
   - API Reference:

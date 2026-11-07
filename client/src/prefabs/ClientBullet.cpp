@@ -10,11 +10,13 @@
 #include <cstdint>
 
 #include "components/AnimationComponent.hpp"
+#include "components/Collider2D.hpp"
 #include "components/Renderable.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "prefabs/CollisionCategories.hpp"
 #include "prefabs/PrefabParams.hpp"
 
 namespace client::prefabs {
@@ -45,6 +47,13 @@ void buildClientBullet(ecs::Entity e, ecs::Registry& registry, ::prefabs::Prefab
                                                    .velocityX = speed,
                                                    .fixedRotation = true,
                                                });
+    registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
+                                                  .halfWidth = 8.0F,
+                                                  .halfHeight = 3.0F,
+                                                  .categoryBits = ::prefabs::collision::PLAYER_SHOT,
+                                                  .maskBits = ::prefabs::collision::PLAYER_SHOT_MASK,
+                                                  .isSensor = true,
+                                              });
     registry.addComponent<ClientBullet>(e, ClientBullet{});
 }
 

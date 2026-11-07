@@ -1,26 +1,85 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
+#include <optional>
+#include <string>
+#include <thread>
+#include <utility>
+#include <variant>
+#include <vector>
 
 #include "Room.hpp"
-#include "ecs/time/Clock.hpp"
+#include "components/InputBuffer.hpp"
+#include "components/NetworkId.hpp"
+#include "components/NetworkOwner.hpp"
+#include "components/Transform.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/time/Time.hpp"
+#include "game/ReplicationCodec.hpp"
+#include "game/ShipMovement.hpp"
+#include "net/INetworkManager.hpp"
+#include "net/INetworkServer.hpp"
+#include "net/NetworkEntityMap.hpp"
+#include "protocol/Messages.hpp"
+#include "protocol/Protocol.hpp"
 
 namespace {
 
+using ecs::net::Bytes;
+using ecs::net::Channel;
 using rtype::server::ClientId;
 using rtype::server::MAX_PENDING_INPUTS;
-using rtype::server::PlayerInput;
 using rtype::server::Room;
+namespace protocol = rtype::protocol;
 
 constexpr float FIXED_DT = 0.1F;
 constexpr ClientId PLAYER = 1;
+constexpr ClientId OTHER_PLAYER = 2;
+
+/** @brief Records what the rooms send. */
+class FakeServer final : public ecs::net::INetworkServer {
+  public:
+    struct Sent {
+        ClientId client;
+        Bytes data;
+        Channel channel;
+    };
+
+    bool start(std::uint16_t /*port*/) override { return true; }
+    void stop() override {}
+    [[nodiscard]] bool isRunning() const override { return true; }
+    std::vector<ecs::net::NetworkEvent> poll() override { return {}; }
+    void send(const ClientId client, const Bytes& data, const Channel channel) override {
+        sent.push_back({.client = client, .data = data, .channel = channel});
+    }
+    void broadcast(const Bytes& /*data*/, Channel /*channel*/) override { ++broadcasts; }
+    void kick(ClientId /*client*/) override {}
+
+    /** @brief Snapshots sent to a client since the last `clear()`, oldest first. */
+    [[nodiscard]] std::vector<protocol::WorldState> snapshotsOf(const ClientId client) const {
+        std::vector<protocol::WorldState> snapshots;
+        for (const Sent& message : sent) {
+            const auto decoded = protocol::decode(message.data);
+            if (message.client == client && decoded && std::holds_alternative<protocol::WorldState>(*decoded)) {
+                snapshots.push_back(std::get<protocol::WorldState>(*decoded));
+            }
+        }
+        return snapshots;
+    }
+
+    std::vector<Sent> sent;
+    int broadcasts = 0;
+};
 
 /** @brief Room with a fake clock: one `step()` call makes exactly one simulation step due. */
 class RoomInputTest : public ::testing::Test {
   protected:
-    RoomInputTest() : room(2, FIXED_DT, [this] { return now; }) {
+    RoomInputTest() : room(network, 2, FIXED_DT, [this] { return now; }) {
         room.addPlayer(PLAYER);
         room.start();
     }
@@ -31,9 +90,44 @@ class RoomInputTest : public ::testing::Test {
         return room.advance();
     }
 
-    void send(const std::uint32_t sequence) { room.onInput(PLAYER, PlayerInput{.sequence = sequence, .actions = 0}); }
+    void send(const std::uint32_t sequence) { send(sequence, {}); }
+
+    void send(const std::uint32_t sequence, std::vector<protocol::AxisValue> axes) {
+        room.onPacket(
+            PLAYER, protocol::encode(protocol::PlayerInput{.sequence = sequence, .held = {}, .axes = std::move(axes)}));
+    }
+
+    /** @brief Sends an input with the shoot button held, then runs one step. */
+    void stepHoldingShoot(const std::uint32_t sequence) {
+        room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{
+                                  .sequence = sequence, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
+        step();
+    }
+
+    /** @brief Bullets of the last snapshot the player received. */
+    [[nodiscard]] std::vector<protocol::EntityState> bullets() const {
+        const auto snapshots = network.snapshotsOf(PLAYER);
+        std::vector<protocol::EntityState> found;
+        std::ranges::copy_if(
+            snapshots.at(snapshots.size() - 1).entities, std::back_inserter(found),
+            [](const protocol::EntityState& entity) { return entity.kind == rtype::game::KIND_PLAYER_BULLET; });
+        return found;
+    }
+
+    /** @brief Position of the player's ship. */
+    [[nodiscard]] ecs::Transform shipOf(const ClientId player) {
+        std::optional<ecs::Transform> found;
+        room.registry().runSystem<ecs::NetworkOwner, ecs::Transform>(
+            [&](ecs::Entity /*entity*/, const ecs::NetworkOwner& owner, const ecs::Transform& transform) {
+                if (owner.client == player) {
+                    found = transform;
+                }
+            });
+        return found.value();
+    }
 
     double now = 0.0;
+    FakeServer network;
     Room room;
 };
 
@@ -83,7 +177,7 @@ TEST_F(RoomInputTest, AlreadyAppliedInputIsIgnored) {
 }
 
 TEST_F(RoomInputTest, FullQueueKeepsTheNewestInputs) {
-    const auto total = static_cast<std::uint32_t>(MAX_PENDING_INPUTS) + 2;  // sequences 1..10
+    const auto total = static_cast<std::uint32_t>(MAX_PENDING_INPUTS) + 2;
     for (std::uint32_t seq = 1; seq <= total; ++seq) {
         send(seq);
     }
@@ -100,15 +194,342 @@ TEST_F(RoomInputTest, FullQueueKeepsTheNewestInputs) {
 }
 
 TEST_F(RoomInputTest, InputOfUnknownPlayerIsIgnored) {
-    room.onInput(42, PlayerInput{.sequence = 1, .actions = 0});
+    room.onPacket(42, protocol::encode(protocol::PlayerInput{.sequence = 1, .held = {}, .axes = {}}));
+    step();
     EXPECT_EQ(room.lastProcessedInput(42), 0U);
+    EXPECT_EQ(room.lastProcessedInput(PLAYER), 0U);
+}
+
+TEST_F(RoomInputTest, PayloadsThatAreNotInputsAreIgnored) {
+    room.onPacket(PLAYER, Bytes{0xFF, 0x00, 0x13});
+    room.onPacket(PLAYER, Bytes{});
+    room.onPacket(PLAYER, protocol::encode(protocol::Leave{}));
+    room.onPacket(PLAYER, protocol::encode(protocol::WorldState{.tick = 9, .lastProcessedInput = 9, .entities = {}}));
+    send(1);
+
+    EXPECT_EQ(step(), 1U);
+    EXPECT_EQ(room.lastProcessedInput(PLAYER), 1U);
 }
 
 TEST_F(RoomInputTest, TimeResourceIsStoredInTheRegistry) {
-    EXPECT_FALSE(room.registry().hasResource<ecs::time::Time>());
-    step();
     ASSERT_TRUE(room.registry().hasResource<ecs::time::Time>());
+    EXPECT_EQ(room.registry().getResource<ecs::time::Time>().tickCount, 0U);
+    step();
     EXPECT_EQ(room.registry().getResource<ecs::time::Time>().tickCount, 1U);
+}
+
+TEST_F(RoomInputTest, PlayerEntityCarriesItsNetworkComponents) {
+    int found = 0;
+    room.registry().runSystem<ecs::NetworkOwner, ecs::NetworkId, ecs::InputBuffer>(
+        [&](ecs::Entity entity, const ecs::NetworkOwner& owner, const ecs::NetworkId& id, const ecs::InputBuffer&) {
+            EXPECT_EQ(owner.client, PLAYER);
+            EXPECT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().entityOf(id.value), entity);
+            ++found;
+        });
+    EXPECT_EQ(found, 1);
+}
+
+TEST_F(RoomInputTest, RemovedPlayerIsUnmapped) {
+    room.removePlayer(PLAYER);
+
+    EXPECT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().size(), 0U);
+    EXPECT_EQ(room.lastProcessedInput(PLAYER), 0U);
+}
+
+TEST_F(RoomInputTest, InputMovesTheShipOfItsSender) {
+    const ecs::Transform before = shipOf(PLAYER);
+
+    send(1, {{.action = rtype::game::ACTION_MOVE_X, .value = 1.0F}});
+    step();
+
+    EXPECT_FLOAT_EQ(shipOf(PLAYER).x, before.x + (rtype::game::SHIP_SPEED * FIXED_DT));
+    EXPECT_FLOAT_EQ(shipOf(PLAYER).y, before.y);
+}
+
+TEST_F(RoomInputTest, EachStepSendsASnapshotWithTheShipAndTheAcknowledgedInput) {
+    send(7, {{.action = rtype::game::ACTION_MOVE_Y, .value = -1.0F}});
+    step();
+
+    const auto snapshots = network.snapshotsOf(PLAYER);
+    ASSERT_EQ(snapshots.size(), 1U);
+    EXPECT_EQ(snapshots[0].tick, 1U);
+    EXPECT_EQ(snapshots[0].lastProcessedInput, 7U);
+    ASSERT_EQ(snapshots[0].entities.size(), 1U);
+    const auto& ship = snapshots[0].entities[0];
+    EXPECT_NE(ship.entityId, 0U);
+    EXPECT_EQ(ship.kind, rtype::game::KIND_PLAYER_SHIP);
+    EXPECT_EQ(ship.subtype, 0);
+    EXPECT_FLOAT_EQ(ship.x, shipOf(PLAYER).x);
+    EXPECT_FLOAT_EQ(ship.y, shipOf(PLAYER).y);
+    EXPECT_EQ(network.sent[0].channel, Channel::Unreliable);
+}
+
+TEST_F(RoomInputTest, CatchUpStepsSendASingleSnapshot) {
+    now += static_cast<double>(FIXED_DT) * 3.5;
+
+    EXPECT_EQ(room.advance(), 3U);
+
+    const auto snapshots = network.snapshotsOf(PLAYER);
+    ASSERT_EQ(snapshots.size(), 1U);
+    EXPECT_EQ(snapshots[0].tick, 3U);
+}
+
+TEST_F(RoomInputTest, RemovedPlayerNoLongerReceivesSnapshots) {
+    room.removePlayer(PLAYER);
+    step();
+
+    EXPECT_TRUE(network.snapshotsOf(PLAYER).empty());
+}
+
+TEST_F(RoomInputTest, InputWithoutTheShootButtonSpawnsNoBullet) {
+    send(1);
+    step();
+
+    EXPECT_TRUE(bullets().empty());
+}
+
+TEST_F(RoomInputTest, HoldingShootSpawnsABulletInFrontOfTheShip) {
+    const ecs::Transform ship = shipOf(PLAYER);
+
+    stepHoldingShoot(1);
+
+    const auto spawned = bullets();
+    ASSERT_EQ(spawned.size(), 1U);
+    EXPECT_NE(spawned[0].entityId, 0U);
+    EXPECT_EQ(spawned[0].subtype, 0) << "the index of the player who shot";
+    EXPECT_GT(spawned[0].x, ship.x);
+    EXPECT_FLOAT_EQ(spawned[0].y, ship.y);
+}
+
+TEST_F(RoomInputTest, HoldingShootIsLimitedByTheCooldown) {
+    // Steps of 0.1 s and a shot every 0.2 s: the steps 1 and 3 shoot.
+    stepHoldingShoot(1);
+    stepHoldingShoot(2);
+    EXPECT_EQ(bullets().size(), 1U);
+
+    stepHoldingShoot(3);
+    stepHoldingShoot(4);
+    EXPECT_EQ(bullets().size(), 2U);
+}
+
+TEST_F(RoomInputTest, InputsSentInBurstCannotShootFaster) {
+    for (std::uint32_t sequence = 1; sequence <= MAX_PENDING_INPUTS; ++sequence) {
+        room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{
+                                  .sequence = sequence, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
+    }
+
+    step();
+
+    EXPECT_EQ(bullets().size(), 1U);
+}
+
+TEST_F(RoomInputTest, CooldownElapsesWithoutInputs) {
+    stepHoldingShoot(1);
+    step();
+    step();
+
+    stepHoldingShoot(2);
+
+    EXPECT_EQ(bullets().size(), 2U);
+}
+
+TEST_F(RoomInputTest, BulletFliesForwardOnTheServer) {
+    stepHoldingShoot(1);
+    const float firstX = bullets().at(0).x;
+
+    step();
+
+    EXPECT_GT(bullets().at(0).x, firstX);
+}
+
+TEST_F(RoomInputTest, OffscreenBulletIsRemoved) {
+    stepHoldingShoot(1);
+    ASSERT_EQ(bullets().size(), 1U);
+    ASSERT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().size(), 2U) << "the ship and the bullet";
+
+    for (int steps = 0; steps < 100 && !bullets().empty(); ++steps) {
+        step();
+    }
+
+    EXPECT_TRUE(bullets().empty());
+    const auto snapshots = network.snapshotsOf(PLAYER);
+    EXPECT_EQ(room.registry().getResource<ecs::net::NetworkEntityMap>().size(),
+              snapshots.at(snapshots.size() - 1).entities.size())
+        << "the id of the bullet is released";
+}
+
+TEST(Room, BulletCarriesTheIndexOfThePlayerWhoShot) {
+    FakeServer network;
+    double now = 0.0;
+    Room room(network, 2, FIXED_DT, [&now] { return now; });
+    room.addPlayer(PLAYER);
+    room.addPlayer(OTHER_PLAYER);
+    room.start();
+
+    room.onPacket(OTHER_PLAYER, protocol::encode(protocol::PlayerInput{
+                                    .sequence = 1, .held = {rtype::game::ACTION_SHOOT}, .axes = {}}));
+    now += static_cast<double>(FIXED_DT);
+    room.advance();
+
+    const auto snapshots = network.snapshotsOf(PLAYER);
+    const auto& entities = snapshots.at(0).entities;
+    const auto bullet = std::ranges::find(entities, rtype::game::KIND_PLAYER_BULLET, &protocol::EntityState::kind);
+    ASSERT_NE(bullet, entities.end()) << "both players see the shot";
+    EXPECT_EQ(bullet->subtype, 1);
+}
+
+TEST(Room, DoesNothingUntilStartedAndDropsThePayloads) {
+    FakeServer network;
+    double now = 0.0;
+    Room room(network, 2, FIXED_DT, [&now] { return now; });
+    room.addPlayer(PLAYER);
+    room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{.sequence = 1, .held = {}, .axes = {}}));
+    now += 10.0;
+
+    EXPECT_EQ(room.advance(), 0U);
+    EXPECT_TRUE(network.sent.empty());
+
+    room.start();
+    now += static_cast<double>(FIXED_DT);
+    EXPECT_EQ(room.advance(), 1U);
+    EXPECT_EQ(room.lastProcessedInput(PLAYER), 0U) << "the input sent before the start was dropped";
+}
+
+TEST(Room, SnapshotsStayInsideTheRoom) {
+    FakeServer network;
+    double now = 0.0;
+    const auto clock = [&now] { return now; };
+    Room first(network, 2, FIXED_DT, clock);
+    Room second(network, 2, FIXED_DT, clock);
+    first.addPlayer(PLAYER);
+    second.addPlayer(OTHER_PLAYER);
+    first.start();
+    second.start();
+    now += static_cast<double>(FIXED_DT);
+
+    first.advance();
+
+    EXPECT_EQ(network.snapshotsOf(PLAYER).size(), 1U);
+    EXPECT_TRUE(network.snapshotsOf(OTHER_PLAYER).empty());
+    EXPECT_EQ(network.broadcasts, 0);
+    EXPECT_EQ(network.snapshotsOf(PLAYER)[0].entities.size(), 1U) << "only the entities of this room";
+}
+
+TEST(Room, PlayerIndicesHaveNoHoleWhoeverLeftTheLobby) {
+    FakeServer network;
+    double now = 0.0;
+    Room room(network, 3, FIXED_DT, [&now] { return now; });
+    room.addPlayer(1);
+    room.addPlayer(2);
+    room.addPlayer(3);
+    room.removePlayer(1);
+    room.start();
+    now += static_cast<double>(FIXED_DT);
+    room.advance();
+
+    // Kept in a variable: a range-for over a member of a temporary only keeps it alive from GCC 15 on (P2718).
+    const auto snapshots = network.snapshotsOf(2);
+    std::vector<int> indices;
+    for (const auto& entity : snapshots.at(0).entities) {
+        indices.push_back(entity.subtype);
+    }
+    std::ranges::sort(indices);
+    EXPECT_EQ(indices, (std::vector<int>{0, 1})) << "GameStart requires player_index < player_count";
+    ASSERT_EQ(room.players().size(), 2U);
+    EXPECT_EQ(room.players()[0].client, 2U) << "join order";
+    EXPECT_EQ(room.players()[1].client, 3U);
+}
+
+TEST(Room, EveryoneMustBeReady) {
+    FakeServer network;
+    Room room(network, 3);
+    EXPECT_FALSE(room.isEveryoneReady()) << "an empty room never starts";
+
+    room.addPlayer(1);
+    room.addPlayer(2);
+    room.setReady(1, true);
+    EXPECT_FALSE(room.isEveryoneReady());
+    room.setReady(2, true);
+    EXPECT_TRUE(room.isEveryoneReady());
+    room.setReady(1, false);
+    EXPECT_FALSE(room.isEveryoneReady());
+    room.setReady(42, true);  // unknown player: ignored
+    EXPECT_FALSE(room.isEveryoneReady());
+
+    room.setReady(1, true);
+    room.removePlayer(2);
+    EXPECT_TRUE(room.isEveryoneReady());
+}
+
+TEST(Room, CannotJoinTwiceOrOnceStarted) {
+    FakeServer network;
+    Room room(network, 3);
+
+    EXPECT_TRUE(room.addPlayer(1));
+    EXPECT_FALSE(room.addPlayer(1));
+    room.start();
+    EXPECT_FALSE(room.addPlayer(2));
+}
+
+namespace {
+
+/** @brief Counts what a room sends from its own thread. */
+class CountingServer final : public ecs::net::INetworkServer {
+  public:
+    bool start(std::uint16_t /*port*/) override { return true; }
+    void stop() override {}
+    [[nodiscard]] bool isRunning() const override { return true; }
+    std::vector<ecs::net::NetworkEvent> poll() override { return {}; }
+    void send(const ClientId /*client*/, const Bytes& /*data*/, const Channel /*channel*/) override { ++sent; }
+    void broadcast(const Bytes& /*data*/, Channel /*channel*/) override {}
+    void kick(ClientId /*client*/) override {}
+
+    /** @brief Waits until something more than `count` was sent. */
+    [[nodiscard]] bool waitForMoreThan(const int count) const {
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (sent.load() <= count && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return sent.load() > count;
+    }
+
+    std::atomic<int> sent{0};
+};
+
+}  // namespace
+
+TEST(RoomThread, AdvancesOnItsOwnUntilDestroyed) {
+    CountingServer network;
+    {
+        Room room(network, 2);
+        room.addPlayer(PLAYER);
+        room.start();
+        room.runInBackground();
+        EXPECT_TRUE(network.waitForMoreThan(0)) << "the room sends snapshots without anyone calling advance()";
+    }
+    const int sentWhenDestroyed = network.sent.load();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    EXPECT_EQ(network.sent.load(), sentWhenDestroyed) << "the thread stopped with the room";
+}
+
+TEST(RoomThread, PlayersCanLeaveAndSendWhileItRuns) {
+    CountingServer network;
+    Room room(network, 2);
+    room.addPlayer(PLAYER);
+    room.addPlayer(OTHER_PLAYER);
+    room.start();
+    room.runInBackground();
+
+    for (std::uint32_t sequence = 1; sequence <= 100; ++sequence) {
+        room.onPacket(PLAYER, protocol::encode(protocol::PlayerInput{.sequence = sequence, .held = {}, .axes = {}}));
+        std::this_thread::sleep_for(std::chrono::microseconds(200));
+    }
+    EXPECT_TRUE(network.waitForMoreThan(0));
+    room.removePlayer(OTHER_PLAYER);
+
+    EXPECT_FALSE(room.isEmpty());
+    const int sent = network.sent.load();
+    EXPECT_TRUE(network.waitForMoreThan(sent)) << "the room keeps running for the remaining player";
 }
 
 int main(int argc, char** argv) {

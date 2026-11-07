@@ -1,63 +1,81 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
-#include <ranges>
-#include <unordered_map>
+#include <memory>
+#include <mutex>
+#include <span>
+#include <thread>
+#include <vector>
 
-#include "Network/INetworkManager.hpp"
+#include "components/InputBuffer.hpp"
+#include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
-#include "events/EventBus.hpp"
+#include "net/INetworkManager.hpp"
+#include "net/INetworkServer.hpp"
+#include "net/PeerGroupConnection.hpp"
 
 namespace rtype::server {
 
 /** @brief Maximum number of inputs queued per player; when exceeded, the oldest one is dropped. */
-inline constexpr std::size_t MAX_PENDING_INPUTS = 8;
+inline constexpr std::size_t MAX_PENDING_INPUTS = ecs::DEFAULT_MAX_PENDING_INPUTS;
 
-using net::ClientId;
+/** @brief Network id of a player: the transport's peer id. */
+using ClientId = ecs::net::PeerId;
 
-/**
- * @brief Decoded input of one player.
- *
- * Placeholder until the protocol (`common/`) defines the input message.
- */
-struct PlayerInput {
-    /** @brief Increases with every input sent by the client; used to drop late inputs and for reconciliation. */
-    std::uint32_t sequence = 0;
-    /** @brief Bitmask of the actions held during this input (up, down, left, right, shoot...). */
-    std::uint16_t actions = 0;
+/** @brief One player of a room. */
+struct RoomPlayer {
+    /** @brief Network id of the player. */
+    ClientId client = 0;
+    /** @brief Ship of the player; its network state is in its components. */
+    ecs::Entity entity = ecs::NULL_ENTITY;
+    /** @brief Ready state in the lobby. */
+    bool ready = false;
 };
 
 /**
- * @brief One game: its own ECS world and its players.
+ * @brief One game: its own `engine::Engine` and its players.
  *
- * Each room owns its `ecs::Registry` and `ecs::EventBus`, so games are isolated from each other: the systems of a
- * room never see the entities of another one.
+ * Each room runs its own engine (ECS world, event bus, clock, plugins), so games are isolated from each other: the
+ * systems of a room never see the entities of another one, and its time starts at 0 when the game starts.
  *
- * A room knows neither the network nor the protocol: it receives decoded inputs and exposes its state, and the
- * `ServerManager` encodes and sends it. It can be tested without any socket.
+ * The network goes through `ecs::net::NetworkPlugin` and `ecs::net::ServerReplicationPlugin`: the room receives raw
+ * payloads from the `ServerManager`, the plugin decodes the inputs, and sends the snapshots to the players of this room
+ * only. A player's entity carries `ecs::NetworkOwner`, `ecs::NetworkId` and `ecs::InputBuffer`.
  *
- * Each room also owns its `ecs::time::Clock`: its time starts at 0 when the game starts, and it runs at its own rate.
- * The `ServerManager` calls `advance()` on every room in the same loop (one thread), but each room decides by itself
- * how many steps are due.
+ * Once started, the `ServerManager` calls `runInBackground()`: a room has its own thread, so that a room with many
+ * entities does not slow down the others. The engine is only touched under `_mutex`; everything else (the players, the
+ * ready states) belongs to the thread of the `ServerManager`.
  */
 class Room {
   public:
     /**
      * @brief Creates an empty room, waiting for players.
+     * @param network Transport shared by every room; must outlive the room.
      * @param maxPlayers Maximum number of players in this room.
      * @param fixedDt Duration of one simulation step in seconds (60 Hz by default).
      * @param timeSource Time source of the room's clock; `nullptr` for the real time. Injectable for tests.
      */
-    explicit Room(std::uint8_t maxPlayers, float fixedDt = ecs::time::DEFAULT_FIXED_DT,
-                  ecs::time::Clock::TimeSource timeSource = nullptr);
+    Room(ecs::net::INetworkServer& network, std::uint8_t maxPlayers, float fixedDt = ecs::time::DEFAULT_FIXED_DT,
+         ecs::time::Clock::TimeSource timeSource = nullptr);
+    /** @brief Stops and joins the thread of the room, if it has one. */
+    ~Room();
+
+    /** @brief Deleted copy constructor: the thread of the room holds a pointer to it. */
+    Room(const Room&) = delete;
+    /** @brief Deleted copy assignment operator. */
+    Room& operator=(const Room&) = delete;
+    /** @brief Deleted move constructor. */
+    Room(Room&&) = delete;
+    /** @brief Deleted move assignment operator. */
+    Room& operator=(Room&&) = delete;
 
     /**
-     * @brief Adds a player and spawns its entity.
+     * @brief Adds a player and spawns its ship.
      * @param player Network id of the player.
      * @return False if the room is full, already playing, or the player is already in it.
      */
@@ -65,38 +83,59 @@ class Room {
 
     /**
      * @brief Removes a player and kills its entity. Does nothing if the player is not in the room.
+     *
+     * Waits for the step in progress if the room runs in the background.
+     *
      * @param player Network id of the player.
      */
     void removePlayer(ClientId player);
 
     /**
-     * @brief Queues an input; one input per player is applied at each simulation step, oldest first.
+     * @brief Hands over a payload a player sent on the unreliable channel; it is decoded during the next `advance()`.
      *
-     * Inputs come over UDP: they can arrive late, duplicated or out of order. An input already applied
-     * (sequence <= last processed) or already queued is ignored; the others are queued sorted by sequence. At most
-     * `MAX_PENDING_INPUTS` are kept: when the queue overflows, the oldest input is dropped.
+     * Dropped while the game has not started: nothing would consume it, and a client must not be able to fill the
+     * queue. Payloads that are not valid inputs are dropped by the codec. One input per player is applied at each
+     * simulation step, oldest first; see `ecs::net::pushInput()` for late, duplicated and excess inputs.
      *
-     * @param player Network id of the player.
-     * @param input Decoded input.
+     * @param player Network id of the sender.
+     * @param data Untrusted payload.
      */
-    void onInput(ClientId player, const PlayerInput& input);
+    void onPacket(ClientId player, const ecs::net::Bytes& data);
+
+    /**
+     * @brief Sets the ready state of a player. Does nothing once the game has started, or if the player is not here.
+     * @param player Network id of the player.
+     * @param ready New ready state.
+     */
+    void setReady(ClientId player, bool ready);
+
+    /** @brief True when the room has at least one player and all of them are ready. */
+    [[nodiscard]] bool isEveryoneReady() const;
 
     /**
      * @brief Starts the game: no player can join anymore, and `advance()` runs the simulation.
      *
-     * Resets the room's clock, so that the game time (`time().tickCount`, `time().totalElapsedTime`) starts at 0
+     * Each player's index becomes its position in `players()`, without holes whoever left the lobby, and its ship goes
+     * to its spawn point. Resets the room's clock, so that the game time (`tickCount`, `totalElapsedTime`) starts at 0
      * now, whatever how long the room waited for its players.
      */
     void start();
 
     /**
-     * @brief Runs the simulation steps that are due according to the room's clock.
+     * @brief Runs the simulation steps that are due according to the room's clock, then sends a snapshot if any ran.
      *
-     * Does nothing while the room is waiting for players. Each step applies the pending inputs, then the systems.
+     * Does nothing while the room is waiting for players.
      *
-     * @return Number of steps executed (0 if none was due); the `ServerManager` sends a snapshot when it is not 0.
+     * @return Number of steps executed (0 if none was due).
      */
     std::size_t advance();
+
+    /**
+     * @brief Calls `advance()` in a loop on a new thread, until the room is destroyed. Call it once, after `start()`.
+     *
+     * An exception thrown by the simulation stops this room only: it is logged, and the other rooms keep running.
+     */
+    void runInBackground();
 
     /** @brief True once `start()` has been called. */
     [[nodiscard]] bool isPlaying() const { return _playing; }
@@ -105,11 +144,11 @@ class Room {
     /** @brief True when the last player has left: the `ServerManager` then destroys the room. */
     [[nodiscard]] bool isEmpty() const { return _players.empty(); }
     /**
-     * @brief Network ids of the players in this room (lazy view, no allocation).
+     * @brief Players of this room, in join order.
      *
-     * The view is invalidated if a player is added or removed while iterating over it.
+     * The span is invalidated if a player is added or removed while iterating over it.
      */
-    [[nodiscard]] auto players() const { return _players | std::views::keys; }
+    [[nodiscard]] std::span<const RoomPlayer> players() const { return _players; }
 
     /**
      * @brief Sequence number of the last input applied for a player, sent in snapshots for client reconciliation.
@@ -118,45 +157,28 @@ class Room {
      */
     [[nodiscard]] std::uint32_t lastProcessedInput(ClientId player) const;
 
-    /** @brief Time of the room's last step: `tickCount` numbers the snapshots, from 0 at the start of the game. */
-    [[nodiscard]] const ecs::time::Time& time() const { return _clock.time(); }
-
-    /** @brief ECS world of the room. */
-    [[nodiscard]] ecs::Registry& registry() { return _registry; }
-    /** @brief ECS world of the room, read-only: what the snapshot encoder reads. */
-    [[nodiscard]] const ecs::Registry& registry() const { return _registry; }
+    /** @brief ECS world of the room. Not protected: do not use it once the room runs in the background. */
+    [[nodiscard]] ecs::Registry& registry() { return _engine.registry(); }
+    /** @brief ECS world of the room, read-only. Not protected: do not use it once the room runs in the background. */
+    [[nodiscard]] const ecs::Registry& registry() const { return _engine.registry(); }
 
   private:
-    /** @brief Per-player data that is not part of the ECS world. */
-    struct Player {
-        /** @brief Entity controlled by the player. */
-        ecs::Entity entity = 0;
-        /** @brief Inputs not applied yet, sorted by sequence (oldest first). */
-        std::deque<PlayerInput> pendingInputs;
-        /** @brief Sequence number of the last applied input. */
-        std::uint32_t lastProcessedInput = 0;
-    };
-
-    /**
-     * @brief One fixed simulation step: applies one pending input per player, then the systems.
-     * @param registry ECS world of the room; holds the `ecs::time::Time` resource of this step.
-     */
-    void step(ecs::Registry& registry);
-
     /** @brief Maximum number of players. */
     std::uint8_t _maxPlayers;
-    /** @brief Duration of one simulation step, in seconds. */
-    float _fixedDt;
-    /** @brief Clock of this game, reset by `start()`. */
-    ecs::time::Clock _clock;
     /** @brief True once the game has started. */
     bool _playing = false;
-    /** @brief ECS world of this game. */
-    ecs::Registry _registry;
-    /** @brief Event bus of this game, shared by its systems (and the ScriptSystem, once added). */
-    ecs::EventBus _events;
-    /** @brief Players of the room, by network id. */
-    std::unordered_map<ClientId, Player> _players;
+    /** @brief Network of this room: what its engine receives and the only peers it can reach. */
+    std::shared_ptr<ecs::net::PeerGroupConnection> _connection;
+    /** @brief Engine of this game: ECS world, event bus, clock and plugins. */
+    engine::Engine _engine;
+    /** @brief Players of the room, in join order: at most `_maxPlayers`, so looking one up is a short scan. */
+    std::vector<RoomPlayer> _players;
+    /** @brief Protects `_engine` from the thread of the room. Mutable: `lastProcessedInput()` only reads. */
+    mutable std::mutex _mutex;
+    /** @brief Set by the destructor to stop `_thread`. */
+    std::atomic<bool> _stopping{false};
+    /** @brief Runs the simulation once `runInBackground()` was called. */
+    std::thread _thread;
 };
 
 }  // namespace rtype::server
