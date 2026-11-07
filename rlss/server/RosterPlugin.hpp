@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 
@@ -31,6 +32,10 @@ namespace rlss::server {
  *
  * A car is an entity driven by the `Car` Wren script, owned by its peer (`ecs::NetworkOwner`) and replicated to every
  * player of the match; the peer is told its network id and team (`Welcome`).
+ *
+ * Each player has a name: "JOUEUR" and its slot number until a `SetName` from the peer (handed over by the
+ * `MatchServer`) renames it. Every player of the match gets the names of all the cars (`PlayerNames`) when a player
+ * joins, leaves or renames.
  */
 class RosterPlugin final : public engine::IPlugin {
   public:
@@ -78,7 +83,17 @@ class RosterPlugin final : public engine::IPlugin {
         std::size_t slot = 0;
         /** @brief Car entity. */
         ecs::Entity car = 0;
+        /** @brief Network id of the car. */
+        std::uint32_t carId = 0;
+        /** @brief Name shown above the car. */
+        std::string name;
     };
+
+    /**
+     * @brief Sends the name of every car to every player of the match.
+     * @param engine Host engine.
+     */
+    void broadcastNames(engine::Engine& engine) const;
 
     /**
      * @brief Gives a new peer a slot in the team with fewer players and spawns its car.
@@ -110,6 +125,8 @@ class RosterPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _connected;
     /** @brief Subscription to `PeerDisconnected`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _disconnected;
+    /** @brief Subscription to `PacketReceived` (names), while initialized. */
+    std::optional<ecs::EventBus::EventToken> _packets;
 };
 
 }  // namespace rlss::server

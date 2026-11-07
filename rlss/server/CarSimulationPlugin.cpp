@@ -53,6 +53,7 @@ void CarSimulationPlugin::init(engine::Engine& engine) {
                                       .goalTop = arena::GOAL_TOP,
                                       .goalBottom = arena::GOAL_BOTTOM,
                                       .goalDepth = arena::GOAL_DEPTH,
+                                      .goalCornerRadius = arena::GOAL_CORNER_RADIUS,
                                   });
     registry.addComponent(_arena, game::MatchState{});
     // The match script steps every car and the ball together.
@@ -73,6 +74,7 @@ void CarSimulationPlugin::init(engine::Engine& engine) {
                                      .className = "Ball",
                                  });
     registry.addComponent(_ball, game::ShotGlow{});
+    registry.addComponent(_ball, game::BallCues{});
     ecs::net::replicate(registry, _ball, game::KIND_BALL);
 
     // A player who joins gets the score at once; afterwards, `update` sends it when it changes.
