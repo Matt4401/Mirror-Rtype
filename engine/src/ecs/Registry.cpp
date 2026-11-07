@@ -1,40 +1,66 @@
 #include "ecs/Registry.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <stdexcept>
 #include <utility>
 
 #include "ecs/Entity.hpp"
 
 namespace ecs {
 
-bool Registry::isAlive(Entity e) const noexcept { return e < _isAlive.size() && _isAlive[e]; }
+bool Registry::isAlive(Entity e) const noexcept {
+    std::uint32_t const idx = entityIndex(e);
+    return idx < _isAlive.size() && _isAlive[idx] && e == makeEntity(idx, _generations[idx]);
+}
+
+void Registry::ensureAlive(Entity e) const {
+    if (!isAlive(e)) {
+        throw std::invalid_argument("Cannot attach a component to an entity that is not alive");
+    }
+}
 
 Entity Registry::spawnEntity() {
     if (!_deadEntities.empty()) {
-        Entity const e = _deadEntities.front();
+        std::uint32_t const idx = _deadEntities.front();
         _deadEntities.pop();
-        _isAlive[e] = true;
-        return e;
+        _isAlive[idx] = true;
+        return makeEntity(idx, _generations[idx]);
     }
-    Entity const e = _nextEntity++;
-    if (e >= _isAlive.size()) {
-        _isAlive.resize(e + 1, false);
+    if (_nextEntity == MAX_ENTITY_INDEX) {
+        throw std::length_error("Registry: entity slot indices exhausted");
     }
-    _isAlive[e] = true;
-    return e;
+    std::uint32_t const idx = _nextEntity++;
+    if (idx >= _isAlive.size()) {
+        _isAlive.resize(static_cast<std::size_t>(idx) + 1, false);
+        _generations.resize(static_cast<std::size_t>(idx) + 1, 0);
+    }
+    _isAlive[idx] = true;
+    return makeEntity(idx, _generations[idx]);
 }
 
 void Registry::killEntity(Entity e) {
-    if (e >= _isAlive.size() || !_isAlive[e]) {
+    if (!isAlive(e)) {
         return;
     }
-    _isAlive[e] = false;
+    std::uint32_t const idx = entityIndex(e);
+    _isAlive[idx] = false;
 
+    // A throwing listener must not leave the entity half-destroyed: the other listeners still run, the components are
+    // still removed and the slot still recycled, then the first exception is rethrown.
+    std::exception_ptr listenerError;
     ++_destroyDispatchDepth;
     const std::size_t count = _destroyListeners.size();
     for (std::size_t i = 0; i < count; ++i) {
         if (_destroyListeners[i].active && _destroyListeners[i].callback) {
-            _destroyListeners[i].callback(e);
+            try {
+                _destroyListeners[i].callback(e);
+            } catch (...) {
+                if (!listenerError) {
+                    listenerError = std::current_exception();
+                }
+            }
         }
     }
     --_destroyDispatchDepth;
@@ -47,7 +73,12 @@ void Registry::killEntity(Entity e) {
             array->erase(e);
         }
     }
-    _deadEntities.push(e);
+    _generations[idx] = (_generations[idx] + 1) & MAX_ENTITY_GENERATION;
+    _deadEntities.push(idx);
+
+    if (listenerError) {
+        std::rethrow_exception(listenerError);
+    }
 }
 
 std::size_t Registry::addDestroyListener(DestroyListener listener) {

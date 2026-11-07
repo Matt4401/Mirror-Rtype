@@ -1,88 +1,95 @@
 #pragma once
+#include <cstddef>
+#include <optional>
 #include <stdexcept>
+#include <utility>
 
 #include "ecs/SparseArray.hpp"
 
 namespace ecs {
 
 template <typename Component>
-Component& SparseArray<Component>::insertAt(Entity e, Component const& c) {
-    if (e >= _sparse.size()) {
-        _sparse.resize(e + 1, std::nullopt);
+std::optional<std::size_t> SparseArray<Component>::denseIndexOf(Entity e) const noexcept {
+    std::size_t const idx = entityIndex(e);
+    if (idx >= _sparse.size()) {
+        return std::nullopt;
     }
-    if (auto const& opt = _sparse[e]; opt.has_value()) {
-        _components[opt.value()] = c;
-        return _components[opt.value()];
+    std::optional<std::size_t> const denseIdx = _sparse[idx];
+    if (!denseIdx.has_value() || _dense[*denseIdx] != e) {
+        return std::nullopt;
     }
-    _sparse[e] = _components.size();
+    return denseIdx;
+}
+
+template <typename Component>
+template <typename Value>
+Component& SparseArray<Component>::insertImpl(Entity e, Value&& c) {
+    std::size_t const idx = entityIndex(e);
+    if (idx >= _sparse.size()) {
+        _sparse.resize(idx + 1, std::nullopt);
+    }
+    if (std::optional<std::size_t> const denseIdx = _sparse[idx]; denseIdx.has_value()) {
+        if (_dense[*denseIdx] != e) {
+            throw std::invalid_argument("SparseArray: slot is owned by another handle of the same entity index");
+        }
+        _components[*denseIdx] = std::forward<Value>(c);
+        return _components[*denseIdx];
+    }
+    _sparse[idx] = _components.size();
     _dense.push_back(e);
-    _components.push_back(c);
+    _components.push_back(std::forward<Value>(c));
     return _components.back();
+}
+
+template <typename Component>
+Component& SparseArray<Component>::insertAt(Entity e, Component const& c) {
+    return insertImpl(e, c);
 }
 
 template <typename Component>
 Component& SparseArray<Component>::insertAt(Entity e, Component&& c) {
-    if (e >= _sparse.size()) {
-        _sparse.resize(e + 1, std::nullopt);
-    }
-    if (auto const& opt = _sparse[e]; opt.has_value()) {
-        _components[opt.value()] = std::move(c);
-        return _components[opt.value()];
-    }
-    _sparse[e] = _components.size();
-    _dense.push_back(e);
-    _components.push_back(std::move(c));
-    return _components.back();
+    return insertImpl(e, std::move(c));
 }
 
 template <typename Component>
 void SparseArray<Component>::erase(Entity e) {
-    if (e >= _sparse.size()) {
-        return;
-    }
-    auto const& opt = _sparse[e];
-    if (!opt.has_value()) {
+    std::optional<std::size_t> const found = denseIndexOf(e);
+    if (!found.has_value()) {
         return;
     }
 
-    std::size_t const denseIdx = opt.value();
+    std::size_t const denseIdx = found.value();
     std::size_t const lastDenseIdx = _components.size() - 1;
     Entity const lastEntity = _dense[lastDenseIdx];
 
     if (denseIdx != lastDenseIdx) {
         _components[denseIdx] = std::move(_components[lastDenseIdx]);
         _dense[denseIdx] = lastEntity;
-        _sparse[lastEntity] = denseIdx;
+        _sparse[entityIndex(lastEntity)] = denseIdx;
     }
 
     _components.pop_back();
     _dense.pop_back();
-    _sparse[e] = std::nullopt;
+    _sparse[entityIndex(e)] = std::nullopt;
 }
 
 template <typename Component>
 bool SparseArray<Component>::contains(Entity e) const noexcept {
-    return e < _sparse.size() && _sparse[e].has_value();
+    return denseIndexOf(e).has_value();
 }
 
 template <typename Component>
 Component& SparseArray<Component>::get(Entity e) {
-    if (e >= _sparse.size()) {
-        throw std::out_of_range("Component not found for entity");
-    }
-    if (auto const& opt = _sparse[e]; opt.has_value()) {
-        return _components[opt.value()];
+    if (std::optional<std::size_t> const found = denseIndexOf(e); found.has_value()) {
+        return _components[found.value()];
     }
     throw std::out_of_range("Component not found for entity");
 }
 
 template <typename Component>
 Component const& SparseArray<Component>::get(Entity e) const {
-    if (e >= _sparse.size()) {
-        throw std::out_of_range("Component not found for entity");
-    }
-    if (auto const& opt = _sparse[e]; opt.has_value()) {
-        return _components[opt.value()];
+    if (std::optional<std::size_t> const found = denseIndexOf(e); found.has_value()) {
+        return _components[found.value()];
     }
     throw std::out_of_range("Component not found for entity");
 }
