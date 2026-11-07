@@ -30,6 +30,22 @@ struct FakeWindow : engine::IWindowService {
     float mx = 0.0F;
     float my = 0.0F;
     bool leftDown = false;
+    bool leftPressed = false;
+    bool leftReleased = false;
+
+    /** @brief Simulates the frame the left button goes down. */
+    void press() {
+        leftDown = true;
+        leftPressed = true;
+        leftReleased = false;
+    }
+
+    /** @brief Simulates the frame the left button goes up. */
+    void release() {
+        leftDown = false;
+        leftPressed = false;
+        leftReleased = true;
+    }
 
     [[nodiscard]] bool shouldClose() const noexcept override { return false; }
     void beginFrame() override {}
@@ -42,6 +58,12 @@ struct FakeWindow : engine::IWindowService {
     [[nodiscard]] float gamepadAxis(int, engine::GamepadAxis) const noexcept override { return 0.0F; }
     [[nodiscard]] bool isMouseButtonDown(engine::MouseButton btn) const noexcept override {
         return btn == engine::MouseButton::Left && leftDown;
+    }
+    [[nodiscard]] bool isMouseButtonPressed(engine::MouseButton btn) const noexcept override {
+        return btn == engine::MouseButton::Left && leftPressed;
+    }
+    [[nodiscard]] bool isMouseButtonReleased(engine::MouseButton btn) const noexcept override {
+        return btn == engine::MouseButton::Left && leftReleased;
     }
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return {.x = mx, .y = my}; }
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return 0.0F; }
@@ -343,13 +365,42 @@ TEST(UiButtonSystem, HoveredToPressedOnMouseDown) {
 
     win.mx = 60.0F;
     win.my = 18.0F;
-    win.leftDown = true;
+    win.press();
     updateButtons(reg, win, bus);
 
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Pressed);
 }
 
-TEST(UiButtonSystem, PressedToHoveredAndEventOnRelease) {
+TEST(UiButtonSystem, IdleToPressedWhenEnteringAndPressingSameFrame) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F);
+
+    win.mx = 60.0F;
+    win.my = 18.0F;
+    win.press();
+    updateButtons(reg, win, bus);
+
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Pressed);
+}
+
+TEST(UiButtonSystem, HeldMouseDraggedOntoButtonDoesNotPress) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F);
+    reg.getComponents<ui::UiButton>().get(e).state = ui::UiButtonState::Hovered;
+
+    win.mx = 60.0F;
+    win.my = 18.0F;
+    win.leftDown = true;
+    updateButtons(reg, win, bus);
+
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Hovered);
+}
+
+TEST(UiButtonSystem, PressedToReleasedAndEventOnReleaseOverButton) {
     ecs::Registry reg;
     ecs::EventBus bus;
     FakeWindow win;
@@ -361,30 +412,48 @@ TEST(UiButtonSystem, PressedToHoveredAndEventOnRelease) {
 
     win.mx = 60.0F;
     win.my = 18.0F;
-    win.leftDown = false;
+    win.release();
     updateButtons(reg, win, bus);
 
-    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Hovered);
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Released);
     EXPECT_EQ(capturedAction, "shoot");
 }
 
-TEST(UiButtonSystem, PressedToIdleAndEventWhenReleasedOutside) {
+TEST(UiButtonSystem, ReleasedLastsOneFrame) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F);
+    reg.getComponents<ui::UiButton>().get(e).state = ui::UiButtonState::Released;
+
+    int clicks = 0;
+    bus.subscribe<ui::UiButtonClickedEvent>([&](const ui::UiButtonClickedEvent&) { ++clicks; });
+
+    win.mx = 60.0F;
+    win.my = 18.0F;
+    updateButtons(reg, win, bus);
+
+    EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Hovered);
+    EXPECT_EQ(clicks, 0);
+}
+
+TEST(UiButtonSystem, ReleaseOutsideCancelsClick) {
     ecs::Registry reg;
     ecs::EventBus bus;
     FakeWindow win;
     const ecs::Entity e = makeButton(reg, 0.0F, 0.0F, 120.0F, 36.0F, "quit");
     reg.getComponents<ui::UiButton>().get(e).state = ui::UiButtonState::Pressed;
 
-    std::string capturedAction;
-    bus.subscribe<ui::UiButtonClickedEvent>([&](const ui::UiButtonClickedEvent& ev) { capturedAction = ev.action; });
+    bool fired = false;
+    bus.subscribe<ui::UiButtonClickedEvent>([&](const ui::UiButtonClickedEvent&) { fired = true; });
 
     win.mx = 999.0F;
     win.my = 999.0F;
-    win.leftDown = false;
+    win.release();
     updateButtons(reg, win, bus);
 
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Idle);
-    EXPECT_EQ(capturedAction, "quit");
+    EXPECT_FALSE(fired);
 }
 
 TEST(UiButtonSystem, NoEventWhenStillPressed) {
@@ -404,6 +473,38 @@ TEST(UiButtonSystem, NoEventWhenStillPressed) {
 
     EXPECT_FALSE(fired);
     EXPECT_EQ(reg.getComponents<ui::UiButton>().get(e).state, ui::UiButtonState::Pressed);
+}
+
+TEST(UiButtonSystem, FullClickSequence) {
+    ecs::Registry reg;
+    ecs::EventBus bus;
+    FakeWindow win;
+    const ecs::Entity e = makeButton(reg, 0.0F, 0.0F);
+    int clicks = 0;
+    bus.subscribe<ui::UiButtonClickedEvent>([&](const ui::UiButtonClickedEvent&) { ++clicks; });
+    const auto state = [&] { return reg.getComponents<ui::UiButton>().get(e).state; };
+
+    win.mx = 60.0F;
+    win.my = 18.0F;
+    updateButtons(reg, win, bus);
+    EXPECT_EQ(state(), ui::UiButtonState::Hovered);
+
+    win.press();
+    updateButtons(reg, win, bus);
+    EXPECT_EQ(state(), ui::UiButtonState::Pressed);
+
+    win.leftPressed = false;  // still held on the next frame
+    updateButtons(reg, win, bus);
+    EXPECT_EQ(state(), ui::UiButtonState::Pressed);
+
+    win.release();
+    updateButtons(reg, win, bus);
+    EXPECT_EQ(state(), ui::UiButtonState::Released);
+
+    win.leftReleased = false;
+    updateButtons(reg, win, bus);
+    EXPECT_EQ(state(), ui::UiButtonState::Hovered);
+    EXPECT_EQ(clicks, 1);
 }
 
 // --- Layout with entity hierarchies ---

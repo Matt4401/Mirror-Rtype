@@ -14,10 +14,10 @@ namespace ui {
 
 /** @brief Interaction state of a UiButton. */
 enum class UiButtonState : std::uint8_t {
-    Idle,
-    Hovered,
-    Pressed,
-    Released,
+    Idle,      ///< Cursor outside the button.
+    Hovered,   ///< Cursor over the button, mouse button up.
+    Pressed,   ///< Press started over the button and is still held.
+    Released,  ///< Clicked this frame: released over the button. Lasts exactly one frame.
 };
 
 /**

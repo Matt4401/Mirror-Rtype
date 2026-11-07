@@ -384,6 +384,16 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
         return code != INVALID_MOUSE_BUTTON && IsMouseButtonDown(code);
     }
 
+    [[nodiscard]] bool isMouseButtonPressed(engine::MouseButton button) const noexcept override {
+        const int code = toRaylib(button);
+        return code != INVALID_MOUSE_BUTTON && IsMouseButtonPressed(code);
+    }
+
+    [[nodiscard]] bool isMouseButtonReleased(engine::MouseButton button) const noexcept override {
+        const int code = toRaylib(button);
+        return code != INVALID_MOUSE_BUTTON && IsMouseButtonReleased(code);
+    }
+
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override {
         const Vector2 position = GetMousePosition();
         return engine::MousePosition{.x = position.x, .y = position.y};

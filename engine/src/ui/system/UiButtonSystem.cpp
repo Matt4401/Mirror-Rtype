@@ -11,7 +11,6 @@
 
 #include "core/services/IWindowService.hpp"
 #include "core/services/InputCodes.hpp"
-#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "events/UiEvents.hpp"
@@ -20,44 +19,44 @@
 
 namespace ui {
 
+UiButtonState UiButtonSystem::nextState(UiButtonState current, const UiPointerSample& pointer) noexcept {
+    if (current == UiButtonState::Pressed) {
+        // A release missed while the window was unfocused counts as a release, so the button never stays stuck.
+        if (!pointer.released && pointer.down) {
+            return UiButtonState::Pressed;
+        }
+        // Releasing outside the button cancels the click.
+        return pointer.hovered ? UiButtonState::Released : UiButtonState::Idle;
+    }
+    // Idle, Hovered and Released (which lasts a single frame) behave the same. Only a press that starts over the
+    // button arms it: dragging an already held button onto it does not.
+    if (!pointer.hovered) {
+        return UiButtonState::Idle;
+    }
+    return pointer.pressed ? UiButtonState::Pressed : UiButtonState::Hovered;
+}
+
 void UiButtonSystem::update(ecs::Registry& registry, std::span<const UiLayoutNode> layout,
                             const engine::IWindowService& window, ecs::EventBus& bus) {
     const engine::MousePosition mouse = window.mousePosition();
-    const bool mouseDown = window.isMouseButtonDown(engine::MouseButton::Left);
+    UiPointerSample pointer{
+        .down = window.isMouseButtonDown(engine::MouseButton::Left),
+        .pressed = window.isMouseButtonPressed(engine::MouseButton::Left),
+        .released = window.isMouseButtonReleased(engine::MouseButton::Left),
+    };
 
     for (const UiLayoutNode& node : layout) {
         if (!registry.hasComponent<UiButton>(node.entity)) {
             continue;
         }
-        const ecs::Entity entity = node.entity;
-        UiButton& btn = registry.getComponents<UiButton>().get(entity);
+        UiButton& btn = registry.getComponents<UiButton>().get(node.entity);
         const UiScreenRect& rect = node.rect;
-
-        const bool hovered =
+        pointer.hovered =
             mouse.x >= rect.x && mouse.x <= rect.x + rect.width && mouse.y >= rect.y && mouse.y <= rect.y + rect.height;
 
-        switch (btn.state) {
-            case UiButtonState::Idle:
-                if (hovered) {
-                    btn.state = UiButtonState::Hovered;
-                }
-                break;
-            case UiButtonState::Hovered:
-                if (!hovered) {
-                    btn.state = UiButtonState::Idle;
-                } else if (mouseDown) {
-                    btn.state = UiButtonState::Pressed;
-                }
-                break;
-            case UiButtonState::Pressed:
-                if (!mouseDown) {
-                    btn.state = hovered ? UiButtonState::Hovered : UiButtonState::Idle;
-                    bus.publish(UiButtonClickedEvent{.entity = entity, .action = btn.action});
-                }
-                break;
-            case UiButtonState::Released:
-                btn.state = hovered ? UiButtonState::Hovered : UiButtonState::Idle;
-                break;
+        btn.state = nextState(btn.state, pointer);
+        if (btn.state == UiButtonState::Released) {
+            bus.publish(UiButtonClickedEvent{.entity = node.entity, .action = btn.action});
         }
     }
 }

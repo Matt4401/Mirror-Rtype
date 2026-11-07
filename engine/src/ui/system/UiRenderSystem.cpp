@@ -127,7 +127,7 @@ void UiRenderSystem::drawButton(float x, float y, const UiButton& btn) const {
     const ecs::Rgba* bgPtr = &btn.colorIdle;
     if (btn.state == UiButtonState::Pressed) {
         bgPtr = &btn.colorPressed;
-    } else if (btn.state == UiButtonState::Hovered) {
+    } else if (btn.state == UiButtonState::Hovered || btn.state == UiButtonState::Released) {
         bgPtr = &btn.colorHovered;
     }
     const ecs::Rgba& bg = *bgPtr;
