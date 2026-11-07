@@ -17,14 +17,19 @@ inline constexpr std::uint32_t KIND_CAR = 1;
 /** @brief `ecs::Replicated::kind` of the ball. */
 inline constexpr std::uint32_t KIND_BALL = 2;
 
-/** @brief Horizontal axis action in [-1, 1]: drive on the ground, rotate in the air. */
+/** @brief Horizontal axis action in [-1, 1]: drive on the ground; in the air, with `ACTION_PITCH`, where the nose aims.
+ */
 inline constexpr std::string_view ACTION_STEER = "steer";
+/** @brief Vertical axis action in [-1, 1], up positive: in the air, with `ACTION_STEER`, where the nose aims. */
+inline constexpr std::string_view ACTION_PITCH = "pitch";
 /** @brief Jump button action. */
 inline constexpr std::string_view ACTION_JUMP = "jump";
 /** @brief Boost button action. */
 inline constexpr std::string_view ACTION_BOOST = "boost";
 /** @brief Id of `ACTION_STEER`. */
 inline constexpr input::ActionId STEER_ID = input::makeActionId(ACTION_STEER);
+/** @brief Id of `ACTION_PITCH`. */
+inline constexpr input::ActionId PITCH_ID = input::makeActionId(ACTION_PITCH);
 /** @brief Id of `ACTION_JUMP`. */
 inline constexpr input::ActionId JUMP_ID = input::makeActionId(ACTION_JUMP);
 /** @brief Id of `ACTION_BOOST`. */

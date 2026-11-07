@@ -134,7 +134,7 @@ std::optional<ecs::NetInput> ReplicationCodec::decodeInput(const ecs::net::Bytes
     ecs::NetInput result{
         .sequence = input->sequence,
         .held = {},
-        .axes = {{.action = STEER_ID, .value = input->steer}},
+        .axes = {{.action = STEER_ID, .value = input->steer}, {.action = PITCH_ID, .value = input->pitch}},
     };
     if (input->jump) {
         result.held.push_back(JUMP_ID);
@@ -146,10 +146,18 @@ std::optional<ecs::NetInput> ReplicationCodec::decodeInput(const ecs::net::Bytes
 }
 
 ecs::net::Bytes ReplicationCodec::encodeInput(const ecs::NetInput& input) {
-    protocol::PlayerInput message{.sequence = input.sequence, .steer = 0.0F, .jump = false, .boost = false};
+    protocol::PlayerInput message{
+        .sequence = input.sequence,
+        .steer = 0.0F,
+        .pitch = 0.0F,
+        .jump = false,
+        .boost = false,
+    };
     for (const ecs::NetAxis& axis : input.axes) {
         if (axis.action == STEER_ID) {
             message.steer = axis.value;
+        } else if (axis.action == PITCH_ID) {
+            message.pitch = axis.value;
         }
     }
     message.jump = std::ranges::find(input.held, JUMP_ID) != input.held.end();

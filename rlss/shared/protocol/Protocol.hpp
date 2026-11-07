@@ -23,7 +23,7 @@ inline constexpr std::string_view GAME_TITLE = "RLSS";
  * @brief Transport protocol id (`ecs::net::NetworkConfig::protocolId`): an R-Type client and an RLSS server refuse
  * each other during the handshake. Bump the low byte on every incompatible protocol change.
  */
-inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0009U;  // "RL", version 9
+inline constexpr std::uint32_t PROTOCOL_ID = 0x524C000AU;  // "RL", version 10
 
 /** @brief Port used when none is given on the command line (TCP and UDP). */
 inline constexpr std::uint16_t DEFAULT_PORT = 4250;
@@ -201,8 +201,10 @@ struct Snapshot {
 struct PlayerInput {
     /** @brief Sequence number, increasing with every input. */
     std::uint32_t sequence = 0;
-    /** @brief Horizontal stick / arrow keys, in [-1, 1]: drive on the ground, rotate in the air. */
+    /** @brief Horizontal stick / arrow keys, in [-1, 1]: drive on the ground; in the air, where the nose aims. */
     float steer = 0.0F;
+    /** @brief Vertical stick / arrow keys, in [-1, 1], up positive: in the air, where the nose aims. */
+    float pitch = 0.0F;
     /** @brief Jump button held. */
     bool jump = false;
     /** @brief Boost button held. */
@@ -337,7 +339,7 @@ using Message = std::variant<MatchList, Snapshot, PlayerInput, MatchStatus, Welc
 [[nodiscard]] Bytes encode(const Snapshot& message);
 
 /**
- * @brief Encodes a player input: `[type u8][sequence u32][steer i8][buttons u8]`.
+ * @brief Encodes a player input: `[type u8][sequence u32][steer i8][pitch i8][buttons u8]`.
  * @param message Message to encode.
  * @return Wire bytes.
  */

@@ -21,7 +21,7 @@ constexpr std::size_t MATCH_LIST_HEADER_SIZE = 4;
 constexpr std::size_t MATCH_INFO_SIZE = 11;
 constexpr std::size_t SNAPSHOT_HEADER_SIZE = 14;
 constexpr std::size_t ENTITY_SIZE = 22;
-constexpr std::size_t PLAYER_INPUT_SIZE = 7;
+constexpr std::size_t PLAYER_INPUT_SIZE = 8;
 constexpr std::size_t MATCH_STATUS_SIZE = 10;
 constexpr std::size_t WELCOME_SIZE = 6;
 constexpr std::size_t JOIN_MATCH_SIZE = 3;
@@ -240,11 +240,14 @@ std::optional<Message> decodePlayerInput(Reader& reader) {
     PlayerInput input;
     input.sequence = reader.u32();
     const auto steer = static_cast<std::int8_t>(reader.u8());
+    const auto pitch = static_cast<std::int8_t>(reader.u8());
     const std::uint8_t buttons = reader.u8();
-    if (steer < -static_cast<int>(STEER_SCALE) || (buttons & ~KNOWN_BUTTONS) != 0) {
+    if (steer < -static_cast<int>(STEER_SCALE) || pitch < -static_cast<int>(STEER_SCALE) ||
+        (buttons & ~KNOWN_BUTTONS) != 0) {
         return std::nullopt;
     }
     input.steer = static_cast<float>(steer) / STEER_SCALE;
+    input.pitch = static_cast<float>(pitch) / STEER_SCALE;
     input.jump = (buttons & BUTTON_JUMP) != 0;
     input.boost = (buttons & BUTTON_BOOST) != 0;
     return input;
@@ -417,8 +420,10 @@ Bytes encode(const PlayerInput& message) {
     Writer writer(out);
     writer.u8(static_cast<std::uint8_t>(MessageType::PlayerInput));
     writer.u32(message.sequence);
-    const float steer = std::isfinite(message.steer) ? std::clamp(message.steer, -1.0F, 1.0F) : 0.0F;
-    writer.u8(static_cast<std::uint8_t>(static_cast<std::int8_t>(std::lround(steer * STEER_SCALE))));
+    for (const float axis : {message.steer, message.pitch}) {
+        const float value = std::isfinite(axis) ? std::clamp(axis, -1.0F, 1.0F) : 0.0F;
+        writer.u8(static_cast<std::uint8_t>(static_cast<std::int8_t>(std::lround(value * STEER_SCALE))));
+    }
     std::uint8_t buttons = message.jump ? BUTTON_JUMP : 0;
     if (message.boost) {
         buttons |= BUTTON_BOOST;

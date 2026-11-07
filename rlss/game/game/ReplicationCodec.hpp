@@ -63,7 +63,8 @@ class ReplicationCodec final : public ecs::net::IReplicationCodec {
     /**
      * @brief Server: reads a `PlayerInput` message.
      * @param data Untrusted payload.
-     * @return The input (`JUMP_ID` / `BOOST_ID` held, `STEER_ID` axis), or nothing for any other payload.
+     * @return The input (`JUMP_ID` / `BOOST_ID` held, `STEER_ID` and `PITCH_ID` axes), or nothing for any other
+     * payload.
      */
     [[nodiscard]] std::optional<ecs::NetInput> decodeInput(const ecs::net::Bytes& data) override;
 
