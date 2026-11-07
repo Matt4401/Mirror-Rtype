@@ -101,6 +101,8 @@ target("test_level_loader")
     add_deps("rtype_level")
     add_packages("gtest")
     add_files("server/LevelLoaderTests.cpp")
+    -- The shipped levels are loaded from the source tree, whatever the directory the tests run from.
+    add_defines('RTYPE_LEVELS_DIR="$(projectdir)/server/levels"')
     add_tests("test_level_loader")
 
 target("test_prefabs")

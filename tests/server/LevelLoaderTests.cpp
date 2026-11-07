@@ -331,6 +331,18 @@ TEST(LevelLoader, MalformedFileIsAnError) {
     std::filesystem::remove(path);
 }
 
+TEST(ShippedLevels, Level01LoadsWithoutWarnings) {
+    std::vector<std::string> warnings;
+
+    const auto loaded =
+        level::loadLevel(std::filesystem::path(RTYPE_LEVELS_DIR) / "level_01.toml", knownPrefab, warnings);
+
+    ASSERT_TRUE(loaded.has_value()) << loaded.error();
+    EXPECT_TRUE(warnings.empty()) << warnings.front();
+    EXPECT_FALSE(loaded->timeline.events().empty());
+    EXPECT_EQ(loaded->timeline.events().back().type, level::EVENT_END);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
