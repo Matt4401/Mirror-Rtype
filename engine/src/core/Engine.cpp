@@ -122,6 +122,9 @@ std::size_t Engine::advance() {
     for (IPlugin* plugin : _pluginGraph.executionOrder()) {
         plugin->update(*this, frameTime);
     }
+    for (IPlugin* plugin : _pluginGraph.executionOrder()) {
+        plugin->lateUpdate(*this, frameTime);
+    }
     return steps;
 }
 

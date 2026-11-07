@@ -10,7 +10,6 @@
 #include <span>
 #include <vector>
 
-#include "ecs/Entity.hpp"
 #include "systems/physics/PhysicsConstants.hpp"
 
 namespace physics::detail {
@@ -19,7 +18,6 @@ namespace {
 
 ContactSide sideOf(const b2Fixture& fixture) {
     return ContactSide{
-        .entity = static_cast<ecs::Entity>(fixture.GetUserData().pointer),
         .serial = fixture.GetBody()->GetUserData().pointer,
         .category = fixture.GetFilterData().categoryBits,
     };
