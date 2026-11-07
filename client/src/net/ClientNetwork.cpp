@@ -9,6 +9,7 @@
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/NetworkFactory.hpp"
+#include "net/NetworkMetricsPlugin.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
@@ -24,7 +25,8 @@ void addNetworkPlugins(engine::Engine& engine, const ClientOptions& options) {
     engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection)
         .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rtype::game::ReplicationCodec>())
         .addPlugin<RTypeNetworkPlugin>(transport)
-        .addPlugin<PlayerControlPlugin>();
+        .addPlugin<PlayerControlPlugin>()
+        .addPlugin<ecs::net::NetworkMetricsPlugin>(transport);
 
     transport->connect(options.host, options.port);
 }

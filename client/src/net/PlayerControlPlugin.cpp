@@ -1,6 +1,7 @@
 #include "net/PlayerControlPlugin.hpp"
 
 #include <algorithm>
+#include <format>
 #include <utility>
 
 #include "components/InputBuffer.hpp"
@@ -9,12 +10,14 @@
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
+#include "metrics/MetricsBoard.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/LocalInput.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
@@ -60,10 +63,22 @@ void PlayerControlPlugin::onEntitySpawned(engine::Engine& engine,
     }
 }
 
-void PlayerControlPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& /*time*/) {
+void PlayerControlPlugin::publishPosition(ecs::Registry& registry, const float deltaTime) {
+    if (!_positionRefresh.tick(deltaTime) || !registry.hasResource<metrics::MetricsBoard>()) {
+        return;
+    }
+    auto& board = registry.getResource<metrics::MetricsBoard>();
+    registry.runSystem<ecs::Predicted, ecs::Transform>(
+        [&board](const ecs::Entity /*entity*/, const ecs::Predicted& /*predicted*/, const ecs::Transform& transform) {
+            board.set("Position", std::format("{:.0f}, {:.0f}", transform.x, transform.y));
+        });
+}
+
+void PlayerControlPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) {
     if (!_playerIndex) {
         return;
     }
+    publishPosition(engine.registry(), time.deltaTime);
     ecs::NetInput input{.sequence = ++_sequence, .held = {}, .axes = {}};
     withLocalInput(engine.registry(), [&input](const ::input::InputState& state) {
         for (const auto& [action, data] : state.actions) {
