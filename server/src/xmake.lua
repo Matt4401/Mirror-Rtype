@@ -16,8 +16,15 @@ target("rtype_gameplay")
     add_includedirs(".", {public = true})
     add_deps("engine_core", "engine_events", "engine_physics", "rtype_collision", "rtype_prefabs", "rtype_game", "log", {public = true})
 
+-- R-Type level files: reads a TOML level into a timeline of events driven by the scroll distance.
+target("rtype_level")
+    set_kind("static")
+    add_files("level/**.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_config", "engine_timeline", {public = true})
+
 target("r-type_server")
     set_kind("binary")
     set_targetdir("$(projectdir)")
-    add_files("**.cpp|prefabs/**.cpp|collision/**.cpp|gameplay/**.cpp")
+    add_files("**.cpp|prefabs/**.cpp|collision/**.cpp|gameplay/**.cpp|level/**.cpp")
     add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_network_asio", "engine_scripting", "rtype_prefabs", "rtype_game", "rtype_gameplay")
