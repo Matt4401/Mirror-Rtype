@@ -8,6 +8,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "hierarchy/HierarchyComponents.hpp"
+#include "hierarchy/detail/LinkEditScope.hpp"
 
 namespace hierarchy {
 
@@ -64,6 +65,9 @@ void HierarchyHooks::onDestroy(ecs::Entity e) {
 }
 
 void HierarchyHooks::onComponentRemoved(ecs::Entity e, ecs::ComponentTypeId type) {
+    if (detail::linkEditInProgress()) {
+        return;  // removeParent already keeps both sides in sync
+    }
     if (type == ecs::getComponentTypeId<Parent>()) {
         for (Children& children : _registry->getComponents<Children>().getDense()) {
             std::erase(children.entities, e);

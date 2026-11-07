@@ -24,6 +24,10 @@ namespace hierarchy {
  * `LocalTransform` is computed from both current world transforms (a missing `ecs::Transform` counts as identity),
  * so attaching never makes it jump. Set the `LocalTransform` afterwards to place it at a given offset instead.
  *
+ * @note A parent axis with a collapsed (zero) scale cannot be inverted: the link is still made, but the child is
+ *       flattened onto the parent along that axis on the next propagation, and keeps that offset once the parent
+ *       scales back up.
+ *
  * @param registry Registry owning both entities.
  * @param child Entity to attach.
  * @param parent New parent.

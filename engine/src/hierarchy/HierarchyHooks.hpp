@@ -21,8 +21,9 @@ namespace hierarchy {
  * - **Removing `Parent` by hand** removes the child from its old parent's `Children`.
  * - **Removing `Children` by hand** detaches every child that pointed at that parent.
  *
- * The manual-removal fix-ups scan the hierarchy components (linear cost); prefer `removeParent`. `HierarchyPlugin`
- * owns one instance; tests can create one directly on a registry. The registry must outlive this object.
+ * The manual-removal fix-ups scan the hierarchy components (linear cost); prefer `removeParent`, which repairs both
+ * sides itself and skips them. `HierarchyPlugin` owns one instance; tests can create one directly on a registry. The
+ * registry must outlive this object.
  */
 class HierarchyHooks {
   public:

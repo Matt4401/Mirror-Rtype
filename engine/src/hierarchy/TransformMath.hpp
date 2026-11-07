@@ -17,7 +17,8 @@ namespace hierarchy {
  * position. Rotations and depths add up, scales multiply.
  *
  * @note The shear that a non-uniform parent scale combined with a child rotation would produce is not represented:
- *       a 2D `Transform` has no shear term. Positions are still exact; only the child's own shape would differ.
+ *       a 2D `Transform` has no shear term. The child's own position is exact, but its shape and its descendants'
+ *       positions can differ from full affine composition.
  *
  * @param parentWorld World transform of the parent.
  * @param local Transform of the child relative to the parent.

@@ -27,6 +27,7 @@ For a child, it is an output: it is rewritten every frame from the parent's worl
 
 ```cpp
 #include "hierarchy/Hierarchy.hpp"
+#include "hierarchy/HierarchyComponents.hpp"
 
 const ecs::Entity panel = registry.spawnEntity();
 const ecs::Entity button = registry.spawnEntity();
@@ -61,9 +62,11 @@ world.z        = parent.z + local.z
 
 - A parent without `ecs::Transform` counts as identity; a missing child `ecs::Transform` is created.
 - A child without `LocalTransform` keeps its world transform, and its own children are placed from it.
-- A 2D transform has no shear term: with a non-uniform parent scale and a rotated child, positions stay exact but the
-  child's own shape is not sheared.
+- A 2D transform has no shear term: with a non-uniform parent scale and a rotated child, the child's own position
+  stays exact, but its shape and its descendants' positions can differ from full affine composition.
 - `toLocal(parentWorld, world)` is the inverse of `compose`; a collapsed (zero) parent scale never produces NaN.
+  It cannot be inverted either: `setParent` under such a parent still succeeds, but the child is flattened onto the
+  parent along that axis on the next propagation.
 
 ### When it runs
 

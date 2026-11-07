@@ -9,6 +9,7 @@
 #include "ecs/Registry.hpp"
 #include "hierarchy/HierarchyComponents.hpp"
 #include "hierarchy/TransformMath.hpp"
+#include "hierarchy/detail/LinkEditScope.hpp"
 
 namespace hierarchy {
 
@@ -69,6 +70,8 @@ void removeParent(ecs::Registry& registry, ecs::Entity child) {
     if (!parent.has_value()) {
         return;
     }
+    // Both sides are repaired here, so the hooks' linear manual-removal scans are skipped.
+    const detail::LinkEditScope scope;
     eraseFromChildren(registry, *parent, child);
     registry.removeComponent<Parent>(child);
     registry.removeComponent<LocalTransform>(child);
