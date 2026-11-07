@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -16,7 +17,7 @@ namespace {
 
 namespace level = rtype::server::level;
 
-bool knownPrefab(std::string_view name) { return name == "alien_scout" || name == "obstacle"; }
+bool knownPrefab(std::string_view name) { return name == "alien_scout" || name == "obstacle" || name == "boss_core"; }
 
 level::Level build(std::string_view toml, std::vector<std::string>& warnings) {
     return level::buildLevel(config::ConfigFile::parse(toml), knownPrefab, warnings);
@@ -296,6 +297,182 @@ TEST(LevelLoader, UnknownLevelSettingsAreReported) {
                 warnings);
 
     EXPECT_TRUE(anyWarningMentions(warnings, "level.music"));
+}
+
+TEST(LevelLoader, ReadsABossEvent) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[events]]
+        at = 6000.0
+        type = "boss"
+        prefab = "boss_core"
+        script = "scripts/Boss.wren"
+        y = 300.0
+        health = 40
+    )",
+                                     warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 1U);
+    const timeline::TimelineEvent& boss = eventAt(built, 0);
+    EXPECT_FLOAT_EQ(boss.position, 6000.0F);
+    EXPECT_EQ(boss.type, level::EVENT_BOSS);
+    EXPECT_EQ(boss.params.find<std::string>("prefab"), "boss_core");
+    EXPECT_EQ(boss.params.find<std::string>("script"), "scripts/Boss.wren");
+    EXPECT_DOUBLE_EQ(boss.params.find<double>("x").value_or(0.0), level::DEFAULT_SPAWN_X);
+    EXPECT_DOUBLE_EQ(boss.params.find<double>("y").value_or(0.0), 300.0);
+    EXPECT_TRUE(boss.params.find<std::int64_t>("health").has_value());
+    EXPECT_TRUE(warnings.empty());
+}
+
+TEST(LevelLoader, BossWithoutScriptIsKept) {
+    const level::Level built = build(R"(
+        [[events]]
+        at = 10.0
+        type = "boss"
+        prefab = "boss_core"
+    )");
+
+    ASSERT_EQ(built.timeline.events().size(), 1U);
+    EXPECT_FALSE(eventAt(built, 0).params.has("script"));
+}
+
+TEST(LevelLoader, BossWithoutKnownPrefabIsSkipped) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[events]]
+        at = 10.0
+        type = "boss"
+        script = "scripts/Boss.wren"
+
+        [[events]]
+        at = 20.0
+        type = "boss"
+        prefab = "dragon"
+    )",
+                                     warnings);
+
+    EXPECT_TRUE(built.timeline.events().empty());
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.0"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "dragon"));
+}
+
+class BossScriptPath : public ::testing::TestWithParam<std::string_view> {};
+
+TEST_P(BossScriptPath, UnsafeScriptIsIgnoredButTheBossIsKept) {
+    std::vector<std::string> warnings;
+    const std::string toml = std::string(R"(
+        [[events]]
+        at = 10.0
+        type = "boss"
+        prefab = "boss_core"
+        script = )") + std::string(GetParam()) +
+                             "\n";
+    const level::Level built = build(toml, warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 1U);
+    EXPECT_FALSE(eventAt(built, 0).params.has("script"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.0: 'script'"));
+}
+
+INSTANTIATE_TEST_SUITE_P(LevelLoader, BossScriptPath,
+                         ::testing::Values(R"("/etc/passwd.wren")", R"("../secret/Boss.wren")",
+                                           R"("scripts/../../Boss.wren")", R"("scripts\\Boss.wren")",
+                                           R"("scripts/Boss.lua")", R"(".wren")", R"("")", "42"));
+
+TEST(LevelLoader, ReadsTerrainSections) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[terrain]]
+        from = 1800.0
+        to = 3200.0
+        side = "bottom"
+        height = 120.0
+
+        [[terrain]]
+        from = 500.0
+        to = 900.0
+        side = "top"
+    )",
+                                     warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 2U);
+    const timeline::TimelineEvent& top = eventAt(built, 0);
+    EXPECT_FLOAT_EQ(top.position, 500.0F);
+    EXPECT_EQ(top.type, level::EVENT_TERRAIN);
+    EXPECT_EQ(top.params.find<std::string>("side"), level::TERRAIN_TOP);
+    EXPECT_DOUBLE_EQ(top.params.find<double>("height").value_or(0.0), level::DEFAULT_TERRAIN_HEIGHT);
+    EXPECT_DOUBLE_EQ(top.params.find<double>("length").value_or(0.0), 400.0);
+
+    const timeline::TimelineEvent& bottom = eventAt(built, 1);
+    EXPECT_FLOAT_EQ(bottom.position, 1800.0F);
+    EXPECT_EQ(bottom.params.find<std::string>("side"), level::TERRAIN_BOTTOM);
+    EXPECT_DOUBLE_EQ(bottom.params.find<double>("height").value_or(0.0), 120.0);
+    EXPECT_DOUBLE_EQ(bottom.params.find<double>("length").value_or(0.0), 1400.0);
+    EXPECT_TRUE(warnings.empty());
+}
+
+TEST(LevelLoader, InvalidTerrainSectionsAreSkippedWithAWarning) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[terrain]]
+        to = 100.0
+        side = "bottom"
+
+        [[terrain]]
+        from = 300.0
+        to = 200.0
+        side = "bottom"
+
+        [[terrain]]
+        from = 300.0
+        to = 300.0
+        side = "top"
+
+        [[terrain]]
+        from = 0.0
+        to = 100.0
+        side = "left"
+
+        [[terrain]]
+        from = 0.0
+        to = 100.0
+    )",
+                                     warnings);
+
+    EXPECT_TRUE(built.timeline.events().empty());
+    for (std::size_t i = 0; i < 5; ++i) {
+        EXPECT_TRUE(anyWarningMentions(warnings, "terrain." + std::to_string(i))) << "section " << i;
+    }
+}
+
+TEST(LevelLoader, TerrainHeightIsClampedAndTyposAreReported) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[terrain]]
+        from = 0.0
+        to = 100.0
+        side = "bottom"
+        height = 5000.0
+        heigth = 10.0
+    )",
+                                     warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 1U);
+    EXPECT_DOUBLE_EQ(eventAt(built, 0).params.find<double>("height").value_or(0.0), level::MAX_TERRAIN_HEIGHT);
+    EXPECT_TRUE(anyWarningMentions(warnings, "terrain.0.height"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "terrain.0.heigth"));
+}
+
+TEST(LevelLoader, TooManyTerrainSectionsAreTruncated) {
+    std::string toml;
+    for (std::size_t i = 0; i < level::MAX_TERRAIN_SECTIONS + 10; ++i) {
+        toml += "[[terrain]]\nfrom = 0.0\nto = 10.0\nside = \"top\"\n";
+    }
+    std::vector<std::string> warnings;
+    const level::Level built = build(toml, warnings);
+
+    EXPECT_EQ(built.timeline.events().size(), level::MAX_TERRAIN_SECTIONS);
+    EXPECT_TRUE(anyWarningMentions(warnings, "terrain: "));
 }
 
 TEST(LevelLoader, LoadsALevelFile) {
