@@ -93,12 +93,16 @@ void CarSimulationPlugin::init(engine::Engine& engine) {
         }
         input::InputState& state = states.get(event.entity);
         float steer = 0.0F;
+        float pitch = 0.0F;
         for (const ecs::NetAxis& axis : event.input.axes) {
             if (axis.action == game::STEER_ID) {
                 steer = std::clamp(axis.value, -1.0F, 1.0F);
+            } else if (axis.action == game::PITCH_ID) {
+                pitch = std::clamp(axis.value, -1.0F, 1.0F);
             }
         }
         state.setAxis(game::STEER_ID, steer);
+        state.setAxis(game::PITCH_ID, pitch);
         const auto held = [&event](const input::ActionId action) {
             return std::ranges::find(event.input.held, action) != event.input.held.end();
         };
