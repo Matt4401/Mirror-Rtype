@@ -1,3 +1,13 @@
+-- RLSS_PROJECT_DIR: the repository root, as a C string literal, for the RLSS tests (they move there to load the Wren
+-- scripts). Written with forward slashes: on Windows, "$(projectdir)" has backslashes, which a C string literal reads
+-- as escape sequences ("D:\a\..." starts with a bell character), so the path would be wrong.
+rule("rlss.project_dir")
+    on_load(function (target)
+        local root = os.projectdir():gsub("\\", "/")
+        target:add("defines", 'RLSS_PROJECT_DIR="' .. root .. '"')
+    end)
+rule_end()
+
 target("test_ecs")
     set_kind("binary")
     add_deps("engine_core")
@@ -246,7 +256,7 @@ target("test_rlss_car")
     add_packages("gtest", "wren")
     add_files("rlss/CarPhysicsTests.cpp")
     -- The Wren scripts are loaded relative to the working directory.
-    add_defines('RLSS_PROJECT_DIR="$(projectdir)"')
+    add_rules("rlss.project_dir")
     add_tests("test_rlss_car")
 
 target("test_rlss_codec")
