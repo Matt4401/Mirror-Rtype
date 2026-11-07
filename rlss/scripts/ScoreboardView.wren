@@ -7,8 +7,10 @@ import "rlss/components" for Camera, MatchState, ScoreCell, Transform
  *
  * Attached to the scoreboard entity, which carries the `MatchState` received from the server. The squares are
  * entities tagged "score_cell", each with a `ScoreCell` (display, character slot, row and column in a 3 x 5 glyph,
- * place and size on screen). This script lights the squares that draw the current text: the two scores, the kickoff
- * countdown, and "GOAL" during the celebration; display 4 (the dash between the scores) is always shown.
+ * place and size on screen). This script lights the squares that draw the current text: the two scores (displays 0 and
+ * 1), the kickoff countdown (2), "GOAL" during the celebration (3), and the match clock between the scores ("2:59" on
+ * display 4, "+0:42" on display 5 in overtime). Nothing is shown while no match is joined (`phase` < 0) nor once it
+ * is over: the end screen shows the score.
  *
  * The scoreboard is drawn on screen, not in the world: every frame, each square is moved and sized through the camera
  * (entity tagged "main_camera", updated before this script) so that it stays put while the camera moves.
@@ -34,17 +36,23 @@ class ScoreboardView {
         var orange = _state.orangeScore
         var phase = _state.phase
         var countdown = _state.countdown
-        var key = "%(blue)-%(orange)-%(phase)-%(countdown)"
+        var clock = _state.clock
+        var overtime = _state.overtime
+        var key = "%(blue)-%(orange)-%(phase)-%(countdown)-%(clock)-%(overtime)"
         if (key != _shown) {
             _shown = key
+            var hidden = phase < 0 || phase == 3
+            var time = ScoreboardView.clock(clock)
             var texts = [
                 ScoreboardView.twoDigits(blue),
                 ScoreboardView.twoDigits(orange),
                 phase == 2 && countdown > 0 ? "%(countdown)" : "",
                 phase == 1 ? "GOAL" : "",
+                overtime ? "" : time,
+                overtime ? "+" + time : "",
             ]
             for (cell in _cells) {
-                cell.lit = cell.display == 4 || ScoreboardView.lit(texts[cell.display], cell.slot, cell.row, cell.column)
+                cell.lit = !hidden && ScoreboardView.lit(texts[cell.display], cell.slot, cell.row, cell.column)
             }
         }
 
@@ -67,6 +75,13 @@ class ScoreboardView {
     static twoDigits(value) {
         var clamped = value.min(99)
         return clamped < 10 ? " %(clamped)" : "%(clamped)"
+    }
+
+    /** @brief A clock value in seconds as "M:SS". */
+    static clock(seconds) {
+        var minutes = (seconds / 60).floor
+        var rest = seconds - minutes * 60
+        return rest < 10 ? "%(minutes):0%(rest)" : "%(minutes):%(rest)"
     }
 
     /** @brief Whether the square (row, column) of character `slot` of `text` is lit. */
@@ -95,6 +110,8 @@ class ScoreboardView {
                 "O": ["###", "#.#", "#.#", "#.#", "###"],
                 "A": [".#.", "#.#", "###", "#.#", "#.#"],
                 "L": ["#..", "#..", "#..", "#..", "###"],
+                ":": ["...", ".#.", "...", ".#.", "..."],
+                "+": ["...", ".#.", "###", ".#.", "..."],
             }
         }
         return __font
