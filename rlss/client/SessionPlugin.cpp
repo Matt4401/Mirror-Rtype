@@ -2,7 +2,6 @@
 
 #include <memory>
 #include <utility>
-#include <variant>
 
 #include "Logger.hpp"
 #include "ServerLink.hpp"
@@ -11,7 +10,6 @@
 #include "net/INetworkClient.hpp"
 #include "net/NetworkEvents.hpp"
 #include "net/NetworkPlugin.hpp"
-#include "protocol/Protocol.hpp"
 
 namespace rlss::client {
 
@@ -33,15 +31,6 @@ void SessionPlugin::init(engine::Engine& engine) {
             _lost = true;
             engine.stop();
         });
-    _packets = events.subscribe<ecs::net::PacketReceived>([](const ecs::net::PacketReceived& packet) {
-        const auto message = protocol::decode(packet.data);
-        if (!message) {
-            return;  // untrusted bytes: a malformed message is ignored
-        }
-        if (const auto* lobby = std::get_if<protocol::LobbyState>(&*message)) {
-            rtype::log::info(LOG_TAG, "players connected: ", lobby->players);
-        }
-    });
 }
 
 void SessionPlugin::shutdown(engine::Engine& engine) {
@@ -49,10 +38,6 @@ void SessionPlugin::shutdown(engine::Engine& engine) {
     if (_disconnected) {
         events.unsubscribe<ecs::net::PeerDisconnected>(*_disconnected);
         _disconnected.reset();
-    }
-    if (_packets) {
-        events.unsubscribe<ecs::net::PacketReceived>(*_packets);
-        _packets.reset();
     }
 }
 

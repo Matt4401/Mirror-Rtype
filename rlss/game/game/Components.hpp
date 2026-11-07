@@ -99,11 +99,21 @@ struct MatchState {
     int blueScore = 0;
     /** @brief Goals of the orange team (right side, defends the right goal). */
     int orangeScore = 0;
-    /** @brief `protocol::MatchPhase` value: 0 playing, 1 goal celebration, 2 kickoff countdown. */
+    /**
+     * @brief `protocol::MatchPhase` value: 0 playing, 1 goal celebration, 2 kickoff countdown, 3 ended. On the client,
+     * `NO_MATCH` while the player is in the menu.
+     */
     int phase = 0;
     /** @brief Kickoff countdown shown to the players (3, 2, 1), 0 outside the kickoff. */
     int countdown = 0;
+    /** @brief Match clock in whole seconds: time left, or overtime played when `overtime` is set. */
+    int clock = 0;
+    /** @brief True in overtime: the next goal wins. */
+    bool overtime = false;
 };
+
+/** @brief `MatchState::phase` of the client scoreboard while no match is joined: nothing is shown. */
+inline constexpr int NO_MATCH = -1;
 
 /** @brief Geometry of the arena, read by the Wren physics through the `ArenaShape` class. */
 struct ArenaShape {

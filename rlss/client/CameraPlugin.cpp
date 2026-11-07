@@ -7,6 +7,7 @@
 #include "Arena.hpp"
 #include "ArenaViewPlugin.hpp"
 #include "CarViewPlugin.hpp"
+#include "ClientEvents.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ScriptComponent.hpp"
 #include "components/Tag.hpp"
@@ -93,6 +94,14 @@ void CameraPlugin::init(engine::Engine& engine) {
                 rig->ball = static_cast<int>(event.entity);
             }
         });
+    // A new match: its `Welcome` names the local car; the network id of the previous one means nothing anymore.
+    _joined = events.subscribe<MatchJoined>([this](const MatchJoined& /*event*/) { _localCar.reset(); });
+    _left = events.subscribe<MatchLeft>([this, &engine](const MatchLeft& /*event*/) {
+        _localCar.reset();
+        if (auto* rig = rigOf(engine.registry(), _camera)) {
+            rig->phase = static_cast<int>(protocol::MatchPhase::Playing);
+        }
+    });
     _despawned = events.subscribe<ecs::net::ReplicatedEntityDespawned>(
         [this, &engine](const ecs::net::ReplicatedEntityDespawned& event) {
             auto* rig = rigOf(engine.registry(), _camera);
@@ -129,6 +138,14 @@ void CameraPlugin::shutdown(engine::Engine& engine) {
     if (_despawned) {
         events.unsubscribe<ecs::net::ReplicatedEntityDespawned>(*_despawned);
         _despawned.reset();
+    }
+    if (_joined) {
+        events.unsubscribe<MatchJoined>(*_joined);
+        _joined.reset();
+    }
+    if (_left) {
+        events.unsubscribe<MatchLeft>(*_left);
+        _left.reset();
     }
 }
 

@@ -59,6 +59,12 @@ class CameraPlugin final : public engine::IPlugin {
      */
     void shutdown(engine::Engine& engine) override;
 
+    /**
+     * @brief Camera entity, carrying the `ecs::CameraComponent` the world is drawn through.
+     * @return The entity (valid once initialized).
+     */
+    [[nodiscard]] ecs::Entity camera() const noexcept { return _camera; }
+
   private:
     /** @brief Camera entity. */
     ecs::Entity _camera = 0;
@@ -70,6 +76,10 @@ class CameraPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _spawned;
     /** @brief Subscription to `ReplicatedEntityDespawned`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _despawned;
+    /** @brief Subscription to `MatchJoined`, while initialized. */
+    std::optional<ecs::EventBus::EventToken> _joined;
+    /** @brief Subscription to `MatchLeft`, while initialized. */
+    std::optional<ecs::EventBus::EventToken> _left;
 };
 
 }  // namespace rlss::client

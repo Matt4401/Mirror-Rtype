@@ -31,6 +31,12 @@ namespace rlss::game {
 class ReplicationCodec final : public ecs::net::IReplicationCodec {
   public:
     /**
+     * @brief Creates the codec of one match.
+     * @param matchId Server: match written in every snapshot. Ignored by a client, which filters snapshots before.
+     */
+    explicit ReplicationCodec(std::uint16_t matchId = 0) : _matchId(matchId) {}
+
+    /**
      * @brief Server: starts a new snapshot.
      * @param tick Server step.
      */
@@ -81,6 +87,8 @@ class ReplicationCodec final : public ecs::net::IReplicationCodec {
     void applySnapshot(ecs::net::SnapshotApplier& applier) override;
 
   private:
+    /** @brief Server: match written in the snapshots. */
+    std::uint16_t _matchId;
     /** @brief Server: tick of the snapshot being written. */
     std::uint32_t _tick = 0;
     /** @brief Server: entities of the snapshot being written. */

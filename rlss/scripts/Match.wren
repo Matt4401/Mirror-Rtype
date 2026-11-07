@@ -16,7 +16,12 @@ import "rlss/scripts/Simulation" for Simulation
  * Rules, like Rocket League: a goal counts once the whole ball is behind the goal line. The team attacking that goal
  * scores (the left goal is the blue team's, so a ball in it is a point for orange). After a short celebration, every car
  * goes back to its kickoff spot and the ball to the center; they stay frozen during a 3-2-1 countdown, then play
- * resumes. Score, phase and countdown are written to the arena's `MatchState`, which the server sends to the players.
+ * resumes. The match starts with such a kickoff.
+ *
+ * A match lasts `DURATION` seconds of play: the clock stops during the celebrations and the countdowns. When it runs
+ * out, the match ends, unless the score is tied: then comes an overtime after a kickoff, with no time limit, and the next
+ * goal wins (golden goal). Once ended, everything stays frozen. Score, phase, countdown and clock are written to the
+ * arena's `MatchState`, which the server sends to the players.
  */
 class Match {
     construct new(entity) {
@@ -24,20 +29,25 @@ class Match {
         _state = MatchState.new(_id)
         _accumulator = 0
         _step = 0
-        // A hot-reload recreates the script: the score lives in the component, the phase restarts.
-        _phase = Match.PLAYING
+        _phase = null
         _timer = 0
+        _clock = 0
+        _overtime = false
     }
 
     static PLAYING { 0 }
     static GOAL { 1 }
     static KICKOFF { 2 }
+    static ENDED { 3 }
+    /** @brief Length of a match, in seconds of play (3 minutes). */
+    static DURATION { 180 }
 
     phase { _phase }
 
     update(dt) {
         if (_arena == null) _arena = Arena.fromWorld()
         if (_arena == null || _state.blueScore == null) return
+        if (_phase == null) start_()
         _accumulator = (_accumulator + dt).min(CarTuning.MAX_FRAME_TIME)
         var cars = Simulation.cars
         while (_accumulator >= CarTuning.STEP) {
@@ -52,9 +62,28 @@ class Match {
         if (ball != null && ball.ready) ball.sync()
         _state.phase = _phase
         _state.countdown = _phase == Match.KICKOFF ? _timer.ceil : 0
+        _state.clock = _overtime ? _clock.floor : _clock.ceil
+        _state.overtime = _overtime
+    }
+
+    // A new match starts with a kickoff and a full clock. After a hot-reload (the script is recreated, the components
+    // stay), it goes on from the clock and the score of the component instead.
+    start_() {
+        if (_state.phase == Match.ENDED) {
+            _phase = Match.ENDED
+        } else if (_state.clock > 0 || _state.overtime) {
+            _phase = Match.PLAYING
+            _clock = _state.clock
+            _overtime = _state.overtime
+        } else {
+            _phase = Match.KICKOFF
+            _timer = Kickoff.COUNTDOWN
+            _clock = Match.DURATION
+        }
     }
 
     rules_(cars, ball, dt) {
+        if (_phase == Match.ENDED) return
         if (_phase == Match.KICKOFF) {
             // Everybody frozen in place until the countdown ends.
             _timer = _timer - dt
@@ -64,10 +93,40 @@ class Match {
         step_(cars, ball, dt)
         if (_phase == Match.GOAL) {
             _timer = _timer - dt
-            if (_timer <= 0) kickoff_(cars, ball)
+            if (_timer > 0) return
+            // Golden goal: in overtime, the first goal ends the match.
+            if (_overtime) {
+                end_()
+            } else {
+                kickoff_(cars, ball)
+            }
         } else if (ball != null && ball.ready) {
             checkGoal_(ball)
+            if (_phase == Match.PLAYING) tick_(cars, ball, dt)
         }
+    }
+
+    // The clock only runs while the ball is in play.
+    tick_(cars, ball, dt) {
+        if (_overtime) {
+            _clock = _clock + dt
+            return
+        }
+        _clock = _clock - dt
+        if (_clock > 0) return
+        _clock = 0
+        if (_state.blueScore != _state.orangeScore) {
+            end_()
+            return
+        }
+        System.print("[Match] Time is up, %(_state.blueScore) - %(_state.orangeScore): overtime!")
+        _overtime = true
+        kickoff_(cars, ball)
+    }
+
+    end_() {
+        _phase = Match.ENDED
+        System.print("[Match] Final score: Blue %(_state.blueScore) - %(_state.orangeScore) Orange")
     }
 
     checkGoal_(ball) {
