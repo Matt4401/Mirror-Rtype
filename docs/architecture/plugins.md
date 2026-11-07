@@ -8,7 +8,7 @@ and decoupled game engine library that can power multiple distinct games.
 To achieve true modularity, the engine introduces three interconnected architectural patterns:
 
 1. **The Plugin System (`engine::IPlugin`)**: Replaces manual procedural wiring with an inversion-of-control lifecycle
-   (`build`, `init`, `preUpdate`, `fixedUpdate`, `update`, `render`, `shutdown`).
+   (`build`, `init`, `preUpdate`, `fixedUpdate`, `update`, `lateUpdate`, `render`, `shutdown`).
 2. **The Dependency Graph (`engine::PluginGraph`)**: Resolves compile-time and runtime inter-plugin requirements as a
    Directed Acyclic Graph (DAG) using **Kahn's topological sort algorithm**, providing early cycle and
    missing-dependency detection.
@@ -65,6 +65,7 @@ class IPlugin {
     virtual void preUpdate(Engine& engine) {}
     virtual void fixedUpdate(Engine& engine, const ecs::time::Time& time) {}
     virtual void update(Engine& engine, const ecs::time::Time& time) {}
+    virtual void lateUpdate(Engine& engine, const ecs::time::Time& time) {}
     virtual void render(Engine& engine) {}
     virtual void shutdown(Engine& engine) {}
 };
@@ -88,10 +89,15 @@ class IPlugin {
 5. **`update(Engine& engine, const Time& time)`**:
     - Executed in **topological order** on every frame with variable delta time.
     - Used for state updates, animations, and gameplay triggers.
-6. **`render(Engine& engine)`**:
+6. **`lateUpdate(Engine& engine, const Time& time)`**:
+    - Executed in **topological order** on every frame, after **every** plugin's `update` and before `render`, with
+      the same frame time.
+    - Used for work that needs the final state of the frame without depending on the plugins that produced it:
+      transform propagation (`HierarchyPlugin`), camera follow, UI layout.
+7. **`render(Engine& engine)`**:
     - Executed in **topological order** during the frame presentation phase.
     - Collects and draws entities through active cameras.
-7. **`shutdown(Engine& engine)`**:
+8. **`shutdown(Engine& engine)`**:
     - Executed in **reverse topological order** (dependents shut down before their dependencies).
     - Unregisters services and safely releases GPU / hardware resources.
 

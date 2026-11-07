@@ -87,8 +87,8 @@ Also without window or rendering (`client/src/net/`, same tests).
   starfield, the camera and the entity holding the local `InputState`. It spawns no ship: ships come from the server.
 - **Sprites:** on `ReplicatedEntitySpawned`, gives the entity the sprite of its `kind`, using `subtype` to choose the row of
   the ship spritesheet, so that players can tell their ships apart. A kind the client does not know stays invisible.
-- **Shots (`update`):** spawns a bullet in front of the `Predicted` ship. The server does not simulate shots yet, so these
-  bullets only exist on this client.
+- **Shots:** the client spawns nothing. The `shoot` action travels in the player's input, and the bullets arrive in the
+  snapshots like any other entity, interpolated: a shot appears one round trip after the key press.
 
 There is no lobby screen yet, because the engine cannot draw text: the state of the lobby is printed in the terminal.
 
