@@ -57,13 +57,15 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&CarParts::headlight>("headlight")
         .property<&CarParts::flame>("flame")
         .property<&CarParts::gaugeBack>("gaugeBack")
-        .property<&CarParts::gaugeFill>("gaugeFill");
+        .property<&CarParts::gaugeFill>("gaugeFill")
+        .property<&CarParts::flash>("flash");
     ok = define(vm, parts) && ok;
 
     scripting::ComponentBinder<CarStatus> status(vm, module, "CarStatus");
     status.property<&CarStatus::boost>("boost")
         .property<&CarStatus::boosting>("boosting")
-        .property<&CarStatus::placeAtKickoff>("placeAtKickoff");
+        .property<&CarStatus::placeAtKickoff>("placeAtKickoff")
+        .property<&CarStatus::flipReset>("flipReset");
     ok = define(vm, status) && ok;
 
     scripting::ComponentBinder<BallPart> ballPart(vm, module, "BallPart");
@@ -71,8 +73,13 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&BallPart::offsetX>("offsetX")
         .property<&BallPart::offsetY>("offsetY")
         .property<&BallPart::angle>("angle")
-        .property<&BallPart::spins>("spins");
+        .property<&BallPart::spins>("spins")
+        .property<&BallPart::glow>("glow");
     ok = define(vm, ballPart) && ok;
+
+    scripting::ComponentBinder<ShotGlow> glow(vm, module, "ShotGlow");
+    glow.property<&ShotGlow::shot>("shot");
+    ok = define(vm, glow) && ok;
 
     scripting::ComponentBinder<MatchState> match(vm, module, "MatchState");
     match.property<&MatchState::blueScore>("blueScore")

@@ -25,7 +25,7 @@ namespace rlss::game {
  * `ecs::net::ClientReplicationPlugin`.
  *
  * A replicated entity carries its `ecs::Transform` (facing = sign of `scaleX`); a car also its `CarLook` and
- * `CarStatus`. On the client, a new
+ * `CarStatus`, the ball its `ShotGlow`. On the client, a new
  * entity also gets `ecs::Interpolated`, so that it moves smoothly between snapshots.
  */
 class ReplicationCodec final : public ecs::net::IReplicationCodec {

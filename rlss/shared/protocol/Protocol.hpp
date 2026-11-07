@@ -22,7 +22,7 @@ inline constexpr std::string_view GAME_TITLE = "RLSS";
  * @brief Transport protocol id (`ecs::net::NetworkConfig::protocolId`): an R-Type client and an RLSS server refuse
  * each other during the handshake. Bump the low byte on every incompatible protocol change.
  */
-inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0005U;  // "RL", version 5
+inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0006U;  // "RL", version 6
 
 /** @brief Port used when none is given on the command line (TCP and UDP). */
 inline constexpr std::uint16_t DEFAULT_PORT = 4250;
@@ -64,12 +64,15 @@ struct EntityState {
     float rotation = 0.0F;
     /** @brief True when the entity faces left (mirrored). */
     bool facingLeft = false;
-    /** @brief Index in the player color palette. */
+    /** @brief Car: index in the player color palette. Ball: color of the last shot (0 none, 1 red, 2 purple, 3 gold).
+     */
     std::uint8_t color = 0;
     /** @brief Car: boost left, from 0 to 100. */
     std::uint8_t boost = 0;
     /** @brief Car: boosting right now (shows the flame). */
     bool boosting = false;
+    /** @brief Car: flip regained on the ball, not used yet (the car flashes white). */
+    bool flipReset = false;
 };
 
 /** @brief Most entities one snapshot part carries: keeps a part far below the 1192-byte unreliable payload limit. */
@@ -151,7 +154,7 @@ using Message = std::variant<LobbyState, Snapshot, PlayerInput, MatchStatus, Wel
 /**
  * @brief Encodes a snapshot part: `[type u8][tick u32][lastInput u32][partIndex u8][partCount u8][count u8]`, then
  * per entity `[id u32][kind u8][x f32][y f32][rotation f32][flags u8][color u8][boost u8]`; flags: bit 0 facing left,
- * bit 1 boosting.
+ * bit 1 boosting, bit 2 flip reset.
  * @param message Message to encode; entities past `MAX_ENTITIES_PER_PART` are not written.
  * @return Wire bytes.
  */

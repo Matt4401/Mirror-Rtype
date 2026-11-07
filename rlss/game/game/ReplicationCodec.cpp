@@ -35,8 +35,13 @@ void ReplicationCodec::writeEntity(const ecs::Registry& registry, const ecs::Ent
         return;
     }
     const ecs::Transform& transform = transforms->get(entity);
+    // The color byte is the car's palette index, or the ball's shot color.
     const auto* looks = registry.findComponents<CarLook>();
-    const std::uint8_t color = looks != nullptr && looks->contains(entity) ? looks->get(entity).color : 0;
+    const auto* glows = registry.findComponents<ShotGlow>();
+    std::uint8_t color = looks != nullptr && looks->contains(entity) ? looks->get(entity).color : 0;
+    if (glows != nullptr && glows->contains(entity)) {
+        color = static_cast<std::uint8_t>(std::clamp(glows->get(entity).shot, 0, static_cast<int>(Shot::Gold)));
+    }
     const auto* statuses = registry.findComponents<CarStatus>();
     const CarStatus status = statuses != nullptr && statuses->contains(entity) ? statuses->get(entity) : CarStatus{};
     _entities.push_back(protocol::EntityState{
@@ -49,6 +54,7 @@ void ReplicationCodec::writeEntity(const ecs::Registry& registry, const ecs::Ent
         .color = color,
         .boost = static_cast<std::uint8_t>(std::clamp(std::lround(status.boost), 0L, 100L)),
         .boosting = status.boosting,
+        .flipReset = status.flipReset,
     });
 }
 
@@ -133,8 +139,14 @@ void ReplicationCodec::applySnapshot(ecs::net::SnapshotApplier& applier) {
         }
         if (state.kind == KIND_CAR) {
             registry.addComponent(*entity, CarLook{.color = state.color});
-            registry.addComponent(*entity,
-                                  CarStatus{.boost = static_cast<float>(state.boost), .boosting = state.boosting});
+            registry.addComponent(*entity, CarStatus{
+                                               .boost = static_cast<float>(state.boost),
+                                               .boosting = state.boosting,
+                                               .placeAtKickoff = false,
+                                               .flipReset = state.flipReset,
+                                           });
+        } else if (state.kind == KIND_BALL) {
+            registry.addComponent(*entity, ShotGlow{.shot = std::min<int>(state.color, static_cast<int>(Shot::Gold))});
         }
         applier.setTransform(*entity, ecs::Transform{
                                           .x = state.x,

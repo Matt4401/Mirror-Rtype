@@ -72,6 +72,7 @@ void CarSimulationPlugin::init(engine::Engine& engine) {
                                      .moduleName = std::string(game::BALL_SCRIPT_MODULE),
                                      .className = "Ball",
                                  });
+    registry.addComponent(_ball, game::ShotGlow{});
     ecs::net::replicate(registry, _ball, game::KIND_BALL);
 
     // A player who joins gets the score at once; afterwards, `update` sends it when it changes.

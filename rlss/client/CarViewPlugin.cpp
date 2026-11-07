@@ -30,6 +30,7 @@ constexpr ecs::Rgba HEADLIGHT_COLOR{.r = 255, .g = 240, .b = 170, .a = 255};
 constexpr ecs::Rgba FLAME_COLOR{.r = 255, .g = 150, .b = 30, .a = 230};
 constexpr ecs::Rgba GAUGE_BACK_COLOR{.r = 10, .g = 12, .b = 20, .a = 200};
 constexpr ecs::Rgba GAUGE_FILL_COLOR{.r = 255, .g = 190, .b = 40, .a = 255};
+constexpr ecs::Rgba FLASH_COLOR{.r = 255, .g = 255, .b = 255, .a = 220};
 /** @brief The cabin is the player color, darkened by this factor. */
 constexpr float CABIN_SHADE = 0.6F;
 
@@ -40,6 +41,7 @@ constexpr int LAYER_BODY = 12;
 constexpr int LAYER_LIGHT = 13;
 constexpr int LAYER_GAUGE_BACK = 30;
 constexpr int LAYER_GAUGE_FILL = 31;
+constexpr int LAYER_FLASH = 14;
 
 ecs::Rgba shade(const Rgb color, const float factor) {
     return ecs::Rgba{
@@ -96,6 +98,7 @@ void CarViewPlugin::init(engine::Engine& engine) {
                                       .flame = spawnPart(registry, car, FLAME_COLOR, LAYER_FLAME),
                                       .gaugeBack = spawnPart(registry, car, GAUGE_BACK_COLOR, LAYER_GAUGE_BACK),
                                       .gaugeFill = spawnPart(registry, car, GAUGE_FILL_COLOR, LAYER_GAUGE_FILL),
+                                      .flash = spawnPart(registry, car, FLASH_COLOR, LAYER_FLASH),
                                   });
             registry.addComponent(event.entity, ecs::ScriptComponent{
                                                     .moduleName = std::string(game::CAR_VIEW_SCRIPT_MODULE),
@@ -111,9 +114,9 @@ void CarViewPlugin::init(engine::Engine& engine) {
                 return;
             }
             const game::CarParts parts = allParts.get(event.entity);
-            const std::array<std::uint32_t, 8> pieces{
-                parts.body,      parts.cabin, parts.rearWheel, parts.frontWheel,
-                parts.headlight, parts.flame, parts.gaugeBack, parts.gaugeFill,
+            const std::array<std::uint32_t, 9> pieces{
+                parts.body,  parts.cabin,     parts.rearWheel, parts.frontWheel, parts.headlight,
+                parts.flame, parts.gaugeBack, parts.gaugeFill, parts.flash,
             };
             for (const std::uint32_t part : pieces) {
                 killPart(registry, part);
