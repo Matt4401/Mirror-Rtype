@@ -18,6 +18,12 @@ inline constexpr std::string_view EVENT_SPAWN = "spawn";
 /** @brief Event type changing the scroll speed: `speed` in pixels per second, 0 stops the scroll. */
 inline constexpr std::string_view EVENT_SCROLL = "scroll";
 
+/**
+ * @brief Event type starting a boss fight: `prefab`, `x`, `y`, an optional `script` (Wren file driving the boss) and
+ * any extra key. The scroll stops until the boss is destroyed.
+ */
+inline constexpr std::string_view EVENT_BOSS = "boss";
+
 /** @brief Event type ending the level. */
 inline constexpr std::string_view EVENT_END = "end";
 

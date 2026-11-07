@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <format>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -30,6 +31,9 @@ namespace {
 /** @brief Keys of a spawn event read by the loader itself; every other key is passed to the prefab. */
 constexpr std::array<std::string_view, 8> SPAWN_KEYS{"at",       "type", "prefab", "count",
                                                      "interval", "x",    "y",      "spacing_y"};
+
+/** @brief Keys of a boss event read by the loader itself; every other key is passed to the prefab. */
+constexpr std::array<std::string_view, 6> BOSS_KEYS{"at", "type", "prefab", "script", "x", "y"};
 
 /** @brief An event of the file, before it is turned into timeline events. */
 struct RawEvent {
@@ -70,14 +74,15 @@ void copyValue(const config::ConfigFile& file, std::string_view key, std::string
 }
 
 /**
- * @brief Reads the keys of a spawn event that the loader does not use, to pass them to the prefab.
+ * @brief Reads the keys of an event that the loader does not use, to pass them to the prefab.
  * @param file Level file.
  * @param index Event index.
+ * @param readKeys Keys the loader reads itself, not passed on.
  * @param warnings Receives a message per nested value, which cannot be passed on.
  * @return The extra parameters.
  */
 prefabs::PrefabParams extraParams(const config::ConfigFile& file, std::size_t index,
-                                  std::vector<std::string>& warnings) {
+                                  std::span<const std::string_view> readKeys, std::vector<std::string>& warnings) {
     prefabs::PrefabParams params;
     const std::string prefix = std::format("events.{}.", index);
     for (const std::string& key : file.keysUnder(std::format("events.{}", index))) {
@@ -86,7 +91,7 @@ prefabs::PrefabParams extraParams(const config::ConfigFile& file, std::size_t in
             warnings.push_back(std::format("{}: nested values are not passed to the prefab, ignored", key));
             continue;
         }
-        if (std::ranges::find(SPAWN_KEYS, name) == SPAWN_KEYS.end()) {
+        if (std::ranges::find(readKeys, name) == readKeys.end()) {
             copyValue(file, key, name, params);
         }
     }
@@ -128,6 +133,85 @@ std::vector<RawEvent> readEvents(const config::ConfigFile& file, config::ConfigR
 }
 
 /**
+ * @brief Reads the prefab of a spawn or boss event, checking that the game can spawn it.
+ * @param file Level file.
+ * @param event The event.
+ * @param isKnownPrefab Prefabs the game can spawn.
+ * @param warnings Receives a message if the prefab is missing or unknown.
+ * @return The prefab name, or nothing if the event must be skipped.
+ */
+std::optional<std::string> readPrefab(const config::ConfigFile& file, const RawEvent& event,
+                                      const PrefabFilter& isKnownPrefab, std::vector<std::string>& warnings) {
+    std::optional<std::string> prefab = file.getString(eventKey(event.index, "prefab"));
+    if (!prefab.has_value()) {
+        warnings.push_back(std::format("events.{}: {} without 'prefab', event skipped", event.index, event.type));
+        return std::nullopt;
+    }
+    if (!isKnownPrefab || !isKnownPrefab(*prefab)) {
+        warnings.push_back(std::format("events.{}: unknown prefab '{}', event skipped", event.index, *prefab));
+        return std::nullopt;
+    }
+    return prefab;
+}
+
+/**
+ * @brief Tells whether a boss script path is acceptable: a relative `.wren` file, with `/` separators and no `..`,
+ * so it stays under the directory the server runs from.
+ * @param path Path read from the file.
+ * @return True if the path can be handed to the scripting plugin.
+ */
+bool isValidScriptPath(std::string_view path) {
+    // Backslashes are refused so that a file accepted on Linux means the same path on Windows.
+    if (path.size() <= SCRIPT_EXTENSION.size() || path.size() > MAX_SCRIPT_PATH_LENGTH ||
+        !path.ends_with(SCRIPT_EXTENSION) || path.contains('\\')) {
+        return false;
+    }
+    const std::filesystem::path script(path);
+    if (script.is_absolute() || script.has_root_name() || script.has_root_directory()) {
+        return false;
+    }
+    return std::ranges::none_of(script, [](const std::filesystem::path& part) { return part == ".."; });
+}
+
+/**
+ * @brief Adds a boss event.
+ * @param file Level file.
+ * @param reader Reader reporting corrections.
+ * @param event The boss event.
+ * @param isKnownPrefab Prefabs the game can spawn.
+ * @param out Level receiving the event.
+ * @param warnings Receives a message if the event is skipped or its script ignored.
+ */
+void addBoss(const config::ConfigFile& file, config::ConfigReader& reader, const RawEvent& event,
+             const PrefabFilter& isKnownPrefab, Level& out, std::vector<std::string>& warnings) {
+    const std::size_t i = event.index;
+    const std::optional<std::string> prefab = readPrefab(file, event, isKnownPrefab, warnings);
+    if (!prefab.has_value()) {
+        return;
+    }
+    prefabs::PrefabParams params = extraParams(file, i, BOSS_KEYS, warnings);
+    params.set("prefab", *prefab);
+    params.set("x", static_cast<double>(
+                        reader.number(eventKey(i, "x"), DEFAULT_SPAWN_X, -MAX_SPAWN_COORDINATE, MAX_SPAWN_COORDINATE)));
+    params.set("y", static_cast<double>(
+                        reader.number(eventKey(i, "y"), DEFAULT_SPAWN_Y, -MAX_SPAWN_COORDINATE, MAX_SPAWN_COORDINATE)));
+    if (file.contains(eventKey(i, "script"))) {
+        const std::optional<std::string> script = file.getString(eventKey(i, "script"));
+        if (script.has_value() && isValidScriptPath(*script)) {
+            params.set("script", *script);
+        } else {
+            warnings.push_back(std::format(
+                "events.{}: 'script' must be a relative path to a {} file without '..', ignored", i, SCRIPT_EXTENSION));
+        }
+    }
+    out.timeline.add(timeline::TimelineEvent{
+        .position = event.at,
+        .type = std::string(EVENT_BOSS),
+        .params = std::move(params),
+    });
+}
+
+/**
  * @brief Adds the spawn events of a wave.
  * @param file Level file.
  * @param reader Reader reporting corrections.
@@ -140,13 +224,8 @@ std::vector<RawEvent> readEvents(const config::ConfigFile& file, config::ConfigR
 void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const RawEvent& event, float scrollSpeed,
              const PrefabFilter& isKnownPrefab, Level& out, std::vector<std::string>& warnings) {
     const std::size_t i = event.index;
-    const std::optional<std::string> prefab = file.getString(eventKey(i, "prefab"));
+    const std::optional<std::string> prefab = readPrefab(file, event, isKnownPrefab, warnings);
     if (!prefab.has_value()) {
-        warnings.push_back(std::format("events.{}: spawn without 'prefab', event skipped", i));
-        return;
-    }
-    if (!isKnownPrefab || !isKnownPrefab(*prefab)) {
-        warnings.push_back(std::format("events.{}: unknown prefab '{}', event skipped", i, *prefab));
         return;
     }
     const std::size_t count = reader.count(eventKey(i, "count"), 1, 1, MAX_WAVE_COUNT);
@@ -154,7 +233,7 @@ void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const
     const float x = reader.number(eventKey(i, "x"), DEFAULT_SPAWN_X, -MAX_SPAWN_COORDINATE, MAX_SPAWN_COORDINATE);
     const float y = reader.number(eventKey(i, "y"), DEFAULT_SPAWN_Y, -MAX_SPAWN_COORDINATE, MAX_SPAWN_COORDINATE);
     const float spacingY = reader.number(eventKey(i, "spacing_y"), 0.0F, -MAX_SPAWN_COORDINATE, MAX_SPAWN_COORDINATE);
-    const prefabs::PrefabParams extra = extraParams(file, i, warnings);
+    const prefabs::PrefabParams extra = extraParams(file, i, SPAWN_KEYS, warnings);
 
     const float step = interval * scrollSpeed;
     for (std::size_t n = 0; n < count; ++n) {
@@ -197,6 +276,8 @@ Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPref
                 .type = std::string(EVENT_SCROLL),
                 .params = {{"speed", static_cast<double>(scrollSpeed)}},
             });
+        } else if (event.type == EVENT_BOSS) {
+            addBoss(file, reader, event, isKnownPrefab, level, warnings);
         } else if (event.type == EVENT_END) {
             level.timeline.add(
                 timeline::TimelineEvent{.position = event.at, .type = std::string(EVENT_END), .params = {}});

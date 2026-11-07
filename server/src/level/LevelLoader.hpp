@@ -45,6 +45,12 @@ inline constexpr float DEFAULT_SPAWN_Y = 360.0F;
 /** @brief Furthest spawn coordinate accepted on either axis, in pixels. */
 inline constexpr float MAX_SPAWN_COORDINATE = 10000.0F;
 
+/** @brief Longest boss script path accepted, in characters. */
+inline constexpr std::size_t MAX_SCRIPT_PATH_LENGTH = 256;
+
+/** @brief Extension a boss script must have. */
+inline constexpr std::string_view SCRIPT_EXTENSION = ".wren";
+
 /** @brief Tells whether a prefab name can be spawned by the game. */
 using PrefabFilter = std::function<bool(std::string_view)>;
 
@@ -72,6 +78,14 @@ using PrefabFilter = std::function<bool(std::string_view)>;
  * at = 2400.0
  * type = "scroll"
  * speed = 30.0
+ *
+ * [[events]]
+ * at = 6000.0
+ * type = "boss"              # stops the scroll until the boss is destroyed
+ * prefab = "boss_core"
+ * script = "scripts/Boss.wren"  # optional: relative path to a .wren file, without ".."
+ * x = 1328.0                 # optional
+ * y = 360.0                  # optional
  *
  * [[events]]
  * at = 6000.0
