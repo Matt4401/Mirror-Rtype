@@ -23,6 +23,47 @@
 
 namespace rlss::game {
 
+namespace {
+
+/** @brief Low 4 bits of an event counter: the wire keeps only those. */
+std::uint8_t cueCount(const int count) {
+    return static_cast<std::uint8_t>(static_cast<unsigned>(count) & protocol::SOUND_CUE_MAX);
+}
+
+/** @brief Strength level (0 to `SOUND_CUE_MAX`) of a speed, `SOUND_CUE_FULL_SPEED` and faster being the strongest. */
+std::uint8_t cueLevel(const float speed) {
+    if (!std::isfinite(speed) || speed <= 0.0F) {
+        return 0;
+    }
+    const float level = std::min(speed / SOUND_CUE_FULL_SPEED, 1.0F) * static_cast<float>(protocol::SOUND_CUE_MAX);
+    return static_cast<std::uint8_t>(std::lround(level));
+}
+
+/** @brief Speed of a strength level, the inverse of `cueLevel` (rounded to the level). */
+float cueSpeed(const std::uint8_t level) {
+    return static_cast<float>(level) * SOUND_CUE_FULL_SPEED / static_cast<float>(protocol::SOUND_CUE_MAX);
+}
+
+/** @brief The sound cues of an entity: a car's jumps and impacts, the ball's hits and bounces. */
+std::pair<protocol::SoundCue, protocol::SoundCue> soundCues(const ecs::Registry& registry, const ecs::Entity entity) {
+    const auto* cars = registry.findComponents<CarCues>();
+    if (cars != nullptr && cars->contains(entity)) {
+        const CarCues& cues = cars->get(entity);
+        const auto kind = static_cast<std::uint8_t>(std::clamp(cues.jumpKind, 0, int{protocol::SOUND_CUE_MAX}));
+        return {{.count = cueCount(cues.jumps), .value = kind},
+                {.count = cueCount(cues.impacts), .value = cueLevel(cues.impactSpeed)}};
+    }
+    const auto* balls = registry.findComponents<BallCues>();
+    if (balls != nullptr && balls->contains(entity)) {
+        const BallCues& cues = balls->get(entity);
+        return {{.count = cueCount(cues.hits), .value = cueLevel(cues.hitSpeed)},
+                {.count = cueCount(cues.bounces), .value = cueLevel(cues.bounceSpeed)}};
+    }
+    return {};
+}
+
+}  // namespace
+
 void ReplicationCodec::beginSnapshot(const std::uint32_t tick) {
     _tick = tick;
     _entities.clear();
@@ -44,6 +85,7 @@ void ReplicationCodec::writeEntity(const ecs::Registry& registry, const ecs::Ent
     }
     const auto* statuses = registry.findComponents<CarStatus>();
     const CarStatus status = statuses != nullptr && statuses->contains(entity) ? statuses->get(entity) : CarStatus{};
+    const auto [firstCue, secondCue] = soundCues(registry, entity);
     _entities.push_back(protocol::EntityState{
         .id = id,
         .kind = static_cast<std::uint8_t>(replicated.kind),
@@ -55,6 +97,8 @@ void ReplicationCodec::writeEntity(const ecs::Registry& registry, const ecs::Ent
         .boost = static_cast<std::uint8_t>(std::clamp(std::lround(status.boost), 0L, 100L)),
         .boosting = status.boosting,
         .flipReset = status.flipReset,
+        .firstCue = firstCue,
+        .secondCue = secondCue,
     });
 }
 
@@ -146,8 +190,20 @@ void ReplicationCodec::applySnapshot(ecs::net::SnapshotApplier& applier) {
                                                .placeAtKickoff = false,
                                                .flipReset = state.flipReset,
                                            });
+            registry.addComponent(*entity, CarCues{
+                                               .jumps = state.firstCue.count,
+                                               .jumpKind = state.firstCue.value,
+                                               .impacts = state.secondCue.count,
+                                               .impactSpeed = cueSpeed(state.secondCue.value),
+                                           });
         } else if (state.kind == KIND_BALL) {
             registry.addComponent(*entity, ShotGlow{.shot = std::min<int>(state.color, static_cast<int>(Shot::Gold))});
+            registry.addComponent(*entity, BallCues{
+                                               .hits = state.firstCue.count,
+                                               .hitSpeed = cueSpeed(state.firstCue.value),
+                                               .bounces = state.secondCue.count,
+                                               .bounceSpeed = cueSpeed(state.secondCue.value),
+                                           });
         }
         applier.setTransform(*entity, ecs::Transform{
                                           .x = state.x,

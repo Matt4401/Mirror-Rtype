@@ -72,6 +72,54 @@ struct CarStatus {
     bool flipReset = false;
 };
 
+/**
+ * @brief Speed (uu/s) heard at full strength in the sound cues: a hit, a bounce or an impact this fast or faster is
+ * sent as the strongest level (`protocol::SOUND_CUE_MAX`).
+ */
+inline constexpr float SOUND_CUE_FULL_SPEED = 2400.0F;
+
+/** @brief Values of `CarCues::jumpKind`, as in `rlss/scripts/Car.wren`. */
+enum class JumpKind : std::uint8_t {
+    /** @brief First jump, off a surface (or rolling back onto the wheels). */
+    Jump = 0,
+    /** @brief Second jump without direction, or jumping off the ball (purple shot). */
+    DoubleJump = 1,
+    /** @brief Second jump with a direction: a flip. */
+    Dodge = 2,
+};
+
+/**
+ * @brief Server: what a car did that makes a sound, written by the `Car` script, replicated as sound cues.
+ *
+ * The counters only grow (the wire keeps their low 4 bits): a client plays a sound when one changes, so a lost snapshot
+ * delays the sound instead of losing it.
+ */
+struct CarCues {
+    /** @brief Jumps of any kind made so far. */
+    int jumps = 0;
+    /** @brief `JumpKind` of the last jump. */
+    int jumpKind = 0;
+    /** @brief Hard contacts with the arena so far: landings and the body hitting a wall. */
+    int impacts = 0;
+    /** @brief Speed into the surface of the last impact, in uu/s. */
+    float impactSpeed = 0.0F;
+};
+
+/**
+ * @brief Server: what the ball did that makes a sound, written by the `Ball` script, replicated as sound cues. Counters
+ * work like `CarCues`.
+ */
+struct BallCues {
+    /** @brief Hits by a car so far. */
+    int hits = 0;
+    /** @brief Speed of the last hit along the contact, in uu/s. */
+    float hitSpeed = 0.0F;
+    /** @brief Bounces off the arena so far. */
+    int bounces = 0;
+    /** @brief Speed into the wall of the last bounce, in uu/s. */
+    float bounceSpeed = 0.0F;
+};
+
 /** @brief Values of `ShotGlow::shot`, as in `rlss/scripts/Shots.wren`. */
 enum class Shot : std::uint8_t {
     /** @brief No glow. */
@@ -133,6 +181,8 @@ struct ArenaShape {
     float goalBottom = 0.0F;
     /** @brief Depth of the goals behind the side walls. */
     float goalDepth = 0.0F;
+    /** @brief Radius of the back corners of the goals (0: sharp corners). */
+    float goalCornerRadius = 0.0F;
 };
 
 /** @brief Client: entities drawing the parts of a car, placed every frame by the `CarView` script. */
