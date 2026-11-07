@@ -5,12 +5,9 @@
 
 #include "Arena.hpp"
 #include "Shapes.hpp"
-#include "components/CameraComponent.hpp"
 #include "components/Renderable.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
-#include "core/services/IWindowService.hpp"
-#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "render/RenderPlugin.hpp"
 
@@ -18,16 +15,14 @@ namespace rlss::client {
 
 namespace {
 
-/** @brief Thickness of the walls drawn around the playing area. */
-constexpr float WALL = 40.0F;
-/** @brief Space kept around the arena in the window, in pixels. */
-constexpr float SCREEN_MARGIN = 24.0F;
+constexpr float WALL = ARENA_WALL;
 /** @brief The backdrop extends this far past the arena in every direction. */
 constexpr float BACKDROP_MARGIN = 4000.0F;
 constexpr float CENTER_CIRCLE_RADIUS = 150.0F;
 constexpr float LINE_WIDTH = 6.0F;
 
-constexpr ecs::Rgba BACKDROP{.r = 12, .g = 15, .b = 24, .a = 255};
+/** @brief Behind the walls: a solid structure, not empty space (the camera can show it beside the goals). */
+constexpr ecs::Rgba BACKDROP{.r = 72, .g = 80, .b = 98, .a = 255};
 constexpr ecs::Rgba WALLS{.r = 175, .g = 186, .b = 204, .a = 255};
 constexpr ecs::Rgba GRASS{.r = 64, .g = 150, .b = 70, .a = 255};
 constexpr ecs::Rgba INSIDE{.r = 27, .g = 36, .b = 60, .a = 255};
@@ -163,21 +158,6 @@ void ArenaViewPlugin::init(engine::Engine& engine) {
               },
               LINES, LAYER_LINES);
     strokeCircle(registry, centerX, centerY, CENTER_CIRCLE_RADIUS, LINE_WIDTH, LINES, LAYER_LINES);
-
-    const auto& window = engine.service<engine::IWindowService>();
-    const auto width = static_cast<float>(window.width());
-    const auto height = static_cast<float>(window.height());
-    const float fullWidth = outside.right - outside.left + (2.0F * arena::GOAL_DEPTH);
-    const float zoom = std::min((width - (2.0F * SCREEN_MARGIN)) / fullWidth,
-                                (height - (2.0F * SCREEN_MARGIN)) / (outside.bottom - outside.top));
-    const ecs::Entity camera = registry.spawnEntity();
-    registry.addComponent(camera, ecs::CameraComponent{
-                                      .targetX = centerX,
-                                      .targetY = centerY,
-                                      .offsetX = width / 2.0F,
-                                      .offsetY = height / 2.0F,
-                                      .zoom = zoom,
-                                  });
 }
 
 }  // namespace rlss::client
