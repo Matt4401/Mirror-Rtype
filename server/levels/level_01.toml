@@ -2,8 +2,9 @@
 # Read by the server only; clients receive the spawned entities through replication.
 # Format: docs/gameplay/levels.md. Every invalid value is corrected or its event skipped, with a warning at start-up.
 #
-# Positions (`at`) are scroll distances in pixels. At 60 px/s, 72 px = 1.2 s and the level lasts 5400 px = 90 s.
-# Same pacing as the former hardcoded loop: about one alien scout every 1.2 s.
+# Positions (`at`) are scroll distances in pixels. At 60 px/s, 72 px = 1.2 s and the level lasts 5400 px = 90 s, plus
+# the boss fight, during which the scroll stops. Waves keep the pacing of the former hardcoded loop: about one alien
+# scout every 1.2 s.
 
 [level]
 name = "Sector 1"
@@ -146,6 +147,30 @@ interval = 1.2
 y = 580.0
 spacing_y = -60.0
 
+# --- Boss: the scroll stops until it is destroyed ---
+
+[[events]]
+at = 4800.0
+type = "boss"
+prefab = "boss_core"
+script = "scripts/Boss.wren"
+y = 360.0
+health = 40
+
 [[events]]
 at = 5400.0
 type = "end"
+
+# --- Terrain: a ground through the middle of the level, then a ceiling before the finale ---
+
+[[terrain]]
+from = 1800.0
+to = 3200.0
+side = "bottom"
+height = 100.0
+
+[[terrain]]
+from = 3400.0
+to = 4000.0
+side = "top"
+height = 80.0
