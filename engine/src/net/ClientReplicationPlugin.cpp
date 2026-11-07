@@ -1,7 +1,9 @@
 #include "net/ClientReplicationPlugin.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "core/Engine.hpp"
@@ -20,6 +22,16 @@
 
 namespace ecs::net {
 
+namespace {
+
+/** @brief Inputs kept to measure their round trip: about 4 seconds of inputs at 60 Hz, more than any playable lag. */
+constexpr std::size_t MAX_PENDING_INPUTS = 256;
+/** @brief Weight of a new sample in the smoothed round trip. */
+constexpr float RTT_SMOOTHING = 0.1F;
+constexpr double MILLISECONDS_PER_SECOND = 1000.0;
+
+}  // namespace
+
 ClientReplicationPlugin::ClientReplicationPlugin(std::shared_ptr<IReplicationCodec> codec) : _codec(std::move(codec)) {}
 
 void ClientReplicationPlugin::build(engine::PluginBuilder& builder) { builder.require<NetworkPlugin>(); }
@@ -28,6 +40,9 @@ void ClientReplicationPlugin::init(engine::Engine& engine) {
     auto& registry = engine.registry();
     if (!registry.hasResource<SnapshotState>()) {
         registry.emplaceResource<SnapshotState>();
+    }
+    if (!registry.hasResource<ReplicationStats>()) {
+        registry.emplaceResource<ReplicationStats>();
     }
     _packets = engine.eventBus().subscribe<PacketReceived>(
         [this, &engine](const PacketReceived& packet) { onPacket(engine, packet); });
@@ -46,11 +61,31 @@ void ClientReplicationPlugin::onLocalInput(engine::Engine& engine, const LocalIn
     Bytes bytes = _codec->encodeInput(local.input);
     service.send(SERVER_PEER, bytes, Channel::Unreliable);
 
+    _pendingInputs.push_back({.sequence = local.input.sequence, .sentAt = engine.clock().now()});
+    if (_pendingInputs.size() > MAX_PENDING_INPUTS) {
+        _pendingInputs.pop_front();
+    }
     _sentInputs.push_back({.sequence = local.input.sequence, .bytes = std::move(bytes)});
     if (_sentInputs.size() > INPUT_RESEND_COUNT) {
         _sentInputs.pop_front();
     }
     predict(engine.registry(), engine.eventBus(), local.input, engine.fixedDeltaTime());
+}
+
+void ClientReplicationPlugin::measureInputRtt(engine::Engine& engine, const std::uint32_t acknowledged) {
+    std::optional<double> sentAt;
+    while (!_pendingInputs.empty() && _pendingInputs.front().sequence <= acknowledged) {
+        if (_pendingInputs.front().sequence == acknowledged) {
+            sentAt = _pendingInputs.front().sentAt;
+        }
+        _pendingInputs.pop_front();
+    }
+    if (!sentAt) {
+        return;
+    }
+    auto& stats = engine.registry().getResource<ReplicationStats>();
+    const auto sample = static_cast<float>((engine.clock().now() - *sentAt) * MILLISECONDS_PER_SECOND);
+    stats.inputRttMs = stats.inputRttMs ? *stats.inputRttMs + (RTT_SMOOTHING * (sample - *stats.inputRttMs)) : sample;
 }
 
 void ClientReplicationPlugin::onPacket(engine::Engine& engine, const PacketReceived& packet) {
@@ -61,8 +96,10 @@ void ClientReplicationPlugin::onPacket(engine::Engine& engine, const PacketRecei
     }
     auto& registry = engine.registry();
     auto& state = registry.getResource<SnapshotState>();
+    auto& stats = registry.getResource<ReplicationStats>();
     // Unreliable channel: an older snapshot can arrive after a newer one; applying it would move entities back.
     if (state.tick && header->tick < *state.tick) {
+        ++stats.snapshotsStale;
         return;
     }
     const std::uint64_t part = std::uint64_t{1} << header->partIndex;
@@ -71,6 +108,8 @@ void ClientReplicationPlugin::onPacket(engine::Engine& engine, const PacketRecei
             state.tick ? static_cast<float>(header->tick - *state.tick) * engine.fixedDeltaTime() : 0.0F;
         _partsReceived = 0;
         _snapshotEntities.clear();
+        stats.snapshotsMissed += state.tick ? header->tick - *state.tick - 1 : 0;
+        ++stats.snapshotsReceived;
     } else if ((_partsReceived & part) != 0) {
         return;
     }
@@ -79,6 +118,7 @@ void ClientReplicationPlugin::onPacket(engine::Engine& engine, const PacketRecei
     _codec->applySnapshot(applier);
     state.tick = header->tick;
     state.lastProcessedInput = header->lastProcessedInput;
+    measureInputRtt(engine, header->lastProcessedInput);
     _partsReceived |= part;
     _snapshotEntities.insert(applier.seen().begin(), applier.seen().end());
 
