@@ -6,8 +6,13 @@
 #include <string>
 #include <vector>
 
+#include "core/Engine.hpp"
+#include "ecs/time/Time.hpp"
+#include "events/EventBus.hpp"
 #include "timeline/Timeline.hpp"
 #include "timeline/TimelineEvent.hpp"
+#include "timeline/TimelineEvents.hpp"
+#include "timeline/TimelinePlugin.hpp"
 
 namespace {
 
@@ -216,6 +221,118 @@ TEST(Timeline, EventParametersAreKept) {
     ASSERT_EQ(fired.size(), 1U);
     EXPECT_EQ(fired[0].params.find<std::string>("prefab"), "alien_scout");
     EXPECT_DOUBLE_EQ(fired[0].params.find<double>("y").value_or(0.0), 200.0);
+}
+
+// --- TimelinePlugin ---
+
+namespace {
+
+/** @brief Records what the plugin publishes. */
+struct Recorder {
+    std::vector<std::string> fired;
+    int finished = 0;
+
+    explicit Recorder(engine::Engine& engine) {
+        engine.eventBus().subscribe<timeline::TimelineEventFired>(
+            [this](const timeline::TimelineEventFired& fired) { this->fired.push_back(fired.event.type); });
+        engine.eventBus().subscribe<timeline::TimelineFinished>(
+            [this](const timeline::TimelineFinished& /*finished*/) { ++this->finished; });
+    }
+};
+
+ecs::time::Time fixedStep(float dt) { return ecs::time::Time{.deltaTime = dt, .totalElapsedTime = 0.0F}; }
+
+}  // namespace
+
+TEST(TimelinePlugin, IsStoppedByDefault) {
+    engine::Engine engine;
+    timeline::TimelinePlugin player;
+    player.timeline().add(makeEvent(0.5F, "spawn"));
+    const Recorder recorder(engine);
+
+    player.fixedUpdate(engine, fixedStep(1.0F));
+
+    EXPECT_FLOAT_EQ(player.speed(), 0.0F);
+    EXPECT_TRUE(recorder.fired.empty());
+}
+
+TEST(TimelinePlugin, MovesTheCursorBySpeedTimesDeltaTime) {
+    engine::Engine engine;
+    timeline::TimelinePlugin player;
+    player.timeline().add(makeEvent(120.0F, "spawn"));
+    player.setSpeed(60.0F);
+    const Recorder recorder(engine);
+
+    player.fixedUpdate(engine, fixedStep(1.0F));
+    EXPECT_TRUE(recorder.fired.empty());
+    EXPECT_FLOAT_EQ(player.timeline().cursor(), 60.0F);
+
+    player.fixedUpdate(engine, fixedStep(1.0F));
+    ASSERT_EQ(recorder.fired.size(), 1U);
+    EXPECT_EQ(recorder.fired[0], "spawn");
+}
+
+TEST(TimelinePlugin, PublishesEveryReachedEventInOrderThenFinishedOnce) {
+    engine::Engine engine;
+    timeline::TimelinePlugin player;
+    player.timeline().add(makeEvent(10.0F, "a"));
+    player.timeline().add(makeEvent(20.0F, "b"));
+    const Recorder recorder(engine);
+
+    player.step(engine, 100.0F);
+    player.step(engine, 100.0F);
+
+    const std::vector<std::string> expected{"a", "b"};
+    EXPECT_EQ(recorder.fired, expected);
+    EXPECT_EQ(recorder.finished, 1);
+}
+
+TEST(TimelinePlugin, ZeroSpeedPausesPlayback) {
+    engine::Engine engine;
+    timeline::TimelinePlugin player;
+    player.timeline().add(makeEvent(50.0F, "spawn"));
+    player.setSpeed(100.0F);
+    const Recorder recorder(engine);
+
+    player.setSpeed(0.0F);
+    for (int i = 0; i < 100; ++i) {
+        player.fixedUpdate(engine, fixedStep(1.0F / 60.0F));
+    }
+
+    EXPECT_TRUE(recorder.fired.empty());
+}
+
+TEST(TimelinePlugin, InvalidSpeedsAreIgnored) {
+    timeline::TimelinePlugin player;
+    player.setSpeed(30.0F);
+
+    player.setSpeed(-5.0F);
+    player.setSpeed(std::numeric_limits<float>::quiet_NaN());
+    player.setSpeed(std::numeric_limits<float>::infinity());
+
+    EXPECT_FLOAT_EQ(player.speed(), 30.0F);
+}
+
+TEST(TimelinePlugin, HandlerMayAddEventsWhileHandlingOne) {
+    engine::Engine engine;
+    timeline::TimelinePlugin player;
+    player.timeline().add(makeEvent(10.0F, "first"));
+    player.timeline().add(makeEvent(20.0F, "second"));
+    std::vector<std::string> seen;
+    engine.eventBus().subscribe<timeline::TimelineEventFired>([&](const timeline::TimelineEventFired& fired) {
+        seen.push_back(fired.event.type);
+        if (fired.event.type == "first") {
+            for (int i = 0; i < 64; ++i) {  // forces the event storage to reallocate
+                player.timeline().add(makeEvent(1000.0F + static_cast<float>(i), "added"));
+            }
+        }
+    });
+
+    player.step(engine, 30.0F);
+
+    const std::vector<std::string> expected{"first", "second"};
+    EXPECT_EQ(seen, expected);
+    EXPECT_EQ(player.timeline().pending(), 64U);
 }
 
 int main(int argc, char** argv) {

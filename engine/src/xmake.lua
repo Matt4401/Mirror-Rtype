@@ -69,7 +69,7 @@ target("engine_timeline")
     set_kind("static")
     add_files("timeline/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_prefabs", {public = true})
+    add_deps("engine_core", "engine_events", "engine_prefabs", {public = true})
 
 target("engine_all")
     set_kind("phony")
