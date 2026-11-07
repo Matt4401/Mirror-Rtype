@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "ecs/Entity.hpp"
 #include "input/ActionId.hpp"
 
 namespace rlss::game {
@@ -55,15 +56,15 @@ struct ArenaShape {
 /** @brief Client: entities drawing the parts of a car, placed every frame by the `CarView` script. */
 struct CarParts {
     /** @brief Chassis, in the player color. */
-    std::uint32_t body = 0;
+    ecs::Entity body = 0;
     /** @brief Cabin, on top of the chassis. */
-    std::uint32_t cabin = 0;
+    ecs::Entity cabin = 0;
     /** @brief Rear wheel. */
-    std::uint32_t rearWheel = 0;
+    ecs::Entity rearWheel = 0;
     /** @brief Front wheel. */
-    std::uint32_t frontWheel = 0;
+    ecs::Entity frontWheel = 0;
     /** @brief Headlight, shows where the car is facing. */
-    std::uint32_t headlight = 0;
+    ecs::Entity headlight = 0;
 };
 
 }  // namespace rlss::game
