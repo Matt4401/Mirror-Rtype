@@ -76,6 +76,7 @@ nav:
       - Client: architecture/client.md
       - Client ↔ Server: architecture/client-server.md
       - Network: architecture/network.md
+      - Metrics: architecture/metrics.md
   - Prefabs:
       - Overview: prefabs/index.md
       - Collision Categories: prefabs/collision-categories.md
