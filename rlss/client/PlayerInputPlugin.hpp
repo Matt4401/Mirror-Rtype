@@ -6,10 +6,12 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "events/EventBus.hpp"
 #include "input/ActionMapping.hpp"
 
 namespace ecs::time {
@@ -27,7 +29,8 @@ namespace rlss::client {
 
 /**
  * @brief Creates the local player's `input::InputState` (sampled by `input::InputPlugin`) and publishes it as an
- * `ecs::net::LocalInput` every fixed step; `ClientReplicationPlugin` sends it to the server.
+ * `ecs::net::LocalInput` every fixed step while the player is in a match (between `MatchJoined` and `MatchLeft`);
+ * `ClientReplicationPlugin` sends it to the server.
  */
 class PlayerInputPlugin final : public engine::IPlugin {
   public:
@@ -56,9 +59,21 @@ class PlayerInputPlugin final : public engine::IPlugin {
      */
     void fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
 
+    /**
+     * @brief Unsubscribes from the match events.
+     * @param engine Host engine.
+     */
+    void shutdown(engine::Engine& engine) override;
+
   private:
-    /** @brief Sequence of the last input sent. */
+    /** @brief Sequence of the last input sent; keeps growing from one match to the next. */
     std::uint32_t _sequence = 0;
+    /** @brief True while the player is in a match. */
+    bool _inMatch = false;
+    /** @brief Subscription to `MatchJoined`, while initialized. */
+    std::optional<ecs::EventBus::EventToken> _joined;
+    /** @brief Subscription to `MatchLeft`, while initialized. */
+    std::optional<ecs::EventBus::EventToken> _left;
 };
 
 }  // namespace rlss::client

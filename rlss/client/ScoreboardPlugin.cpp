@@ -6,6 +6,7 @@
 #include "Arena.hpp"
 #include "CameraPlugin.hpp"
 #include "CarViewPlugin.hpp"
+#include "ClientEvents.hpp"
 #include "Shapes.hpp"
 #include "components/Renderable.hpp"
 #include "components/ScriptComponent.hpp"
@@ -49,10 +50,11 @@ struct Display {
 constexpr float SCORE_CELL = 9.0F;
 constexpr float SCORE_PITCH = 11.0F;
 constexpr float SCORE_TOP = 14.0F;
-/** @brief Gap between each score and the middle of the screen. */
+/** @brief Gap between each score and the clock. */
 constexpr float SCORE_GAP = 26.0F;
-constexpr float DASH_WIDTH = 20.0F;
-constexpr float DASH_HEIGHT = 5.0F;
+/** @brief Characters of the clock: "2:59", and "+0:42" in overtime. */
+constexpr int CLOCK_SLOTS = 4;
+constexpr int OVERTIME_SLOTS = 5;
 constexpr float BIG_CELL = 24.0F;
 constexpr float BIG_PITCH = 28.0F;
 /** @brief Top of the countdown, as a share of the window height. */
@@ -64,9 +66,8 @@ constexpr float BANNER_TOP = 0.22F;
 constexpr int LAYER_SCOREBOARD = 100;
 constexpr ecs::Rgba COUNTDOWN_COLOR{.r = 255, .g = 255, .b = 255, .a = 235};
 constexpr ecs::Rgba BANNER_COLOR{.r = 255, .g = 215, .b = 60, .a = 255};
-constexpr ecs::Rgba DASH_COLOR{.r = 255, .g = 255, .b = 255, .a = 150};
-/** @brief Display index of the squares always shown (the dash). */
-constexpr int ALWAYS_SHOWN = 4;
+constexpr ecs::Rgba CLOCK_COLOR{.r = 255, .g = 255, .b = 255, .a = 235};
+constexpr ecs::Rgba OVERTIME_COLOR{.r = 255, .g = 215, .b = 60, .a = 255};
 
 /** @brief Width of a text of `slots` characters: glyphs plus one square of space between them. */
 constexpr float textWidth(const int slots, const float pitch) {
@@ -123,11 +124,13 @@ void ScoreboardPlugin::init(engine::Engine& engine) {
     const float middle = static_cast<float>(window.width()) / 2.0F;
     const auto height = static_cast<float>(window.height());
     const float scoreWidth = textWidth(2, SCORE_PITCH);
+    // The scores leave room for the longest clock between them.
+    const float clockHalf = textWidth(OVERTIME_SLOTS, SCORE_PITCH) / 2.0F;
 
     spawnDisplay(registry, {
                                .index = 0,
                                .slots = 2,
-                               .left = middle - SCORE_GAP - scoreWidth,
+                               .left = middle - clockHalf - SCORE_GAP - scoreWidth,
                                .top = SCORE_TOP,
                                .cell = SCORE_CELL,
                                .pitch = SCORE_PITCH,
@@ -136,7 +139,7 @@ void ScoreboardPlugin::init(engine::Engine& engine) {
     spawnDisplay(registry, {
                                .index = 1,
                                .slots = 2,
-                               .left = middle + SCORE_GAP,
+                               .left = middle + clockHalf + SCORE_GAP,
                                .top = SCORE_TOP,
                                .cell = SCORE_CELL,
                                .pitch = SCORE_PITCH,
@@ -160,18 +163,28 @@ void ScoreboardPlugin::init(engine::Engine& engine) {
                                .pitch = BANNER_PITCH,
                                .color = BANNER_COLOR,
                            });
-    spawnCell(registry,
-              game::ScoreCell{
-                  .display = ALWAYS_SHOWN,
-                  .screenX = middle,
-                  .screenY = SCORE_TOP + (static_cast<float>(GLYPH_ROWS) * SCORE_PITCH / 2.0F),
-                  .width = DASH_WIDTH,
-                  .height = DASH_HEIGHT,
-              },
-              DASH_COLOR);
+    spawnDisplay(registry, {
+                               .index = 4,
+                               .slots = CLOCK_SLOTS,
+                               .left = middle - (textWidth(CLOCK_SLOTS, SCORE_PITCH) / 2.0F),
+                               .top = SCORE_TOP,
+                               .cell = SCORE_CELL,
+                               .pitch = SCORE_PITCH,
+                               .color = CLOCK_COLOR,
+                           });
+    spawnDisplay(registry, {
+                               .index = 5,
+                               .slots = OVERTIME_SLOTS,
+                               .left = middle - clockHalf,
+                               .top = SCORE_TOP,
+                               .cell = SCORE_CELL,
+                               .pitch = SCORE_PITCH,
+                               .color = OVERTIME_COLOR,
+                           });
 
     _scoreboard = registry.spawnEntity();
-    registry.addComponent(_scoreboard, game::MatchState{});
+    // Hidden until a match is joined.
+    registry.addComponent(_scoreboard, game::MatchState{.phase = game::NO_MATCH});
     registry.addComponent(_scoreboard, ecs::ScriptComponent{
                                            .moduleName = std::string(game::SCOREBOARD_SCRIPT_MODULE),
                                            .className = "ScoreboardView",
@@ -183,7 +196,8 @@ void ScoreboardPlugin::init(engine::Engine& engine) {
             const auto message = protocol::decode(packet.data);
             const auto* status = message ? std::get_if<protocol::MatchStatus>(&*message) : nullptr;
             auto& states = engine.registry().getComponents<game::MatchState>();
-            if (status == nullptr || !states.contains(_scoreboard)) {
+            // A late status of a match just left must not show the scoreboard again in the menu.
+            if (status == nullptr || !_inMatch || !states.contains(_scoreboard)) {
                 return;
             }
             states.get(_scoreboard) = game::MatchState{
@@ -191,14 +205,39 @@ void ScoreboardPlugin::init(engine::Engine& engine) {
                 .orangeScore = status->orangeScore,
                 .phase = static_cast<int>(status->phase),
                 .countdown = status->countdown,
+                .clock = status->clock,
+                .overtime = status->overtime,
             };
         });
+    _joined = engine.eventBus().subscribe<MatchJoined>([this, &engine](const MatchJoined& /*event*/) {
+        _inMatch = true;
+        setState(engine, game::MatchState{});
+    });
+    _left = engine.eventBus().subscribe<MatchLeft>([this, &engine](const MatchLeft& /*event*/) {
+        _inMatch = false;
+        setState(engine, game::MatchState{.phase = game::NO_MATCH});
+    });
+}
+
+void ScoreboardPlugin::setState(engine::Engine& engine, const game::MatchState& state) const {
+    auto& states = engine.registry().getComponents<game::MatchState>();
+    if (states.contains(_scoreboard)) {
+        states.get(_scoreboard) = state;
+    }
 }
 
 void ScoreboardPlugin::shutdown(engine::Engine& engine) {
     if (_packets) {
         engine.eventBus().unsubscribe<ecs::net::PacketReceived>(*_packets);
         _packets.reset();
+    }
+    if (_joined) {
+        engine.eventBus().unsubscribe<MatchJoined>(*_joined);
+        _joined.reset();
+    }
+    if (_left) {
+        engine.eventBus().unsubscribe<MatchLeft>(*_left);
+        _left.reset();
     }
 }
 

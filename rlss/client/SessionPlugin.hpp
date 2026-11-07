@@ -1,6 +1,6 @@
 /**
  * @file SessionPlugin.hpp
- * @brief Client plugin following the session with the server: lobby updates and disconnection.
+ * @brief Client plugin following the session with the server: closes the game when the connection ends.
  */
 
 #pragma once
@@ -17,9 +17,9 @@
 namespace rlss::client {
 
 /**
- * @brief Logs the player count sent by the server, and closes the game when the connection ends.
+ * @brief Closes the game when the connection with the server ends, and logs why.
  *
- * Reacts to the `PacketReceived` / `PeerDisconnected` events published by `ecs::net::NetworkPlugin`.
+ * Reacts to the `PeerDisconnected` event published by `ecs::net::NetworkPlugin`.
  */
 class SessionPlugin final : public engine::IPlugin {
   public:
@@ -42,13 +42,13 @@ class SessionPlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Subscribes to the network events.
+     * @brief Subscribes to the disconnection.
      * @param engine Host engine.
      */
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Unsubscribes from the network events.
+     * @brief Unsubscribes from the disconnection.
      * @param engine Host engine.
      */
     void shutdown(engine::Engine& engine) override;
@@ -66,8 +66,6 @@ class SessionPlugin final : public engine::IPlugin {
     bool _lost = false;
     /** @brief Subscription to `PeerDisconnected`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _disconnected;
-    /** @brief Subscription to `PacketReceived`, while initialized. */
-    std::optional<ecs::EventBus::EventToken> _packets;
 };
 
 }  // namespace rlss::client

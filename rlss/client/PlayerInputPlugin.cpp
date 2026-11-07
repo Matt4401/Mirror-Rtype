@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "ActionId.hpp"
+#include "ClientEvents.hpp"
 #include "components/InputBuffer.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
@@ -61,9 +62,25 @@ void PlayerInputPlugin::init(engine::Engine& engine) {
     state.playerIndex = LOCAL_PLAYER;
     const ecs::Entity entity = engine.registry().spawnEntity();
     engine.registry().addComponent(entity, std::move(state));
+    _joined = engine.eventBus().subscribe<MatchJoined>([this](const MatchJoined& /*event*/) { _inMatch = true; });
+    _left = engine.eventBus().subscribe<MatchLeft>([this](const MatchLeft& /*event*/) { _inMatch = false; });
+}
+
+void PlayerInputPlugin::shutdown(engine::Engine& engine) {
+    if (_joined) {
+        engine.eventBus().unsubscribe<MatchJoined>(*_joined);
+        _joined.reset();
+    }
+    if (_left) {
+        engine.eventBus().unsubscribe<MatchLeft>(*_left);
+        _left.reset();
+    }
 }
 
 void PlayerInputPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& /*time*/) {
+    if (!_inMatch) {
+        return;  // in the menu, the server has nothing to drive
+    }
     ecs::NetInput input{.sequence = ++_sequence, .held = {}, .axes = {}};
     engine.registry().runSystem<input::InputState>([&input](ecs::Entity /*entity*/, const input::InputState& state) {
         if (state.playerIndex != LOCAL_PLAYER) {

@@ -20,6 +20,7 @@
 #include "CarViewPlugin.hpp"
 #include "CommandLine.hpp"
 #include "Logger.hpp"
+#include "MenuPlugin.hpp"
 #include "PlayerInputPlugin.hpp"
 #include "ScoreboardPlugin.hpp"
 #include "ServerLink.hpp"
@@ -79,7 +80,7 @@ int main(int ac, char** av) {
         }
         const auto link = std::make_shared<rlss::client::ServerLink>(transport, std::move(*received));
 
-        // Connected: open the game window.
+        // Connected: open the game window, on the menu.
         engine::Engine engine;
         engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.title = std::string(rlss::protocol::GAME_TITLE)})
             .addPlugin<input::InputPlugin>(rlss::client::makeControls())
@@ -93,7 +94,8 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::BallViewPlugin>()
             .addPlugin<rlss::client::CameraPlugin>()
             .addPlugin<rlss::client::ScoreboardPlugin>()
-            .addPlugin<rlss::client::PlayerInputPlugin>();
+            .addPlugin<rlss::client::PlayerInputPlugin>()
+            .addPlugin<rlss::client::MenuPlugin>(link);
         engine.run();
         return engine.getPlugin<rlss::client::SessionPlugin>().connectionLost() ? EXIT_ERROR : 0;
     } catch (const std::exception& error) {

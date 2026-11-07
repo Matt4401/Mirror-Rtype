@@ -24,6 +24,10 @@ namespace rlss::client {
  * @brief Adapts the client transport to the engine's `NetworkPlugin`, like `ecs::net::ClientConnection`, but first
  * hands out the events already read while connecting (the `Connected` event and what followed it), so the game
  * plugins see the whole session.
+ *
+ * It also drops the snapshots that do not come from the match the player is in (`setMatch()`): snapshots travel
+ * unreliably, so a few of a match just left can arrive after the player went back to the menu or joined another
+ * match. Applied, they would bring back the cars of the old match, or set a newer tick than the new match's.
  */
 class ServerLink final : public ecs::net::INetworkService, public ecs::net::INetworkEventSource {
   public:
@@ -62,11 +66,19 @@ class ServerLink final : public ecs::net::INetworkService, public ecs::net::INet
      */
     [[nodiscard]] std::vector<ecs::net::NetworkEvent> poll() override;
 
+    /**
+     * @brief Sets the match whose snapshots are let through.
+     * @param matchId Match joined, or nothing in the menu (no snapshot at all).
+     */
+    void setMatch(std::optional<std::uint16_t> matchId) noexcept { _match = matchId; }
+
   private:
     /** @brief Wrapped transport. */
     std::shared_ptr<ecs::net::INetworkClient> _client;
     /** @brief Events read before the engine started. */
     std::vector<ecs::net::NetworkEvent> _pending;
+    /** @brief Match whose snapshots are let through, if any. */
+    std::optional<std::uint16_t> _match;
 };
 
 /**
