@@ -19,6 +19,7 @@ constexpr std::size_t SNAPSHOT_HEADER_SIZE = 12;
 constexpr std::size_t ENTITY_SIZE = 20;
 constexpr std::size_t PLAYER_INPUT_SIZE = 7;
 constexpr std::size_t MATCH_STATUS_SIZE = 7;
+constexpr std::size_t WELCOME_SIZE = 5;
 constexpr float STEER_SCALE = 127.0F;
 constexpr std::uint8_t FLAG_FACING_LEFT = 0x01U;
 constexpr std::uint8_t FLAG_BOOSTING = 0x02U;
@@ -180,6 +181,17 @@ std::optional<Message> decodeMatchStatus(Reader& reader) {
     return status;
 }
 
+std::optional<Message> decodeWelcome(Reader& reader) {
+    if (reader.remaining() != WELCOME_SIZE - 1) {
+        return std::nullopt;
+    }
+    const Welcome welcome{.carId = reader.u32()};
+    if (welcome.carId == 0) {
+        return std::nullopt;
+    }
+    return welcome;
+}
+
 }  // namespace
 
 Bytes encode(const LobbyState& message) {
@@ -248,6 +260,15 @@ Bytes encode(const MatchStatus& message) {
     return out;
 }
 
+Bytes encode(const Welcome& message) {
+    Bytes out;
+    out.reserve(WELCOME_SIZE);
+    Writer writer(out);
+    writer.u8(static_cast<std::uint8_t>(MessageType::Welcome));
+    writer.u32(message.carId);
+    return out;
+}
+
 std::optional<Message> decode(const std::span<const std::uint8_t> data) {
     if (data.empty()) {
         return std::nullopt;
@@ -262,6 +283,8 @@ std::optional<Message> decode(const std::span<const std::uint8_t> data) {
             return decodePlayerInput(reader);
         case MessageType::MatchStatus:
             return decodeMatchStatus(reader);
+        case MessageType::Welcome:
+            return decodeWelcome(reader);
     }
     return std::nullopt;
 }
