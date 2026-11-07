@@ -2,6 +2,7 @@ import "core/Input" for Input
 import "rlss/components" for Transform, Controls, CarStatus
 import "rlss/scripts/Arena" for Arena
 import "rlss/scripts/CarTuning" for CarTuning
+import "rlss/scripts/Kickoff" for Kickoff
 import "rlss/scripts/Simulation" for Simulation
 
 /**
@@ -72,7 +73,40 @@ class Car {
         _boostTime = 0
         _lastBallHit = -10
 
+        // A car that just joined starts at its kickoff spot.
+        if (_status.placeAtKickoff == true) {
+            _status.placeAtKickoff = false
+            placeAtKickoff()
+        }
         Simulation.addCar(this)
+    }
+
+    /** @brief Back to the kickoff spot of this player: at rest, wheels down, full boost. */
+    placeAtKickoff() {
+        if (_arena == null) _arena = Arena.fromWorld()
+        if (_arena == null || _player == null) return
+        var spot = Kickoff.spot(_arena, _player)
+        _x = spot[0]
+        _y = spot[1]
+        _facing = spot[2]
+        _theta = 0
+        _vx = 0
+        _vy = 0
+        _omega = 0
+        _grounded = true
+        _separation = 0
+        _normalSpeed = 0
+        _steerSign = _facing
+        _steerLocked = false
+        _jumpHold = 0
+        _hasJumped = false
+        _secondJumpUsed = false
+        _spinTime = 0
+        _contact = false
+        _boost = CarTuning.BOOST_START
+        _boosting = false
+        _boostTime = 0
+        sync()
     }
 
     onDestroy() { Simulation.removeCar(this) }
@@ -131,6 +165,45 @@ class Car {
         } else {
             fly_(dt, steer, jump, jumpPressed)
         }
+        collidePosts_()
+    }
+
+    // A goal post is a convex edge: it can poke into a flat side of the hitbox without any hitbox corner touching a
+    // wall, so it is checked on its own. The car is pushed so that the post leaves through the closest side.
+    collidePosts_() {
+        var c = _theta.cos
+        var s = _theta.sin
+        for (post in _arena.posts) {
+            var dx = post[0] - _x
+            var dy = post[1] - _y
+            var along = dx * c + dy * s
+            var up = dx * s - dy * c
+            var inAlong = CarTuning.HALF_LENGTH - along.abs
+            var inUp = CarTuning.HALF_HEIGHT - up.abs
+            if (inAlong > 0 && inUp > 0) {
+                var pushX = 0
+                var pushY = 0
+                var depth = 0
+                if (inAlong < inUp) {
+                    var side = along >= 0 ? 1 : -1
+                    pushX = -c * side
+                    pushY = -s * side
+                    depth = inAlong
+                } else {
+                    var side = up >= 0 ? 1 : -1
+                    pushX = -s * side
+                    pushY = c * side
+                    depth = inUp
+                }
+                _x = _x + pushX * depth
+                _y = _y + pushY * depth
+                var into = _vx * pushX + _vy * pushY
+                if (into < 0) {
+                    _vx = _vx - pushX * into
+                    _vy = _vy - pushY * into
+                }
+            }
+        }
     }
 
     /** @brief Publishes the state to the ECS, once per frame. */
@@ -184,6 +257,9 @@ class Car {
             s = s + throttle.sign * CarTuning.throttleAccel(s.abs) * throttle.abs * dt
         } else if (throttle != 0) {
             s = Car.towardZero_(s, CarTuning.BRAKE * dt)
+            // Stopped within this step: start driving the other way (otherwise, on a wall, gravity would bring back a
+            // little sliding every step and the car would brake forever).
+            if (s == 0) s = throttle.sign * CarTuning.throttleAccel(0) * throttle.abs * dt
         } else {
             s = Car.towardZero_(s, CarTuning.COAST * dt)
         }
@@ -220,6 +296,7 @@ class Car {
         _y = py + arena.ny * (rideHeight_(arena) - arena.distance)
         _vx = s * tx + _normalSpeed * arena.nx
         _vy = s * ty + _normalSpeed * arena.ny
+        blockCorners_()
 
         if (jumpPressed) {
             // Jump along the surface normal: straight up from the floor, away from a wall.
@@ -337,28 +414,22 @@ class Car {
 
     // Keeps the four corners of the hitbox inside the arena, and lands when the wheels touch first.
     collide_(dt) {
+        _contact = false
+        // Corners of goals are sharp: a car can touch two walls at once, so push out a few times.
+        var first = null
+        for (i in 0...3) {
+            var hit = deepestCorner_()
+            if (hit == null) break
+            if (first == null) first = hit
+            _x = _x - hit[1] * hit[0]
+            _y = _y - hit[2] * hit[0]
+        }
+        if (first == null) return
+
+        var nx = first[1]
+        var ny = first[2]
         var c = _theta.cos
         var s = _theta.sin
-        var hl = CarTuning.HALF_LENGTH
-        var hh = CarTuning.HALF_HEIGHT
-        var deepest = 0
-        var nx = 0
-        var ny = 0
-        for (corner in Car.CORNERS) {
-            var lx = corner[0] * hl
-            var ly = corner[1] * hh
-            _arena.sample(_x + c * lx + s * ly, _y + s * lx - c * ly)
-            if (_arena.distance < deepest) {
-                deepest = _arena.distance
-                nx = _arena.nx
-                ny = _arena.ny
-            }
-        }
-        _contact = false
-        if (deepest > -0.01) return
-
-        _x = _x - nx * deepest
-        _y = _y - ny * deepest
         var align = s * nx - c * ny
         var vn = _vx * nx + _vy * ny
         _contact = true
@@ -366,7 +437,8 @@ class Car {
         _contactNx = nx
         _contactNy = ny
 
-        if (align > CarTuning.LAND_ALIGN && _sinceJump > CarTuning.JUMP_LAND_DELAY && vn <= 0) {
+        if (align > CarTuning.LAND_ALIGN && _sinceJump > CarTuning.JUMP_LAND_DELAY &&
+            vn < CarTuning.LAND_MAX_SEPARATION) {
             land_(nx, ny, vn)
             return
         }
@@ -386,6 +458,41 @@ class Car {
             var wheelsDown = ty.atan(tx)
             var target = align >= 0 ? wheelsDown : wheelsDown + Num.pi
             _omega = Car.wrap_(target - _theta) * CarTuning.TIP_RATE
+        }
+    }
+
+    /** @brief The hitbox corner deepest in a wall: [depth (negative), nx, ny], or null if none is in a wall. */
+    deepestCorner_() {
+        var c = _theta.cos
+        var s = _theta.sin
+        var hl = CarTuning.HALF_LENGTH
+        var hh = CarTuning.HALF_HEIGHT
+        var deepest = -0.01
+        var hit = null
+        for (corner in Car.CORNERS) {
+            var lx = corner[0] * hl
+            var ly = corner[1] * hh
+            _arena.sample(_x + c * lx + s * ly, _y + s * lx - c * ly)
+            if (_arena.distance < deepest) {
+                deepest = _arena.distance
+                hit = [deepest, _arena.nx, _arena.ny]
+            }
+        }
+        return hit
+    }
+
+    // On the wheels, the nose or the roof can still run into a wall (the back of a goal): stop against it.
+    blockCorners_() {
+        for (i in 0...3) {
+            var hit = deepestCorner_()
+            if (hit == null) return
+            _x = _x - hit[1] * hit[0]
+            _y = _y - hit[2] * hit[0]
+            var into = _vx * hit[1] + _vy * hit[2]
+            if (into < 0) {
+                _vx = _vx - hit[1] * into
+                _vy = _vy - hit[2] * into
+            }
         }
     }
 

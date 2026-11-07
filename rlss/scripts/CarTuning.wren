@@ -99,6 +99,8 @@ class CarTuning {
     // --- Contacts other than the wheels ---
     /** @brief Landing on the wheels needs the roof within ~60° of the surface normal (cos 60° = 0.5). */
     static LAND_ALIGN { 0.5 }
+    /** @brief A car resting against a wall still lands if it moves away from it slower than this (uu/s). */
+    static LAND_MAX_SEPARATION { 50 }
     /** @brief Bounce of the body (roof, nose) against a wall. */
     static RESTITUTION { 0.1 }
     /** @brief Friction of the body sliding against a wall, in uu/s². */

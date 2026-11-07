@@ -1,34 +1,95 @@
+import "rlss/components" for MatchState
+import "rlss/scripts/Arena" for Arena
 import "rlss/scripts/BallTuning" for BallTuning
 import "rlss/scripts/CarTuning" for CarTuning
+import "rlss/scripts/Kickoff" for Kickoff
 import "rlss/scripts/Simulation" for Simulation
 
 /**
  * @class Match
- * @brief Steps the whole match: every car, the ball, and their contacts, at a fixed 120 Hz.
+ * @brief Runs the match: steps every car, the ball and their contacts at a fixed 120 Hz, and applies the rules.
  *
  * Attached to the arena entity (`hasUpdate = true`). Each step: the cars move (their input, the arena), then the ball,
- * then each car that touches the ball pushes it (and is pushed back), then the ball is kept inside the arena again. At
- * the end of the frame, every body publishes its state to the ECS.
+ * then each car that touches the ball pushes it (and is pushed back), then the ball is kept inside the arena again.
+ *
+ * Rules, like Rocket League: a goal counts once the whole ball is behind the goal line. The team attacking that goal
+ * scores (the left goal is the blue team's, so a ball in it is a point for orange). After a short celebration, every car
+ * goes back to its kickoff spot and the ball to the center; they stay frozen during a 3-2-1 countdown, then play
+ * resumes. Score, phase and countdown are written to the arena's `MatchState`, which the server sends to the players.
  */
 class Match {
     construct new(entity) {
+        _id = entity is Num ? entity : entity.id
+        _state = MatchState.new(_id)
         _accumulator = 0
         _step = 0
+        // A hot-reload recreates the script: the score lives in the component, the phase restarts.
+        _phase = Match.PLAYING
+        _timer = 0
     }
 
+    static PLAYING { 0 }
+    static GOAL { 1 }
+    static KICKOFF { 2 }
+
+    phase { _phase }
+
     update(dt) {
+        if (_arena == null) _arena = Arena.fromWorld()
+        if (_arena == null || _state.blueScore == null) return
         _accumulator = (_accumulator + dt).min(CarTuning.MAX_FRAME_TIME)
         var cars = Simulation.cars
         while (_accumulator >= CarTuning.STEP) {
             _accumulator = _accumulator - CarTuning.STEP
             _step = _step + 1
-            step_(cars, Simulation.ball, CarTuning.STEP)
+            rules_(cars, Simulation.ball, CarTuning.STEP)
         }
         for (car in cars) {
             if (car.ready) car.sync()
         }
         var ball = Simulation.ball
         if (ball != null && ball.ready) ball.sync()
+        _state.phase = _phase
+        _state.countdown = _phase == Match.KICKOFF ? _timer.ceil : 0
+    }
+
+    rules_(cars, ball, dt) {
+        if (_phase == Match.KICKOFF) {
+            // Everybody frozen in place until the countdown ends.
+            _timer = _timer - dt
+            if (_timer <= 0) _phase = Match.PLAYING
+            return
+        }
+        step_(cars, ball, dt)
+        if (_phase == Match.GOAL) {
+            _timer = _timer - dt
+            if (_timer <= 0) kickoff_(cars, ball)
+        } else if (ball != null && ball.ready) {
+            checkGoal_(ball)
+        }
+    }
+
+    checkGoal_(ball) {
+        var r = BallTuning.RADIUS
+        if (ball.x + r < _arena.left) {
+            _state.orangeScore = _state.orangeScore + 1
+        } else if (ball.x - r > _arena.right) {
+            _state.blueScore = _state.blueScore + 1
+        } else {
+            return
+        }
+        System.print("[Match] Goal! Blue %(_state.blueScore) - %(_state.orangeScore) Orange")
+        _phase = Match.GOAL
+        _timer = Kickoff.GOAL_CELEBRATION
+    }
+
+    kickoff_(cars, ball) {
+        for (car in cars) {
+            if (car.ready) car.placeAtKickoff()
+        }
+        if (ball != null && ball.ready) ball.respawn(_arena.centerX, _arena.centerY)
+        _phase = Match.KICKOFF
+        _timer = Kickoff.COUNTDOWN
     }
 
     step_(cars, ball, dt) {

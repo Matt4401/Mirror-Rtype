@@ -47,6 +47,16 @@ class Ball {
 
     addSpin(delta) { _spin = _spin + delta }
 
+    /** @brief Puts the ball back at rest (kickoff). */
+    respawn(x, y) {
+        _x = x
+        _y = y
+        _vx = 0
+        _vy = 0
+        _spin = 0
+        _angle = 0
+    }
+
     move(dx, dy) {
         _x = _x + dx
         _y = _y + dy
