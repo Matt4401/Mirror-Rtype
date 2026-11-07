@@ -24,6 +24,7 @@ namespace systems {
 ScriptSystem::ScriptSystem() = default;
 
 ScriptSystem::~ScriptSystem() {
+    detachDestroyListener();
     stopForwardingCollisions();
     releaseActiveHandles();
 }
@@ -52,7 +53,9 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _binderReplayList(std::move(other._binderReplayList)),
       _reloadCheckTimer(other._reloadCheckTimer),
       _hotReloadEnabled(other._hotReloadEnabled) {
+    other.detachDestroyListener();
     _vm.setUserContext(this);
+    attachDestroyListener();
     if (_collisionTarget) {
         *_collisionTarget = this;
     }
@@ -60,6 +63,8 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
 
 ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
     if (this != &other) {
+        detachDestroyListener();
+        other.detachDestroyListener();
         releaseActiveHandles();
         _sleepingFibers.clear();
         _newHandle.reset();
@@ -88,6 +93,7 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _reloadCheckTimer = other._reloadCheckTimer;
         _hotReloadEnabled = other._hotReloadEnabled;
         _vm.setUserContext(this);
+        attachDestroyListener();
         std::swap(_collisionBus, other._collisionBus);
         std::swap(_collisionToken, other._collisionToken);
         std::swap(_collisionTarget, other._collisionTarget);
@@ -101,8 +107,24 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
     return *this;
 }
 
+void ScriptSystem::attachDestroyListener() {
+    if (_registry == nullptr || _destroyListenerId.has_value()) {
+        return;
+    }
+    _destroyListenerId = _registry->addDestroyListener([this](ecs::Entity e) { triggerDestroyHook(e); });
+}
+
+void ScriptSystem::detachDestroyListener() noexcept {
+    if (_registry != nullptr && _destroyListenerId.has_value()) {
+        _registry->removeDestroyListener(*_destroyListenerId);
+    }
+    _destroyListenerId.reset();
+}
+
 void ScriptSystem::init(ecs::Registry& registry, ecs::EventBus& bus) {
+    detachDestroyListener();
     _registry = &registry;
+    attachDestroyListener();
     _bus = &bus;
 
     _vm.setRegistry(_registry);
