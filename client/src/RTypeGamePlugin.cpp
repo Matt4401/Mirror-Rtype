@@ -10,7 +10,6 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
@@ -28,10 +27,8 @@
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
 #include "net/ReplicationEvents.hpp"
-#include "prefabs/PrefabPlugin.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
-#include "systems/physics/PhysicsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
 
 namespace client {
@@ -50,6 +47,8 @@ constexpr int BYDOS_FRAME_COUNT = 8;
 constexpr int BULLET_FRAME_SIZE = 32;
 constexpr int BULLET_FRAME_COUNT = 4;
 constexpr float BULLET_SCALE = 1.5F;
+constexpr float BULLET_FRAME_DURATION = 0.015F;
+constexpr float DEFAULT_FRAME_DURATION = 0.12F;
 constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
@@ -105,6 +104,8 @@ struct EntitySprite {
     int startY = 0;
     int layer = 0;
     float scale = SPRITE_SCALE;
+    float frameDuration = DEFAULT_FRAME_DURATION;
+    bool loop = true;
 };
 
 /** @brief Gives a replicated entity its sprite and its size on screen. */
@@ -127,7 +128,8 @@ void applySprite(ecs::Registry& registry, const ecs::Entity entity, const Entity
                                                                .frameCount = sprite.frameCount,
                                                                .startX = 0,
                                                                .startY = sprite.startY,
-                                                               .frameDuration = 0.12F,
+                                                               .frameDuration = sprite.frameDuration,
+                                                               .loop = sprite.loop,
                                                            });
 }
 
@@ -136,9 +138,7 @@ void applySprite(ecs::Registry& registry, const ecs::Entity entity, const Entity
 void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
     builder.require<render::RenderPlugin>();
     builder.require<::input::InputPlugin>();
-    builder.require<systems::PhysicsPlugin>();
     builder.require<systems::AnimationPlugin>();
-    builder.require<::prefabs::PrefabPlugin>();
 }
 
 void RTypeGamePlugin::init(engine::Engine& engine) {
@@ -213,6 +213,8 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = 0,
                         .layer = 2,
                         .scale = BULLET_SCALE,
+                        .frameDuration = BULLET_FRAME_DURATION,
+                        .loop = false,
                     });
     }
 }
