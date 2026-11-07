@@ -21,6 +21,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "gameplay/GameplayPlugin.hpp"
+#include "gameplay/ScriptPrefabs.hpp"
 #include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
@@ -29,6 +30,9 @@
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "net/ServerReplicationPlugin.hpp"
+#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabPlugin.hpp"
+#include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "timeline/TimelinePlugin.hpp"
 
@@ -56,7 +60,8 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<systems::PhysicsPlugin>();
     _engine.addPlugin<timeline::TimelinePlugin>();
     _engine.addPlugin<gameplay::GameplayPlugin>(std::move(level));
-    // TODO(ecs): add ScriptPlugin for the scripted enemies.
+    _engine.addPlugin<prefabs::PrefabPlugin>();
+    _engine.addPlugin<scripting::ScriptPlugin>();
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
         if (registry.hasComponent<ecs::Transform>(event.entity)) {
@@ -65,6 +70,10 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
         }
     });
     _engine.init();
+    // What a script spawns (a boss's missiles, its escort) is replicated like the rest of the game.
+    ::prefabs::PrefabManager& scriptPrefabs = _engine.getPlugin<prefabs::PrefabPlugin>().manager();
+    gameplay::registerScriptPrefabs(scriptPrefabs);
+    _engine.getPlugin<scripting::ScriptPlugin>().scriptSystem().setPrefabManager(&scriptPrefabs);
 }
 
 Room::~Room() {

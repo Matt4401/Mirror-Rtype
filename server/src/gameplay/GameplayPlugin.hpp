@@ -140,7 +140,8 @@ class GameplayPlugin final : public engine::IPlugin {
     void spawnFromLevel(const prefabs::PrefabParams& params);
     /** @brief Puts the level at its start: events pending again, initial scroll speed. */
     void startLevel();
-    /** @brief Kills the bullets and enemies outside the screen. */
+    /** @brief Kills the player bullets past the right edge, and the enemies, enemy shots and power-ups past the left
+     * one. */
     void killOffscreenEntities();
     /** @brief Writes the scores in the server log. */
     void logScores() const;
