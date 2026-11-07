@@ -22,7 +22,7 @@ inline constexpr std::string_view GAME_TITLE = "RLSS";
  * @brief Transport protocol id (`ecs::net::NetworkConfig::protocolId`): an R-Type client and an RLSS server refuse
  * each other during the handshake. Bump the low byte on every incompatible protocol change.
  */
-inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0002U;  // "RL", version 2
+inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0003U;  // "RL", version 3
 
 /** @brief Port used when none is given on the command line (TCP and UDP). */
 inline constexpr std::uint16_t DEFAULT_PORT = 4250;
@@ -50,7 +50,7 @@ struct LobbyState {
 struct EntityState {
     /** @brief Network id (never 0). */
     std::uint32_t id = 0;
-    /** @brief Game-defined kind (see `rlss::game::KIND_CAR`). */
+    /** @brief Game-defined kind (`rlss::game::KIND_CAR`, `rlss::game::KIND_BALL`). */
     std::uint8_t kind = 0;
     /** @brief World position, in arena units. */
     float x = 0.0F;
@@ -62,6 +62,10 @@ struct EntityState {
     bool facingLeft = false;
     /** @brief Index in the player color palette. */
     std::uint8_t color = 0;
+    /** @brief Car: boost left, from 0 to 100. */
+    std::uint8_t boost = 0;
+    /** @brief Car: boosting right now (shows the flame). */
+    bool boosting = false;
 };
 
 /** @brief Most entities one snapshot part carries: keeps a part far below the 1192-byte unreliable payload limit. */
@@ -92,6 +96,8 @@ struct PlayerInput {
     float steer = 0.0F;
     /** @brief Jump button held. */
     bool jump = false;
+    /** @brief Boost button held. */
+    bool boost = false;
 };
 
 /** @brief Any decoded message. */
@@ -106,7 +112,8 @@ using Message = std::variant<LobbyState, Snapshot, PlayerInput>;
 
 /**
  * @brief Encodes a snapshot part: `[type u8][tick u32][lastInput u32][partIndex u8][partCount u8][count u8]`, then
- * per entity `[id u32][kind u8][x f32][y f32][rotation f32][flags u8][color u8]`.
+ * per entity `[id u32][kind u8][x f32][y f32][rotation f32][flags u8][color u8][boost u8]`; flags: bit 0 facing left,
+ * bit 1 boosting.
  * @param message Message to encode; entities past `MAX_ENTITIES_PER_PART` are not written.
  * @return Wire bytes.
  */
