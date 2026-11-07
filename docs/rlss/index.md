@@ -13,7 +13,7 @@ rlss/
 ├── game/               -- rlss_game: game components, replication codec, Wren bindings (server + client)
 ├── server/             -- rlss_server: headless, authoritative
 ├── client/             -- rlss_client: window, arena and car drawing, controls
-└── scripts/            -- Wren: Match, Car, Ball, Arena, tunings (server physics); CarView, BallView (client look)
+└── scripts/            -- Wren: Match, Kickoff, Car, Ball, Arena, tunings (server); CarView, BallView, ScoreboardView (client)
 ```
 
 | Target        | Engine modules used                                                                               |
@@ -63,11 +63,12 @@ flowchart LR
 - **Server** (`rlss/server/main.cpp`): `NetworkPlugin` fed by `ServerConnection` (game-side adapter, one engine owns
   every peer), `ServerReplicationPlugin` with the RLSS `ReplicationCodec`, `ScriptPlugin`, then:
     - `CarSimulationPlugin` exposes the components to Wren, spawns the arena entity (tag `arena` + `ArenaShape`,
-      running the `Match` script) and the replicated ball (`Ball` script, kind `KIND_BALL`), and copies each applied
-      input into the car's `InputState`;
-    - `LobbyPlugin` gives each peer a slot (color + spawn point) and a car: `Transform`, `InputState`, `InputBuffer`,
-      `NetworkOwner`, `CarLook`, `CarStatus`, `ScriptComponent{Car}`, replicated with kind `KIND_CAR`. It also broadcasts the
-      `LobbyState` when a player joins or leaves.
+      with the goals, running the `Match` script, holding the `MatchState`) and the replicated ball (`Ball` script, kind
+      `KIND_BALL`), copies each applied input into the car's `InputState`, and sends the `MatchState` to the clients
+      (`MatchStatus` message: to everybody when it changes, to a player who joins);
+    - `LobbyPlugin` gives each peer a slot (color, team, kickoff spot) and a car: `Transform`, `InputState`,
+      `InputBuffer`, `NetworkOwner`, `CarLook`, `CarStatus{placeAtKickoff}`, `ScriptComponent{Car}`, replicated with
+      kind `KIND_CAR`. It also broadcasts the `LobbyState` when a player joins or leaves.
 - **Client** (`rlss/client/main.cpp`): connects first (no window if the server is unreachable), opens UDP, then
   `RenderPlugin`, `InputPlugin`, `NetworkPlugin` fed by `ServerLink`, `ClientReplicationPlugin`, `ScriptPlugin`, and:
     - `ArenaViewPlugin` draws the arena with flat colored rectangles and frames it with the camera;
@@ -75,6 +76,9 @@ flowchart LR
       boost flame and gauge) and the `CarView` script that places them every frame;
     - `BallViewPlugin` builds the ball (a disc of strips and two seams, tagged `ball_part`) and the `BallView` script
       that places the pieces and turns the seams with the ball;
+    - `ScoreboardPlugin` draws the score, the kickoff countdown and "GOAL" with small squares (until the engine can
+      render text): it creates the squares (tagged `score_cell`) and writes each `MatchStatus` into a `MatchState`, and
+      the `ScoreboardView` script lights the squares with a 3 × 5 pixel font;
     - `PlayerInputPlugin` publishes the local controls as a `LocalInput` every fixed step;
     - `SessionPlugin` logs the player count and closes the game when the connection is lost.
 
@@ -82,7 +86,8 @@ flowchart LR
 
 | Wren module              | Runs on | Role                                                                     |
 |--------------------------|---------|--------------------------------------------------------------------------|
-| `rlss/scripts/Match`      | server  | Fixed 120 Hz loop: steps the cars and the ball, car-ball contacts         |
+| `rlss/scripts/Match`      | server  | Fixed 120 Hz loop: steps the cars and the ball, car-ball contacts, goals, score, kickoff |
+| `rlss/scripts/Kickoff`    | server  | Teams, kickoff spots, goal celebration and countdown durations            |
 | `rlss/scripts/Simulation` | server  | Registry the `Car` / `Ball` instances join and leave                      |
 | `rlss/scripts/Car`        | server  | Whole car physics and boost, one instance per car                         |
 | `rlss/scripts/Ball`       | server  | Ball physics: drag, bounces, spin                                         |
@@ -90,6 +95,7 @@ flowchart LR
 | `rlss/scripts/CarTuning`, `BallTuning` | server | Rocket League constants                                     |
 | `rlss/scripts/CarView`    | client  | Size and placement of the car parts, wheel spin, boost flame and gauge    |
 | `rlss/scripts/BallView`   | client  | Placement of the ball pieces, seams turning with the ball                 |
+| `rlss/scripts/ScoreboardView` | client | Score, countdown and "GOAL" drawn with squares (3 × 5 font)          |
 
 The scripts see the ECS through component classes bound by `rlss::game::installScriptBindings` in the
 `rlss/components` module: `Transform`, `Controls` (`InputState.playerIndex`), `ArenaShape`, `CarParts`. They read the
@@ -101,6 +107,25 @@ script (on the arena entity) steps them all in a fixed order, so that their cont
 
 What stays in C++: creating entities (Wren can only spawn prefabs at a position), the network and replication, and
 the arena drawing (hundreds of shapes created once).
+
+## Goals and match
+
+Like in Sideswipe, the goals open in the side walls a little above the floor: the bottom curved corner is a ramp that
+ends at the goal mouth (280 uu above the floor, 330 uu high, 240 uu deep). There is no wall above the ramp to drive on:
+a car driving fast up the ramp flies up the mouth or into the goal, and the walls above the goals are reached in the
+air. The crossbar and the bottom of each goal meet the wall at a post, a convex edge that the ball bounces off and the
+car collides with.
+
+`Arena.wren` is an exact signed distance to the union of the rounded rectangle and the two goal boxes (nearest point
+over all segments and arcs, sign from an inside test); away from the side walls it uses the faster rounded rectangle
+formula alone.
+
+- **Teams**: even player slots are blue (left side, defending the left goal, cool colors), odd slots orange (right
+  side, warm colors). Teammates line up one behind the other at kickoff.
+- **Goal**: as in Rocket League, once the whole ball is behind the goal line. The team attacking that goal scores.
+- **After a goal**: 2 s of celebration ("GOAL" on screen, the ball stays in play), then every car goes back to its
+  kickoff spot (at rest, full boost) and the ball to the center of the arena. A 3-2-1 countdown follows, everybody
+  frozen, then play resumes and the ball drops. A player who joins starts at their kickoff spot.
 
 ## Car physics
 
@@ -159,12 +184,15 @@ times faster than itself; the bumper hits the ball under its center, so it also 
 
 `tests/rlss/CarPhysicsTests.cpp` runs the Wren physics headless: landing, acceleration curve, turning around, wall and
 ceiling, jump height (~230 uu), dodge, boost (past the throttle cap, 33.3 per second, refill only against a surface),
-ball bounce height (0.36 × the drop), car pushing the ball, hit speed, and 400 random input sequences (with and without
-the ball) where neither the car nor the ball may leave the arena.
+ball bounce height (0.36 × the drop), car pushing the ball, hit speed, goals (a ball behind the line scores for the
+right team, celebration, kickoff spots, countdown freeze, play resuming; a shot in the goal scores, a shot above the
+crossbar or under the goal does not), driving above the goal and up the ramp, and 400 random input sequences (with and
+without the ball) where neither the car nor the ball may leave the arena and the goals. The test checks containment
+with its own C++ distance to the arena and goals, written independently from `Arena.wren`.
 
 ## Protocol
 
-The transport handshake uses `protocolId = 0x524C0003` ("RL", version 3), so R-Type and RLSS peers (or two RLSS
+The transport handshake uses `protocolId = 0x524C0004` ("RL", version 4), so R-Type and RLSS peers (or two RLSS
 versions) refuse each other. Every message starts with a one-byte type; multi-byte integers are big-endian, floats
 IEEE 754 binary32. Received messages are untrusted: an unknown type, a wrong size, an out-of-range field or a
 non-finite float drops the message.
@@ -174,6 +202,7 @@ non-finite float drops the message.
 | 1    | `LobbyState`  | server → client | Reliable   | `players u16`                                                   |
 | 2    | `Snapshot`    | server → client | Unreliable | `tick u32, lastInput u32, partIndex u8, partCount u8, count u8`, then `count` × entity |
 | 3    | `PlayerInput` | client → server | Unreliable | `sequence u32, steer i8 (−127..127), buttons u8 (bit 0 jump, bit 1 boost)` |
+| 4    | `MatchStatus` | server → client | Reliable   | `blueScore u16, orangeScore u16, phase u8 (0 playing, 1 goal, 2 kickoff), countdown u8 (0..9)` |
 
 A snapshot entity is 20 bytes: `id u32 (≠ 0), kind u8 (1 car, 2 ball), x f32, y f32, rotation f32, flags u8 (bit 0
 facing left, bit 1 boosting), color u8, boost u8 (0..100)`. A part carries at most 48 entities, a snapshot at most 64
@@ -181,6 +210,6 @@ parts.
 
 ## Not done yet
 
-- No goals, no score, no kickoff reset.
+- No match timer, no overtime, no team selection (teams follow the join order).
 - Cars do not collide with each other.
 - No client-side prediction: the local car is interpolated like the others (fine on a LAN).

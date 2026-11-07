@@ -125,6 +125,23 @@ TEST(RlssProtocol, RejectsMalformedInputs) {
     EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{3, 0, 0, 0, 1, 0, 0x04}).has_value());  // unknown button
 }
 
+TEST(RlssProtocol, MatchStatusRoundTrips) {
+    const protocol::MatchStatus status{
+        .blueScore = 3, .orangeScore = 12, .phase = protocol::MatchPhase::Kickoff, .countdown = 2};
+    const auto bytes = protocol::encode(status);
+    EXPECT_EQ(bytes, (std::vector<std::uint8_t>{4, 0, 3, 0, 12, 2, 2}));
+    const auto message = protocol::decode(bytes);
+    ASSERT_TRUE(message.has_value());
+    EXPECT_EQ(std::get<protocol::MatchStatus>(*message), status);
+}
+
+TEST(RlssProtocol, RejectsMalformedMatchStatus) {
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{4, 0, 3, 0, 12, 2}).has_value());        // too short
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{4, 0, 3, 0, 12, 3, 0}).has_value());     // unknown phase
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{4, 0, 3, 0, 12, 2, 10}).has_value());    // countdown > 9
+    EXPECT_FALSE(protocol::decode(std::vector<std::uint8_t>{4, 0, 3, 0, 12, 2, 2, 0}).has_value());  // too long
+}
+
 TEST(RlssCommandLine, ParsesPorts) {
     EXPECT_EQ(rlss::parsePort("4250"), 4250);
     EXPECT_FALSE(rlss::parsePort("0").has_value());

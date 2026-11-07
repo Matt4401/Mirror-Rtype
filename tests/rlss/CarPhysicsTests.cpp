@@ -33,15 +33,46 @@ constexpr float HALF_LENGTH = 59.0F;
 constexpr float HALF_HEIGHT = 18.0F;
 constexpr float BALL_RADIUS = 91.25F;
 
-/** @brief Distance from a point to the arena walls, positive inside (same shape as Arena.wren). */
+/** @brief Distance from a point to a segment. */
+float segmentDistance(const float x, const float y, const float ax, const float ay, const float bx, const float by) {
+    const float ex = bx - ax;
+    const float ey = by - ay;
+    const float along = std::clamp((((x - ax) * ex) + ((y - ay) * ey)) / ((ex * ex) + (ey * ey)), 0.0F, 1.0F);
+    return std::hypot(x - (ax + (ex * along)), y - (ay + (ey * along)));
+}
+
+/**
+ * @brief Distance from a point to the walls of the arena and the goals, positive inside. Written independently from
+ * Arena.wren: the union of the rounded rectangle and the two goal boxes.
+ */
 float arenaDistance(const float x, const float y) {
     const float r = arena::CORNER_RADIUS;
     const float dx = x - std::clamp(x, arena::LEFT + r, arena::RIGHT - r);
     const float dy = y - std::clamp(y, arena::TOP + r, arena::BOTTOM - r);
-    if (dx != 0.0F || dy != 0.0F) {
-        return r - std::hypot(dx, dy);
+    const bool inRoundedRect = (dx * dx) + (dy * dy) < r * r;
+    const bool inGoal = y >= arena::GOAL_TOP && y <= arena::GOAL_BOTTOM &&
+                        ((x >= arena::LEFT - arena::GOAL_DEPTH && x <= arena::LEFT) ||
+                         (x >= arena::RIGHT && x <= arena::RIGHT + arena::GOAL_DEPTH));
+
+    float nearest = std::min(segmentDistance(x, y, arena::LEFT + r, arena::TOP, arena::RIGHT - r, arena::TOP),
+                             segmentDistance(x, y, arena::LEFT + r, arena::BOTTOM, arena::RIGHT - r, arena::BOTTOM));
+    for (const float wall : {arena::LEFT, arena::RIGHT}) {
+        const float back = wall == arena::LEFT ? wall - arena::GOAL_DEPTH : wall + arena::GOAL_DEPTH;
+        nearest = std::min({nearest, segmentDistance(x, y, wall, arena::TOP + r, wall, arena::GOAL_TOP),
+                            segmentDistance(x, y, back, arena::GOAL_TOP, wall, arena::GOAL_TOP),
+                            segmentDistance(x, y, back, arena::GOAL_TOP, back, arena::GOAL_BOTTOM),
+                            segmentDistance(x, y, back, arena::GOAL_BOTTOM, wall, arena::GOAL_BOTTOM)});
     }
-    return std::min({x - arena::LEFT, arena::RIGHT - x, y - arena::TOP, arena::BOTTOM - y});
+    for (const float cx : {arena::LEFT + r, arena::RIGHT - r}) {
+        for (const float cy : {arena::TOP + r, arena::BOTTOM - r}) {
+            const bool sideX = cx < (arena::LEFT + arena::RIGHT) / 2.0F ? x < cx : x > cx;
+            const bool sideY = cy < (arena::TOP + arena::BOTTOM) / 2.0F ? y < cy : y > cy;
+            if (sideX && sideY) {
+                nearest = std::min(nearest, std::fabs(std::hypot(x - cx, y - cy) - r));
+            }
+        }
+    }
+    return inRoundedRect || inGoal ? nearest : -nearest;
 }
 
 class CarPhysics : public ::testing::Test {
@@ -58,7 +89,12 @@ class CarPhysics : public ::testing::Test {
                                                              .top = arena::TOP,
                                                              .right = arena::RIGHT,
                                                              .bottom = arena::BOTTOM,
-                                                             .cornerRadius = arena::CORNER_RADIUS});
+                                                             .cornerRadius = arena::CORNER_RADIUS,
+                                                             .goalTop = arena::GOAL_TOP,
+                                                             .goalBottom = arena::GOAL_BOTTOM,
+                                                             .goalDepth = arena::GOAL_DEPTH});
+        _registry.addComponent(arenaEntity, game::MatchState{});
+        _arena = arenaEntity;
         _registry.addComponent(arenaEntity, ecs::ScriptComponent{.moduleName = std::string(game::MATCH_SCRIPT_MODULE),
                                                                  .className = "Match",
                                                                  .hasUpdate = true});
@@ -123,9 +159,20 @@ class CarPhysics : public ::testing::Test {
         return true;
     }
 
+    /** @brief Gives the ball a velocity, through the shared Wren registry of the simulation. */
+    void throwBall(const float vx, const float vy) {
+        _scripts.update(0.0F);  // make sure the ball script exists
+        const std::string code = "import \"rlss/scripts/Simulation\" for Simulation\nSimulation.ball.addVelocity(" +
+                                 std::to_string(vx) + ", " + std::to_string(vy) + ")\n";
+        ASSERT_TRUE(_scripts.getVm().interpret("rlss_test", code).has_value());
+    }
+
+    [[nodiscard]] const game::MatchState& match() { return _registry.getComponents<game::MatchState>().get(_arena); }
+
     ecs::Registry _registry;
     ecs::EventBus _bus;
     systems::ScriptSystem _scripts;
+    ecs::Entity _arena = 0;
     ecs::Entity _car = 0;
     ecs::Entity _ball = 0;
 };
@@ -155,19 +202,31 @@ TEST_F(CarPhysics, SteeringBackTurnsTheCarAround) {
     EXPECT_LT(transform().scaleX, 0.0F);
 }
 
-TEST_F(CarPhysics, DrivesUpTheWallAndAlongTheCeilingForAMoment) {
-    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
-    run(0.2F);
+TEST_F(CarPhysics, DrivesUpTheWallAboveTheGoalAndAlongTheCeilingForAMoment) {
+    // On the right wall, above the goal, wheels against the wall and nose up.
+    spawnCar(arena::RIGHT - HALF_HEIGHT + 1.0F, arena::GOAL_TOP - 80.0F);
+    _registry.getComponents<ecs::Transform>().get(_car).rotation = -std::numbers::pi_v<float> / 2.0F;
+    run(0.1F);
     float highest = arena::BOTTOM;
-    bool climbedWall = false;
-    for (int i = 0; i < 300; ++i) {
-        run(FRAME, 1.0F);
+    for (int i = 0; i < 90; ++i) {
+        run(FRAME, 1.0F, false, true);
         highest = std::min(highest, transform().y);
-        climbedWall = climbedWall || (transform().x > arena::RIGHT - 60.0F && transform().y < arena::BOTTOM - 500.0F);
     }
-    EXPECT_TRUE(climbedWall);
-    // Fast enough through the corner to reach the ceiling.
+    // Up the wall, through the curved corner, onto the ceiling: from a standstill on this short wall, it takes boost
+    // to be fast enough for the corner to hold the car against gravity.
     EXPECT_LT(highest, arena::TOP + 60.0F);
+}
+
+TEST_F(CarPhysics, DrivingFastUpTheRampCarriesTheCarIntoTheGoalMouth) {
+    spawnCar(arena::RIGHT - 900.0F, arena::BOTTOM - HALF_HEIGHT);
+    run(0.1F);
+    float highest = arena::BOTTOM;
+    for (int i = 0; i < 120; ++i) {
+        run(FRAME, 1.0F, false, true);
+        highest = std::min(highest, transform().y);
+    }
+    // The ramp ends at the goal: there is no wall above it to drive on, the car flies up the mouth or into the goal.
+    EXPECT_LT(highest, arena::GOAL_BOTTOM);
 }
 
 TEST_F(CarPhysics, JumpsAndLandsAgain) {
@@ -231,12 +290,12 @@ TEST_F(CarPhysics, BoostGoesPastTheThrottleTopSpeedAndEmptiesTheTank) {
 }
 
 TEST_F(CarPhysics, BoostRefillsOnlyAgainstASurface) {
-    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);
+    spawnCar(arena::LEFT + 400.0F, arena::BOTTOM - HALF_HEIGHT);
     run(0.2F);
-    run(1.0F, 0.0F, false, true);
+    run(0.6F, 0.0F, false, true);
     const float afterBoost = status().boost;
     run(1.0F);
-    EXPECT_GT(status().boost, afterBoost + 20.0F);  // on the floor: refills
+    EXPECT_GT(status().boost, afterBoost + 15.0F);  // on the floor: refills
 
     run(0.2F, 0.0F, true);  // jump
     const float jumped = status().boost;
@@ -317,6 +376,59 @@ TEST_F(CarPhysics, RandomPlayNeverLetsTheBallOrTheCarOut) {
             return;
         }
     }
+}
+
+TEST_F(CarPhysics, ABallBehindTheLeftGoalLineScoresForOrangeThenKicksOff) {
+    spawnCar(arena::WIDTH / 2.0F, arena::BOTTOM - HALF_HEIGHT);  // player 3: orange team
+    spawnBall(arena::LEFT - 140.0F, arena::GOAL_BOTTOM - BALL_RADIUS);
+    run(0.1F);
+    EXPECT_EQ(match().orangeScore, 1);
+    EXPECT_EQ(match().blueScore, 0);
+    EXPECT_EQ(match().phase, 1);
+
+    run(2.0F);  // celebration, then everybody back in place
+    EXPECT_EQ(match().phase, 2);
+    EXPECT_EQ(match().countdown, 3);
+    EXPECT_NEAR(ball().x, (arena::LEFT + arena::RIGHT) / 2.0F, 0.01F);
+    EXPECT_NEAR(ball().y, (arena::TOP + arena::BOTTOM) / 2.0F, 0.01F);
+    // Player 3 is the second orange player: second kickoff spot on the right, facing left.
+    EXPECT_NEAR(transform().x, arena::RIGHT - 420.0F - 160.0F, 0.01F);
+    EXPECT_LT(transform().scaleX, 0.0F);
+
+    const float frozenX = transform().x;
+    run(2.5F, 1.0F, false, true);  // frozen during the countdown, whatever the input
+    EXPECT_FLOAT_EQ(transform().x, frozenX);
+    EXPECT_FLOAT_EQ(ball().y, (arena::TOP + arena::BOTTOM) / 2.0F);
+    EXPECT_EQ(match().countdown, 1);
+
+    run(0.8F, 1.0F);
+    EXPECT_EQ(match().phase, 0);
+    EXPECT_GT(transform().x, frozenX);                         // play resumed
+    EXPECT_GT(ball().y, (arena::TOP + arena::BOTTOM) / 2.0F);  // the ball drops
+    EXPECT_EQ(match().orangeScore, 1);                         // scored once
+}
+
+TEST_F(CarPhysics, AShotIntoTheRightGoalScoresForBlue) {
+    spawnBall(arena::RIGHT - 600.0F, arena::GOAL_BOTTOM - 150.0F);
+    throwBall(2000.0F, -200.0F);
+    run(1.0F);
+    EXPECT_EQ(match().blueScore, 1);
+    EXPECT_EQ(match().orangeScore, 0);
+}
+
+TEST_F(CarPhysics, AShotAboveTheCrossbarBouncesBack) {
+    spawnBall(arena::RIGHT - 600.0F, arena::GOAL_TOP - 200.0F);
+    throwBall(2000.0F, 0.0F);
+    run(1.0F);
+    EXPECT_EQ(match().blueScore, 0);
+    EXPECT_LT(ball().x, arena::RIGHT);
+}
+
+TEST_F(CarPhysics, AShotUnderTheGoalHitsTheRampAndStaysOut) {
+    spawnBall(arena::RIGHT - 600.0F, arena::BOTTOM - BALL_RADIUS);
+    throwBall(1500.0F, 0.0F);
+    run(0.6F);
+    EXPECT_EQ(match().blueScore, 0);
 }
 
 }  // namespace
