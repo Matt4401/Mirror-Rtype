@@ -166,17 +166,20 @@ struct ScoreCell {
     float height = 0.0F;
 };
 
-/** @brief "No entity" in the entity fields read by scripts (0 is a valid entity). */
-inline constexpr int NO_ENTITY = -1;
+/**
+ * @brief "No entity" in the entity fields read by scripts (0 is a valid entity). Those fields are 64-bit signed: an
+ * `ecs::Entity` (generation and index, 52 bits) fits, and so does -1.
+ */
+inline constexpr std::int64_t NO_ENTITY = -1;
 
 /**
  * @brief Client: what the `CameraDirector` script frames, kept up to date by `CameraPlugin` on the camera entity.
  */
 struct CameraRig {
     /** @brief Local player's car entity, `NO_ENTITY` while unknown. */
-    int car = NO_ENTITY;
+    std::int64_t car = NO_ENTITY;
     /** @brief Ball entity, `NO_ENTITY` while unknown. */
-    int ball = NO_ENTITY;
+    std::int64_t ball = NO_ENTITY;
     /** @brief `protocol::MatchPhase` value: 0 playing, 1 goal celebration, 2 kickoff countdown. */
     int phase = 0;
     /** @brief Window size, in pixels. */

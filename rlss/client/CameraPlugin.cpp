@@ -1,5 +1,6 @@
 #include "CameraPlugin.hpp"
 
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <variant>
@@ -90,7 +91,7 @@ void CameraPlugin::init(engine::Engine& engine) {
         [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) {
             auto* rig = rigOf(engine.registry(), _camera);
             if (rig != nullptr && event.kind == game::KIND_BALL) {
-                rig->ball = static_cast<int>(event.entity);
+                rig->ball = static_cast<std::int64_t>(event.entity);
             }
         });
     _despawned = events.subscribe<ecs::net::ReplicatedEntityDespawned>(
@@ -111,7 +112,7 @@ void CameraPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*
     rig->car = game::NO_ENTITY;
     if (_localCar && registry.hasResource<ecs::net::NetworkEntityMap>()) {
         if (const auto car = registry.getResource<ecs::net::NetworkEntityMap>().entityOf(*_localCar)) {
-            rig->car = static_cast<int>(*car);
+            rig->car = static_cast<std::int64_t>(*car);
         }
     }
 }
