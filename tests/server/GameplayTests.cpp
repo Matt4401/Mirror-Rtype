@@ -2,8 +2,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -17,13 +21,20 @@
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "gameplay/GameplayPlugin.hpp"
+#include "gameplay/ScriptBindings.hpp"
+#include "gameplay/ScriptPrefabs.hpp"
 #include "level/Level.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/Health.hpp"
+#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
+#include "protocol/Messages.hpp"
+#include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
+#include "systems/script/ScriptSystem.hpp"
 #include "timeline/TimelineEvent.hpp"
 #include "timeline/TimelinePlugin.hpp"
 
@@ -345,6 +356,123 @@ TEST_F(TerrainTest, TerrainLeavingTheScreenIsDestroyed) {
     EXPECT_EQ(columns().size(), 4U);
     run(20.0F);
     EXPECT_TRUE(columns().empty());
+}
+
+/** @brief Script of the scripted boss test: spawns a missile at spawn, then holds the boss at y = 200. */
+constexpr std::string_view TEST_BOSS_SCRIPT = R"(
+import "core/Engine" for Engine
+import "core/Position" for Position
+
+class TestBoss {
+    construct new(entity) {
+        _id = (entity is Num) ? entity : entity.id
+        _pos = Position.new(_id)
+    }
+
+    onSpawn() {
+        Engine.spawnPrefab("missile", _pos.x - 40, _pos.y)
+    }
+
+    update(dt) {
+        _pos.y = 200
+    }
+}
+)";
+
+/**
+ * @brief Room engine with the scripting plugins wired as `Room` does, playing a boss driven by `TEST_BOSS_SCRIPT`.
+ *
+ * The script is written to a temporary file: the room loads scripts from disk.
+ */
+class ScriptedBossTest : public ::testing::Test {
+  protected:
+    ScriptedBossTest()
+        : scriptPath(std::filesystem::temp_directory_path() /
+                     ("rtype_test_boss_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed())) /
+                     "TestBoss.wren"),
+          engine([this] { return now; }) {
+        std::filesystem::create_directories(scriptPath.parent_path());
+        std::ofstream(scriptPath) << TEST_BOSS_SCRIPT;
+
+        auto built = std::make_shared<level::Level>();
+        built->scrollSpeed = LEVEL_SPEED;
+        built->timeline.add({.position = 0.0F,
+                             .type = std::string(level::EVENT_BOSS),
+                             .params = {{"prefab", std::string("boss_core")},
+                                        {"x", 900.0},
+                                        {"y", 360.0},
+                                        {"script", scriptPath.generic_string()}}});
+
+        engine.setFixedDeltaTime(FIXED_DT);
+        engine.addPlugin<systems::PhysicsPlugin>();
+        engine.addPlugin<timeline::TimelinePlugin>();
+        engine.addPlugin<GameplayPlugin>(std::move(built));
+        engine.addPlugin<prefabs::PrefabPlugin>();
+        engine.addPlugin<scripting::ScriptPlugin>();
+        engine.init();
+        prefabs::PrefabManager& manager = engine.getPlugin<prefabs::PrefabPlugin>().manager();
+        rtype::server::gameplay::registerScriptPrefabs(manager);
+        systems::ScriptSystem& scripts = engine.getPlugin<scripting::ScriptPlugin>().scriptSystem();
+        scripts.setPrefabManager(&manager);
+        bound = rtype::server::gameplay::bindScriptComponents(scripts);
+    }
+
+    ~ScriptedBossTest() override {
+        std::error_code ignored;
+        std::filesystem::remove_all(scriptPath.parent_path(), ignored);
+    }
+
+    ScriptedBossTest(const ScriptedBossTest&) = delete;
+    ScriptedBossTest& operator=(const ScriptedBossTest&) = delete;
+    ScriptedBossTest(ScriptedBossTest&&) = delete;
+    ScriptedBossTest& operator=(ScriptedBossTest&&) = delete;
+
+    /** @brief Runs the engine for some seconds of game time. */
+    void run(const float seconds) {
+        const auto steps = static_cast<int>(seconds / FIXED_DT);
+        for (int i = 0; i < steps; ++i) {
+            now += static_cast<double>(FIXED_DT);
+            engine.advance();
+        }
+    }
+
+    /** @brief Replicated entities of a kind. */
+    [[nodiscard]] std::vector<ecs::Entity> entitiesOf(const std::uint32_t kind) {
+        std::vector<ecs::Entity> found;
+        engine.registry().runSystem<ecs::Replicated>([&](const ecs::Entity entity, const ecs::Replicated& replicated) {
+            if (replicated.kind == kind) {
+                found.push_back(entity);
+            }
+        });
+        return found;
+    }
+
+    std::filesystem::path scriptPath;
+    double now = 0.0;
+    engine::Engine engine;
+    bool bound = false;
+};
+
+TEST_F(ScriptedBossTest, ScriptMovesItsBossAndItsSpawnsAreReplicated) {
+    ASSERT_TRUE(bound);
+    run(0.5F);
+
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    EXPECT_FLOAT_EQ(engine.registry().getComponents<ecs::Transform>().get(bosses.front()).y, 200.0F);
+
+    const auto missiles = entitiesOf(rtype::protocol::makeEntityKind("missile"));
+    ASSERT_EQ(missiles.size(), 1U);
+    EXPECT_TRUE(engine.registry().hasComponent<game::EntityNetState>(missiles.front()));
+}
+
+TEST_F(ScriptedBossTest, ScriptOfADeadBossDoesNotCrashTheRoom) {
+    run(0.2F);
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    engine.registry().killEntity(bosses.front());
+    run(1.0F);
+    EXPECT_TRUE(entitiesOf(game::KIND_BOSS_CORE).empty());
 }
 
 TEST(GameplayPluginTest, OnlyKnownPrefabsCanBeSpawned) {
