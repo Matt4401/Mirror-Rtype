@@ -45,6 +45,9 @@ inline constexpr std::uint32_t POINTS_PER_KILL = 1;
  * - A `boss` event stops the scroll and spawns a `boss_core`, driven by the event's Wren `script` if any (module
  *   `scripts/Boss` for `scripts/Boss.wren`, class named after the file unless the event sets `class`). The boss flies
  *   in until its `stop_x`; once no boss is left, the scroll resumes at the speed it had before the fight.
+ * - A `terrain` event starts a section along the top or bottom edge. It is built column by column
+ *   (`game::TERRAIN_COLUMN_WIDTH` wide, `KIND_OBSTACLE`) as it enters the screen, and the columns move left at the
+ *   scroll speed, so they stop during a boss fight. A ship overlapping a column is destroyed; player shots stop on it.
  * - An enemy with a `prefabs::Health` loses one point per player shot and dies at 0; its `EntityNetState::health`
  *   follows. The other enemies die on the first hit.
  * - Fires a `player_bullet` from a ship while its input holds `game::ACTION_SHOOT`, at most every `SHOT_COOLDOWN`.
@@ -144,6 +147,24 @@ class GameplayPlugin final : public engine::IPlugin {
     void onLevelEvent(const timeline::TimelineEventFired& fired);
     /** @brief Spawns the replicated entity of a level `spawn` event. */
     void spawnFromLevel(const prefabs::PrefabParams& params);
+    /** @brief A terrain section still entering the screen: what is left to build. */
+    struct TerrainSection {
+        /** @brief Center ordinate of its columns. */
+        float y = 0.0F;
+        /** @brief Height of its columns, a multiple of `game::TERRAIN_HEIGHT_UNIT`. */
+        float height = 0.0F;
+        /** @brief Columns left to build. */
+        std::size_t columnsLeft = 0;
+        /** @brief Last column built, to place the next one right after it; none before the first. */
+        std::optional<ecs::Entity> lastColumn;
+    };
+
+    /** @brief Handles a `terrain` event: queues a section, whose columns enter from the right edge. */
+    void startTerrain(const prefabs::PrefabParams& params);
+    /** @brief Builds the columns entering the screen, moves every column at the scroll speed. */
+    void updateTerrain();
+    /** @brief Destroys the ships overlapping a terrain column. */
+    void crashShipsIntoTerrain();
     /** @brief Handles a `boss` event: stops the scroll and spawns the replicated, possibly scripted, boss. */
     void startBossFight(const prefabs::PrefabParams& params);
     /** @brief Stops the bosses that reached their place, and resumes the scroll once no boss is left. */
@@ -186,6 +207,8 @@ class GameplayPlugin final : public engine::IPlugin {
     timeline::TimelinePlugin* _timeline = nullptr;
     /** @brief Subscription to the level events. */
     std::optional<ecs::EventBus::EventToken> _levelToken;
+    /** @brief Terrain sections still entering the screen. */
+    std::vector<TerrainSection> _terrain;
     /** @brief True from a `boss` event until no boss is left. */
     bool _bossFight = false;
     /** @brief Scroll speed when the boss fight started, restored once it is over. */

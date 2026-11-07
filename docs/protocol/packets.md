@@ -403,7 +403,7 @@ How R-Type fills the game-defined fields of `EntityState`. Another game defines 
 | Field     | R-Type use                                                                                                                     |
 |-----------|--------------------------------------------------------------------------------------------------------------------------------|
 | `kind`    | `makeEntityKind(<prefab name>)`: `player_ship`, `alien_scout`, `boss_core`, `missile`, `obstacle`, `player_bullet`, `power_up` |
-| `subtype` | Player index (0–3) of a player ship or a player bullet, 0 otherwise                                                            |
+| `subtype` | Player index (0–3) of a player ship or a player bullet; height of an `obstacle` terrain column in 2 px units; 0 otherwise      |
 | `health`  | Hit points left of a `boss_core` (1–255), 1 for the entities that die on the first hit; 0 the tick an entity dies              |
 | `flags`   | Bit 0: alive. Bit 1: shooting. Bits 2–7: reserved, 0                                                                           |
 

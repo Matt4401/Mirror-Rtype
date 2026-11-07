@@ -23,6 +23,15 @@ inline constexpr protocol::EntityKind KIND_PLAYER_BULLET = protocol::makeEntityK
 inline constexpr protocol::EntityKind KIND_ALIEN_SCOUT = protocol::makeEntityKind("alien_scout");
 /** @brief Kind of the boss ending a level; its `health` is the hit points left. */
 inline constexpr protocol::EntityKind KIND_BOSS_CORE = protocol::makeEntityKind("boss_core");
+/**
+ * @brief Kind of a terrain column: a solid block scrolling with the level, `TERRAIN_COLUMN_WIDTH` wide. Its height is
+ * `subtype * TERRAIN_HEIGHT_UNIT` pixels, centered on its position.
+ */
+inline constexpr protocol::EntityKind KIND_OBSTACLE = protocol::makeEntityKind("obstacle");
+/** @brief Width of a terrain column, in pixels. */
+inline constexpr float TERRAIN_COLUMN_WIDTH = 64.0F;
+/** @brief Pixels per unit of a terrain column's `subtype`: up to 510 px fit in the byte. */
+inline constexpr float TERRAIN_HEIGHT_UNIT = 2.0F;
 /** @brief `EntityNetState::flags` bit: the entity is alive. */
 inline constexpr std::uint8_t FLAG_ALIVE = 0x01;
 /** @brief `EntityNetState::flags` bit: the entity is shooting. */
