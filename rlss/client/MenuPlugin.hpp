@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -14,10 +15,10 @@
 
 #include "ServerLink.hpp"
 #include "UiCanvas.hpp"
-#include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "protocol/Protocol.hpp"
 
