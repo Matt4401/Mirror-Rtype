@@ -21,6 +21,8 @@ inline constexpr protocol::EntityKind KIND_PLAYER_SHIP = protocol::makeEntityKin
 inline constexpr protocol::EntityKind KIND_PLAYER_BULLET = protocol::makeEntityKind("player_bullet");
 /** @brief Kind of the basic Bydos enemy. */
 inline constexpr protocol::EntityKind KIND_ALIEN_SCOUT = protocol::makeEntityKind("alien_scout");
+/** @brief Kind of the boss ending a level; its `health` is the hit points left. */
+inline constexpr protocol::EntityKind KIND_BOSS_CORE = protocol::makeEntityKind("boss_core");
 /** @brief `EntityNetState::flags` bit: the entity is alive. */
 inline constexpr std::uint8_t FLAG_ALIVE = 0x01;
 /** @brief `EntityNetState::flags` bit: the entity is shooting. */

@@ -68,10 +68,11 @@ Every built-in prefab exposes a single `buildXxx(entity, registry, params)` func
 | `missile` | Enemy projectile | Dynamic, bullet | Box 16×6, sensor | `ENEMY_SHOT` | [Missile](missile.md) |
 | `player_bullet` | Player projectile | Dynamic, bullet | Box 12×4, sensor | `PLAYER_SHOT` | [Player Bullet](player-bullet.md) |
 | `alien_scout` | Basic enemy | Kinematic | Box 32×32, sensor | `ENEMY` | [Alien Scout](alien-scout.md) |
+| `boss_core` | Boss ending a level, several hit points | Kinematic | Box 128×160, sensor | `ENEMY` | [Boss Core](boss-core.md) |
 | `obstacle` | Level geometry | Static | Box 64×64, solid | `OBSTACLE` | [Obstacle](obstacle.md) |
 | `power_up` | Collectible bonus | Kinematic | Circle r=12, sensor | `POWER_UP` | [Power-Up](power-up.md) |
 
-Every prefab attaches `ecs::Transform`, `ecs::Renderable`, `ecs::RigidBody2D` and `ecs::Collider2D`. Who can touch whom is described in [Collision Categories](collision-categories.md).
+Every prefab attaches `ecs::Transform`, `ecs::Renderable`, `ecs::RigidBody2D` and `ecs::Collider2D` (`boss_core` adds `prefabs::Health` and `prefabs::BossCore`). Who can touch whom is described in [Collision Categories](collision-categories.md).
 
 ## Scripting
 
