@@ -13,7 +13,7 @@ class Kickoff {
     /** @brief Kickoff countdown, cars and ball frozen (3, 2, 1, like Rocket League). */
     static COUNTDOWN { 3 }
     /** @brief Distance from a side wall to the first kickoff spot: clear of the curved corner. */
-    static MARGIN { 420 }
+    static MARGIN { 600 }
     /** @brief Distance between teammates. */
     static SPACING { 160 }
     /** @brief Closest a car starts to the center line. */
