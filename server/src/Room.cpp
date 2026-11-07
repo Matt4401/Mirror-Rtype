@@ -21,6 +21,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "gameplay/GameplayPlugin.hpp"
+#include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
 #include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
@@ -34,6 +35,7 @@
 #include "prefabs/PrefabPlugin.hpp"
 #include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
+#include "systems/script/ScriptSystem.hpp"
 #include "timeline/TimelinePlugin.hpp"
 
 namespace rtype::server {
@@ -73,7 +75,9 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     // What a script spawns (a boss's missiles, its escort) is replicated like the rest of the game.
     ::prefabs::PrefabManager& scriptPrefabs = _engine.getPlugin<prefabs::PrefabPlugin>().manager();
     gameplay::registerScriptPrefabs(scriptPrefabs);
-    _engine.getPlugin<scripting::ScriptPlugin>().scriptSystem().setPrefabManager(&scriptPrefabs);
+    systems::ScriptSystem& scripts = _engine.getPlugin<scripting::ScriptPlugin>().scriptSystem();
+    scripts.setPrefabManager(&scriptPrefabs);
+    (void)gameplay::bindScriptComponents(scripts);
 }
 
 Room::~Room() {
