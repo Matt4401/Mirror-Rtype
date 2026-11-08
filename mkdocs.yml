@@ -91,6 +91,7 @@ nav:
       - Player Bullet: prefabs/player-bullet.md
       - Alien Scout: prefabs/alien-scout.md
       - Boss Core: prefabs/boss-core.md
+      - Boss Part: prefabs/boss-part.md
       - Obstacle: prefabs/obstacle.md
       - Power-Up: prefabs/power-up.md
   - Protocol:

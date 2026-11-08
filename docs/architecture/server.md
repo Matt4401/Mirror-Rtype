@@ -98,7 +98,7 @@ The router does not change any state: game rules (damage, kills, pickups) subscr
 
 ## Gameplay
 
-Each room's engine runs `systems::PhysicsPlugin`, `timeline::TimelinePlugin`, the gameplay plugins
+Each room's engine runs `systems::PhysicsPlugin`, `hierarchy::HierarchyPlugin`, `timeline::TimelinePlugin`, the gameplay plugins
 (`server/src/gameplay/`, target `rtype_gameplay`), `prefabs::PrefabPlugin` and `scripting::ScriptPlugin`. Every entity
 they spawn is replicated: the client only draws what the server simulates.
 
@@ -131,7 +131,10 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 - **Ship hits:** room ships carry the `player_ship` collider. An enemy shot (`missile`), an enemy or an obstacle touching
   a ship destroys it, and it respawns; a ship that is respawning cannot be hit, and enemy shots fly through it.
 - **Kills and scores:** a `ShotHitEvent` of a player shot on an enemy destroys both and gives 1 point to the shooter.
-  Each player has their own score.
+  Each player has their own score. An enemy with hit points (a boss, a turret) loses one per shot and dies at 0.
+- **Boss parts:** a boss may have parts, children of it in the entity hierarchy (the room runs
+  `hierarchy::HierarchyPlugin`). A shot on a weak point hurts the boss; armor, and the body of a boss that has a weak
+  point, stop the shot. See [Boss Part](../prefabs/boss-part.md).
 - **Cleanup:** player bullets more than 64 px past the right edge, and enemies, enemy shots and power-ups more than
   64 px past the left one, are destroyed.
 - **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`. The clients get the scores

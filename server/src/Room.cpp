@@ -27,6 +27,7 @@
 #include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
+#include "hierarchy/HierarchyPlugin.hpp"
 #include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
@@ -76,6 +77,8 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
     _engine.addPlugin<systems::PhysicsPlugin>();
+    // Moves the parts of the bosses with them.
+    _engine.addPlugin<hierarchy::HierarchyPlugin>();
     _engine.addPlugin<timeline::TimelinePlugin>();
     gameplay::addGameplayPlugins(_engine, level);
     _engine.addPlugin<prefabs::PrefabPlugin>();

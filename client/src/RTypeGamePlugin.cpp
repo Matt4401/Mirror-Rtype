@@ -59,6 +59,9 @@ constexpr float PLACEHOLDER_PIXELS = 32.0F;
 /** @brief Height of an obstacle whose subtype carries none (spawned by a script): the default 64 px block. */
 constexpr float DEFAULT_OBSTACLE_HEIGHT = 64.0F;
 constexpr ecs::Rgba COLOR_BOSS = {.r = 170, .g = 60, .b = 200, .a = 255};
+/** @brief Side of the box drawn for a boss part until boss looks are configured, in pixels. */
+constexpr float BOSS_PART_PLACEHOLDER_SIZE = 48.0F;
+constexpr ecs::Rgba COLOR_BOSS_PART = {.r = 230, .g = 120, .b = 240, .a = 255};
 constexpr ecs::Rgba COLOR_MISSILE = {.r = 255, .g = 90, .b = 60, .a = 255};
 constexpr ecs::Rgba COLOR_POWER_UP = {.r = 80, .g = 220, .b = 120, .a = 255};
 constexpr ecs::Rgba COLOR_TERRAIN = {.r = 110, .g = 90, .b = 70, .a = 255};
@@ -239,6 +242,8 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                     });
     } else if (event.kind == rtype::game::KIND_BOSS_CORE) {
         applyBox(registry, event.entity, rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT, COLOR_BOSS, 2);
+    } else if (event.kind == rtype::game::KIND_BOSS_PART) {
+        applyBox(registry, event.entity, BOSS_PART_PLACEHOLDER_SIZE, BOSS_PART_PLACEHOLDER_SIZE, COLOR_BOSS_PART, 3);
     } else if (event.kind == rtype::game::KIND_OBSTACLE) {
         // A terrain column carries its height in its subtype; the columns touch, so the terrain looks continuous.
         const std::uint8_t units = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;

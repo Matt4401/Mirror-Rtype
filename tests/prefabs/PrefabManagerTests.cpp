@@ -24,6 +24,7 @@
 #include "prefabs/PrefabRegistry.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
+#include "prefabs/boss_part/BossPart.hpp"
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/obstacle/Obstacle.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
@@ -270,6 +271,37 @@ TEST(PrefabManager, BossCoreVariantAndHitboxAreClamped) {
     EXPECT_EQ(cores.get(1).variant, 0);
     EXPECT_FLOAT_EQ(colliders.get(1).halfWidth, prefabs::BOSS_CORE_HALF_WIDTH);
     EXPECT_FLOAT_EQ(colliders.get(1).halfHeight, prefabs::BOSS_CORE_HALF_HEIGHT);
+}
+
+TEST(PrefabManager, BossPartTakesItsRoleAndSize) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::BOSS_PART_PREFAB, buffer,
+                  {{"role", std::string("turret")}, {"width", 20.0}, {"health", 3.0}, {"look", 4.0}});
+    manager.spawn(prefabs::BOSS_PART_PREFAB, buffer, {{"role", std::string("weak_point")}});
+    manager.spawn(prefabs::BOSS_PART_PREFAB, buffer, {{"role", std::string("shield")}});
+    buffer.flush(registry);
+
+    auto const& parts = registry.getComponents<prefabs::BossPart>();
+    EXPECT_EQ(parts.get(0).role, prefabs::BossPartRole::Turret);
+    EXPECT_EQ(parts.get(0).look, 4);
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(0).points, 3);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(0).halfWidth, 10.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(0).halfHeight, prefabs::DEFAULT_BOSS_PART_SIZE / 2);
+    EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
+    EXPECT_EQ(parts.get(1).role, prefabs::BossPartRole::WeakPoint);
+    EXPECT_FALSE(registry.hasComponent<prefabs::Health>(1)) << "only a turret has its own hit points";
+    EXPECT_EQ(parts.get(2).role, prefabs::BossPartRole::Armor) << "an unknown role gives an armor";
+}
+
+TEST(PrefabManager, BossPartRoleNames) {
+    EXPECT_EQ(prefabs::bossPartRole("weak_point"), prefabs::BossPartRole::WeakPoint);
+    EXPECT_EQ(prefabs::bossPartRole("turret"), prefabs::BossPartRole::Turret);
+    EXPECT_EQ(prefabs::bossPartRole("armor"), prefabs::BossPartRole::Armor);
+    EXPECT_FALSE(prefabs::bossPartRole("Armor").has_value());
 }
 
 TEST(PrefabManager, BossCoreHealthIsClampedToTheNetworkRange) {

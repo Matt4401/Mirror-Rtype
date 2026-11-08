@@ -113,6 +113,39 @@ fight. The script moves the boss and attacks: everything it spawns with `Engine.
 missiles and the boss itself destroy the ships they touch (they respawn), and the power-up it drops gives rapid fire to
 the player who picks it up. See `scripts/Boss.wren`.
 
+#### Boss parts
+
+A boss event may declare up to 16 parts, each in an `[[events.parts]]` table after the event. They are
+[Boss Part](../prefabs/boss-part.md) entities: they move with the boss and are destroyed with it.
+
+```toml
+[[events]]
+at = 5400.0
+type = "boss"
+prefab = "boss_core"
+
+[[events.parts]]
+role = "weak_point"
+x = -50.0
+width = 40.0
+height = 40.0
+
+[[events.parts]]
+role = "turret"
+y = -90.0
+health = 6
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `role` | string | required | `weak_point` (the only place where shots hurt the boss), `turret` (destroyed alone, with its own `health`) or `armor` (stops shots). |
+| `x`, `y` | number | `0` | Offset from the center of the boss, clamped to ±1024 px. |
+| `width`, `height` | number | `48` | Hitbox size. |
+| `health` | number | `8` | Hit points of a turret. |
+| `look` | number | `0` | Look of the part on the clients. |
+
+A part without `role` is skipped with a warning; the server also skips, with a warning, a role it does not know.
+
 Events at the same distance as the boss (or reached in the same server step) wait for the end of the fight, then play
 in order: a `scroll` there does not restart the scroll, and an `end` does not restart the level while the boss is alive.
 Another `boss` at the same distance joins the current fight.

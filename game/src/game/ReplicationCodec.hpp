@@ -23,6 +23,9 @@ inline constexpr protocol::EntityKind KIND_PLAYER_BULLET = protocol::makeEntityK
 inline constexpr protocol::EntityKind KIND_ALIEN_SCOUT = protocol::makeEntityKind("alien_scout");
 /** @brief Kind of the boss ending a level; its `subtype` is its variant, its `health` the hit points left. */
 inline constexpr protocol::EntityKind KIND_BOSS_CORE = protocol::makeEntityKind("boss_core");
+/** @brief Kind of a piece of a boss (weak point, turret, armor); its `subtype` is its look, its `health` the hit points
+ * left of a turret. */
+inline constexpr protocol::EntityKind KIND_BOSS_PART = protocol::makeEntityKind("boss_part");
 /** @brief Kind of an enemy shot, fired by a boss script. */
 inline constexpr protocol::EntityKind KIND_MISSILE = protocol::makeEntityKind("missile");
 /** @brief Kind of a power-up, dropped by a boss script and picked up by touching it. */

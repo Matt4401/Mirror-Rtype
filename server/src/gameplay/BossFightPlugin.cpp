@@ -1,8 +1,13 @@
 #include "gameplay/BossFightPlugin.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
+#include <format>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "LogTag.hpp"
@@ -17,18 +22,25 @@
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/GameplayEvents.hpp"
+#include "hierarchy/Hierarchy.hpp"
+#include "hierarchy/HierarchyPlugin.hpp"
 #include "level/Level.hpp"
+#include "level/LevelLoader.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
+#include "prefabs/boss_part/BossPart.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 
 namespace rtype::server::gameplay {
 
 BossFightPlugin::BossFightPlugin(std::shared_ptr<const level::Level> level) : _level(std::move(level)) {}
 
-void BossFightPlugin::build(engine::PluginBuilder& builder) { builder.require<systems::PhysicsPlugin>(); }
+void BossFightPlugin::build(engine::PluginBuilder& builder) {
+    builder.require<systems::PhysicsPlugin>();
+    builder.require<hierarchy::HierarchyPlugin>();
+}
 
 void BossFightPlugin::init(engine::Engine& engine) {
     _bus = &engine.eventBus();
@@ -65,7 +77,42 @@ void BossFightPlugin::startFight(ecs::Registry& registry, const ::prefabs::Prefa
                                     });
     }
     ecs::net::replicate(registry, boss, game::KIND_BOSS_CORE);
+    spawnParts(registry, boss, params);
     log::info(LOG_TAG, "boss fight: the scroll stops until the boss is destroyed");
+}
+
+void BossFightPlugin::spawnParts(ecs::Registry& registry, const ecs::Entity boss,
+                                 const ::prefabs::PrefabParams& params) {
+    const auto& center = registry.getComponents<ecs::Transform>().get(boss);
+    const auto count = static_cast<std::size_t>(std::clamp<std::int64_t>(
+        params.get<std::int64_t>("parts.count", 0), 0, static_cast<std::int64_t>(level::MAX_BOSS_PARTS)));
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::string prefix = std::format("parts.{}.", i);
+        const auto key = [&prefix](const std::string_view field) { return prefix + std::string(field); };
+        const auto role = params.get<std::string>(key("role"), "");
+        if (!::prefabs::bossPartRole(role).has_value()) {
+            log::warning(LOG_TAG, "boss part ", i, ": unknown role '", role, "', skipped");
+            continue;
+        }
+        ::prefabs::PrefabParams part{{"role", role}};
+        part.set("x", static_cast<double>(center.x) + params.get(key("x"), 0.0));
+        part.set("y", static_cast<double>(center.y) + params.get(key("y"), 0.0));
+        for (const std::string_view field : {"width", "height", "health", "look"}) {
+            if (const auto value = params.find<double>(key(field))) {
+                part.set(field, *value);
+            }
+        }
+        const ecs::Entity entity = registry.spawnEntity();
+        ::prefabs::buildBossPart(entity, registry, part);
+        const auto& built = registry.getComponents<::prefabs::BossPart>().get(entity);
+        const std::uint8_t health = registry.hasComponent<::prefabs::Health>(entity)
+                                        ? registry.getComponents<::prefabs::Health>().get(entity).points
+                                        : game::EntityNetState{}.health;
+        registry.addComponent(entity, game::EntityNetState{.subtype = built.look, .health = health});
+        // Placed first, then attached: setParent keeps the world position and computes the offset from it.
+        hierarchy::setParent(registry, entity, boss);
+        ecs::net::replicate(registry, entity, game::KIND_BOSS_PART);
+    }
 }
 
 void BossFightPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& /*time*/) {

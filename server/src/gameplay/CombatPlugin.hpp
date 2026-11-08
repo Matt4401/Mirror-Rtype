@@ -47,7 +47,8 @@ inline constexpr float RAPID_FIRE_COOLDOWN = 0.08F;
  *   `EntityNetState::subtype` is the index of the player who fired it.
  * - Turns physics contacts into R-Type events with a `collision::CollisionRouter`. A player shot touching an enemy
  *   hurts it: an enemy with a `prefabs::Health` loses one point (its `EntityNetState::health` follows) and dies at 0,
- *   the others die on the first hit, and the kill gives `POINTS_PER_KILL` to the shooter.
+ *   the others die on the first hit, and the kill gives `POINTS_PER_KILL` to the shooter. A boss weak point passes
+ *   the hit to its boss; armor parts, and a boss that has weak points, stop the shot without damage.
  * - An enemy shot, an enemy or an obstacle touching a ship that is not `Respawning` publishes `ShipDestroyed`.
  * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time.
  * - On `LevelFinished`, publishes the `protocol::LevelComplete` with the scores, then `protocol::GameOver{Victory}`
@@ -121,6 +122,16 @@ class CombatPlugin final : public engine::IPlugin {
      * @return True if a hit destroys it.
      */
     [[nodiscard]] bool isVulnerable(ecs::Entity ship) const;
+    /**
+     * @brief Finds what a player shot on an enemy damages.
+     *
+     * A boss weak point passes the hit to its boss, an armor part or a boss with weak points absorbs it, and any other
+     * enemy (a turret included) takes it.
+     *
+     * @param target Enemy hit.
+     * @return The entity that takes the hit, or nothing if the shot is absorbed.
+     */
+    [[nodiscard]] std::optional<ecs::Entity> damagedBy(ecs::Entity target) const;
     /**
      * @brief Applies a player shot to an enemy.
      * @param target Enemy hit.

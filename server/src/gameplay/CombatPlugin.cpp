@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <span>
 #include <sstream>
 #include <vector>
@@ -23,10 +24,13 @@
 #include "game/ShipMovement.hpp"
 #include "gameplay/GameplayComponents.hpp"
 #include "gameplay/GameplayEvents.hpp"
+#include "hierarchy/Hierarchy.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/CollisionCategories.hpp"
 #include "prefabs/Health.hpp"
+#include "prefabs/boss_core/BossCore.hpp"
+#include "prefabs/boss_part/BossPart.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
 #include "protocol/Messages.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
@@ -142,15 +146,18 @@ void CombatPlugin::onShotHit(const collision::ShotHitEvent& hit) {
         return;
     }
     // The contacts are published after the physics step: a shot touching two enemies in the same step only gets one.
-    if ((hit.targetCategory & ::prefabs::collision::ENEMY) != 0 && registry.isAlive(hit.target) &&
-        takeHit(hit.target)) {
+    const std::optional<ecs::Entity> damaged =
+        (hit.targetCategory & ::prefabs::collision::ENEMY) != 0 && registry.isAlive(hit.target) ? damagedBy(hit.target)
+                                                                                                : std::nullopt;
+    if (damaged.has_value() && takeHit(*damaged)) {
         if (registry.hasComponent<game::EntityNetState>(hit.shot)) {
             const std::uint8_t shooter = registry.getComponents<game::EntityNetState>().get(hit.shot).subtype;
             if (shooter < _scores.size()) {
                 _scores.at(shooter) += POINTS_PER_KILL;
             }
         }
-        registry.killEntity(hit.target);
+        // Destroying a boss destroys its parts too: they are its children in the hierarchy.
+        registry.killEntity(*damaged);
     }
     registry.killEntity(hit.shot);
 }
@@ -182,6 +189,31 @@ void CombatPlugin::onPowerUpTouched(const collision::PowerUpTouchedEvent& touch)
 
 bool CombatPlugin::isVulnerable(const ecs::Entity ship) const {
     return _registry->isAlive(ship) && !_registry->hasComponent<Respawning>(ship);
+}
+
+std::optional<ecs::Entity> CombatPlugin::damagedBy(const ecs::Entity target) const {
+    const ecs::Registry& registry = *_registry;
+    if (registry.hasComponent<::prefabs::BossPart>(target)) {
+        switch (registry.getComponents<::prefabs::BossPart>().get(target).role) {
+            case ::prefabs::BossPartRole::WeakPoint:
+                return hierarchy::parentOf(registry, target);
+            case ::prefabs::BossPartRole::Turret:
+                return target;
+            case ::prefabs::BossPartRole::Armor:
+                return std::nullopt;
+        }
+    }
+    if (registry.hasComponent<::prefabs::BossCore>(target)) {
+        const auto children = hierarchy::childrenOf(registry, target);
+        const bool shielded = std::ranges::any_of(children, [&registry](const ecs::Entity child) {
+            return registry.hasComponent<::prefabs::BossPart>(child) &&
+                   registry.getComponents<::prefabs::BossPart>().get(child).role == ::prefabs::BossPartRole::WeakPoint;
+        });
+        if (shielded) {
+            return std::nullopt;
+        }
+    }
+    return target;
 }
 
 bool CombatPlugin::takeHit(const ecs::Entity target) {

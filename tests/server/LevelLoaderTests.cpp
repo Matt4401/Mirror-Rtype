@@ -524,6 +524,77 @@ TEST(LevelLoader, ReadsABossEvent) {
     EXPECT_TRUE(warnings.empty());
 }
 
+TEST(LevelLoader, ReadsTheBossParts) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[events]]
+        at = 10.0
+        type = "boss"
+        prefab = "boss_core"
+
+        [[events.parts]]
+        role = "weak_point"
+        x = -40.0
+        width = 32.0
+
+        [[events.parts]]
+        role = "turret"
+        y = 5000.0
+        health = 6
+        look = 2
+    )",
+                                     warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 1U);
+    const auto& params = eventAt(built, 0).params;
+    EXPECT_EQ(params.find<std::int64_t>("parts.count"), 2);
+    EXPECT_EQ(params.find<std::string>("parts.0.role"), "weak_point");
+    EXPECT_DOUBLE_EQ(params.find<double>("parts.0.x").value_or(0.0), -40.0);
+    EXPECT_DOUBLE_EQ(params.find<double>("parts.0.width").value_or(0.0), 32.0);
+    EXPECT_EQ(params.find<std::string>("parts.1.role"), "turret");
+    EXPECT_DOUBLE_EQ(params.find<double>("parts.1.y").value_or(0.0), level::MAX_BOSS_PART_OFFSET);
+    EXPECT_DOUBLE_EQ(params.find<double>("parts.1.health").value_or(0.0), 6.0);
+    EXPECT_DOUBLE_EQ(params.find<double>("parts.1.look").value_or(0.0), 2.0);
+    EXPECT_FALSE(anyWarningMentions(warnings, "nested")) << "the parts are read, not reported as nested values";
+}
+
+TEST(LevelLoader, InvalidBossPartsAreSkippedWithAWarning) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[events]]
+        at = 10.0
+        type = "boss"
+        prefab = "boss_core"
+
+        [[events.parts]]
+        x = 10.0
+
+        [[events.parts]]
+        role = "armor"
+        colour = "red"
+    )",
+                                     warnings);
+
+    const auto& params = eventAt(built, 0).params;
+    EXPECT_EQ(params.find<std::int64_t>("parts.count"), 1);
+    EXPECT_EQ(params.find<std::string>("parts.0.role"), "armor");
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.0.parts.0: missing or invalid 'role'"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.0.parts.1.colour: unknown key"));
+}
+
+TEST(LevelLoader, BossPartsAreCapped) {
+    std::string toml = "[[events]]\nat = 10.0\ntype = \"boss\"\nprefab = \"boss_core\"\n";
+    for (std::size_t i = 0; i < level::MAX_BOSS_PARTS + 3; ++i) {
+        toml += "[[events.parts]]\nrole = \"armor\"\n";
+    }
+    std::vector<std::string> warnings;
+    const level::Level built = build(toml, warnings);
+
+    EXPECT_EQ(eventAt(built, 0).params.find<std::int64_t>("parts.count"),
+              static_cast<std::int64_t>(level::MAX_BOSS_PARTS));
+    EXPECT_TRUE(anyWarningMentions(warnings, "only the first"));
+}
+
 TEST(LevelLoader, BossWithoutScriptIsKept) {
     const level::Level built = build(R"(
         [[events]]

@@ -28,7 +28,8 @@ using Builder = void (*)(ecs::Entity, ecs::Registry&, const ::prefabs::PrefabPar
 /**
  * @brief Prefabs a script may spawn, with their builder.
  *
- * `boss_core` is left out: a boss stops the scroll until it is destroyed, which only a level `boss` event sets up.
+ * `boss_core` and `boss_part` are left out: a boss stops the scroll until it is destroyed, which only a level `boss`
+ * event sets up, and its parts are spawned with it.
  */
 constexpr std::array<std::pair<std::string_view, Builder>, 4> SCRIPT_PREFABS{{
     {::prefabs::ALIEN_SCOUT_PREFAB, &::prefabs::buildAlienScout},

@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "collision/GameCollisionEvents.hpp"
 #include "components/Replicated.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/ScriptComponent.hpp"
@@ -29,14 +30,18 @@
 #include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
+#include "hierarchy/Hierarchy.hpp"
+#include "hierarchy/HierarchyPlugin.hpp"
 #include "level/Level.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
+#include "prefabs/CollisionCategories.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
+#include "prefabs/boss_part/BossPart.hpp"
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/player_ship/PlayerShip.hpp"
 #include "prefabs/power_up/PowerUp.hpp"
@@ -96,6 +101,7 @@ class GameplayTest : public ::testing::Test {
     explicit GameplayTest(std::shared_ptr<const level::Level> played = testLevel()) : engine([this] { return now; }) {
         engine.setFixedDeltaTime(FIXED_DT);
         engine.addPlugin<systems::PhysicsPlugin>();
+        engine.addPlugin<hierarchy::HierarchyPlugin>();
         engine.addPlugin<timeline::TimelinePlugin>();
         rtype::server::gameplay::addGameplayPlugins(engine, played);
         engine.init();
@@ -192,6 +198,67 @@ class BossFightTest : public GameplayTest {
 
     /** @brief The boss, if alive. */
     [[nodiscard]] std::vector<ecs::Entity> bosses() { return entitiesOf(game::KIND_BOSS_CORE); }
+};
+
+/** @brief Offset of the weak point of `partsLevel()` from the boss center. */
+constexpr double WEAK_POINT_X = -40.0;
+
+/** @brief Boss at 1 s with a weak point, an armor plate and a turret of 2 hit points. */
+std::shared_ptr<const level::Level> partsLevel() {
+    auto built = std::make_shared<level::Level>();
+    built->scrollSpeed = LEVEL_SPEED;
+    built->timeline.add({.position = 60.0F,
+                         .type = std::string(level::EVENT_BOSS),
+                         .params = {{"prefab", std::string("boss_core")},
+                                    {"x", 1328.0},
+                                    {"y", static_cast<double>(BOSS_Y)},
+                                    {"health", BOSS_HEALTH},
+                                    {"parts.count", std::int64_t{4}},
+                                    {"parts.0.role", std::string("weak_point")},
+                                    {"parts.0.x", WEAK_POINT_X},
+                                    {"parts.1.role", std::string("armor")},
+                                    {"parts.1.y", -60.0},
+                                    {"parts.2.role", std::string("turret")},
+                                    {"parts.2.y", 60.0},
+                                    {"parts.2.health", 2.0},
+                                    {"parts.2.look", 5.0},
+                                    {"parts.3.role", std::string("dragon")}}});
+    built->timeline.add({.position = 6000.0F, .type = std::string(level::EVENT_END), .params = {}});
+    return built;
+}
+
+/** @brief Room playing `partsLevel()`. */
+class BossPartsTest : public GameplayTest {
+  protected:
+    BossPartsTest() : GameplayTest(partsLevel()) {}
+
+    /** @brief The boss, once spawned. */
+    [[nodiscard]] ecs::Entity boss() {
+        const auto found = entitiesOf(game::KIND_BOSS_CORE);
+        return found.empty() ? ecs::NULL_ENTITY : found.front();
+    }
+
+    /** @brief The part of a role. */
+    [[nodiscard]] ecs::Entity part(const prefabs::BossPartRole role) {
+        for (const ecs::Entity entity : entitiesOf(game::KIND_BOSS_PART)) {
+            if (registry().getComponents<prefabs::BossPart>().get(entity).role == role) {
+                return entity;
+            }
+        }
+        return ecs::NULL_ENTITY;
+    }
+
+    /** @brief Hits an entity with a player 1 shot, as the collision router reports it. */
+    void hit(const ecs::Entity target) {
+        const ecs::Entity shot = registry().spawnEntity();
+        registry().addComponent(shot, game::EntityNetState{.subtype = 0});
+        engine.eventBus().publish(rtype::server::collision::ShotHitEvent{
+            .shot = shot, .target = target, .targetCategory = prefabs::collision::ENEMY, .byPlayer = true});
+    }
+
+    [[nodiscard]] std::uint8_t health(const ecs::Entity entity) {
+        return registry().getComponents<prefabs::Health>().get(entity).points;
+    }
 };
 
 /** @brief Height of the test terrain. */
@@ -525,6 +592,59 @@ TEST_F(BossFightTest, ShotsWearTheBossDownThenTheScrollResumes) {
     EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
 }
 
+TEST_F(BossPartsTest, PartsSpawnAsChildrenOfTheBossAndMoveWithIt) {
+    run(1.1F);
+    const ecs::Entity core = boss();
+    ASSERT_NE(core, ecs::NULL_ENTITY);
+    EXPECT_EQ(entitiesOf(game::KIND_BOSS_PART).size(), 3U) << "the part with an unknown role is skipped";
+    const ecs::Entity weak = part(prefabs::BossPartRole::WeakPoint);
+    ASSERT_NE(weak, ecs::NULL_ENTITY);
+    EXPECT_EQ(hierarchy::parentOf(registry(), weak), core);
+    const ecs::Entity turret = part(prefabs::BossPartRole::Turret);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(turret).subtype, 5);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(turret).health, 2);
+
+    run(1.0F);
+    const float coreX = registry().getComponents<ecs::Transform>().get(core).x;
+    EXPECT_LT(coreX, 1300.0F) << "the boss flies in";
+    EXPECT_NEAR(registry().getComponents<ecs::Transform>().get(weak).x, coreX + WEAK_POINT_X, 3.0);
+}
+
+TEST_F(BossPartsTest, OnlyTheWeakPointHurtsTheBoss) {
+    run(1.1F);
+    const ecs::Entity core = boss();
+    hit(core);
+    hit(part(prefabs::BossPartRole::Armor));
+    EXPECT_EQ(health(core), BOSS_HEALTH) << "the body and the armor stop the shots";
+
+    hit(part(prefabs::BossPartRole::WeakPoint));
+    EXPECT_EQ(health(core), BOSS_HEALTH - 1);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(core).health, BOSS_HEALTH - 1);
+}
+
+TEST_F(BossPartsTest, TurretIsDestroyedAloneAndScores) {
+    run(1.1F);
+    const ecs::Entity turret = part(prefabs::BossPartRole::Turret);
+    hit(turret);
+    EXPECT_TRUE(registry().isAlive(turret));
+    hit(turret);
+    EXPECT_FALSE(registry().isAlive(turret));
+    EXPECT_EQ(health(boss()), BOSS_HEALTH);
+    EXPECT_EQ(combat().score(0), POINTS_PER_KILL);
+}
+
+TEST_F(BossPartsTest, KillingTheBossThroughItsWeakPointDestroysEveryPart) {
+    run(1.1F);
+    for (std::int64_t i = 0; i < BOSS_HEALTH; ++i) {
+        hit(part(prefabs::BossPartRole::WeakPoint));
+    }
+    EXPECT_EQ(boss(), ecs::NULL_ENTITY);
+    EXPECT_TRUE(entitiesOf(game::KIND_BOSS_PART).empty());
+    EXPECT_EQ(combat().score(0), POINTS_PER_KILL);
+    run(FIXED_DT * 2);
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
+}
+
 TEST_F(BossThenEndTest, EventsInTheSameStepAsTheBossWaitForTheFight) {
     run(1.1F);
     ASSERT_EQ(bosses().size(), 1U);
@@ -730,6 +850,7 @@ class ScriptedBossTest : public ::testing::Test {
 
         engine.setFixedDeltaTime(FIXED_DT);
         engine.addPlugin<systems::PhysicsPlugin>();
+        engine.addPlugin<hierarchy::HierarchyPlugin>();
         engine.addPlugin<timeline::TimelinePlugin>();
         rtype::server::gameplay::addGameplayPlugins(engine, built);
         engine.addPlugin<prefabs::PrefabPlugin>();
@@ -945,6 +1066,7 @@ class GameplayPluginAloneTest : public ::testing::Test {
 
 TEST_F(GameplayPluginAloneTest, BossFightPluginReportsTheStartAndTheEndOfAFight) {
     engine.addPlugin<systems::PhysicsPlugin>();
+    engine.addPlugin<hierarchy::HierarchyPlugin>();
     engine.addPlugin<rtype::server::gameplay::BossFightPlugin>();
     engine.init();
     int started = 0;
