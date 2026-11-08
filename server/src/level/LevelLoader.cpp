@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <expected>
 #include <filesystem>
@@ -99,6 +100,17 @@ prefabs::PrefabParams extraParams(const config::ConfigFile& file, std::size_t in
 }
 
 /**
+ * @brief Tells whether a key holds a finite number.
+ * @param file Level file.
+ * @param key Dotted key.
+ * @return False if the key is missing, is not a number, or is `nan` / `inf`.
+ */
+bool isFiniteNumber(const config::ConfigFile& file, std::string_view key) {
+    const std::optional<double> value = file.getNumber(key);
+    return value.has_value() && std::isfinite(*value);
+}
+
+/**
  * @brief Reads the type and position of every event, skipping the unusable ones.
  * @param file Level file.
  * @param reader Reader reporting corrections.
@@ -121,7 +133,9 @@ std::vector<RawEvent> readEvents(const config::ConfigFile& file, config::ConfigR
             warnings.push_back(std::format("events.{}: missing or invalid 'type', event skipped", i));
             continue;
         }
-        if (!file.getNumber(atKey).has_value()) {
+        // A non-finite `at` (nan, inf, or a literal that overflows) would be replaced by the reader's fallback (0) and
+        // fire on the first step: the event is skipped instead.
+        if (!isFiniteNumber(file, atKey)) {
             warnings.push_back(std::format("events.{}: missing or invalid 'at', event skipped", i));
             continue;
         }
@@ -269,7 +283,7 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Le
     for (std::size_t i = 0; i < count; ++i) {
         const std::string fromKey = std::format("terrain.{}.from", i);
         const std::string toKey = std::format("terrain.{}.to", i);
-        if (!file.getNumber(fromKey).has_value() || !file.getNumber(toKey).has_value()) {
+        if (!isFiniteNumber(file, fromKey) || !isFiniteNumber(file, toKey)) {
             warnings.push_back(std::format("terrain.{}: missing or invalid 'from' or 'to', section skipped", i));
             continue;
         }
