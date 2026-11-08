@@ -56,5 +56,4 @@ const double volume = prefs.getNumber("audio.master");
 
 If no home is known, it falls back to `<current directory>/<app>`.
 
-This is the storage layer a future developer console and CVars can build on: a CVar is a declared setting plus a
-console binding.
+This is the storage layer archived CVars can build on (see [Console and CVars](console.md)).
