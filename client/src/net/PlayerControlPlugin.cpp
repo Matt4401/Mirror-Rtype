@@ -33,7 +33,19 @@ void PlayerControlPlugin::build(engine::PluginBuilder& builder) {
 
 void PlayerControlPlugin::init(engine::Engine& engine) {
     auto& events = engine.eventBus();
-    _started = events.subscribe<GameStarted>([this](const GameStarted& event) { _playerIndex = event.playerIndex; });
+    _started = events.subscribe<GameStarted>([this](const GameStarted& event) {
+        _playerIndex = event.playerIndex;
+        _paused = false;
+    });
+    const auto stop = [this](const auto& /*event*/) { _playerIndex.reset(); };
+    const auto ended = events.subscribe<GameEnded>(stop);
+    const auto left = events.subscribe<RoomLeft>(stop);
+    const auto closed = events.subscribe<SessionClosed>(stop);
+    _endings = {
+        [&events, ended] { events.unsubscribe<GameEnded>(ended); },
+        [&events, left] { events.unsubscribe<RoomLeft>(left); },
+        [&events, closed] { events.unsubscribe<SessionClosed>(closed); },
+    };
     // UDP only opens at GameStart, so a snapshot never arrives before the index of this player's ship is known.
     _spawned = events.subscribe<ecs::net::ReplicatedEntitySpawned>(
         [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) { onEntitySpawned(engine, event); });
@@ -61,7 +73,7 @@ void PlayerControlPlugin::onEntitySpawned(engine::Engine& engine,
 }
 
 void PlayerControlPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& /*time*/) {
-    if (!_playerIndex) {
+    if (!_playerIndex || _paused) {
         return;
     }
     ecs::NetInput input{.sequence = ++_sequence, .held = {}, .axes = {}};
@@ -95,6 +107,10 @@ void PlayerControlPlugin::shutdown(engine::Engine& engine) {
         events.unsubscribe<ecs::net::InputApplied>(*_inputs);
         _inputs.reset();
     }
+    for (const auto& unsubscribe : _endings) {
+        unsubscribe();
+    }
+    _endings.clear();
 }
 
 }  // namespace client

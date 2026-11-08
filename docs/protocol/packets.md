@@ -51,6 +51,8 @@ message Envelope {
         GameStart game_start = 48;
         GameOver game_over = 49;
         PlayerLeft player_left = 50;
+        LevelStart level_start = 51;
+        LevelComplete level_complete = 52;
 
         Leave leave = 64;
         Chat chat = 65;
@@ -223,7 +225,35 @@ order among those present at the start, and is stable for the whole game: it doe
 | `score`         | 2 | `uint32`          | Final cumulative score                               |
 | `player_scores` | 3 | repeated `uint32` | Score per player slot, at most 4 (packed)            |
 
-The client then closes UDP and goes back to the lobby.
+Sent after the last level (`VICTORY`), when every ship is destroyed (`ALL_DEAD`), or when the server stops or a room
+fails (`SERVER_SHUTDOWN`). The server then destroys the room. The client closes UDP and goes back to the lobby, where
+it receives the list of rooms again.
+
+### `LevelStart` (51)
+
+**Direction:** Server → Client · **Channel:** Reliable · **Phase:** In-game
+
+| Field         | # | Type     | Description                               |
+|---------------|---|----------|-------------------------------------------|
+| `level_index` | 1 | `uint32` | Index of the level, below `level_count`   |
+| `level_count` | 2 | `uint32` | Number of levels of the game (1–64)       |
+| `name`        | 3 | `string` | Display name, UTF-8, 0–64 bytes           |
+
+The first one follows `GameStart`. The next ones follow a `LevelComplete`, after an intermission (3 s) during which
+nothing spawns. The client shows the level name.
+
+### `LevelComplete` (52)
+
+**Direction:** Server → Client · **Channel:** Reliable · **Phase:** In-game
+
+| Field           | # | Type              | Description                                |
+|-----------------|---|-------------------|--------------------------------------------|
+| `level_index`   | 1 | `uint32`          | Index of the cleared level (below 64)      |
+| `score`         | 2 | `uint32`          | Cumulative score of the room so far        |
+| `player_scores` | 3 | repeated `uint32` | Score per player slot, at most 4 (packed)  |
+
+When a level is cleared, the server destroys every entity except the ships, moves the ships back to their start
+positions, and sends this message. The next `LevelStart`, or `GameOver` after the last level, follows.
 
 ### `PlayerLeft` (50)
 
@@ -243,7 +273,8 @@ Sent to the remaining players of a room when one of them leaves or disconnects.
 
 **Direction:** Client → Server · **Channel:** Reliable · **Phase:** Any
 
-No field. Graceful disconnection, sent before closing TCP. The server removes the client from its room.
+No field. Leaves the current room, waiting or in game; the client stays connected and is back in the lobby (it is
+how a player goes back to the lobby from a game). Also sent before closing TCP, for a graceful disconnection.
 
 ### `Chat` (65)
 
@@ -363,6 +394,8 @@ payload MUST be dropped silently — when:
   of 0 or > 65535; `max_players` of 0 or > 4; a room `player_count` > `max_players`; `GameStart.player_count` of 0
   or > 4; `player_index` >= `player_count`);
 - a list is longer than its maximum (`rooms` > 256; `slots`, `player_scores` > 4; `held` > 16; `axes` > 8);
+- a level message is out of range (`level_count` of 0 or > 64, `level_index` >= `level_count` in `LevelStart`,
+  `level_index` >= 64 in `LevelComplete`, `name` longer than 64 bytes);
 - a chat `text` is empty or longer than 256 bytes.
 
 Phase and channel checks (a message valid but received in the wrong phase or on the wrong channel) are done by the
@@ -425,5 +458,7 @@ How R-Type fills the game-defined fields of `EntityState`. Another game defines 
 | `48` | `GameStart`        | S → C | Reliable   | ~9                         |
 | `49` | `GameOver`         | S → C | Reliable   | ~14                        |
 | `50` | `PlayerLeft`       | S → C | Reliable   | ~5                         |
+| `51` | `LevelStart`       | S → C | Reliable   | ~7 + name length           |
+| `52` | `LevelComplete`    | S → C | Reliable   | ~10                        |
 | `64` | `Leave`            | C → S | Reliable   | 3                          |
 | `65` | `Chat`             | Both  | Reliable   | ~7 + text length           |

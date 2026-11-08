@@ -43,6 +43,7 @@
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
 #include "net/ReplicationEvents.hpp"
+#include "net/SessionEvents.hpp"
 #include "net/metrics/NetworkMetricsPlugin.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
@@ -61,13 +62,14 @@ constexpr auto DEADLINE = std::chrono::seconds(10);
 /** @brief The client of the game, without its window: same network plugins, and the test plays the input devices. */
 class GameClient {
   public:
-    GameClient() : _connection(std::make_shared<ecs::net::ClientConnection>(_transport)) {
+    GameClient() : _connection(std::make_shared<ecs::net::ClientConnection>(nullptr)) {
         engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
         engine.addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
-        engine.addPlugin<client::RTypeNetworkPlugin>(_transport);
+        engine.addPlugin<client::RTypeNetworkPlugin>(
+            _connection, [] { return ecs::net::createClient({.protocolId = protocol::TRANSPORT_PROTOCOL_ID}); });
         engine.addPlugin<client::PlayerControlPlugin>();
         engine.addPlugin<metrics::MetricsPlugin>();
-        engine.addPlugin<ecs::net::NetworkMetricsPlugin>(_transport);
+        engine.addPlugin<ecs::net::NetworkMetricsPlugin>([this] { return _connection->stats(); });
         engine.addPlugin<client::ShipMetricsPlugin>();
         engine.eventBus().subscribe<ecs::net::PacketReceived>([this](const ecs::net::PacketReceived& packet) {
             const auto message = protocol::decode(packet.data);
@@ -87,14 +89,19 @@ class GameClient {
         engine.registry().addComponent(_input, ::input::InputState{.playerIndex = 0, .actions = {}});
     }
 
-    /** @brief Connects to the local server. */
-    [[nodiscard]] bool connect() { return _transport->connect("127.0.0.1", PORT); }
+    /** @brief Asks the session to connect to the local server, as the connect screen does. */
+    [[nodiscard]] bool connect() {
+        engine.eventBus().publish(client::ConnectRequest{.host = "127.0.0.1", .port = PORT});
+        return session().state() == client::SessionState::Connecting;
+    }
 
-    /** @brief Presses the ready key for one frame. */
-    void pressReady() {
-        actions()[client::input::ACTION_READY].justPressed = true;
-        engine.advance();
-        actions()[client::input::ACTION_READY].justPressed = false;
+    /** @brief The session of this client. */
+    [[nodiscard]] client::RTypeNetworkPlugin& session() { return engine.getPlugin<client::RTypeNetworkPlugin>(); }
+
+    /** @brief Publishes a request, as a screen of the client does. */
+    template <typename Request>
+    void request(const Request& request) {
+        engine.eventBus().publish(request);
     }
 
     /** @brief Holds the horizontal axis. */
@@ -134,8 +141,6 @@ class GameClient {
         return engine.registry().getComponents<::input::InputState>().get(_input).actions;
     }
 
-    std::shared_ptr<ecs::net::INetworkClient> _transport =
-        ecs::net::createClient({.protocolId = protocol::TRANSPORT_PROTOCOL_ID});
     std::shared_ptr<ecs::net::ClientConnection> _connection;
     ecs::Entity _input = 0;
 };
@@ -203,14 +208,18 @@ TEST_F(EndToEndTest, TwoClientsPlayTogetherAndSurviveACrash) {
         }
     };
 
-    // Lobby: the first client finds no room and creates one, the second finds it and joins it, both get ready.
+    // Lobby: the first client creates a room, the second sees it in the list and joins it, both get ready.
     ASSERT_TRUE(connect(first));
+    ASSERT_TRUE(pump(frame, [&] { return first.session().state() == client::SessionState::Lobby; }));
+    first.request(client::CreateRoomRequest{});
     ASSERT_TRUE(pump(frame, [&] { return first.lobbyUpdate.has_value(); }));
     ASSERT_TRUE(connect(*second));
+    ASSERT_TRUE(pump(frame, [&] { return !second->session().rooms().rooms.empty(); }));
+    second->request(client::JoinRoomRequest{.roomId = second->session().rooms().rooms.front().roomId});
     ASSERT_TRUE(pump(frame, [&] { return second->lobbyUpdate.has_value(); }));
     EXPECT_EQ(second->lobbyUpdate->roomId, first.lobbyUpdate->roomId);
-    first.pressReady();
-    second->pressReady();
+    first.request(client::SetReadyRequest{.ready = true});
+    second->request(client::SetReadyRequest{.ready = true});
     ASSERT_TRUE(pump(frame, [&] { return first.gameStart && second->gameStart; }));
     EXPECT_EQ(first.gameStart->playerIndex, 0);
     EXPECT_EQ(second->gameStart->playerIndex, 1);
@@ -247,8 +256,10 @@ TEST_F(EndToEndTest, ClientMeasuresItsConnection) {
     GameClient client;
     const auto frame = [&] { client.engine.advance(); };
     ASSERT_TRUE(connect(client));
+    ASSERT_TRUE(pump(frame, [&] { return client.session().state() == client::SessionState::Lobby; }));
+    client.request(client::CreateRoomRequest{});
     ASSERT_TRUE(pump(frame, [&] { return client.lobbyUpdate.has_value(); }));
-    client.pressReady();
+    client.request(client::SetReadyRequest{.ready = true});
     ASSERT_TRUE(pump(frame, [&] { return client.gameStart.has_value(); }));
 
     // Through real sockets: inputs get acknowledged, snapshots come in, and all of it reaches the board.

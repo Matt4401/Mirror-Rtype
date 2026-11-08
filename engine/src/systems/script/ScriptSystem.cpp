@@ -5,8 +5,10 @@
 
 #include "systems/script/ScriptSystem.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <iostream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -52,7 +54,9 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _entitiesToReinstantiate(std::move(other._entitiesToReinstantiate)),
       _binderReplayList(std::move(other._binderReplayList)),
       _reloadCheckTimer(other._reloadCheckTimer),
-      _hotReloadEnabled(other._hotReloadEnabled) {
+      _hotReloadEnabled(other._hotReloadEnabled),
+      _extensions(std::move(other._extensions)),
+      _extraModules(std::move(other._extraModules)) {
     other.detachDestroyListener();
     _vm.setUserContext(this);
     attachDestroyListener();
@@ -92,6 +96,8 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _binderReplayList = std::move(other._binderReplayList);
         _reloadCheckTimer = other._reloadCheckTimer;
         _hotReloadEnabled = other._hotReloadEnabled;
+        _extensions = std::move(other._extensions);
+        _extraModules = std::move(other._extraModules);
         _vm.setUserContext(this);
         attachDestroyListener();
         std::swap(_collisionBus, other._collisionBus);
@@ -140,7 +146,7 @@ void ScriptSystem::init(ecs::Registry& registry, ecs::EventBus& bus) {
 }
 
 void ScriptSystem::updateSleepingFibers(float dt) {
-    std::vector<SleepingFiber> readyFibers;
+    std::vector<SleepingFiber>& readyFibers = _extensions.readyFibers;
     for (auto it = _sleepingFibers.begin(); it != _sleepingFibers.end();) {
         it->timeRemaining -= dt;
         if (it->timeRemaining <= 0.0F) {
@@ -152,11 +158,13 @@ void ScriptSystem::updateSleepingFibers(float dt) {
     }
 
     for (auto& sleeping : readyFibers) {
+        const OwnerScope scope(*this, sleeping.owner);
         auto const res = _vm.call(_fiberCallHandle, sleeping.fiber.get());
         if (res != WREN_RESULT_SUCCESS) {
             std::cerr << "[ScriptSystem] Warning: Resuming sleeping fiber failed\n";
         }
     }
+    readyFibers.clear();
 }
 
 void ScriptSystem::updateScriptEntities(float dt) {
@@ -166,6 +174,7 @@ void ScriptSystem::updateScriptEntities(float dt) {
             continue;
         }
 
+        const OwnerScope scope(*this, e);
         auto const res = _vm.call(_updateHandle, it->second.get(), static_cast<double>(dt));
         if (res != WREN_RESULT_SUCCESS) {
             std::cerr << "[ScriptSystem] Warning: Script update loop failed for entity " << e << "\n";
@@ -229,7 +238,34 @@ prefabs::PrefabManager const* ScriptSystem::getPrefabManager() const noexcept { 
 std::vector<ecs::Entity>& ScriptSystem::getQueryBuffer() noexcept { return _queryBuffer; }
 
 void ScriptSystem::addSleepingFiber(scripting::detail::UniqueWrenHandle fiber, float seconds) {
-    _sleepingFibers.push_back(SleepingFiber{.fiber = std::move(fiber), .timeRemaining = seconds});
+    _sleepingFibers.push_back(
+        SleepingFiber{.fiber = std::move(fiber), .timeRemaining = seconds, .owner = _extensions.currentOwner});
+}
+
+void ScriptSystem::cancelFibers(ScriptOwner owner) {
+    std::erase_if(_sleepingFibers, [owner](const SleepingFiber& sleeping) { return sleeping.owner == owner; });
+}
+
+void ScriptSystem::addModuleSource(std::string name, std::string source) {
+    (*_extraModules)[std::move(name)] = std::move(source);
+}
+
+std::size_t ScriptSystem::addVmResetListener(std::function<void(VmResetPhase)> listener) {
+    const std::size_t id = _extensions.nextListenerId++;
+    _extensions.vmResetListeners.emplace_back(id, std::move(listener));
+    return id;
+}
+
+void ScriptSystem::removeVmResetListener(std::size_t id) {
+    std::erase_if(_extensions.vmResetListeners, [id](const auto& entry) { return entry.first == id; });
+}
+
+void ScriptSystem::notifyVmReset(VmResetPhase phase) {
+    for (auto& [id, listener] : _extensions.vmResetListeners) {
+        if (listener) {
+            listener(phase);
+        }
+    }
 }
 
 }  // namespace systems

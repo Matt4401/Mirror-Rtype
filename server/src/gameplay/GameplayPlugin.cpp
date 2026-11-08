@@ -5,7 +5,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
+#include <span>
 #include <sstream>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "LogTag.hpp"
@@ -27,6 +31,7 @@
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
+#include "protocol/Messages.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 
 namespace rtype::server::gameplay {
@@ -43,11 +48,136 @@ constexpr std::array<float, 6> ENEMY_SPAWN_HEIGHTS{160.0F, 420.0F, 280.0F, 560.0
 /** @brief Horizontal offset of a bullet from the center of the ship that fires it. */
 constexpr float SHOT_OFFSET_X = 40.0F;
 
+/**
+ * @brief Default level rule: the kill quota is reached, or the level lasted its maximum duration.
+ * @param progress Progress of the level.
+ * @param level The level.
+ * @return `true` if the level is cleared.
+ */
+bool quotaOrDuration(const LevelProgress& progress, const LevelInfo& level) {
+    return (level.killQuota > 0 && progress.kills >= level.killQuota) ||
+           (level.maxDuration > 0.0F && progress.elapsed >= level.maxDuration);
+}
+
 }  // namespace
+
+std::vector<LevelInfo> defaultLevels() {
+    return {
+        LevelInfo{.name = "Outer Rim", .killQuota = 10, .maxDuration = 60.0F, .spawnInterval = 1.2F},
+        LevelInfo{.name = "Asteroid Belt", .killQuota = 15, .maxDuration = 75.0F, .spawnInterval = 0.9F},
+        LevelInfo{.name = "Bydo Core", .killQuota = 20, .maxDuration = 90.0F, .spawnInterval = 0.7F},
+    };
+}
+
+void GameplayPlugin::setLevels(std::vector<LevelInfo> levels) {
+    if (levels.empty()) {
+        return;
+    }
+    if (levels.size() > protocol::MAX_LEVELS) {
+        levels.resize(protocol::MAX_LEVELS);
+    }
+    _levels = std::move(levels);
+}
+
+void GameplayPlugin::setLevelFinished(LevelFinishedRule rule) {
+    _levelFinished = rule ? std::move(rule) : LevelFinishedRule{quotaOrDuration};
+}
+
+void GameplayPlugin::startGame() {
+    _levelIndex = 0;
+    _shipsSeen = false;
+    beginLevel();
+}
+
+void GameplayPlugin::placeShips() {
+    _registry->runSystem<ecs::Transform, ecs::Replicated, game::EntityNetState>(
+        [](ecs::Entity /*entity*/, ecs::Transform& transform, const ecs::Replicated& replicated,
+           const game::EntityNetState& state) {
+            if (replicated.kind != game::KIND_PLAYER_SHIP) {
+                return;
+            }
+            transform.x = SHIP_SPAWN_X;
+            transform.y = SHIP_SPAWN_FIRST_Y + (SHIP_SPAWN_SPACING_Y * static_cast<float>(state.subtype));
+        });
+}
+
+void GameplayPlugin::beginLevel() {
+    const LevelInfo& level = _levels.at(_levelIndex);
+    _phase = Phase::Playing;
+    _progress = LevelProgress{.index = _levelIndex};
+    _enemySpawnTimer = level.spawnInterval;
+    log::info(LOG_TAG, "level ", _levelIndex + 1, '/', _levels.size(), " \"", level.name, "\" starts");
+    _bus->publish(protocol::LevelStart{
+        .levelIndex = static_cast<std::uint8_t>(_levelIndex),
+        .levelCount = static_cast<std::uint8_t>(_levels.size()),
+        .name = level.name.substr(0, protocol::MAX_LEVEL_NAME_LENGTH),
+    });
+}
+
+void GameplayPlugin::clearLevel() {
+    killLevelEntities();
+    placeShips();
+    _pendingShots.clear();
+    log::info(LOG_TAG, "level ", _levelIndex + 1, " cleared");
+    _bus->publish(protocol::LevelComplete{
+        .levelIndex = static_cast<std::uint8_t>(_levelIndex),
+        .score = totalScore(),
+        .playerScores = playerScores(),
+    });
+    if (_levelIndex + 1 >= _levels.size()) {
+        endGame(protocol::GameOverReason::Victory);
+        return;
+    }
+    ++_levelIndex;
+    _phase = Phase::Intermission;
+    _intermission = INTERMISSION_DURATION;
+}
+
+void GameplayPlugin::endGame(protocol::GameOverReason reason) {
+    _phase = Phase::Over;
+    killLevelEntities();
+    log::info(LOG_TAG, "game over (", reason == protocol::GameOverReason::Victory ? "victory" : "defeat", "), score ",
+              totalScore());
+    _bus->publish(protocol::GameOver{.reason = reason, .score = totalScore(), .playerScores = playerScores()});
+}
+
+void GameplayPlugin::killLevelEntities() {
+    ecs::Registry& registry = *_registry;
+    _toDestroy.clear();
+    registry.runSystem<ecs::Replicated>([this](const ecs::Entity entity, const ecs::Replicated& replicated) {
+        if (replicated.kind != game::KIND_PLAYER_SHIP) {
+            _toDestroy.push_back(entity);
+        }
+    });
+    registry.killEntities(_toDestroy);
+    _toDestroy.clear();
+}
+
+bool GameplayPlugin::everyShipDestroyed() {
+    bool anyShip = false;
+    _registry->runSystem<ecs::Replicated>([&anyShip](const ecs::Entity /*entity*/, const ecs::Replicated& replicated) {
+        anyShip = anyShip || replicated.kind == game::KIND_PLAYER_SHIP;
+    });
+    _shipsSeen = _shipsSeen || anyShip;
+    return _shipsSeen && !anyShip;
+}
+
+std::vector<std::uint32_t> GameplayPlugin::playerScores() const {
+    const auto played = std::span(_scores).first(_playerCount);
+    return {played.begin(), played.end()};
+}
+
+std::uint32_t GameplayPlugin::totalScore() const {
+    const auto played = std::span(_scores).first(_playerCount);
+    return std::accumulate(played.begin(), played.end(), std::uint32_t{0});
+}
 
 void GameplayPlugin::build(engine::PluginBuilder& builder) { builder.require<systems::PhysicsPlugin>(); }
 
 void GameplayPlugin::init(engine::Engine& engine) {
+    if (!_levelFinished) {
+        _levelFinished = quotaOrDuration;
+    }
     _registry = &engine.registry();
     _bus = &engine.eventBus();
     _router = std::make_unique<collision::CollisionRouter>(*_bus);
@@ -108,6 +238,7 @@ void GameplayPlugin::onShotHit(const collision::ShotHitEvent& hit) {
             if (shooter < _scores.size()) {
                 _scores.at(shooter) += POINTS_PER_KILL;
             }
+            ++_progress.kills;
         }
         registry.killEntity(hit.target);
     }
@@ -123,13 +254,40 @@ void GameplayPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Ti
     }
     _pendingShots.clear();
 
-    _enemySpawnTimer -= time.deltaTime;
-    if (_enemySpawnTimer <= 0.0F) {
-        _enemySpawnTimer += ENEMY_SPAWN_INTERVAL;
-        spawnEnemy();
+    switch (_phase) {
+        case Phase::Over:
+            return;
+        case Phase::Intermission:
+            _intermission -= time.deltaTime;
+            if (_intermission <= 0.0F) {
+                beginLevel();
+            }
+            break;
+        case Phase::Free:
+        case Phase::Playing: {
+            const float interval =
+                _phase == Phase::Playing ? _levels.at(_levelIndex).spawnInterval : ENEMY_SPAWN_INTERVAL;
+            _enemySpawnTimer -= time.deltaTime;
+            if (_enemySpawnTimer <= 0.0F) {
+                _enemySpawnTimer += interval;
+                spawnEnemy();
+            }
+            break;
+        }
     }
 
     killOffscreenEntities();
+
+    if (_phase == Phase::Playing) {
+        _progress.elapsed += time.deltaTime;
+        if (everyShipDestroyed()) {
+            endGame(protocol::GameOverReason::AllDead);
+            return;
+        }
+        if (_levelFinished(_progress, _levels.at(_levelIndex))) {
+            clearLevel();
+        }
+    }
 
     _scoreLogTimer -= time.deltaTime;
     if (_scoreLogTimer <= 0.0F) {

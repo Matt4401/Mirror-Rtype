@@ -169,9 +169,11 @@ bool ScriptSystem::reloadModifiedScripts() {
         return false;
     }
 
+    notifyVmReset(VmResetPhase::Before);
     releaseActiveHandles();
     recreateVmAndModules(modifiedModules);
     reinstantiateActiveScripts();
+    notifyVmReset(VmResetPhase::After);
     return true;
 }
 

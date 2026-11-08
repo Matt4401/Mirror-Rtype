@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "components/CameraComponent.hpp"
+#include "components/Hidden.hpp"
 #include "components/Renderable.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
@@ -208,4 +209,26 @@ TEST(Window, RejectsNonPositiveTargetFps) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(RenderSystem, HiddenEntitiesAreNotCollected) {
+    ecs::Registry registry;
+    render::TextureStore textures;
+    render::RenderSystem system(textures);
+
+    const ecs::Entity shown = registry.spawnEntity();
+    const ecs::Entity hidden = registry.spawnEntity();
+    for (const ecs::Entity entity : {shown, hidden}) {
+        registry.addComponent<ecs::Transform>(entity, ecs::Transform{});
+        registry.addComponent<ecs::Renderable>(entity, ecs::Renderable{.textureId = 1});
+    }
+    ecs::hide(registry, hidden, ecs::HiddenReason::Scene);
+
+    system.collect(registry);
+    ASSERT_EQ(system.drawQueue().size(), 1U);
+    EXPECT_EQ(system.drawQueue().front().entity, shown);
+
+    ecs::show(registry, hidden, ecs::HiddenReason::Scene);
+    system.collect(registry);
+    EXPECT_EQ(system.drawQueue().size(), 2U);
 }

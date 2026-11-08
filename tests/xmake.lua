@@ -99,6 +99,13 @@ target("test_config")
     add_files("test_config.cpp")
     add_tests("test_config")
 
+target("test_settings")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_settings")
+    add_packages("gtest")
+    add_files("test_settings.cpp")
+    add_tests("test_settings")
+
 target("test_prefabs")
     set_kind("binary")
     add_deps("engine_core", "engine_prefabs", "rtype_prefabs")
@@ -218,6 +225,28 @@ target("test_server_manager")
     add_includedirs("../server/src")
     add_tests("test_server_manager")
 
+target("test_scene")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scene", "engine_hierarchy")
+    add_packages("gtest")
+    add_files("test_scene.cpp")
+    add_tests("test_scene")
+
+target("test_scene_scripting")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scene", "engine_scripting", "engine_input",
+             "engine_prefabs", "engine_scene_scripting")
+    add_packages("gtest", "wren")
+    add_files("test_scene_scripting.cpp")
+    add_tests("test_scene_scripting")
+
+target("test_ui_widgets")
+    set_kind("binary")
+    add_deps("engine_ui", "engine_hierarchy")
+    add_packages("gtest")
+    add_files("test_ui_widgets.cpp")
+    add_tests("test_ui_widgets")
+
 target("test_hierarchy")
     set_kind("binary")
     add_deps("engine_core", "engine_time", "engine_hierarchy")
@@ -272,6 +301,19 @@ target("test_client_metrics")
     add_includedirs("../client/src")
     add_tests("test_client_metrics")
 
+target("test_client_scenes")
+    set_kind("binary")
+    add_rules("rlss.project_dir")
+    add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_input",
+             "engine_hierarchy", "engine_ui", "engine_scene", "engine_scripting", "engine_scene_scripting",
+             "engine_prefabs", "engine_config", "engine_settings", "engine_metrics", "engine_metrics_overlay",
+             "rtype_game")
+    add_packages("gtest", "wren")
+    add_files("client/ClientScenesTests.cpp", "../client/src/net/RTypeNetworkPlugin.cpp",
+              "../client/src/net/PlayerControlPlugin.cpp", "../client/src/scenes/*.cpp")
+    add_includedirs("../client/src")
+    add_tests("test_client_scenes")
+
 target("test_rlss_protocol")
     set_kind("binary")
     add_deps("rlss_shared")
@@ -294,6 +336,15 @@ target("test_rlss_codec")
     add_packages("gtest")
     add_files("rlss/CodecTests.cpp")
     add_tests("test_rlss_codec")
+
+target("test_rlss_menu")
+    set_kind("binary")
+    add_deps("rlss_shared", "rlss_game", "log", "engine_core", "engine_time", "engine_events", "engine_network",
+             "engine_input", "engine_hierarchy", "engine_ui", "engine_scene", "engine_config", "engine_settings")
+    add_packages("gtest")
+    add_files("rlss/MenuScenesTests.cpp", "../rlss/client/menu/*.cpp", "../rlss/client/ServerLink.cpp")
+    add_includedirs("../rlss/client")
+    add_tests("test_rlss_menu")
 
 target("test_rlss_server")
     set_kind("binary")

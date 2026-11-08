@@ -23,16 +23,18 @@
 #include "GoalEffectPlugin.hpp"
 #include "HudPlugin.hpp"
 #include "Logger.hpp"
-#include "MenuPlugin.hpp"
 #include "NameTagPlugin.hpp"
 #include "PlayerInputPlugin.hpp"
 #include "ServerLink.hpp"
 #include "SessionPlugin.hpp"
 #include "SoundPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
+#include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "hierarchy/HierarchyPlugin.hpp"
 #include "input/InputPlugin.hpp"
+#include "menu/MenuScenesPlugin.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/NetworkFactory.hpp"
@@ -40,8 +42,11 @@
 #include "protocol/Protocol.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/window/WindowConfig.hpp"
+#include "scene/ScenePlugin.hpp"
 #include "scripting/ScriptPlugin.hpp"
+#include "settings/SettingsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
+#include "ui/UiPlugin.hpp"
 
 namespace {
 
@@ -88,7 +93,10 @@ int main(int ac, char** av) {
 
         // Connected: open the game window, on the menu.
         engine::Engine engine;
-        engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.title = std::string(rlss::protocol::GAME_TITLE)})
+        // Escape means "back" in the menus; on the main menu and in a match it still quits.
+        engine
+            .addPlugin<render::RenderPlugin>(
+                render::WindowConfig{.title = std::string(rlss::protocol::GAME_TITLE), .escapeClosesWindow = false})
             .addPlugin<input::InputPlugin>(rlss::client::makeControls())
             .addPlugin<systems::AnimationPlugin>()
             .addPlugin<audio::AudioPlugin>()
@@ -102,13 +110,17 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::CarViewPlugin>()
             .addPlugin<rlss::client::BallViewPlugin>()
             .addPlugin<rlss::client::CameraPlugin>()
-            // Drawn on screen in this order: name tags, HUD, then the menus on top.
+            .addPlugin<hierarchy::HierarchyPlugin>()
+            .addPlugin<ui::UiPlugin>()
+            .addPlugin<scene::ScenePlugin>()
+            .addPlugin<settings::SettingsPlugin>(config::userConfigDirectory("rlss") / "settings.toml")
+            // Drawn on screen in this order: name tags, HUD, then the menus on top (UiPlugin draws in lateUpdate).
             .addPlugin<rlss::client::NameTagPlugin>()
             .addPlugin<rlss::client::HudPlugin>()
             .addPlugin<rlss::client::GoalEffectPlugin>()
             .addPlugin<rlss::client::SoundPlugin>()
             .addPlugin<rlss::client::PlayerInputPlugin>()
-            .addPlugin<rlss::client::MenuPlugin>(link);
+            .addPlugin<rlss::client::MenuScenesPlugin>(link);
         engine.run();
         return engine.getPlugin<rlss::client::SessionPlugin>().connectionLost() ? EXIT_ERROR : 0;
     } catch (const std::exception& error) {

@@ -1,7 +1,7 @@
 #include "net/RTypeNetworkPlugin.hpp"
 
-#include <algorithm>
 #include <memory>
+#include <string>
 #include <utility>
 #include <variant>
 
@@ -9,12 +9,12 @@
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/time/Time.hpp"
-#include "input/InputState.hpp"
-#include "input/RTypeBindings.hpp"
+#include "events/EventBus.hpp"
+#include "net/ClientConnection.hpp"
+#include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkService.hpp"
-#include "net/LocalInput.hpp"
 #include "net/NetworkEvents.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "net/SessionEvents.hpp"
@@ -30,7 +30,11 @@ namespace {
 
 constexpr const char* LOG_TAG = "client";
 
-/** @brief What to tell the player when the connection ends. */
+/**
+ * @brief What to tell the player when the connection ends.
+ * @param reason Why the transport closed.
+ * @return Message for the player.
+ */
 constexpr const char* describe(const ecs::net::DisconnectReason reason) {
     switch (reason) {
         case ecs::net::DisconnectReason::ProtocolMismatch:
@@ -47,111 +51,210 @@ constexpr const char* describe(const ecs::net::DisconnectReason reason) {
 
 }  // namespace
 
-RTypeNetworkPlugin::RTypeNetworkPlugin(std::shared_ptr<ecs::net::INetworkClient> transport)
-    : _transport(std::move(transport)) {}
+RTypeNetworkPlugin::RTypeNetworkPlugin(std::shared_ptr<ecs::net::ClientConnection> connection, TransportFactory factory)
+    : _connection(std::move(connection)), _factory(std::move(factory)) {}
 
-void RTypeNetworkPlugin::build(engine::PluginBuilder& builder) { builder.require<ecs::net::NetworkPlugin>(); }
+void RTypeNetworkPlugin::build(engine::PluginBuilder& builder) {
+    builder.require<ecs::net::NetworkPlugin>();
+    builder.require<ecs::net::ClientReplicationPlugin>();
+}
+
+template <typename Event, typename Handler>
+void RTypeNetworkPlugin::listen(engine::Engine& engine, Handler handler) {
+    ecs::EventBus& bus = engine.eventBus();
+    const auto token = bus.subscribe<Event>(std::move(handler));
+    _unsubscribe.emplace_back([&bus, token] { bus.unsubscribe<Event>(token); });
+}
 
 void RTypeNetworkPlugin::init(engine::Engine& engine) {
-    auto& events = engine.eventBus();
-    _connected = events.subscribe<ecs::net::PeerConnected>(
-        [&engine](const ecs::net::PeerConnected& /*event*/) { sendMessage(engine, protocol::Hello{}); });
-    _disconnected = events.subscribe<ecs::net::PeerDisconnected>(
-        [this, &engine](const ecs::net::PeerDisconnected& /*event*/) { onDisconnected(engine); });
-    _packets = events.subscribe<ecs::net::PacketReceived>(
-        [this, &engine](const ecs::net::PacketReceived& packet) { onPacket(engine, packet); });
+    listen<ecs::net::PeerConnected>(
+        engine, [&engine](const ecs::net::PeerConnected& /*event*/) { sendMessage(engine, protocol::Hello{}); });
+    listen<ecs::net::PeerDisconnected>(
+        engine, [this, &engine](const ecs::net::PeerDisconnected& /*event*/) { onDisconnected(engine); });
+    listen<ecs::net::PacketReceived>(
+        engine, [this, &engine](const ecs::net::PacketReceived& packet) { onPacket(engine, packet); });
+
+    listen<ConnectRequest>(engine, [this, &engine](const ConnectRequest& request) { onConnect(engine, request); });
+    listen<DisconnectRequest>(engine, [this, &engine](const DisconnectRequest& /*request*/) {
+        if (_state != SessionState::Offline) {
+            close(engine, {}, false);
+        }
+    });
+    listen<RefreshRoomsRequest>(engine, [this, &engine](const RefreshRoomsRequest& /*request*/) {
+        if (_state == SessionState::Lobby || _state == SessionState::InRoom) {
+            sendMessage(engine, protocol::LobbyListRequest{});
+        }
+    });
+    listen<CreateRoomRequest>(engine, [this, &engine](const CreateRoomRequest& /*request*/) {
+        if (_state == SessionState::Lobby) {
+            sendMessage(engine, protocol::LobbyCreate{});
+        }
+    });
+    listen<JoinRoomRequest>(engine, [this, &engine](const JoinRoomRequest& request) {
+        if (_state == SessionState::Lobby) {
+            sendMessage(engine, protocol::LobbyJoin{.roomId = request.roomId});
+        }
+    });
+    listen<SetReadyRequest>(engine, [this, &engine](const SetReadyRequest& request) {
+        if (_state == SessionState::InRoom) {
+            sendMessage(engine, protocol::LobbyReady{.ready = request.ready});
+        }
+    });
+    listen<LeaveRoomRequest>(engine, [this, &engine](const LeaveRoomRequest& /*request*/) {
+        if (_state != SessionState::InRoom && _state != SessionState::InGame) {
+            return;
+        }
+        sendMessage(engine, protocol::Leave{});
+        leaveGame(engine);
+        _state = SessionState::Lobby;
+        _room.reset();
+        engine.eventBus().publish(RoomLeft{});
+    });
+}
+
+void RTypeNetworkPlugin::onConnect(engine::Engine& engine, const ConnectRequest& request) {
+    if (_state != SessionState::Offline) {
+        return;
+    }
+    const std::shared_ptr<ecs::net::INetworkClient> transport = _factory ? _factory() : nullptr;
+    if (!transport) {
+        close(engine, "no network available", true);
+        return;
+    }
+    _connection->setClient(transport);
+    _state = SessionState::Connecting;
+    _lastError.clear();
+    log::info(LOG_TAG, "connecting to ", request.host, ':', request.port);
+    if (!transport->connect(request.host, request.port)) {
+        close(engine, "the connection could not be started", true);
+    }
 }
 
 void RTypeNetworkPlugin::onDisconnected(engine::Engine& engine) {
-    log::error(LOG_TAG, describe(_transport->disconnectReason()));
-    _failed = true;
-    engine.stop();
+    if (_state == SessionState::Offline) {
+        return;
+    }
+    const auto& transport = _connection->client();
+    const std::string reason =
+        transport ? describe(transport->disconnectReason()) : std::string("connection to the server lost");
+    close(engine, reason, _state == SessionState::Connecting);
+}
+
+void RTypeNetworkPlugin::close(engine::Engine& engine, const std::string& reason, const bool duringConnection) {
+    if (_state != SessionState::Offline && _state != SessionState::Connecting && reason.empty()) {
+        sendMessage(engine, protocol::Leave{});
+    }
+    leaveGame(engine);
+    if (const auto& transport = _connection->client()) {
+        transport->stop();
+        _retired = transport;
+    }
+    _connection->setClient(nullptr);
+    _state = SessionState::Offline;
+    _room.reset();
+    _rooms = {};
+    if (!reason.empty()) {
+        log::error(LOG_TAG, reason);
+        _lastError = reason;
+        engine.eventBus().publish(SessionClosed{.duringConnection = duringConnection, .reason = reason});
+    }
+}
+
+void RTypeNetworkPlugin::leaveGame(engine::Engine& engine) {
+    if (!_playerIndex) {
+        return;
+    }
+    if (const auto& transport = _connection->client()) {
+        transport->closeUdp();
+    }
+    engine.getPlugin<ecs::net::ClientReplicationPlugin>().reset(engine);
+    _playerIndex.reset();
+    _level.reset();
 }
 
 void RTypeNetworkPlugin::onPacket(engine::Engine& engine, const ecs::net::PacketReceived& packet) {
     if (packet.channel != ecs::net::Channel::Reliable) {
         return;
     }
-    const auto message = protocol::decode(packet.data);
-    if (!message) {
-        return;
+    if (const auto message = protocol::decode(packet.data)) {
+        onMessage(engine, *message);
     }
-    if (const auto* welcome = std::get_if<protocol::Welcome>(&*message)) {
-        _udpPort = welcome->udpPort;
-        sendMessage(engine, protocol::LobbyListRequest{});
-    } else if (const auto* list = std::get_if<protocol::LobbyList>(&*message)) {
-        chooseRoom(engine, *list);
-    } else if (const auto* update = std::get_if<protocol::LobbyUpdate>(&*message)) {
-        if (!_room) {
-            log::info(LOG_TAG, "in room ", update->roomId, ": press R or Start when everyone is here");
+}
+
+void RTypeNetworkPlugin::onMessage(engine::Engine& engine, const protocol::Message& message) {
+    ecs::EventBus& bus = engine.eventBus();
+    if (const auto* welcome = std::get_if<protocol::Welcome>(&message)) {
+        if (_state != SessionState::Connecting) {
+            return;
         }
-        _room = update->roomId;
-        const auto ready = std::ranges::count_if(update->slots, &protocol::PlayerSlot::ready);
-        log::info(LOG_TAG, "room ", update->roomId, ": ", ready, '/', update->slots.size(), " players ready");
-    } else if (const auto* start = std::get_if<protocol::GameStart>(&*message)) {
+        _udpPort = welcome->udpPort;
+        _state = SessionState::Lobby;
+        bus.publish(SessionConnected{});
+        sendMessage(engine, protocol::LobbyListRequest{});
+    } else if (const auto* list = std::get_if<protocol::LobbyList>(&message)) {
+        _rooms = *list;
+        bus.publish(RoomListUpdated{.list = *list});
+    } else if (const auto* update = std::get_if<protocol::LobbyUpdate>(&message)) {
+        if (_state != SessionState::Lobby && _state != SessionState::InRoom) {
+            return;
+        }
+        _state = SessionState::InRoom;
+        _room = *update;
+        bus.publish(RoomUpdated{.room = *update});
+    } else if (const auto* start = std::get_if<protocol::GameStart>(&message)) {
         onGameStart(engine, *start);
-    } else if (const auto* left = std::get_if<protocol::PlayerLeft>(&*message)) {
-        log::info(LOG_TAG, "player ", left->clientId, " left");
+    } else if (const auto* level = std::get_if<protocol::LevelStart>(&message)) {
+        if (_state == SessionState::InGame) {
+            _level = *level;
+            bus.publish(LevelStarted{.level = *level});
+        }
+    } else if (const auto* complete = std::get_if<protocol::LevelComplete>(&message)) {
+        if (_state == SessionState::InGame) {
+            bus.publish(LevelCompleted{.result = *complete});
+        }
+    } else if (const auto* over = std::get_if<protocol::GameOver>(&message)) {
+        if (_state != SessionState::InGame) {
+            return;
+        }
+        leaveGame(engine);
+        _state = SessionState::Lobby;
+        _room.reset();
+        _result = *over;
+        bus.publish(GameEnded{.result = *over});
+    } else if (const auto* left = std::get_if<protocol::PlayerLeft>(&message)) {
+        bus.publish(PlayerLeftRoom{.clientId = left->clientId});
     }
 }
 
 void RTypeNetworkPlugin::onGameStart(engine::Engine& engine, const protocol::GameStart& start) {
-    if (!_transport->openUdp(_udpPort)) {
-        log::error(LOG_TAG, "cannot open UDP on port ", _udpPort);
-        _failed = true;
-        engine.stop();
+    if (_state != SessionState::InRoom) {
+        return;
+    }
+    const auto& transport = _connection->client();
+    if (!transport || !transport->openUdp(_udpPort)) {
+        close(engine, "cannot open UDP on port " + std::to_string(_udpPort), false);
         return;
     }
     log::info(LOG_TAG, "game started: player ", static_cast<int>(start.playerIndex) + 1, " of ",
               static_cast<int>(start.playerCount));
-    _inGame = true;
-    engine.eventBus().publish(GameStarted{.playerIndex = start.playerIndex});
+    _state = SessionState::InGame;
+    _playerIndex = start.playerIndex;
+    _result.reset();
+    engine.eventBus().publish(GameStarted{.playerIndex = start.playerIndex, .playerCount = start.playerCount});
 }
 
-void RTypeNetworkPlugin::chooseRoom(engine::Engine& engine, const protocol::LobbyList& list) const {
-    if (_room) {
-        return;
-    }
-    const auto open = std::ranges::find_if(list.rooms, [](const protocol::RoomEntry& room) {
-        return room.state == protocol::RoomState::Waiting && room.playerCount < room.maxPlayers;
-    });
-    if (open == list.rooms.end()) {
-        sendMessage(engine, protocol::LobbyCreate{});
-    } else {
-        sendMessage(engine, protocol::LobbyJoin{.roomId = open->roomId});
-    }
-}
-
-void RTypeNetworkPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
-    if (!_room || _inGame) {
-        return;
-    }
-    bool pressed = false;
-    withLocalInput(engine.registry(), [&pressed](const ::input::InputState& state) {
-        pressed = state.isJustPressed(input::ACTION_READY);
-    });
-    if (pressed) {
-        _ready = !_ready;
-        sendMessage(engine, protocol::LobbyReady{.ready = _ready});
-    }
-}
+void RTypeNetworkPlugin::update(engine::Engine& /*engine*/, const ecs::time::Time& /*time*/) { _retired.reset(); }
 
 void RTypeNetworkPlugin::shutdown(engine::Engine& engine) {
     // The service is still there: NetworkPlugin, a dependency, shuts down after this plugin.
-    sendMessage(engine, protocol::Leave{});
-    auto& events = engine.eventBus();
-    if (_connected) {
-        events.unsubscribe<ecs::net::PeerConnected>(*_connected);
-        _connected.reset();
+    if (_state != SessionState::Offline && _state != SessionState::Connecting) {
+        sendMessage(engine, protocol::Leave{});
     }
-    if (_disconnected) {
-        events.unsubscribe<ecs::net::PeerDisconnected>(*_disconnected);
-        _disconnected.reset();
+    for (const auto& unsubscribe : _unsubscribe) {
+        unsubscribe();
     }
-    if (_packets) {
-        events.unsubscribe<ecs::net::PacketReceived>(*_packets);
-        _packets.reset();
-    }
+    _unsubscribe.clear();
+    _retired.reset();
 }
 
 void RTypeNetworkPlugin::sendMessage(engine::Engine& engine, const protocol::Message& message) {

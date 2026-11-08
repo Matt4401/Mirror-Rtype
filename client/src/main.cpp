@@ -13,6 +13,7 @@
 #include "ClientOptions.hpp"
 #include "RTypeGamePlugin.hpp"
 #include "audio/AudioPlugin.hpp"
+#include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
 #include "input/InputPlugin.hpp"
@@ -20,10 +21,14 @@
 #include "metrics/ShipMetricsPlugin.hpp"
 #include "metrics/overlay/MetricsOverlayPlugin.hpp"
 #include "net/ClientNetwork.hpp"
-#include "net/RTypeNetworkPlugin.hpp"
 #include "prefabs/PrefabPlugin.hpp"
 #include "render/RenderPlugin.hpp"
+#include "render/window/WindowConfig.hpp"
+#include "scene/ScenePlugin.hpp"
+#include "scene/scripting/SceneScriptingPlugin.hpp"
+#include "scenes/ClientScenesPlugin.hpp"
 #include "scripting/ScriptPlugin.hpp"
+#include "settings/SettingsPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
 #include "ui/UiPlugin.hpp"
@@ -43,7 +48,8 @@ int main(int ac, char** av) {
     }
     try {
         engine::Engine engine;
-        engine.addPlugin<render::RenderPlugin>()
+        // Escape means "back" and "pause" in the menus: the game quits from its title screen.
+        engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.escapeClosesWindow = false})
             .addPlugin<input::InputPlugin>()
             .addPlugin<audio::AudioPlugin>()
             .addPlugin<systems::PhysicsPlugin>()
@@ -55,11 +61,15 @@ int main(int ac, char** av) {
             .addPlugin<metrics::MetricsPlugin>()
             .addPlugin<metrics::MetricsOverlayPlugin>()
             .addPlugin<client::ShipMetricsPlugin>()
+            .addPlugin<scene::ScenePlugin>()
+            .addPlugin<scene::SceneScriptingPlugin>()
+            .addPlugin<settings::SettingsPlugin>(config::userConfigDirectory("rtype") / "settings.toml")
             .addPlugin<client::RTypeGamePlugin>();
-        client::addNetworkPlugins(engine, *options);
+        client::addNetworkPlugins(engine);
+        engine.addPlugin<client::ClientScenesPlugin>(options->host, options->port, args.size() > 1);
 
         engine.run();
-        return engine.getPlugin<client::RTypeNetworkPlugin>().failed() ? EXIT_ERROR : 0;
+        return 0;
     } catch (const std::exception& error) {
         std::cerr << "client error: " << error.what() << '\n';
         return EXIT_ERROR;
