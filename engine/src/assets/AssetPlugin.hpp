@@ -16,8 +16,9 @@ namespace assets {
 /**
  * @brief Adds an `AssetManager` to the registry while the engine runs.
  *
- * The rendering and audio plugins list it as an optional dependency: when it is installed they start after it, plug
- * their loaders into the manager, and detach them (releasing their assets) when they shut down, before this plugin.
+ * The loaders are plugged in by the bridges `assets::RenderAssetsPlugin` (`engine_assets_render`) and
+ * `assets::AudioAssetsPlugin` (`engine_assets_audio`), which depend on this plugin and on the backend's: they start
+ * after both and detach their loaders (releasing their assets) when they shut down, before either of them.
  * Headless: depends only on `engine_core`.
  */
 class AssetPlugin final : public engine::IPlugin {

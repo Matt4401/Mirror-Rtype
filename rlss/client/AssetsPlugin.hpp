@@ -93,7 +93,7 @@ class AssetsPlugin final : public engine::IPlugin {
 
     /**
      * @brief Declares the dependencies on `render::RenderPlugin` (textures and font need its window) and
-     * `assets::AssetScriptingPlugin` (the declarations).
+     * `assets::AssetScriptingPlugin` (the declarations) and `assets::RenderAssetsPlugin` (the loaders).
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;

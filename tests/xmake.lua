@@ -15,6 +15,22 @@ target("test_ecs")
     add_files("test_ecs.cpp")
     add_tests("test_ecs")
 
+target("test_ecs_stress")
+    set_kind("binary")
+    add_deps("engine_core")
+    add_packages("gtest")
+    add_files("ecs/main.cpp", "ecs/CommandBufferStressTest.cpp", "ecs/EntityRecycleTest.cpp")
+    add_tests("test_ecs_stress")
+
+-- Not a test: it measures, and asserts nothing. Run it in release, see docs/comparative-study/ecs-benchmark.md.
+if has_config("benchmarks") then
+    target("bench_ecs")
+        set_kind("binary")
+        add_deps("engine_core")
+        add_packages("benchmark")
+        add_files("ecs/SparseArrayBenchmark.cpp")
+end
+
 target("test_mediator")
     set_kind("binary")
     add_deps("engine_core")
@@ -71,6 +87,14 @@ target("test_assets_scripting")
     add_packages("gtest", "wren")
     add_files("assets/AssetScriptingTests.cpp")
     add_tests("test_assets_scripting")
+
+target("test_assets_scene")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scene", "engine_hierarchy", "engine_assets",
+             "engine_assets_scene")
+    add_packages("gtest")
+    add_files("assets/SceneAssetsTests.cpp")
+    add_tests("test_assets_scene")
 
 target("test_log")
     set_kind("binary")
@@ -199,6 +223,13 @@ if has_config("graphics") then
         add_packages("gtest")
         add_files("test_audio_settings.cpp")
         add_tests("test_audio_settings")
+
+    target("test_assets_audio")
+        set_kind("binary")
+        add_deps("engine_audio", "engine_assets", "engine_assets_audio")
+        add_packages("gtest")
+        add_files("assets/AudioAssetsTests.cpp")
+        add_tests("test_assets_audio")
 
     target("test_audio_plugin")
         set_kind("binary")

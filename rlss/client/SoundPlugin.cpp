@@ -12,6 +12,7 @@
 #include "Logger.hpp"
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetManager.hpp"
+#include "assets/audio/AudioAssetsPlugin.hpp"
 #include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "audio/spatial/SpatialConfig.hpp"
@@ -163,6 +164,7 @@ std::string_view soundAlias(const Sound sound) noexcept {
 void SoundPlugin::build(engine::PluginBuilder& builder) {
     builder.require<audio::AudioPlugin>();
     builder.require<assets::AssetScriptingPlugin>();
+    builder.require<assets::AudioAssetsPlugin>();
     builder.require<ecs::net::ClientReplicationPlugin>();
     builder.require<CameraPlugin>();
     builder.require<HudPlugin>();

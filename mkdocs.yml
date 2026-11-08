@@ -100,6 +100,7 @@ nav:
   - Comparative Study:
       - Libraries: comparative-study/libraries.md
       - Algorithms: comparative-study/algorithms.md
+      - ECS Benchmark: comparative-study/ecs-benchmark.md
       - Storage: comparative-study/storage.md
       - Security: comparative-study/security.md
       - Scripting & Events: comparative-study/scripting-events.md
@@ -107,6 +108,7 @@ nav:
   - Development:
       - Coding Style: development/coding-style.md
       - Workflow: development/workflow.md
+      - Test Audit: development/test-audit.md
   - Getting Started:
       - Index: getting-started/index.md
       - Building: getting-started/building.md

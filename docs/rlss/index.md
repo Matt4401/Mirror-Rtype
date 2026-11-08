@@ -97,7 +97,7 @@ flowchart LR
   `RenderPlugin`, `InputPlugin`, `NetworkPlugin` fed by `ServerLink`, `ClientReplicationPlugin`, `ScriptPlugin`, and:
     - `AssetPlugin` and `AssetScriptingPlugin` run `rlss/scripts/Assets.wren`, which declares every texture, sound and
       the font for the engine asset manager (aliases = file names without extension, see
-      [Assets](../architecture/assets.md));
+      [Assets](../architecture/assets.md)); `RenderAssetsPlugin` and `AudioAssetsPlugin` plug the loaders in;
     - `AssetsPlugin` resolves the textures and the font once (`GameAssets`, an ECS resource read by the views, see
       [Graphics](#graphics));
     - `ArenaViewPlugin` draws the arena picture (in tiles) and the stadium behind it, which moves slower than the
@@ -277,8 +277,8 @@ with neon walls, blue on the left and orange on the right, and a grass pitch alo
 - **Text.** The menus, the HUD and the name tags use Russo One (SIL Open Font License, `rlss/assets/fonts/OFL.txt`).
   `UiCanvas` sizes text by the height of its capital letters.
 - **Engine support** (generic, used here): the asset manager (`Assets.preloadSmoothTextures`, which loads with
-  `TextureFilter::Smooth`: mipmaps, trilinear, clamped edges, for artwork drawn at any zoom), fonts rasterized at 128 px so that big titles stay sharp, and
-  `IScreenDrawService::drawTexture` (textured quads on screen, rotated around their center) for the HUD.
+  `TextureFilter::Smooth`: mipmaps, trilinear, clamped edges, for artwork drawn at any zoom), fonts rasterized at
+  128 px so that big titles stay sharp, and `IScreenDrawService::drawTexture` (textured quads on screen, rotated around their center) for the HUD.
 
 - **Goal explosion** (`GoalEffectPlugin`, on the switch to the goal celebration, at the ball): a fireball in the color
   of the team that scored (`goal_explosion_blue.png` / `goal_explosion_orange.png`, 20 frames of 192 px played once in
