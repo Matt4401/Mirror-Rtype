@@ -57,6 +57,29 @@ std::filesystem::path dataRoot(const char* program) {
 }
 
 /**
+ * @brief Loads a level file and reports its warnings.
+ * @param path Level file.
+ * @param root Data directory the boss scripts are looked up from.
+ * @return The level, or `nullptr` if it cannot be loaded (the error is logged).
+ */
+std::shared_ptr<const rtype::server::level::Level> loadLevelFile(const std::filesystem::path& path,
+                                                                 const std::filesystem::path& root) {
+    std::vector<std::string> warnings;
+    auto level = rtype::server::level::loadLevel(path, rtype::server::gameplay::GameplayPlugin::canSpawn, warnings);
+    for (const std::string& warning : warnings) {
+        rtype::log::warning(rtype::server::LOG_TAG, "level: ", warning);
+    }
+    if (!level) {
+        rtype::log::warning(rtype::server::LOG_TAG, "cannot load the level: ", level.error());
+        return nullptr;
+    }
+    level->dataRoot = root;
+    rtype::log::info(rtype::server::LOG_TAG, "level '", level->name, "' loaded: ", level->timeline.events().size(),
+                     " events");
+    return std::make_shared<const rtype::server::level::Level>(std::move(*level));
+}
+
+/**
  * @brief Loads the level played by every room.
  *
  * A level that cannot be read is not fatal: the server still runs, with no enemy, so that it can start without its data
@@ -66,21 +89,11 @@ std::filesystem::path dataRoot(const char* program) {
  * @return The level, or `nullptr` if it cannot be loaded.
  */
 std::shared_ptr<const rtype::server::level::Level> loadDefaultLevel(const std::filesystem::path& root) {
-    std::vector<std::string> warnings;
-    auto level =
-        rtype::server::level::loadLevel(root / LEVEL_PATH, rtype::server::gameplay::GameplayPlugin::canSpawn, warnings);
-    for (const std::string& warning : warnings) {
-        rtype::log::warning(rtype::server::LOG_TAG, "level: ", warning);
+    auto level = loadLevelFile(root / LEVEL_PATH, root);
+    if (level == nullptr) {
+        rtype::log::warning(rtype::server::LOG_TAG, "the rooms play without a level");
     }
-    if (!level) {
-        rtype::log::warning(rtype::server::LOG_TAG, "cannot load the level: ", level.error(),
-                            "; the rooms play without a level");
-        return nullptr;
-    }
-    level->dataRoot = root;
-    rtype::log::info(rtype::server::LOG_TAG, "level '", level->name, "' loaded: ", level->timeline.events().size(),
-                     " events");
-    return std::make_shared<const rtype::server::level::Level>(std::move(*level));
+    return level;
 }
 
 void onSignal(int /*signal*/) {
@@ -100,7 +113,15 @@ int main(int ac, char** av) {
     rtype::log::setVerbose(options->logs);
     rtype::log::setColored(options->colors);
 
-    const std::shared_ptr<const rtype::server::level::Level> level = loadDefaultLevel(dataRoot(args.front()));
+    const std::filesystem::path root = dataRoot(args.front());
+    // A level asked for on the command line must load: playing another one would be misleading.
+    const std::shared_ptr<const rtype::server::level::Level> level =
+        options->level ? loadLevelFile(*options->level, root) : loadDefaultLevel(root);
+    if (options->level && level == nullptr) {
+        rtype::log::error(rtype::server::LOG_TAG, "the level given with ", rtype::server::LEVEL_OPTION,
+                          " cannot be played");
+        return EXIT_ERROR;
+    }
     rtype::server::ServerManager server(ecs::net::createServer({.protocolId = rtype::protocol::TRANSPORT_PROTOCOL_ID}),
                                         rtype::server::HANDSHAKE_TIMEOUT, level);
 
