@@ -1,0 +1,39 @@
+# R-Type client: how the bosses and their parts look.
+# Read at startup; every problem is reported in the log and never stops the client. Format: docs/architecture/client.md.
+#
+# The server sends the `variant` of each boss (set by the level `boss` event) and the `look` of each part (set in its
+# `[[events.parts]]` table). A variant or look without an entry here is drawn as a colored box.
+#
+# Each entry is either a box (`width`, `height`, in pixels) or a sprite: an animation strip of `frames` frames of
+# `frame_width` x `frame_height` texture pixels, side by side from (`frame_x`, `frame_y`), drawn `scale` times bigger.
+#
+# Example of a sprite entry (paths are relative to the directory the client runs from):
+#
+# [[boss]]
+# variant = 1
+# texture = "sprites/my_boss.png"
+# frame_x = 0
+# frame_y = 0
+# frame_width = 160
+# frame_height = 200
+# frames = 4
+# frame_duration = 0.12
+# loop = true
+# scale = 2.0
+#
+# [[part]]
+# look = 1
+# texture = "sprites/my_boss.png"
+# frame_x = 0
+# frame_y = 200
+# frame_width = 32
+# frame_height = 32
+# frames = 2
+# scale = 2.0
+
+# Boxes until the sprites are set: their sizes match the hitboxes of the shipped levels.
+
+[[boss]]
+variant = 0
+width = 128.0
+height = 160.0

@@ -302,6 +302,18 @@ target("test_client_collisions")
     add_includedirs("../client/src")
     add_tests("test_client_collisions")
 
+target("test_client_looks")
+    set_kind("binary")
+    add_deps("engine_config")
+    add_packages("gtest")
+    add_files("client/BossLooksTests.cpp", "../client/src/looks/BossLooks.cpp")
+    add_includedirs("../client/src")
+    -- The shipped looks file is read from the source tree, whatever the directory the tests run from.
+    on_load(function (target)
+        target:add("defines", 'RTYPE_CLIENT_CONFIG_DIR="' .. path.unix(path.join(os.projectdir(), "client", "config")) .. '"')
+    end)
+    add_tests("test_client_looks")
+
 target("test_client_blink")
     set_kind("binary")
     add_deps("engine_core", "rtype_game")

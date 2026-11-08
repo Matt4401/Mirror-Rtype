@@ -121,6 +121,46 @@ ship. See [In-Game Metrics](metrics.md).
   the ship spritesheet, so that players can tell their ships apart. A kind the client does not know stays invisible.
 - **Shots:** the client spawns nothing. The `shoot` action travels in the player's input, and the bullets arrive in the
   snapshots like any other entity, interpolated: a shot appears one round trip after the key press.
+- **Boss looks:** a `boss_core` and a `boss_part` are drawn from `client/config/bosses.toml` (see below), by their
+  `subtype`: the variant of a boss, the look of a part. Without an entry, they are colored boxes.
+
+#### Boss looks file (`client/config/bosses.toml`)
+
+Read at start-up by `looks::readBossLooks` (`client/src/looks/`). A missing file, a bad value or a texture that does
+not load is logged and never stops the client: the look falls back to a box.
+
+```toml
+[[boss]]                       # one entry per boss variant (level `boss` event, key `variant`)
+variant = 1
+texture = "sprites/my_boss.png"
+frame_x = 0                    # left of the first frame, in texture pixels
+frame_y = 0                    # top of the strip
+frame_width = 160
+frame_height = 200
+frames = 4                     # frames side by side, played in a loop
+frame_duration = 0.12
+loop = true
+scale = 2.0
+
+[[part]]                       # one entry per part look (level `[[events.parts]]`, key `look`)
+look = 1
+width = 40.0                   # without `texture`: a box of this size
+height = 40.0
+```
+
+| Key | Default | Range | Description |
+|-----|---------|-------|-------------|
+| `variant` / `look` | required | 0–255 | Which boss variant or part look the entry is for. A later entry with the same id wins. |
+| `width`, `height` | default box | 0–2048 px | Box drawn without a sprite; 0 keeps the default size (128×160 for a boss, 48×48 for a part). |
+| `texture` | none | relative path, no `..` | Spritesheet; without it, the entry is a box. |
+| `frame_x`, `frame_y` | `0` | 0–4096 | Origin of the first frame. |
+| `frame_width`, `frame_height` | required with `texture` | 1–4096 | Size of a frame. |
+| `frames` | `1` | 1–64 | Frames of the strip. |
+| `frame_duration` | `0.1` | 0.01–10 s | Seconds per frame. |
+| `loop` | `true` | | `false` stops on the last frame. |
+| `scale` | `1` | 0.1–16 | Drawing scale. |
+
+The hitbox stays the server's (`width` and `height` of the level event): size the sprite to match it.
 
 ### Scenes: the menus (`client/src/scenes/`)
 

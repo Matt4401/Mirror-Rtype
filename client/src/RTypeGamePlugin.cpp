@@ -8,16 +8,20 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "Logger.hpp"
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
 #include "components/Renderable.hpp"
 #include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
+#include "config/ConfigFile.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/services/IInputService.hpp"
@@ -29,6 +33,7 @@
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
+#include "looks/BossLooks.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
@@ -38,6 +43,11 @@
 namespace client {
 
 namespace {
+
+namespace log = rtype::log;
+
+/** @brief Tag of the messages of this plugin in the log. */
+constexpr const char* LOG_TAG = "client";
 
 constexpr float SCENE_WIDTH = 1280.0F;
 constexpr float SCENE_HEIGHT = 720.0F;
@@ -117,6 +127,7 @@ struct EntitySprite {
     int frameHeight = 0;
     int frameCount = 1;
     int startY = 0;
+    int startX = 0;
     int layer = 0;
     float scale = SPRITE_SCALE;
     float frameDuration = DEFAULT_FRAME_DURATION;
@@ -128,20 +139,21 @@ void applySprite(ecs::Registry& registry, const ecs::Entity entity, const Entity
     auto& transform = registry.getComponents<ecs::Transform>().get(entity);
     transform.scaleX = sprite.scale;
     transform.scaleY = sprite.scale;
-    registry.addComponent<ecs::Renderable>(
-        entity,
-        ecs::Renderable{
-            .textureId = sprite.texture,
-            .sourceRect = {.x = 0, .y = sprite.startY, .width = sprite.frameWidth, .height = sprite.frameHeight},
-            .origin = {.x = 0.5F, .y = 0.5F},
-            .tint = COLOR_WHITE,
-            .layer = sprite.layer,
-        });
+    registry.addComponent<ecs::Renderable>(entity, ecs::Renderable{
+                                                       .textureId = sprite.texture,
+                                                       .sourceRect = {.x = sprite.startX,
+                                                                      .y = sprite.startY,
+                                                                      .width = sprite.frameWidth,
+                                                                      .height = sprite.frameHeight},
+                                                       .origin = {.x = 0.5F, .y = 0.5F},
+                                                       .tint = COLOR_WHITE,
+                                                       .layer = sprite.layer,
+                                                   });
     registry.addComponent<ecs::AnimationComponent>(entity, ecs::AnimationComponent{
                                                                .frameWidth = sprite.frameWidth,
                                                                .frameHeight = sprite.frameHeight,
                                                                .frameCount = sprite.frameCount,
-                                                               .startX = 0,
+                                                               .startX = sprite.startX,
                                                                .startY = sprite.startY,
                                                                .frameDuration = sprite.frameDuration,
                                                                .loop = sprite.loop,
@@ -201,6 +213,8 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     _starMediumId = load("sprites/star_medium.png");
     _starLargeId = load("sprites/star_large.png");
 
+    loadBossLooks(*textures);
+
     if (engine.mediator().hasService<engine::IInputService>()) {
         client::input::setupDefaultBindings(engine.service<engine::IInputService>().mapping());
     }
@@ -240,10 +254,20 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = 0,
                         .layer = 2,
                     });
-    } else if (event.kind == rtype::game::KIND_BOSS_CORE) {
-        applyBox(registry, event.entity, rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT, COLOR_BOSS, 2);
-    } else if (event.kind == rtype::game::KIND_BOSS_PART) {
-        applyBox(registry, event.entity, BOSS_PART_PLACEHOLDER_SIZE, BOSS_PART_PLACEHOLDER_SIZE, COLOR_BOSS_PART, 3);
+    } else if (event.kind == rtype::game::KIND_BOSS_CORE || event.kind == rtype::game::KIND_BOSS_PART) {
+        // The subtype picks the look: the variant of a boss, the look of a part.
+        const bool part = event.kind == rtype::game::KIND_BOSS_PART;
+        const std::uint8_t id = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
+        const auto& configured = part ? _bossLooks.parts : _bossLooks.bosses;
+        const auto found = configured.find(id);
+        const looks::Look* look = found != configured.end() ? &found->second : nullptr;
+        if (part) {
+            applyLook(registry, event.entity, look, {BOSS_PART_PLACEHOLDER_SIZE, BOSS_PART_PLACEHOLDER_SIZE},
+                      COLOR_BOSS_PART, 3);
+        } else {
+            applyLook(registry, event.entity, look, {rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT},
+                      COLOR_BOSS, 2);
+        }
     } else if (event.kind == rtype::game::KIND_OBSTACLE) {
         // A terrain column carries its height in its subtype; the columns touch, so the terrain looks continuous.
         const std::uint8_t units = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
@@ -268,6 +292,57 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .loop = false,
                     });
     }
+}
+
+void RTypeGamePlugin::loadBossLooks(render::TextureStore& textures) {
+    if (!std::filesystem::exists(looks::BOSS_LOOKS_PATH)) {
+        log::info(LOG_TAG, looks::BOSS_LOOKS_PATH, " not found: the bosses are drawn as boxes");
+        return;
+    }
+    std::vector<std::string> warnings;
+    _bossLooks = looks::readBossLooks(config::ConfigFile::load(looks::BOSS_LOOKS_PATH), warnings);
+    for (const std::string& warning : warnings) {
+        log::warning(LOG_TAG, looks::BOSS_LOOKS_PATH, ": ", warning);
+    }
+    for (auto* table : {&_bossLooks.bosses, &_bossLooks.parts}) {
+        for (auto& [id, look] : *table) {
+            if (!look.sprite.has_value() || _lookTextures.contains(look.sprite->texture)) {
+                continue;
+            }
+            const ecs::TextureId texture = textures.load(look.sprite->texture);
+            if (texture == ecs::NO_TEXTURE) {
+                log::warning(LOG_TAG, "cannot load ", look.sprite->texture, ": that look is drawn as a box");
+            }
+            _lookTextures.emplace(look.sprite->texture, texture);
+        }
+    }
+}
+
+void RTypeGamePlugin::applyLook(ecs::Registry& registry, const ecs::Entity entity, const looks::Look* look,
+                                const std::pair<float, float> box, const ecs::Rgba color, const int layer) const {
+    if (look != nullptr && look->sprite.has_value()) {
+        const looks::SpriteLook& sprite = *look->sprite;
+        const auto texture = _lookTextures.find(sprite.texture);
+        if (texture != _lookTextures.end() && texture->second != ecs::NO_TEXTURE) {
+            applySprite(registry, entity,
+                        {
+                            .texture = texture->second,
+                            .frameWidth = sprite.frameWidth,
+                            .frameHeight = sprite.frameHeight,
+                            .frameCount = sprite.frames,
+                            .startY = sprite.y,
+                            .startX = sprite.x,
+                            .layer = layer,
+                            .scale = sprite.scale,
+                            .frameDuration = sprite.frameDuration,
+                            .loop = sprite.loop,
+                        });
+            return;
+        }
+    }
+    const float width = look != nullptr && look->width > 0.0F ? look->width : box.first;
+    const float height = look != nullptr && look->height > 0.0F ? look->height : box.second;
+    applyBox(registry, entity, width, height, color, layer);
 }
 
 void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& time) {

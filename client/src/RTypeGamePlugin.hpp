@@ -5,15 +5,23 @@
 
 #pragma once
 
+#include <functional>
+#include <map>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
 
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
+#include "looks/BossLooks.hpp"
 #include "net/ReplicationEvents.hpp"
+#include "render/texture/TextureStore.hpp"
 
 namespace client {
 
@@ -80,6 +88,33 @@ class RTypeGamePlugin final : public engine::IPlugin {
      * @param event The new entity.
      */
     void onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const;
+
+    /**
+     * @brief Reads `client/config/bosses.toml` and loads the textures it names.
+     *
+     * A missing file keeps every boss a box; a texture that does not load turns its look back into a box. Every problem
+     * is logged, none stops the client.
+     *
+     * @param textures Texture store of the render plugin.
+     */
+    void loadBossLooks(render::TextureStore& textures);
+
+    /**
+     * @brief Draws a boss or a boss part with its configured look, or as a box without one.
+     * @param registry Client registry.
+     * @param entity Replicated entity.
+     * @param look Configured look, or null.
+     * @param box Size of the box without a configured size, in pixels: width then height.
+     * @param color Color of the box.
+     * @param layer Draw layer.
+     */
+    void applyLook(ecs::Registry& registry, ecs::Entity entity, const looks::Look* look, std::pair<float, float> box,
+                   ecs::Rgba color, int layer) const;
+
+    /** @brief Looks of the boss variants and of the boss parts. */
+    looks::BossLooks _bossLooks;
+    /** @brief Textures of the boss looks, by path. */
+    std::map<std::string, ecs::TextureId, std::less<>> _lookTextures;
 
     /** @brief Seconds since the plugin started, the clock of the blinks. */
     float _elapsed = 0.0F;
