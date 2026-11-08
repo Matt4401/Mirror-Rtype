@@ -13,6 +13,9 @@
 #include "ClientOptions.hpp"
 #include "RTypeGamePlugin.hpp"
 #include "assets/AssetPlugin.hpp"
+#include "assets/audio/AudioAssetsPlugin.hpp"
+#include "assets/render/RenderAssetsPlugin.hpp"
+#include "assets/scene/SceneAssetsPlugin.hpp"
 #include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "config/Settings.hpp"
@@ -60,6 +63,8 @@ int main(int ac, char** av) {
             .addPlugin<scripting::ScriptPlugin>()
             .addPlugin<assets::AssetPlugin>()
             .addPlugin<assets::AssetScriptingPlugin>("scripts/rtype/Assets")
+            .addPlugin<assets::RenderAssetsPlugin>()
+            .addPlugin<assets::AudioAssetsPlugin>()
             .addPlugin<hierarchy::HierarchyPlugin>()
             .addPlugin<ui::UiPlugin>()
             .addPlugin<metrics::MetricsPlugin>()
@@ -67,6 +72,7 @@ int main(int ac, char** av) {
             .addPlugin<client::ShipMetricsPlugin>()
             .addPlugin<scene::ScenePlugin>()
             .addPlugin<scene::SceneScriptingPlugin>()
+            .addPlugin<assets::SceneAssetsPlugin>()
             .addPlugin<settings::SettingsPlugin>(config::userConfigDirectory("rtype") / "settings.toml")
             .addPlugin<client::RTypeGamePlugin>();
         client::addNetworkPlugins(engine);

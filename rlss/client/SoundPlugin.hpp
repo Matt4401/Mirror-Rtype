@@ -127,7 +127,8 @@ class SoundPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "SoundPlugin"; }
 
     /**
-     * @brief Declares the dependencies on the audio, client replication, camera and scoreboard plugins.
+     * @brief Declares the dependencies on the audio (and its asset loaders), client replication, camera and
+     * scoreboard plugins.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;

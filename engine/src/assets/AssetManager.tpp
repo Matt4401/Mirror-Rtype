@@ -1,38 +1,45 @@
 #pragma once
 
-#include <algorithm>
-#include <cctype>
 #include <cstddef>
 #include <filesystem>
-#include <optional>
+#include <memory>
+#include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
+#include <typeindex>
 #include <utility>
-#include <vector>
 
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetManager.hpp"
+#include "assets/detail/AssetCache.hpp"
 
 namespace assets {
 
-namespace manager_detail {
-
-/**
- * @brief Tells whether a file has one of the extensions of a kind, whatever their case.
- * @tparam Kind Kind of asset.
- * @param file File path.
- * @return True for a matching extension.
- */
 template <AssetKind Kind>
-[[nodiscard]] bool hasExtensionOf(const std::filesystem::path& file) {
-    std::string extension = file.extension().string();
-    std::ranges::transform(extension, extension.begin(),
-                           [](const unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return std::ranges::find(Kind::EXTENSIONS, std::string_view(extension)) != Kind::EXTENSIONS.end();
+void AssetManager::registerKind() {
+    static_cast<void>(cache<Kind>());
 }
 
-}  // namespace manager_detail
+template <AssetKind Kind>
+detail::AssetCache<Kind>& AssetManager::cache() {
+    checkThread();
+    if (const auto it = _byType.find(std::type_index(typeid(Kind))); it != _byType.end()) {
+        return static_cast<detail::AssetCache<Kind>&>(*_caches[it->second]);
+    }
+    if (findCache(Kind::NAME) != nullptr) {
+        throw std::logic_error("assets: another kind is already named '" + std::string(Kind::NAME) + "'");
+    }
+    _caches.push_back(std::make_unique<detail::AssetCache<Kind>>(_context));
+    _byType.emplace(std::type_index(typeid(Kind)), _caches.size() - 1);
+    return static_cast<detail::AssetCache<Kind>&>(*_caches.back());
+}
+
+template <AssetKind Kind>
+const detail::AssetCache<Kind>* AssetManager::findCache() const {
+    checkThread();
+    const auto it = _byType.find(std::type_index(typeid(Kind)));
+    return it != _byType.end() ? static_cast<const detail::AssetCache<Kind>*>(_caches[it->second].get()) : nullptr;
+}
 
 template <AssetKind Kind>
 void AssetManager::setLoader(AssetLoader<Kind> loader) {
@@ -45,81 +52,55 @@ void AssetManager::detachLoader() {
 }
 
 template <AssetKind Kind>
-bool AssetManager::hasLoader() const noexcept {
-    return cache<Kind>().hasLoader();
+bool AssetManager::hasLoader() const {
+    const detail::AssetCache<Kind>* found = findCache<Kind>();
+    return found != nullptr && found->hasLoader();
 }
 
 template <AssetKind Kind>
 bool AssetManager::declare(const std::string_view alias, const std::string_view path, const std::string_view group,
                            const LoadOptions& options) {
-    const std::optional<std::size_t> entry = cache<Kind>().declare(alias, path, group, options);
-    if (!entry) {
-        return false;
-    }
-    if (isGroupLoaded(group)) {
-        cache<Kind>().acquire(*entry, group);
-    }
-    return true;
+    return cache<Kind>().declare(alias, path, group, options).has_value();
+}
+
+template <AssetKind Kind>
+bool AssetManager::undeclare(const std::string_view alias) {
+    return cache<Kind>().undeclare(alias);
 }
 
 template <AssetKind Kind>
 Kind::Id AssetManager::load(const std::string_view aliasOrPath, const std::string_view group,
                             const LoadOptions& options) {
-    if (!isValidAssetName(group)) {
-        _diagnostics.warn(std::string(Kind::NAME) + " '" + std::string(aliasOrPath.substr(0, MAX_NAME_LENGTH)) +
-                          "': invalid group name");
-        return Kind::NONE;
-    }
-    const std::optional<std::size_t> entry = cache<Kind>().findOrCreate(aliasOrPath, options);
-    if (!entry) {
-        return Kind::NONE;
-    }
-    return cache<Kind>().acquire(*entry, group);
+    return cache<Kind>().load(aliasOrPath, group, options);
 }
 
 template <AssetKind Kind>
 Kind::Id AssetManager::get(const std::string_view aliasOrPath) const {
-    const std::optional<std::size_t> entry = cache<Kind>().find(aliasOrPath);
-    return entry ? cache<Kind>().id(*entry) : Kind::NONE;
+    const detail::AssetCache<Kind>* found = findCache<Kind>();
+    return found != nullptr ? found->get(aliasOrPath) : Kind::NONE;
+}
+
+template <AssetKind Kind>
+AssetStatus AssetManager::status(const std::string_view aliasOrPath) const {
+    const detail::AssetCache<Kind>* found = findCache<Kind>();
+    return found != nullptr ? found->statusOf(aliasOrPath) : AssetStatus::Unknown;
+}
+
+template <AssetKind Kind>
+Kind::Id AssetManager::fallback() {
+    return cache<Kind>().fallback();
 }
 
 template <AssetKind Kind>
 std::size_t AssetManager::preloadDirectory(const std::filesystem::path& directory, const std::string_view group,
                                            const LoadOptions& options) {
-    std::error_code error;
-    if (!std::filesystem::is_directory(directory, error)) {
-        _diagnostics.warn(std::string(Kind::NAME) + " directory " + directory.generic_string() + " not found");
-        return 0;
-    }
-    std::vector<std::filesystem::path> files;
-    for (auto it = std::filesystem::directory_iterator(directory, error);
-         !error && it != std::filesystem::directory_iterator(); it.increment(error)) {
-        std::error_code typeError;
-        if (it->is_regular_file(typeError) && manager_detail::hasExtensionOf<Kind>(it->path())) {
-            files.push_back(it->path());
-        }
-    }
-    std::ranges::sort(files);
-    if (files.size() > MAX_DIRECTORY_FILES) {
-        _diagnostics.warn(directory.generic_string() + ": only the first " + std::to_string(MAX_DIRECTORY_FILES) +
-                          " files are taken");
-        files.resize(MAX_DIRECTORY_FILES);
-    }
-    std::size_t taken = 0;
-    for (const std::filesystem::path& file : files) {
-        const std::string alias = file.stem().string();
-        const std::optional<std::size_t> entry = cache<Kind>().declare(alias, file.generic_string(), group, options);
-        if (entry) {
-            cache<Kind>().acquire(*entry, group);
-            ++taken;
-        }
-    }
-    return taken;
+    return cache<Kind>().preloadAny(directory, group, options);
 }
 
 template <AssetKind Kind>
-std::size_t AssetManager::loadedCount() const noexcept {
-    return cache<Kind>().loadedCount();
+std::size_t AssetManager::loadedCount() const {
+    const detail::AssetCache<Kind>* found = findCache<Kind>();
+    return found != nullptr ? found->loadedCount() : 0;
 }
 
 }  // namespace assets

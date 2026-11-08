@@ -49,7 +49,8 @@ class RTypeGamePlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "RTypeGamePlugin"; }
 
     /**
-     * @brief Declares dependencies on RenderPlugin, AssetScriptingPlugin, InputPlugin, AnimationPlugin, UiPlugin.
+     * @brief Declares dependencies on RenderPlugin, AssetScriptingPlugin, RenderAssetsPlugin, InputPlugin,
+     * AnimationPlugin and UiPlugin.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;

@@ -6,14 +6,18 @@
 #pragma once
 
 #include <cstddef>
-#include <span>
+#include <deque>
 #include <string>
-#include <vector>
+#include <string_view>
+#include <unordered_set>
 
 namespace assets::detail {
 
 /** @brief Warnings kept at most; older ones are dropped, so a script looping on a bad call cannot grow memory. */
 inline constexpr std::size_t MAX_KEPT_WARNINGS = 256;
+
+/** @brief Distinct keys `warnOnce` remembers at most; past it, every warning is printed again. */
+inline constexpr std::size_t MAX_WARN_ONCE_KEYS = 1024;
 
 /** @brief Collects the warnings of the asset manager. */
 class Diagnostics {
@@ -25,17 +29,29 @@ class Diagnostics {
     void warn(std::string message);
 
     /**
+     * @brief Warns only the first time `key` is seen, so a lookup repeated every frame or every spawn logs once.
+     * @param key What the warning is about.
+     * @param message Warning, without the `[assets]` prefix.
+     */
+    void warnOnce(std::string_view key, std::string message);
+
+    /**
      * @brief Gets the warnings kept, oldest first.
      * @return Warnings.
      */
-    [[nodiscard]] std::span<const std::string> warnings() const noexcept { return _warnings; }
+    [[nodiscard]] const std::deque<std::string>& warnings() const noexcept { return _warnings; }
 
-    /** @brief Forgets the warnings kept. */
-    void clear() noexcept { _warnings.clear(); }
+    /** @brief Forgets the warnings kept and the keys of `warnOnce`. */
+    void clear() noexcept {
+        _warnings.clear();
+        _onceKeys.clear();
+    }
 
   private:
     /** @brief Warnings kept, oldest first. */
-    std::vector<std::string> _warnings;
+    std::deque<std::string> _warnings;
+    /** @brief Keys already reported by `warnOnce`. */
+    std::unordered_set<std::string> _onceKeys;
 };
 
 }  // namespace assets::detail

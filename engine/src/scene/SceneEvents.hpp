@@ -9,6 +9,21 @@
 
 namespace scene {
 
+/**
+ * @brief A scene is being pushed on the stack; published before its `onEnter`, so that listeners can prepare what it
+ * needs (`assets::SceneAssetsPlugin` loads its asset group).
+ */
+struct SceneEntering {
+    /** @brief Scene entering. */
+    SceneId id = INVALID_SCENE;
+};
+
+/** @brief The `onEnter` of a scene announced by `SceneEntering` threw: the scene never entered. */
+struct SceneEnterAborted {
+    /** @brief Scene that failed to enter. */
+    SceneId id = INVALID_SCENE;
+};
+
 /** @brief A scene was pushed on the stack; published after its `onEnter`. */
 struct SceneEntered {
     /** @brief Scene that entered. */

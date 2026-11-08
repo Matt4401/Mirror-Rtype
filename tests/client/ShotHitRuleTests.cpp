@@ -115,7 +115,8 @@ TEST(ClientPrefabTexture, ATextureAliasIsResolvedByTheAssetManager) {
     ecs::Registry registry;
     auto& manager = registry.emplaceResource<assets::AssetManager>();
     manager.setLoader<assets::Texture>(assets::AssetLoader<assets::Texture>{
-        .load = [](const std::string& /*path*/, const assets::LoadOptions& /*options*/) { return ecs::TextureId{7}; },
+        .load = [](const std::string& /*path*/, const assets::LoadOptions& /*options*/,
+                   ecs::TextureId /*preferred*/) { return ecs::TextureId{7}; },
         .unload = [](ecs::TextureId /*id*/) {},
     });
     manager.declare<assets::Texture>("bydos", "sprites/spritesheet5.png");

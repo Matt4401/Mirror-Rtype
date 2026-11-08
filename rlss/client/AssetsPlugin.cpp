@@ -7,8 +7,8 @@
 #include "Logger.hpp"
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetManager.hpp"
+#include "assets/render/RenderAssetsPlugin.hpp"
 #include "assets/scripting/AssetScriptingPlugin.hpp"
-#include "components/Renderable.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/services/IScreenDrawService.hpp"
@@ -32,28 +32,29 @@ std::string tileAlias(const int row, const int column) {
 void AssetsPlugin::build(engine::PluginBuilder& builder) {
     builder.require<render::RenderPlugin>();
     builder.require<assets::AssetScriptingPlugin>();
+    // The texture and font loaders: without them the global group would only load once they are installed.
+    builder.require<assets::RenderAssetsPlugin>();
 }
 
 void AssetsPlugin::init(engine::Engine& engine) {
     auto& manager = engine.registry().getResource<assets::AssetManager>();
     manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
+    // A missing file is drawn as the checkerboard (the game stays playable), but always reported.
     const auto texture = [&manager](const std::string_view alias) {
-        const ecs::TextureId id = manager.get<assets::Texture>(alias);
-        if (id == ecs::NO_TEXTURE) {
-            rtype::log::warning(LOG_TAG, "no texture '", alias, "' (run the client from the repository root)");
+        if (manager.status<assets::Texture>(alias) != assets::AssetStatus::Loaded) {
+            rtype::log::warning(LOG_TAG, "texture '", alias, "' not loaded (run the client from the repository root)");
         }
-        return id;
+        return manager.get<assets::Texture>(alias);
+    };
+    const auto isDeclared = [&manager](const std::string& alias) {
+        return manager.status<assets::Texture>(alias) != assets::AssetStatus::Unknown;
     };
 
     GameAssets loaded;
     loaded.stadium = texture("stadium");
-    for (int row = 0; row < MAX_TILES && manager.get<assets::Texture>(tileAlias(row, 0)) != ecs::NO_TEXTURE; ++row) {
-        for (int column = 0; column < MAX_TILES; ++column) {
-            const ecs::TextureId tile = manager.get<assets::Texture>(tileAlias(row, column));
-            if (tile == ecs::NO_TEXTURE) {
-                break;
-            }
-            loaded.arena.push_back({.texture = tile, .row = row, .column = column});
+    for (int row = 0; row < MAX_TILES && isDeclared(tileAlias(row, 0)); ++row) {
+        for (int column = 0; column < MAX_TILES && isDeclared(tileAlias(row, column)); ++column) {
+            loaded.arena.push_back({.texture = texture(tileAlias(row, column)), .row = row, .column = column});
         }
     }
     if (loaded.arena.empty()) {

@@ -42,10 +42,10 @@ class ScreenDrawService final : public engine::IScreenDrawService {
     engine::FontId loadFont(const std::string& path) override;
 
     /**
-     * @brief Releases a font loaded by `loadFont`; unknown identifiers are ignored.
-     * @param font Identifier of the font.
+     * @brief Gets the store of the fonts loaded through `loadFont`, for the asset manager's font loader.
+     * @return Font store.
      */
-    void unloadFont(engine::FontId font);
+    [[nodiscard]] FontStore& fonts() noexcept { return _fonts; }
 
     /**
      * @brief Measures text with the given font.

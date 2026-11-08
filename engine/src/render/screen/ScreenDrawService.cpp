@@ -36,8 +36,6 @@ Rectangle toRaylib(const engine::ScreenRect& rect) noexcept {
 
 engine::FontId ScreenDrawService::loadFont(const std::string& path) { return _fonts.load(path); }
 
-void ScreenDrawService::unloadFont(const engine::FontId font) { _fonts.unload(font); }
-
 Font ScreenDrawService::resolveFont(engine::FontId font) const {
     const Font* stored = _fonts.get(font);
     return stored != nullptr ? *stored : GetFontDefault();

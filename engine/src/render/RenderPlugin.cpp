@@ -7,15 +7,9 @@
 
 #include <raylib.h>
 
-#include <iostream>
 #include <memory>
-#include <string>
 #include <utility>
 
-#include "assets/AssetKinds.hpp"
-#include "assets/AssetManager.hpp"
-#include "assets/AssetPlugin.hpp"
-#include "components/Renderable.hpp"
 #include "core/Engine.hpp"
 #include "core/Mediator.hpp"
 #include "core/MediatorError.hpp"
@@ -463,8 +457,6 @@ RenderPlugin::~RenderPlugin() {
 
 void RenderPlugin::build(engine::PluginBuilder& builder) {
     builder.require<engine::CorePlugin>();
-    // Started after the asset manager when there is one, so the texture and font loaders can be plugged into it.
-    builder.optionally<assets::AssetPlugin>();
     builder.provides<engine::IWindowService>();
     builder.provides<engine::IRenderService>();
     builder.provides<engine::IScreenDrawService>();
@@ -491,49 +483,6 @@ void RenderPlugin::init(engine::Engine& engine) {
         engine.mediator().removeService<engine::IWindowService>();
         throw engine::MediatorError(res.error());
     }
-    attachAssetLoaders(engine);
-}
-
-void RenderPlugin::attachAssetLoaders(engine::Engine& engine) {
-    if (!engine.registry().hasResource<assets::AssetManager>()) {
-        return;
-    }
-    auto& manager = engine.registry().getResource<assets::AssetManager>();
-    TextureStore* textures = _textures.get();
-    manager.setLoader<assets::Texture>(assets::AssetLoader<assets::Texture>{
-        .load =
-            [textures](const std::string& path, const assets::LoadOptions& options) {
-                const TextureFilter filter =
-                    options.filter == assets::TextureFilter::Smooth ? TextureFilter::Smooth : TextureFilter::Nearest;
-                const ecs::TextureId id = textures->load(path, filter);
-                if (id != ecs::NO_TEXTURE) {
-                    return id;
-                }
-                std::cerr << "[assets] cannot load texture " << path << ", drawing the placeholder instead\n";
-                return textures->placeholder();
-            },
-        .unload = [textures](const ecs::TextureId id) { textures->unload(id); },
-    });
-    ScreenDrawService* screen = _screenDrawService.get();
-    manager.setLoader<assets::Font>(assets::AssetLoader<assets::Font>{
-        .load = [screen](const std::string& path,
-                         const assets::LoadOptions& /*options*/) { return screen->loadFont(path); },
-        .unload = [screen](const engine::FontId id) { screen->unloadFont(id); },
-    });
-    _assetLoadersAttached = true;
-}
-
-void RenderPlugin::detachAssetLoaders(engine::Engine& engine) {
-    if (!_assetLoadersAttached) {
-        return;
-    }
-    _assetLoadersAttached = false;
-    if (!engine.registry().hasResource<assets::AssetManager>()) {
-        return;
-    }
-    auto& manager = engine.registry().getResource<assets::AssetManager>();
-    manager.detachLoader<assets::Texture>();
-    manager.detachLoader<assets::Font>();
 }
 
 void RenderPlugin::render(engine::Engine& engine) {
@@ -549,8 +498,6 @@ void RenderPlugin::render(engine::Engine& engine) {
 }
 
 void RenderPlugin::shutdown(engine::Engine& engine) {
-    // While the stores and the window still exist: the manager releases its textures and fonts through them.
-    detachAssetLoaders(engine);
     if (engine.mediator().hasService<engine::IScreenDrawService>()) {
         engine.mediator().removeService<engine::IScreenDrawService>();
     }

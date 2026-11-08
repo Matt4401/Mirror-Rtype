@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -21,13 +23,16 @@ namespace assets {
  * @brief Lets Wren scripts declare, load and release assets.
  *
  * - Adds the built-in module `core/Assets` (`Assets.texture(alias, path, group)`, `sound`, `font`, `music`,
- *   `preloadTextures`, `loadGroup`, `unloadGroup`, `textureId`...), kept across hot reloads.
+ *   `declare(kind, ...)`, `preload*`, `loadGroup`, `loadGroupStep`, `unloadGroup`, `textureId`...), kept across hot
+ *   reloads.
  * - Runs the game's declaration module, given to the constructor, at init: game plugins that require this one find
- *   its aliases declared. On a hot reload the module runs again; declaring the same assets again loads nothing.
+ *   its aliases declared. On a hot reload the modules run again: declaring the same assets again loads nothing, and
+ *   a declaration the scripts no longer make is removed (its asset is released if nothing else needs it).
  *
- * Script arguments are untrusted: a value of the wrong type aborts the calling fiber with an error, an invalid path or
- * name is rejected with a warning of the manager. This module is the only one that depends on both `engine_assets`
- * and `engine_scripting`.
+ * Script arguments are untrusted: a value of the wrong type aborts the calling fiber with an error; an invalid path
+ * or name, a path leaving the working directory (absolute, or starting with `..`) and an unload of the `"global"`
+ * group are rejected with a warning of the manager. This module is the only one that depends on both
+ * `engine_assets` and `engine_scripting`.
  */
 class AssetScriptingPlugin final : public engine::IPlugin {
   public:
@@ -50,10 +55,16 @@ class AssetScriptingPlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Adds `core/Assets` and runs the declaration module.
+     * @brief Adds `core/Assets`, runs the declaration module and follows the hot reloads.
      * @param engine Host engine.
      */
     void init(engine::Engine& engine) override;
+
+    /**
+     * @brief Stops following the hot reloads.
+     * @param engine Host engine.
+     */
+    void shutdown(engine::Engine& engine) override;
 
     /**
      * @brief Tells whether the declaration module ran without error at init.
@@ -66,6 +77,10 @@ class AssetScriptingPlugin final : public engine::IPlugin {
     std::string _declarationModule;
     /** @brief Whether the declaration module ran at init. */
     bool _declarationsLoaded = false;
+    /** @brief Script system followed for hot reloads. */
+    systems::ScriptSystem* _scripts = nullptr;
+    /** @brief Id of the VM reset listener. */
+    std::optional<std::size_t> _resetListener;
 };
 
 }  // namespace assets

@@ -7,6 +7,7 @@
 #include <string>
 
 #include "components/Renderable.hpp"
+#include "utils/StableSlots.hpp"
 
 namespace render {
 
@@ -35,7 +36,7 @@ TextureStore::~TextureStore() {
     }
 }
 
-ecs::TextureId TextureStore::load(const std::string& path, const TextureFilter filter) {
+ecs::TextureId TextureStore::load(const std::string& path, const TextureFilter filter, const ecs::TextureId preferred) {
     Texture2D texture = LoadTexture(path.c_str());
     if (texture.id == 0) {
         return ecs::NO_TEXTURE;
@@ -46,9 +47,10 @@ ecs::TextureId TextureStore::load(const std::string& path, const TextureFilter f
         // Clamped: the filter must not blend an edge with the opposite one (seams between tiled pictures).
         SetTextureWrap(texture, TEXTURE_WRAP_CLAMP);
     }
-    _textures.push_back(Slot{.texture = texture, .loaded = true});
-    return static_cast<ecs::TextureId>(_textures.size());
+    return ecs::placeInSlot(_textures, Slot{.texture = texture, .loaded = true}, preferred);
 }
+
+void TextureStore::reserve(const ecs::TextureId last) { ecs::reserveSlots(_textures, last); }
 
 const Texture2D* TextureStore::get(ecs::TextureId id) const {
     if (id == ecs::NO_TEXTURE || static_cast<std::size_t>(id) > _textures.size()) {

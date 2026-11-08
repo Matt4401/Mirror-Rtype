@@ -6,6 +6,7 @@
 #include <string>
 
 #include "core/services/IScreenDrawService.hpp"
+#include "utils/StableSlots.hpp"
 
 namespace render {
 
@@ -30,7 +31,7 @@ constexpr int GLYPH_RASTER_SIZE = 128;
 
 }  // namespace
 
-engine::FontId FontStore::load(const std::string& path) {
+engine::FontId FontStore::load(const std::string& path, const engine::FontId preferred) {
     Font font = LoadFontEx(path.c_str(), GLYPH_RASTER_SIZE, nullptr, 0);
     // raylib falls back to its default font when the file cannot be read: that one is not ours to unload.
     if (font.texture.id == 0 || font.texture.id == GetFontDefault().texture.id) {
@@ -38,9 +39,10 @@ engine::FontId FontStore::load(const std::string& path) {
     }
     GenTextureMipmaps(&font.texture);
     SetTextureFilter(font.texture, TEXTURE_FILTER_TRILINEAR);
-    _fonts.push_back(Slot{.font = font, .loaded = true});
-    return static_cast<engine::FontId>(_fonts.size());
+    return ecs::placeInSlot(_fonts, Slot{.font = font, .loaded = true}, preferred);
 }
+
+void FontStore::reserve(const engine::FontId last) { ecs::reserveSlots(_fonts, last); }
 
 const Font* FontStore::get(engine::FontId id) const {
     if (id == engine::NO_FONT || static_cast<std::size_t>(id) > _fonts.size()) {

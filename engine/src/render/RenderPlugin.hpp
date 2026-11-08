@@ -83,24 +83,15 @@ class RenderPlugin final : public engine::IPlugin {
     /** @brief Gets const pointer to the internal TextureStore, or nullptr if uninitialized. */
     [[nodiscard]] const TextureStore* textures() const noexcept { return _textures.get(); }
 
+    /** @brief Gets the screen-space draw service (fonts included), or nullptr if uninitialized. */
+    [[nodiscard]] ScreenDrawService* screenDraw() noexcept { return _screenDrawService.get(); }
+
     /** @brief Gets mutable pointer to the active RenderSystem, or nullptr if uninitialized. */
     [[nodiscard]] RenderSystem* renderSystem() noexcept { return _renderSystem.get(); }
 
   private:
     class WindowServiceImpl;
     class RenderServiceImpl;
-
-    /**
-     * @brief Plugs the texture and font loaders into the `assets::AssetManager`, if the registry has one.
-     * @param engine Host engine.
-     */
-    void attachAssetLoaders(engine::Engine& engine);
-
-    /**
-     * @brief Releases the textures and fonts of the asset manager and removes the loaders, if they were attached.
-     * @param engine Host engine.
-     */
-    void detachAssetLoaders(engine::Engine& engine);
 
     /** @brief Active window configuration settings. */
     WindowConfig _config = {};
@@ -116,8 +107,6 @@ class RenderPlugin final : public engine::IPlugin {
     std::shared_ptr<RenderServiceImpl> _renderService = nullptr;
     /** @brief Screen-space overlay drawing, flushed on top of the world each frame. */
     std::shared_ptr<ScreenDrawService> _screenDrawService = nullptr;
-    /** @brief Whether the loaders are plugged into the asset manager. */
-    bool _assetLoadersAttached = false;
 };
 
 }  // namespace render

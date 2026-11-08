@@ -47,9 +47,18 @@ class TextureStore {
      *
      * @param path Image file path.
      * @param filter Sampling used when the texture is scaled.
-     * @return The new identifier, or `ecs::NO_TEXTURE` if the file could not be loaded.
+     * @param preferred Identifier to give back if it is free (the one this texture had before it was released), or
+     * `ecs::NO_TEXTURE` for a new one.
+     * @return The identifier, or `ecs::NO_TEXTURE` if the file could not be loaded.
      */
-    ecs::TextureId load(const std::string& path, TextureFilter filter = TextureFilter::Nearest);
+    ecs::TextureId load(const std::string& path, TextureFilter filter = TextureFilter::Nearest,
+                        ecs::TextureId preferred = ecs::NO_TEXTURE);
+
+    /**
+     * @brief Keeps every identifier up to `last` for loads that ask for it as `preferred`.
+     * @param last Highest identifier to keep.
+     */
+    void reserve(ecs::TextureId last);
 
     /**
      * @brief Looks a texture up.

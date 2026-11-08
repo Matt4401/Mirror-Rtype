@@ -15,6 +15,7 @@
 
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetManager.hpp"
+#include "assets/render/RenderAssetsPlugin.hpp"
 #include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
@@ -175,6 +176,8 @@ void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
     builder.require<render::RenderPlugin>();
     // Runs scripts/rtype/Assets.wren, which declares the textures resolved in init.
     builder.require<assets::AssetScriptingPlugin>();
+    // Plugs the texture loader into the manager, so that the global group really loads in init.
+    builder.require<assets::RenderAssetsPlugin>();
     builder.require<::input::InputPlugin>();
     builder.require<systems::AnimationPlugin>();
     builder.require<ui::UiPlugin>();
@@ -183,14 +186,21 @@ void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
 void RTypeGamePlugin::init(engine::Engine& engine) {
     auto& manager = engine.registry().getResource<assets::AssetManager>();
     manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
-    // A missing file is drawn as the placeholder checkerboard; a missing alias means the declarations did not run.
+    // Fail fast, as before the asset manager: a sprite missing from the start is a broken install or a client run
+    // from the wrong directory, not something to play through with checkerboards.
     const auto texture = [&manager](const std::string_view alias) {
-        const ecs::TextureId id = manager.get<assets::Texture>(alias);
-        if (id == ecs::NO_TEXTURE) {
-            throw std::runtime_error("texture '" + std::string(alias) +
-                                     "' is not declared — run the client from the project root directory");
+        switch (manager.status<assets::Texture>(alias)) {
+            case assets::AssetStatus::Loaded:
+                return manager.get<assets::Texture>(alias);
+            case assets::AssetStatus::Failed:
+                throw std::runtime_error("cannot load texture '" + std::string(alias) +
+                                         "' — run the client from the project root directory");
+            case assets::AssetStatus::Declared:
+            case assets::AssetStatus::Unknown:
+                break;
         }
-        return id;
+        throw std::runtime_error("texture '" + std::string(alias) +
+                                 "' is not declared by scripts/rtype/Assets.wren (or no texture loader is installed)");
     };
 
     _shipTexId = texture("player_ship");

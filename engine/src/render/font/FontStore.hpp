@@ -40,9 +40,17 @@ class FontStore {
     /**
      * @brief Loads a font from disk.
      * @param path Font file path (.ttf, .otf, …).
-     * @return The new identifier, or `engine::NO_FONT` if the file could not be loaded.
+     * @param preferred Identifier to give back if it is free (the one this font had before it was released), or
+     * `engine::NO_FONT` for a new one.
+     * @return The identifier, or `engine::NO_FONT` if the file could not be loaded.
      */
-    engine::FontId load(const std::string& path);
+    engine::FontId load(const std::string& path, engine::FontId preferred = engine::NO_FONT);
+
+    /**
+     * @brief Keeps every identifier up to `last` for loads that ask for it as `preferred`.
+     * @param last Highest identifier to keep.
+     */
+    void reserve(engine::FontId last);
 
     /**
      * @brief Looks a font up.

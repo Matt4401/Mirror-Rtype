@@ -81,6 +81,14 @@ target("test_assets_scripting")
     add_files("assets/AssetScriptingTests.cpp")
     add_tests("test_assets_scripting")
 
+target("test_assets_scene")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scene", "engine_hierarchy", "engine_assets",
+             "engine_assets_scene")
+    add_packages("gtest")
+    add_files("assets/SceneAssetsTests.cpp")
+    add_tests("test_assets_scene")
+
 target("test_log")
     set_kind("binary")
     add_deps("log")
@@ -208,6 +216,13 @@ if has_config("graphics") then
         add_packages("gtest")
         add_files("test_audio_settings.cpp")
         add_tests("test_audio_settings")
+
+    target("test_assets_audio")
+        set_kind("binary")
+        add_deps("engine_audio", "engine_assets", "engine_assets_audio")
+        add_packages("gtest")
+        add_files("assets/AudioAssetsTests.cpp")
+        add_tests("test_assets_audio")
 
     target("test_audio_plugin")
         set_kind("binary")
