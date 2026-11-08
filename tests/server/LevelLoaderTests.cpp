@@ -156,6 +156,69 @@ TEST(LevelLoader, WaveIsSpacedAtTheScrollSpeedWhereItStarts) {
     EXPECT_FLOAT_EQ(eventAt(built, 2).position, 620.0F);
 }
 
+TEST(LevelLoader, WaveFollowsTheScrollEventsInItsMiddle) {
+    const level::Level built = build(R"(
+        [level]
+        scroll_speed = 100.0
+
+        [[events]]
+        at = 0.0
+        type = "spawn"
+        prefab = "alien_scout"
+        count = 4
+        interval = 1.0
+
+        [[events]]
+        at = 150.0
+        type = "scroll"
+        speed = 20.0
+    )");
+
+    // 1 s at 100 px/s; then 0.5 s at 100 px/s and 0.5 s at 20 px/s; then 1 s at 20 px/s, twice.
+    std::vector<float> spawns;
+    for (const timeline::TimelineEvent& event : built.timeline.events()) {
+        if (event.type == level::EVENT_SPAWN) {
+            spawns.push_back(event.position);
+        }
+    }
+    ASSERT_EQ(spawns.size(), 4U);
+    EXPECT_FLOAT_EQ(spawns.at(0), 0.0F);
+    EXPECT_FLOAT_EQ(spawns.at(1), 100.0F);
+    EXPECT_FLOAT_EQ(spawns.at(2), 160.0F);
+    EXPECT_FLOAT_EQ(spawns.at(3), 180.0F);
+}
+
+TEST(LevelLoader, WaveDeclaredBeforeAScrollStillSeesIt) {
+    // The wave comes first in the file, the scroll event at its start comes after: the order of the file does not
+    // matter.
+    const level::Level built = build(R"(
+        [level]
+        scroll_speed = 100.0
+
+        [[events]]
+        at = 200.0
+        type = "spawn"
+        prefab = "alien_scout"
+        count = 2
+        interval = 1.0
+
+        [[events]]
+        at = 200.0
+        type = "scroll"
+        speed = 30.0
+    )");
+
+    std::vector<float> spawns;
+    for (const timeline::TimelineEvent& event : built.timeline.events()) {
+        if (event.type == level::EVENT_SPAWN) {
+            spawns.push_back(event.position);
+        }
+    }
+    ASSERT_EQ(spawns.size(), 2U);
+    EXPECT_FLOAT_EQ(spawns.at(0), 200.0F);
+    EXPECT_FLOAT_EQ(spawns.at(1), 230.0F);
+}
+
 TEST(LevelLoader, PrefabParametersArePassedToThePrefab) {
     const level::Level built = build(R"(
         [[events]]
