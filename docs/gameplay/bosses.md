@@ -49,3 +49,64 @@ look = 1
 ```
 
 Destroying the turrets first takes away the aimed bursts but triggers the frenzy: a trade-off for the players.
+
+## Bastion (`scripts/bosses/Bastion.wren`, variant 2)
+
+An armored fortress whose weak point hides behind two armor plates. It changes tactics as it loses its hit points:
+each phase is checked at the end of a round.
+
+| Phase | Hit points left | Behavior |
+|-------|-----------------|----------|
+| Entrance (3 s) | | Flies in to its `stop_x`, does not attack. |
+| 1. Siege | above two thirds | Slides up and down. Each turret fires a straight shot to the left, then the core fires one shot aimed at the nearest ship. |
+| 2. Assault | above one third | Charges 420 px towards the ships and back, dropping slow mines (missiles drifting left at 60 px/s) on the way, then fires an aimed shot. |
+| 3. Last stand | below one third | Goes back to its place and fires a spiral: ten shots all around it per turn, the spiral turning at each turn. |
+| Death | | Drops two power-ups. |
+
+Suggested event:
+
+```toml
+[[events]]
+at = 10800.0
+type = "boss"
+prefab = "boss_core"
+variant = 2
+health = 45
+width = 180.0
+height = 220.0
+script = "scripts/bosses/Bastion.wren"
+
+[[events.parts]]
+role = "weak_point"
+width = 40.0
+height = 40.0
+
+[[events.parts]]
+role = "armor"
+x = -80.0
+y = -40.0
+width = 30.0
+height = 60.0
+
+[[events.parts]]
+role = "armor"
+x = -80.0
+y = 40.0
+width = 30.0
+height = 60.0
+
+[[events.parts]]
+role = "turret"
+y = -120.0
+health = 8
+look = 2
+
+[[events.parts]]
+role = "turret"
+y = 120.0
+health = 8
+look = 2
+```
+
+The armor plates sit in front of the weak point: shots have to come from above or below them, which the slide of the
+siege phase and the charges of the assault phase make harder.

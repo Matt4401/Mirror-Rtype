@@ -1319,6 +1319,84 @@ TEST_F(WardenTest, DropsAPowerUpWhenKilled) {
     EXPECT_TRUE(entitiesOf(game::KIND_BOSS_PART).empty());
 }
 
+/** @brief Room playing the Bastion with 30 hit points: a weak point behind two armor plates, and two turrets. */
+class BastionTest : public ScriptedBossTest {
+  protected:
+    BastionTest()
+        : ScriptedBossTest(std::filesystem::path(RTYPE_SCRIPTS_DIR) / "bosses" / "Bastion.wren", TEST_BOSS_SCRIPT,
+                           {{"health", std::int64_t{30}},
+                            {"parts.count", std::int64_t{5}},
+                            {"parts.0.role", std::string("weak_point")},
+                            {"parts.1.role", std::string("armor")},
+                            {"parts.1.x", -80.0},
+                            {"parts.1.y", -40.0},
+                            {"parts.2.role", std::string("armor")},
+                            {"parts.2.x", -80.0},
+                            {"parts.2.y", 40.0},
+                            {"parts.3.role", std::string("turret")},
+                            {"parts.3.y", -110.0},
+                            {"parts.4.role", std::string("turret")},
+                            {"parts.4.y", 110.0}}) {}
+
+    [[nodiscard]] ecs::Entity boss() {
+        const auto found = entitiesOf(game::KIND_BOSS_CORE);
+        return found.empty() ? ecs::NULL_ENTITY : found.front();
+    }
+
+    /** @brief Sets the hit points of the boss, as the shots on its weak point would. */
+    void setHealth(const std::uint8_t points) {
+        engine.registry().getComponents<prefabs::Health>().get(boss()).points = points;
+    }
+
+    /** @brief Missiles flying in a direction: (sx, sy) are the signs of the velocity to look for, 0 for any. */
+    [[nodiscard]] std::size_t missilesFlying(const int sx, const int sy) {
+        return static_cast<std::size_t>(std::ranges::count_if(entitiesOf(game::KIND_MISSILE), [&](const ecs::Entity m) {
+            const auto& body = engine.registry().getComponents<ecs::RigidBody2D>().get(m);
+            const bool xOk = sx == 0 || (sx > 0 ? body.velocityX > 1.0F : body.velocityX < -1.0F);
+            const bool yOk = sy == 0 || (sy > 0 ? body.velocityY > 1.0F : body.velocityY < -1.0F);
+            return xOk && yOk;
+        }));
+    }
+};
+
+TEST_F(BastionTest, SiegeFiresStraightLinesFromTheTurrets) {
+    ASSERT_TRUE(bound);
+    run(3.5F);
+    EXPECT_GE(missilesFlying(-1, 0), 2U);
+    EXPECT_EQ(missilesFlying(1, 0), 0U) << "nothing flies backwards yet";
+}
+
+TEST_F(BastionTest, AssaultChargesTowardsTheShipsAndComesBack) {
+    ASSERT_TRUE(bound);
+    run(3.2F);
+    const float home = engine.registry().getComponents<ecs::Transform>().get(boss()).x;
+    setHealth(15);
+    // The siege round in progress ends at 4.8 s; the charge goes out for 0.8 s, then comes back.
+    run(2.5F);
+    const float charged = engine.registry().getComponents<ecs::Transform>().get(boss()).x;
+    EXPECT_LT(charged, home - 200.0F);
+    run(1.3F);
+    EXPECT_NEAR(engine.registry().getComponents<ecs::Transform>().get(boss()).x, home, 60.0F);
+}
+
+TEST_F(BastionTest, LastStandFiresAllAround) {
+    ASSERT_TRUE(bound);
+    run(3.2F);
+    setHealth(5);
+    // The spiral starts once the siege round in progress is over, at 4.8 s.
+    run(2.5F);
+    EXPECT_GT(missilesFlying(1, 0), 0U) << "some shots fly to the right";
+    EXPECT_GT(missilesFlying(0, -1), 0U) << "some fly up";
+    EXPECT_GT(missilesFlying(0, 1), 0U) << "some fly down";
+}
+
+TEST_F(BastionTest, DropsTwoPowerUpsWhenKilled) {
+    run(1.0F);
+    engine.registry().killEntity(boss());
+    run(0.1F);
+    EXPECT_EQ(entitiesOf(game::KIND_POWER_UP).size(), 2U);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
