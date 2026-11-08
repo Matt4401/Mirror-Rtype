@@ -21,7 +21,12 @@
 #include "ecs/Registry.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
-#include "gameplay/GameplayPlugin.hpp"
+#include "gameplay/BossFightPlugin.hpp"
+#include "gameplay/CombatPlugin.hpp"
+#include "gameplay/Gameplay.hpp"
+#include "gameplay/GameplayEvents.hpp"
+#include "gameplay/LevelDirectorPlugin.hpp"
+#include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
 #include "level/Level.hpp"
@@ -44,7 +49,8 @@
 
 namespace {
 
-using rtype::server::gameplay::GameplayPlugin;
+using rtype::server::gameplay::CombatPlugin;
+using rtype::server::gameplay::LevelDirectorPlugin;
 using rtype::server::gameplay::POINTS_PER_KILL;
 using rtype::server::gameplay::RAPID_FIRE_DURATION;
 using rtype::server::gameplay::RESPAWN_DURATION;
@@ -90,12 +96,12 @@ class GameplayTest : public ::testing::Test {
         engine.setFixedDeltaTime(FIXED_DT);
         engine.addPlugin<systems::PhysicsPlugin>();
         engine.addPlugin<timeline::TimelinePlugin>();
-        engine.addPlugin<GameplayPlugin>(std::move(played));
+        rtype::server::gameplay::addGameplayPlugins(engine, played);
         engine.init();
-        gameplay().setPlayerCount(2);
+        combat().setPlayerCount(2);
     }
 
-    [[nodiscard]] GameplayPlugin& gameplay() { return engine.getPlugin<GameplayPlugin>(); }
+    [[nodiscard]] CombatPlugin& combat() { return engine.getPlugin<CombatPlugin>(); }
     [[nodiscard]] timeline::TimelinePlugin& player() { return engine.getPlugin<timeline::TimelinePlugin>(); }
     [[nodiscard]] ecs::Registry& registry() { return engine.registry(); }
 
@@ -449,13 +455,13 @@ TEST_F(BossFightTest, ShotsWearTheBossDownThenTheScrollResumes) {
         if (registry().isAlive(boss)) {
             lowestHealth =
                 std::min<std::int64_t>(lowestHealth, registry().getComponents<prefabs::Health>().get(boss).points);
-            EXPECT_EQ(gameplay().score(0), 0U) << "only the kill scores";
+            EXPECT_EQ(combat().score(0), 0U) << "only the kill scores";
         }
     }
 
     EXPECT_FALSE(registry().isAlive(boss));
     EXPECT_LT(lowestHealth, BOSS_HEALTH);
-    EXPECT_EQ(gameplay().score(0), POINTS_PER_KILL);
+    EXPECT_EQ(combat().score(0), POINTS_PER_KILL);
     run(FIXED_DT * 2);
     EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
 }
@@ -666,7 +672,7 @@ class ScriptedBossTest : public ::testing::Test {
         engine.setFixedDeltaTime(FIXED_DT);
         engine.addPlugin<systems::PhysicsPlugin>();
         engine.addPlugin<timeline::TimelinePlugin>();
-        engine.addPlugin<GameplayPlugin>(std::move(built));
+        rtype::server::gameplay::addGameplayPlugins(engine, built);
         engine.addPlugin<prefabs::PrefabPlugin>();
         engine.addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::FixedStep);
         engine.init();
@@ -785,13 +791,13 @@ TEST_F(ShippedBossScriptTest, BossScriptAttacksAndDropsAPowerUpWhenKilled) {
     EXPECT_TRUE(entitiesOf(game::KIND_BOSS_CORE).empty());
 }
 
-TEST(GameplayPluginTest, EachEventTypeHasItsPrefabs) {
-    EXPECT_TRUE(GameplayPlugin::levelPrefab("spawn", "alien_scout").has_value());
-    EXPECT_TRUE(GameplayPlugin::levelPrefab("boss", "boss_core").has_value());
-    EXPECT_FALSE(GameplayPlugin::levelPrefab("spawn", "boss_core").has_value());
-    EXPECT_FALSE(GameplayPlugin::levelPrefab("boss", "alien_scout").has_value());
-    EXPECT_FALSE(GameplayPlugin::levelPrefab("spawn", "dragon").has_value());
-    EXPECT_FALSE(GameplayPlugin::levelPrefab("spawn", "").has_value());
+TEST(LevelDirectorPluginTest, EachEventTypeHasItsPrefabs) {
+    EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_scout").has_value());
+    EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("boss", "boss_core").has_value());
+    EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "boss_core").has_value());
+    EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("boss", "alien_scout").has_value());
+    EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "dragon").has_value());
+    EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "").has_value());
 }
 
 TEST_F(GameplayTest, ShootingSpawnsABulletTaggedWithItsShooter) {
@@ -826,8 +832,8 @@ TEST_F(GameplayTest, KillingAnEnemyScoresForTheShooterOnly) {
 
     EXPECT_FALSE(registry().isAlive(enemy));
     EXPECT_TRUE(entitiesOf(game::KIND_PLAYER_BULLET).empty());
-    EXPECT_EQ(gameplay().score(1), POINTS_PER_KILL);
-    EXPECT_EQ(gameplay().score(0), 0U);
+    EXPECT_EQ(combat().score(1), POINTS_PER_KILL);
+    EXPECT_EQ(combat().score(0), 0U);
 }
 
 TEST_F(GameplayTest, EachPlayerHasItsOwnScore) {
@@ -843,9 +849,9 @@ TEST_F(GameplayTest, EachPlayerHasItsOwnScore) {
     shoot(first);
     run(1.0F);
 
-    EXPECT_EQ(gameplay().score(0), 2 * POINTS_PER_KILL);
-    EXPECT_EQ(gameplay().score(1), POINTS_PER_KILL);
-    EXPECT_EQ(gameplay().score(5), 0U);
+    EXPECT_EQ(combat().score(0), 2 * POINTS_PER_KILL);
+    EXPECT_EQ(combat().score(1), POINTS_PER_KILL);
+    EXPECT_EQ(combat().score(5), 0U);
 }
 
 TEST_F(GameplayTest, ShipWithoutNetStateCannotShoot) {
@@ -854,6 +860,91 @@ TEST_F(GameplayTest, ShipWithoutNetStateCannotShoot) {
     shoot(entity);
     run(FIXED_DT * 2);
     EXPECT_TRUE(entitiesOf(game::KIND_PLAYER_BULLET).empty());
+}
+
+namespace {
+
+/** @brief Engine running some gameplay plugins alone, driven by the events a test publishes. */
+class GameplayPluginAloneTest : public ::testing::Test {
+  protected:
+    GameplayPluginAloneTest() : engine([this] { return now; }) { engine.setFixedDeltaTime(FIXED_DT); }
+
+    /** @brief Runs the engine for some seconds of game time. */
+    void run(const float seconds) {
+        const auto steps = static_cast<int>(seconds / FIXED_DT);
+        for (int i = 0; i < steps; ++i) {
+            now += static_cast<double>(FIXED_DT);
+            engine.advance();
+        }
+    }
+
+    double now = 0.0;
+    engine::Engine engine;
+};
+
+}  // namespace
+
+TEST_F(GameplayPluginAloneTest, BossFightPluginReportsTheStartAndTheEndOfAFight) {
+    engine.addPlugin<systems::PhysicsPlugin>();
+    engine.addPlugin<rtype::server::gameplay::BossFightPlugin>();
+    engine.init();
+    int started = 0;
+    int ended = 0;
+    engine.eventBus().subscribe<rtype::server::gameplay::BossFightStarted>(
+        [&started](const rtype::server::gameplay::BossFightStarted& /*event*/) { ++started; });
+    engine.eventBus().subscribe<rtype::server::gameplay::BossFightEnded>(
+        [&ended](const rtype::server::gameplay::BossFightEnded& /*event*/) { ++ended; });
+
+    engine.eventBus().publish(
+        rtype::server::gameplay::LevelEventPlayed{.event = {.position = 0.0F,
+                                                            .type = std::string(level::EVENT_BOSS),
+                                                            .params = {{"prefab", std::string("boss_core")}}}});
+    run(0.5F);
+    EXPECT_EQ(started, 1);
+    EXPECT_EQ(ended, 0);
+
+    engine.registry().runSystem<prefabs::BossCore>(
+        [this](const ecs::Entity boss, const prefabs::BossCore& /*core*/) { engine.registry().killEntity(boss); });
+    run(FIXED_DT * 2);
+    EXPECT_EQ(ended, 1);
+}
+
+TEST_F(GameplayPluginAloneTest, LevelDirectorHoldsTheScrollUntilEveryHoldIsOver) {
+    engine.addPlugin<timeline::TimelinePlugin>();
+    engine.addPlugin<LevelDirectorPlugin>(testLevel());
+    engine.init();
+    timeline::TimelinePlugin& player = engine.getPlugin<timeline::TimelinePlugin>();
+    ecs::EventBus& bus = engine.eventBus();
+
+    bus.publish(rtype::server::gameplay::BossFightStarted{});
+    bus.publish(rtype::server::gameplay::ShipRespawnStarted{.ship = 0});
+    EXPECT_FLOAT_EQ(player.speed(), 0.0F);
+
+    bus.publish(rtype::server::gameplay::BossFightEnded{});
+    EXPECT_FLOAT_EQ(player.speed(), 0.0F) << "a respawn still holds the scroll";
+
+    bus.publish(rtype::server::gameplay::AllRespawnsOver{});
+    EXPECT_FLOAT_EQ(player.speed(), LEVEL_SPEED);
+}
+
+TEST_F(GameplayPluginAloneTest, RespawnPluginBringsADestroyedShipBack) {
+    engine.addPlugin<rtype::server::gameplay::RespawnPlugin>();
+    engine.init();
+    int over = 0;
+    engine.eventBus().subscribe<rtype::server::gameplay::AllRespawnsOver>(
+        [&over](const rtype::server::gameplay::AllRespawnsOver& /*event*/) { ++over; });
+    ecs::Registry& registry = engine.registry();
+    const ecs::Entity ship = registry.spawnEntity();
+    registry.addComponent(ship, ecs::Transform{.x = 900.0F, .y = 500.0F});
+    registry.addComponent(ship, game::EntityNetState{.subtype = 2});
+
+    engine.eventBus().publish(rtype::server::gameplay::ShipDestroyed{.ship = ship});
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Transform>().get(ship).y, shipSpawnPoint(2).y);
+    EXPECT_NE(registry.getComponents<game::EntityNetState>().get(ship).flags & game::FLAG_INVULNERABLE, 0);
+
+    run(RESPAWN_DURATION + 0.1F);
+    EXPECT_EQ(over, 1);
+    EXPECT_EQ(registry.getComponents<game::EntityNetState>().get(ship).flags & game::FLAG_INVULNERABLE, 0);
 }
 
 int main(int argc, char** argv) {

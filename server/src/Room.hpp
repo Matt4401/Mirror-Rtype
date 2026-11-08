@@ -63,7 +63,7 @@ class Room {
      * @param level Level played once the game starts, shared by every room; `nullptr` plays no level.
      */
     Room(ecs::net::INetworkServer& network, std::uint8_t maxPlayers, float fixedDt = ecs::time::DEFAULT_FIXED_DT,
-         ecs::time::Clock::TimeSource timeSource = nullptr, std::shared_ptr<const level::Level> level = nullptr);
+         ecs::time::Clock::TimeSource timeSource = nullptr, const std::shared_ptr<const level::Level>& level = nullptr);
     /** @brief Stops and joins the thread of the room, if it has one. */
     ~Room();
 

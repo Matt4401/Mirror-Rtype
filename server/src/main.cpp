@@ -20,7 +20,7 @@
 #include "LogTag.hpp"
 #include "Logger.hpp"
 #include "ServerManager.hpp"
-#include "gameplay/GameplayPlugin.hpp"
+#include "gameplay/LevelDirectorPlugin.hpp"
 #include "level/Level.hpp"
 #include "level/LevelLoader.hpp"
 #include "net/NetworkFactory.hpp"
@@ -65,7 +65,8 @@ std::filesystem::path dataRoot(const char* program) {
 std::shared_ptr<const rtype::server::level::Level> loadLevelFile(const std::filesystem::path& path,
                                                                  const std::filesystem::path& root) {
     std::vector<std::string> warnings;
-    auto level = rtype::server::level::loadLevel(path, rtype::server::gameplay::GameplayPlugin::levelPrefab, warnings);
+    auto level =
+        rtype::server::level::loadLevel(path, rtype::server::gameplay::LevelDirectorPlugin::levelPrefab, warnings);
     for (const std::string& warning : warnings) {
         rtype::log::warning(rtype::server::LOG_TAG, "level: ", warning);
     }

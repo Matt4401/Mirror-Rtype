@@ -20,7 +20,9 @@
 #include "ecs/time/Clock.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
-#include "gameplay/GameplayPlugin.hpp"
+#include "gameplay/CombatPlugin.hpp"
+#include "gameplay/Gameplay.hpp"
+#include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
 #include "level/Level.hpp"
@@ -50,7 +52,7 @@ constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
 }  // namespace
 
 Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, const float fixedDt,
-           ecs::time::Clock::TimeSource timeSource, std::shared_ptr<const level::Level> level)
+           ecs::time::Clock::TimeSource timeSource, const std::shared_ptr<const level::Level>& level)
     : _maxPlayers(maxPlayers),
       _connection(std::make_shared<ecs::net::PeerGroupConnection>(network)),
       _engine(std::move(timeSource)) {
@@ -59,7 +61,7 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
     _engine.addPlugin<systems::PhysicsPlugin>();
     _engine.addPlugin<timeline::TimelinePlugin>();
-    _engine.addPlugin<gameplay::GameplayPlugin>(std::move(level));
+    gameplay::addGameplayPlugins(_engine, level);
     _engine.addPlugin<prefabs::PrefabPlugin>();
     // On fixed steps: the room loop advances the engine about every millisecond, scripts follow the 60 Hz simulation.
     _engine.addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::FixedStep);
@@ -148,7 +150,7 @@ void Room::start() {
         transform.y = spawn.y;
         ++index;
     }
-    _engine.getPlugin<gameplay::GameplayPlugin>().setPlayerCount(_players.size());
+    _engine.getPlugin<gameplay::CombatPlugin>().setPlayerCount(_players.size());
     _playing = true;
     _engine.clock().reset();
 }
