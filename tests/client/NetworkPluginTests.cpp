@@ -21,7 +21,6 @@
 #include "game/ShipMovement.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
-#include "net/AutoLobbyPlugin.hpp"
 #include "net/ClientConnection.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -466,62 +465,6 @@ TEST_F(RTypeNetworkPluginTest, LocalShipMovesAtOnceAndOnlyIt) {
 }
 
 // --- Automatic lobby -------------------------------------------------------------------------------------------------
-
-/** @brief The session driven by `AutoLobbyPlugin`, as the client runs without its menus. */
-TEST(AutoLobby, ConnectsJoinsTheFirstOpenRoomOrCreatesOneAndTogglesReady) {
-    double now = 0.0;
-    std::shared_ptr<FakeClient> transport;
-    engine::Engine engine{[&now]() -> double { return now; }};
-    const auto step = [&] {
-        now += static_cast<double>(DT);
-        engine.advance();
-    };
-    engine.setFixedDeltaTime(DT);
-    const auto connection = std::make_shared<ecs::net::ClientConnection>(nullptr);
-    engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection);
-    engine.addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
-    engine.addPlugin<client::RTypeNetworkPlugin>(connection, [&transport] {
-        transport = std::make_shared<FakeClient>();
-        return transport;
-    });
-    engine.addPlugin<client::AutoLobbyPlugin>(client::ClientOptions{.host = "h", .port = 9});
-    engine.init();
-    const ecs::Entity input = engine.registry().spawnEntity();
-    engine.registry().addComponent(input, ::input::InputState{.playerIndex = 0, .actions = {}});
-    ASSERT_TRUE(transport);
-    EXPECT_EQ(transport->connectedTo, "h:9");
-
-    const auto receive = [&](const protocol::Message& message) {
-        transport->next.push_back(
-            {.type = EventType::Data, .peer = 0, .data = protocol::encode(message), .channel = Channel::Reliable});
-        step();
-    };
-    const auto count = [&]<typename Message>() {
-        return std::ranges::count_if(transport->sent, [](const FakeClient::Sent& sent) {
-            const auto decoded = protocol::decode(sent.data);
-            return decoded && std::holds_alternative<Message>(*decoded);
-        });
-    };
-    transport->next.push_back({.type = EventType::Connected, .peer = 0, .data = {}, .channel = Channel::Reliable});
-    receive(protocol::Welcome{.udpPort = UDP_PORT});
-    receive(protocol::LobbyList{
-        .rooms = {{.roomId = 1, .playerCount = 4, .maxPlayers = 4, .state = protocol::RoomState::Waiting}}});
-    EXPECT_EQ(count.template operator()<protocol::LobbyCreate>(), 1);
-    receive(protocol::LobbyList{
-        .rooms = {{.roomId = ROOM, .playerCount = 1, .maxPlayers = 4, .state = protocol::RoomState::Waiting}}});
-    EXPECT_EQ(count.template operator()<protocol::LobbyJoin>(), 1);
-
-    receive(protocol::LobbyUpdate{.roomId = ROOM, .slots = {{.clientId = 1, .ready = false}}});
-    auto& actions = engine.registry().getComponents<::input::InputState>().get(input).actions;
-    actions[client::input::ACTION_READY].justPressed = true;
-    step();
-    actions[client::input::ACTION_READY].justPressed = false;
-    EXPECT_EQ(count.template operator()<protocol::LobbyReady>(), 1);
-
-    transport->next.push_back({.type = EventType::Disconnected, .peer = 0, .data = {}, .channel = Channel::Reliable});
-    step();
-    EXPECT_TRUE(engine.getPlugin<client::AutoLobbyPlugin>().failed());
-}
 
 // --- Command line ----------------------------------------------------------------------------------------------------
 

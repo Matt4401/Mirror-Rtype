@@ -289,8 +289,7 @@ target("test_client_network")
     set_kind("binary")
     add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_input", "rtype_game")
     add_packages("gtest")
-    add_files("client/NetworkPluginTests.cpp", "../client/src/ClientOptions.cpp", "../client/src/net/RTypeNetworkPlugin.cpp", "../client/src/net/PlayerControlPlugin.cpp",
-              "../client/src/net/AutoLobbyPlugin.cpp")
+    add_files("client/NetworkPluginTests.cpp", "../client/src/ClientOptions.cpp", "../client/src/net/RTypeNetworkPlugin.cpp", "../client/src/net/PlayerControlPlugin.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_network")
 
@@ -301,6 +300,19 @@ target("test_client_metrics")
     add_files("client/ShipMetricsTests.cpp", "../client/src/metrics/ShipMetricsPlugin.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_metrics")
+
+target("test_client_scenes")
+    set_kind("binary")
+    add_rules("rlss.project_dir")
+    add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_input",
+             "engine_hierarchy", "engine_ui", "engine_scene", "engine_scripting", "engine_scene_scripting",
+             "engine_prefabs", "engine_config", "engine_settings", "engine_metrics", "engine_metrics_overlay",
+             "rtype_game")
+    add_packages("gtest", "wren")
+    add_files("client/ClientScenesTests.cpp", "../client/src/net/RTypeNetworkPlugin.cpp",
+              "../client/src/net/PlayerControlPlugin.cpp", "../client/src/scenes/*.cpp")
+    add_includedirs("../client/src")
+    add_tests("test_client_scenes")
 
 target("test_rlss_protocol")
     set_kind("binary")
