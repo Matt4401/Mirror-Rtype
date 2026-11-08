@@ -115,6 +115,7 @@ nav:
       - Index: getting-started/index.md
       - Building: getting-started/building.md
       - Running: getting-started/running.md
+      - Use the Engine in Your Own Game: getting-started/use-the-engine.md
       - Add the Network to a Game: getting-started/networked-game.md
       - Scripting Guide: getting-started/scripting-guide.md
   - Accessibility: accessibility/index.md

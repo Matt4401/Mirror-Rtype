@@ -28,11 +28,20 @@ if has_config("sanitizers") then
     set_policy("build.sanitizer.address", true)
     set_policy("build.sanitizer.undefined", true)
 end
+option("engine_package", {default = false, showmenu = true, description = "Use the squacaron package instead of engine/"})
 
 includes("xmake/common.lua")
 
 includes("common/xmake.lua")
-includes("engine/*/xmake.lua")
+-- The engine: built in-tree by default, so an engine change is always picked up. With --engine_package=y the games
+-- consume the installed `squacaron` package instead (xmake-repo/), as a game outside this repository would.
+if has_config("engine_package") then
+    add_repositories("local-repo xmake-repo")
+    add_requires("squacaron", {configs = {graphics = has_config("graphics") and true or false}})
+    includes("xmake/engine_package.lua")
+else
+    includes("engine/xmake.lua")
+end
 includes("game/*/xmake.lua")
 includes("server/*/xmake.lua")
 includes("rlss/xmake.lua")
