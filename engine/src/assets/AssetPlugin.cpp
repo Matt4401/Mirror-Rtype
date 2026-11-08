@@ -9,7 +9,7 @@ namespace assets {
 void AssetPlugin::init(engine::Engine& engine) {
     ecs::Registry& registry = engine.registry();
     if (!registry.hasResource<AssetManager>()) {
-        registry.emplaceResource<AssetManager>();
+        registry.emplaceResource<AssetManager>(_root);
     }
 }
 

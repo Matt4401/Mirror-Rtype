@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
@@ -51,8 +52,10 @@ class AssetCache {
     /**
      * @brief Creates an empty cache reporting to `diagnostics`.
      * @param diagnostics Warning sink, owned by the manager and outliving the cache.
+     * @param root Directory relative paths are loaded from, owned by the manager and outliving the cache.
      */
-    explicit AssetCache(Diagnostics& diagnostics) noexcept : _diagnostics(&diagnostics) {}
+    AssetCache(Diagnostics& diagnostics, const std::filesystem::path& root) noexcept
+        : _diagnostics(&diagnostics), _root(&root) {}
 
     /**
      * @brief Records that `group` uses the file at `path`, under `alias` if not empty. Loads nothing.
@@ -178,6 +181,8 @@ class AssetCache {
 
     /** @brief Warning sink of the manager. */
     Diagnostics* _diagnostics;
+    /** @brief Content root of the manager. */
+    const std::filesystem::path* _root;
     /** @brief Entries; indices are stable. */
     std::vector<Entry> _entries;
     /** @brief Entry of each normalised path. */

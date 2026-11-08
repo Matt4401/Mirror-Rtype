@@ -308,6 +308,31 @@ TEST(AssetPlugin, AddsTheManagerAndReleasesEverythingAtShutdown) {
     EXPECT_FALSE(engine.registry().hasResource<assets::AssetManager>());
 }
 
+TEST(AssetManager, RelativePathsAreLoadedFromTheRootAndKeptRelative) {
+    const TempDirectory root;
+    std::filesystem::create_directories(root.path() / "textures");
+    std::ofstream(root.path() / "textures" / "car.png") << "x";
+
+    assets::AssetManager manager(root.path());
+    auto textures = std::make_shared<LoaderLog>();
+    manager.setLoader<assets::Texture>(fakeLoader<assets::Texture>(textures));
+
+    const auto ship = manager.load<assets::Texture>("sprites/ship.png");
+    const std::filesystem::path absolute = root.path() / "absolute.png";
+    manager.load<assets::Texture>(absolute.generic_string());
+    EXPECT_EQ(manager.preloadDirectory<assets::Texture>("textures", "level"), 1U);
+
+    ASSERT_EQ(textures->loads.size(), 3U);
+    EXPECT_EQ(textures->loads[0], (root.path() / "sprites/ship.png").generic_string());
+    EXPECT_EQ(textures->loads[1], absolute.generic_string());
+    EXPECT_EQ(textures->loads[2], (root.path() / "textures/car.png").generic_string());
+    // The keys stay as declared: the same names work wherever the game is installed.
+    EXPECT_EQ(manager.get<assets::Texture>("sprites/ship.png"), ship);
+    EXPECT_NE(manager.get<assets::Texture>("textures/car.png"), assets::Texture::NONE);
+    EXPECT_NE(manager.get<assets::Texture>("car"), assets::Texture::NONE);
+    EXPECT_EQ(manager.root(), root.path());
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

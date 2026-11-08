@@ -118,7 +118,7 @@ concept AssetKind = requires {
  */
 template <AssetKind Kind>
 struct AssetLoader {
-    /** @brief Loads a file (path normalised, `/` separators). */
+    /** @brief Loads a file: its normalised path (`/` separators), resolved against the manager's root. */
     ecs::MoveOnlyFunction<typename Kind::Id(const std::string& path, const LoadOptions& options)> load;
     /** @brief Releases a handle returned by `load`. */
     ecs::MoveOnlyFunction<void(typename Kind::Id id)> unload;

@@ -13,6 +13,7 @@
 
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetManager.hpp"
+#include "core/ContentRoot.hpp"
 
 namespace assets {
 
@@ -86,17 +87,19 @@ Kind::Id AssetManager::get(const std::string_view aliasOrPath) const {
 template <AssetKind Kind>
 std::size_t AssetManager::preloadDirectory(const std::filesystem::path& directory, const std::string_view group,
                                            const LoadOptions& options) {
+    const std::filesystem::path scanned = engine::resolveContentPath(_root, directory);
     std::error_code error;
-    if (!std::filesystem::is_directory(directory, error)) {
+    if (!std::filesystem::is_directory(scanned, error)) {
         _diagnostics.warn(std::string(Kind::NAME) + " directory " + directory.generic_string() + " not found");
         return 0;
     }
     std::vector<std::filesystem::path> files;
-    for (auto it = std::filesystem::directory_iterator(directory, error);
+    for (auto it = std::filesystem::directory_iterator(scanned, error);
          !error && it != std::filesystem::directory_iterator(); it.increment(error)) {
         std::error_code typeError;
         if (it->is_regular_file(typeError) && manager_detail::hasExtensionOf<Kind>(it->path())) {
-            files.push_back(it->path());
+            // Declared under the path as given, relative to the root like every other key.
+            files.push_back(directory / it->path().filename());
         }
     }
     std::ranges::sort(files);

@@ -331,6 +331,20 @@ class ScriptSystem {
     bool loadModule(const std::string& moduleName) { return ensureScriptModuleLoaded(moduleName); }
 
     /**
+     * @brief Sets the directory module files are read from: module `a/B` is `<root>/a/B.wren`.
+     *
+     * Empty (the default) reads them from the working directory. Set it before the first module is loaded.
+     * @param root Script root, usually `engine::contentRoot()`.
+     */
+    void setScriptRoot(std::filesystem::path root) { *_scriptRoot = std::move(root); }
+
+    /**
+     * @brief Gets the directory module files are read from.
+     * @return Script root; empty for the working directory.
+     */
+    [[nodiscard]] const std::filesystem::path& scriptRoot() const noexcept { return *_scriptRoot; }
+
+    /**
      * @brief Registers a callback told before and after a hot reload replaces the VM.
      * @param listener Callback receiving the phase.
      * @return Id for `removeVmResetListener`.
@@ -576,6 +590,8 @@ class ScriptSystem {
      */
     std::shared_ptr<std::unordered_map<std::string, std::string>> _extraModules =
         std::make_shared<std::unordered_map<std::string, std::string>>();
+    /** @brief Directory module files are read from; shared with the module loader, like `_extraModules`. */
+    std::shared_ptr<std::filesystem::path> _scriptRoot = std::make_shared<std::filesystem::path>();
 };
 
 }  // namespace systems

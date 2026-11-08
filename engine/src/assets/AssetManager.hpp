@@ -44,8 +44,12 @@ class AssetManager {
     /** @brief Most files `preloadDirectory` takes from one directory. */
     static constexpr std::size_t MAX_DIRECTORY_FILES = 1024;
 
-    /** @brief Creates an empty manager with no loader. */
-    AssetManager();
+    /**
+     * @brief Creates an empty manager with no loader.
+     * @param root Directory relative paths are loaded from, usually `engine::contentRoot()`; empty for the working
+     * directory.
+     */
+    explicit AssetManager(std::filesystem::path root = {});
 
     /**
      * @brief Destroys the manager without calling the loaders: the backends detach them (and release their assets)
@@ -61,6 +65,12 @@ class AssetManager {
     AssetManager(AssetManager&&) = delete;
     /** @brief Deleted move assignment operator. */
     AssetManager& operator=(AssetManager&&) = delete;
+
+    /**
+     * @brief Gets the directory relative paths are loaded from.
+     * @return Content root; empty for the working directory.
+     */
+    [[nodiscard]] const std::filesystem::path& root() const noexcept { return _root; }
 
     /**
      * @brief Installs the backend loader of a kind, replacing the previous one.
@@ -98,7 +108,8 @@ class AssetManager {
      *
      * @tparam Kind Kind of asset.
      * @param alias Name to find the asset by; empty to only use the path.
-     * @param path File path, relative to the working directory.
+     * @param path File path, relative to the root (or absolute). Aliases and keys keep it as given, so the same
+     * declaration names the same asset wherever the game is installed.
      * @param group Group needing it.
      * @param options Load options; the ones of the first declaration of a file are kept.
      * @return False for an invalid path, alias or group (warning).
@@ -135,7 +146,7 @@ class AssetManager {
      * Each is aliased by its name without extension (`textures/car_body.png` is `"car_body"`).
      *
      * @tparam Kind Kind of asset.
-     * @param directory Directory to scan.
+     * @param directory Directory to scan, relative to the root (or absolute).
      * @param group Group holding the files.
      * @param options Load options.
      * @return Number of files taken; 0 for a missing directory (warning).
@@ -209,6 +220,8 @@ class AssetManager {
 
     /** @brief Warning sink of the caches; declared first, so it is built before them. */
     detail::Diagnostics _diagnostics;
+    /** @brief Directory relative paths are loaded from; declared before the caches, which point to it. */
+    std::filesystem::path _root;
     /** @brief One cache per kind. */
     std::tuple<detail::AssetCache<Texture>, detail::AssetCache<Font>, detail::AssetCache<Sound>,
                detail::AssetCache<Music>>

@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <utility>
 
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetPath.hpp"
@@ -12,9 +14,10 @@
 
 namespace assets {
 
-AssetManager::AssetManager()
-    : _caches(detail::AssetCache<Texture>(_diagnostics), detail::AssetCache<Font>(_diagnostics),
-              detail::AssetCache<Sound>(_diagnostics), detail::AssetCache<Music>(_diagnostics)) {}
+AssetManager::AssetManager(std::filesystem::path root)
+    : _root(std::move(root)),
+      _caches(detail::AssetCache<Texture>(_diagnostics, _root), detail::AssetCache<Font>(_diagnostics, _root),
+              detail::AssetCache<Sound>(_diagnostics, _root), detail::AssetCache<Music>(_diagnostics, _root)) {}
 
 bool AssetManager::loadGroup(const std::string_view group) {
     if (!isValidAssetName(group)) {

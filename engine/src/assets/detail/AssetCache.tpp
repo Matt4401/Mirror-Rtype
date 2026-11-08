@@ -10,6 +10,7 @@
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetPath.hpp"
 #include "assets/detail/AssetCache.hpp"
+#include "core/ContentRoot.hpp"
 
 namespace assets::detail {
 
@@ -159,7 +160,7 @@ void AssetCache<Kind>::ensureLoaded(Entry& entry) {
     if (entry.holders.empty() || entry.id != Kind::NONE || entry.failed || !_loader || !_loader->load) {
         return;
     }
-    entry.id = _loader->load(entry.path, entry.options);
+    entry.id = _loader->load(engine::resolveContentPath(*_root, entry.path).generic_string(), entry.options);
     if (entry.id == Kind::NONE) {
         entry.failed = true;
         _diagnostics->warn("cannot load " + std::string(Kind::NAME) + " " + entry.path);
