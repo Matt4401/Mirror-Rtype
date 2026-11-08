@@ -106,6 +106,7 @@ jobs:
         run: |
           test -x r-type_client
           test -x r-type_server
+          test -x rlss_server
 
       - name: Run tests
         run: xmake test
@@ -116,6 +117,16 @@ jobs:
         with:
           name: r-type_server
           path: r-type_server
+          retention-days: 1
+
+      - name: Upload RLSS server binary and scripts
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: rlss_server
+          path: |
+            rlss_server
+            rlss/scripts/
           retention-days: 1
 
   push_to_mirror:
@@ -172,3 +183,46 @@ jobs:
             mv -f incoming/r-type_server r-type_server
             systemctl --user restart rtype-server.service
             systemctl --user status rtype-server.service
+
+  deploy_rlss_to_vps:
+    name: Deploy RLSS server to VPS
+    needs: build-and-test
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download RLSS server binary and scripts
+        uses: actions/download-artifact@v8
+        with:
+          name: rlss_server
+
+      - name: Copy RLSS files to VPS via SCP
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "rlss_server,rlss/scripts"
+          target: "/home/rtype/rlss_deploy/incoming"
+          overwrite: true
+
+      - name: Install RLSS files and restart the service on VPS
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+            cd /home/rtype/rlss_deploy
+            chmod +x incoming/rlss_server
+            mv -f incoming/rlss_server rlss_server
+            mkdir -p rlss
+            rm -rf rlss/scripts
+            mv incoming/rlss/scripts rlss/scripts
+            if systemctl --user cat rlss-server.service >/dev/null 2>&1; then
+              systemctl --user restart rlss-server.service
+              systemctl --user status rlss-server.service
+            else
+              echo "rlss-server.service is not installed: files copied, server not restarted."
+            fi
