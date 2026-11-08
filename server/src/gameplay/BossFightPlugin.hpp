@@ -5,7 +5,6 @@
 
 #pragma once
 
-#include <memory>
 #include <optional>
 #include <string_view>
 
@@ -15,7 +14,6 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
-#include "level/Level.hpp"
 #include "prefabs/PrefabParams.hpp"
 
 namespace rtype::server::gameplay {
@@ -29,11 +27,8 @@ namespace rtype::server::gameplay {
  */
 class BossFightPlugin final : public engine::IPlugin {
   public:
-    /**
-     * @brief Creates the plugin.
-     * @param level Level played, for the directory its scripts are relative to; may be `nullptr`.
-     */
-    explicit BossFightPlugin(std::shared_ptr<const level::Level> level = nullptr);
+    /** @brief Creates the plugin. Boss scripts are read under the script root of the room's `ScriptSystem`. */
+    BossFightPlugin() = default;
 
     /** @brief Plugin name. */
     [[nodiscard]] std::string_view name() const noexcept override { return "RTypeBossFightPlugin"; }
@@ -71,8 +66,6 @@ class BossFightPlugin final : public engine::IPlugin {
      */
     void startFight(ecs::Registry& registry, const prefabs::PrefabParams& params);
 
-    /** @brief Level played, if any. */
-    std::shared_ptr<const level::Level> _level;
     /** @brief Event bus of the room, set by `init()`. */
     ecs::EventBus* _bus = nullptr;
     /** @brief Subscription to the played level events. */
