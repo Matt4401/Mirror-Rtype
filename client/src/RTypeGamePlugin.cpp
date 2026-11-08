@@ -23,7 +23,9 @@
 #include "core/services/IInputService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "gameplay/ShipBlink.hpp"
 #include "hierarchy/Hierarchy.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
@@ -309,6 +311,11 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .loop = false,
                     });
     }
+}
+
+void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& time) {
+    _elapsed += time.deltaTime;
+    gameplay::blinkInvulnerableShips(engine.registry(), _elapsed);
 }
 
 void RTypeGamePlugin::shutdown(engine::Engine& engine) {
