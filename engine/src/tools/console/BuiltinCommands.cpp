@@ -5,8 +5,10 @@
 #include <string_view>
 #include <vector>
 
+#include "tools/console/CommandContext.hpp"
 #include "tools/console/CommandLine.hpp"
 #include "tools/console/Console.hpp"
+#include "tools/console/ConsoleTypes.hpp"
 #include "tools/cvars/CVar.hpp"
 #include "tools/cvars/CVarManager.hpp"
 
