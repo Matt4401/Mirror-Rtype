@@ -226,14 +226,14 @@ TEST(ConfigFile, SyntaxErrorGivesAnEmptyConfigurationWithItsLocation) {
 }
 
 TEST(ConfigFile, LoadsAFile) {
-    const config::ConfigFile file = config::ConfigFile::load(writeTempFile("mirror_rtype_config.toml", "speed = 2.5"));
+    const config::ConfigFile file = config::ConfigFile::load(writeTempFile("squacaron_config.toml", "speed = 2.5"));
 
     ASSERT_FALSE(file.error().has_value());
     EXPECT_DOUBLE_EQ(file.getNumber("speed").value_or(0.0), 2.5);
 }
 
 TEST(ConfigFile, EmptyFileIsValid) {
-    const config::ConfigFile file = config::ConfigFile::load(writeTempFile("mirror_rtype_empty.toml", ""));
+    const config::ConfigFile file = config::ConfigFile::load(writeTempFile("squacaron_empty.toml", ""));
 
     EXPECT_FALSE(file.error().has_value());
 }
@@ -247,7 +247,7 @@ TEST(ConfigFile, MissingFileIsReported) {
 
 TEST(ConfigFile, OversizedFileIsRejected) {
     const std::string comment(config::MAX_CONFIG_FILE_SIZE + 1, '#');
-    const config::ConfigFile file = config::ConfigFile::load(writeTempFile("mirror_rtype_huge.toml", comment));
+    const config::ConfigFile file = config::ConfigFile::load(writeTempFile("squacaron_huge.toml", comment));
 
     ASSERT_TRUE(file.error().has_value());
     EXPECT_NE(file.error()->find("too large"), std::string::npos) << *file.error();

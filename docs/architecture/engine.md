@@ -2,7 +2,7 @@
 
 ## 1. Introduction
 
-The R-Type Game Engine is built as a generic, reusable, and modular standalone library. It is strictly decoupled from the specific gameplay rules and assets of R-Type. This modularity ensures that the engine can power different types of games (such as Pong or other custom titles) to demonstrate true reusability as required by Track #1.
+Squacaron, the engine, is built as a generic, reusable, and modular standalone library. It is strictly decoupled from the specific gameplay rules and assets of R-Type. This modularity ensures that the engine can power different types of games (such as Pong or other custom titles) to demonstrate true reusability as required by Track #1.
 
 ## 2. Core Paradigm: Entity-Component-System (ECS)
 

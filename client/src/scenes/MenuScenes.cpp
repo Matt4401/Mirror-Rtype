@@ -61,7 +61,7 @@ std::uint16_t parsePort(std::string_view text) {
 void TitleScene::onEnter(scene::SceneContext& context) {
     const ecs::Entity box = menu::panel(context, 460.0F, 380.0F);
     (void)menu::label(context, box, "R-TYPE", 36.0F, 64.0F, menu::GOLD);
-    (void)menu::label(context, box, "MIRROR ENGINE", 112.0F, 18.0F, menu::MUTED);
+    (void)menu::label(context, box, "SQUACARON ENGINE", 112.0F, 18.0F, menu::MUTED);
     _play = menu::button(context, box, "PLAY", "title.play", 170.0F, 0);
     (void)menu::button(context, box, "SETTINGS", "title.settings", 225.0F, 1);
     (void)menu::button(context, box, "QUIT", "title.quit", 280.0F, 2);
