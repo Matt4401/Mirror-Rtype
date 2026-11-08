@@ -20,6 +20,7 @@
 #include "LogTag.hpp"
 #include "Logger.hpp"
 #include "ServerManager.hpp"
+#include "ecs/time/PreciseSleep.hpp"
 #include "gameplay/LevelDirectorPlugin.hpp"
 #include "level/Level.hpp"
 #include "level/LevelLoader.hpp"
@@ -113,6 +114,9 @@ int main(int ac, char** av) {
     }
     rtype::log::setVerbose(options->logs);
     rtype::log::setColored(options->colors);
+
+    // The server and room loops sleep 1 ms between two passes: without this, Windows makes it about 15.6 ms.
+    const ecs::time::PreciseSleepScope preciseSleep;
 
     const std::filesystem::path root = dataRoot(args.front());
     // A level asked for on the command line must load: playing another one would be misleading.

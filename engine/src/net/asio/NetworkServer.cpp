@@ -117,6 +117,7 @@ void NetworkServer::accept() {
                 std::move(socket), id,
                 TcpSession::Limits{.maxPayload = _config.maxReliablePayload,
                                    .maxQueueBytes = _config.maxReliableQueueBytes},
+                _counters,
                 [this](const PeerId from, const MessageKind kind, Bytes payload) {
                     onTcpMessage(from, kind, std::move(payload));
                 },
@@ -142,7 +143,7 @@ void NetworkServer::refuseConnection(asio::ip::tcp::socket socket) {
     const auto tcp = std::make_shared<TcpSession>(
         std::move(socket), 0,
         TcpSession::Limits{.maxPayload = _config.maxReliablePayload, .maxQueueBytes = _config.maxReliableQueueBytes},
-        [](PeerId, MessageKind, const Bytes&) {}, [](PeerId) {});
+        _counters, [](PeerId, MessageKind, const Bytes&) {}, [](PeerId) {});
     closeWithReason(*tcp, DisconnectReason::ServerFull);
     tcp->start();  // discards the handshake of the client, which must be read for the close not to lose the frame
 }
@@ -248,6 +249,7 @@ void NetworkServer::receiveUdp() {
                 return;
             }
             if (!ec) {
+                _counters.onReceived(size);
                 handleDatagram(size);
             } else if (ec != asio::error::connection_reset && ec != asio::error::connection_refused &&
                        ec != asio::error::message_size) {
@@ -297,7 +299,12 @@ void NetworkServer::sendDatagram(PeerInfo& peer, Bytes datagram) {
     }
     const auto buffer = std::make_shared<Bytes>(std::move(datagram));
     peer.lastSent = std::chrono::steady_clock::now();
-    _udpSocket.async_send_to(asio::buffer(*buffer), peer.udp.value(), [buffer](std::error_code, std::size_t) {});
+    _udpSocket.async_send_to(asio::buffer(*buffer), peer.udp.value(),
+                             [this, buffer](const std::error_code ec, const std::size_t size) {
+                                 if (!ec) {
+                                     _counters.onSent(size);
+                                 }
+                             });
 }
 
 void NetworkServer::scheduleUdpTick() {

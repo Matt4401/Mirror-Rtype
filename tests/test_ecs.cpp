@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <optional>
 #include <stdexcept>
+#include <vector>
 
 #include "ecs/ComponentType.hpp"
 #include "ecs/Entity.hpp"
@@ -510,6 +511,23 @@ TEST(ECS, ComponentRemoveListenerCanAddListenersDuringDispatch) {
     EXPECT_EQ(addedCalls, 0);
 }
 
+TEST(RegistryTest, AliveCountFollowsSpawnsAndKills) {
+    ecs::Registry registry;
+    EXPECT_EQ(registry.aliveCount(), 0U);
+
+    const ecs::Entity first = registry.spawnEntity();
+    registry.spawnEntity();
+    EXPECT_EQ(registry.aliveCount(), 2U);
+
+    registry.killEntity(first);
+    EXPECT_EQ(registry.aliveCount(), 1U);
+    registry.killEntity(first);  // a stale handle changes nothing
+    EXPECT_EQ(registry.aliveCount(), 1U);
+
+    registry.spawnEntity();  // reuses the slot of the killed entity
+    EXPECT_EQ(registry.aliveCount(), 2U);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
@@ -670,4 +688,85 @@ TEST(ECSGeneration, HandleWithGarbageHighBitsIsNotAlive) {
     EXPECT_FALSE(registry.isAlive(forged));
     registry.killEntity(forged);
     EXPECT_TRUE(registry.isAlive(e));
+}
+
+TEST(ECS, KillEntitiesDestroysEveryEntityOfTheBatch) {
+    ecs::Registry registry;
+    std::vector<ecs::Entity> destroyed;
+    registry.addDestroyListener([&](ecs::Entity e) { destroyed.push_back(e); });
+
+    ecs::Entity const a = registry.spawnEntity();
+    ecs::Entity const b = registry.spawnEntity();
+    ecs::Entity const kept = registry.spawnEntity();
+    registry.addComponent<Position>(a, Position{.x = 1.0F, .y = 0.0F});
+    registry.addComponent<Position>(b, Position{.x = 2.0F, .y = 0.0F});
+    registry.addComponent<Position>(kept, Position{.x = 3.0F, .y = 0.0F});
+
+    std::array<ecs::Entity, 3> const batch{a, b, a};
+    registry.killEntities(batch);
+
+    EXPECT_FALSE(registry.isAlive(a));
+    EXPECT_FALSE(registry.isAlive(b));
+    EXPECT_TRUE(registry.isAlive(kept));
+    EXPECT_EQ(destroyed, (std::vector<ecs::Entity>{a, b}));
+    EXPECT_EQ(registry.getComponents<Position>().getDense().size(), 1U);
+}
+
+TEST(ECS, KillEntitiesSkipsEntitiesKilledByAnEarlierListener) {
+    ecs::Registry registry;
+    ecs::Entity const parent = registry.spawnEntity();
+    ecs::Entity const child = registry.spawnEntity();
+    int calls = 0;
+    registry.addDestroyListener([&](ecs::Entity e) {
+        ++calls;
+        if (e == parent) {
+            registry.killEntity(child);
+        }
+    });
+
+    std::array<ecs::Entity, 2> const batch{parent, child};
+    registry.killEntities(batch);
+
+    EXPECT_FALSE(registry.isAlive(child));
+    EXPECT_EQ(calls, 2);
+}
+
+TEST(ECS, KillEntitiesFinishesTheBatchWhenAListenerThrows) {
+    ecs::Registry registry;
+    std::vector<ecs::Entity> seenAfter;
+    registry.addDestroyListener([](ecs::Entity /*e*/) { throw std::runtime_error("first"); });
+    registry.addDestroyListener([](ecs::Entity /*e*/) { throw std::logic_error("second"); });
+    registry.addDestroyListener([&seenAfter](ecs::Entity e) { seenAfter.push_back(e); });
+    ecs::Entity const a = registry.spawnEntity();
+    ecs::Entity const b = registry.spawnEntity();
+    registry.addComponent(a, Position{.x = 1.0F, .y = 2.0F});
+    registry.addComponent(b, Position{.x = 3.0F, .y = 4.0F});
+
+    std::array<ecs::Entity, 2> const batch{a, b};
+    EXPECT_THROW(registry.killEntities(batch), std::runtime_error);
+    EXPECT_FALSE(registry.isAlive(a));
+    EXPECT_FALSE(registry.isAlive(b));
+    EXPECT_EQ(seenAfter, (std::vector<ecs::Entity>{a, b}));
+    EXPECT_TRUE(registry.getComponents<Position>().getDense().empty());
+    // Both slots are recycled, with a new generation.
+    ecs::Entity const c = registry.spawnEntity();
+    ecs::Entity const d = registry.spawnEntity();
+    EXPECT_NE(c, a);
+    EXPECT_NE(d, b);
+    EXPECT_FALSE(registry.hasComponent<Position>(c));
+    EXPECT_FALSE(registry.hasComponent<Position>(d));
+}
+
+TEST(ECS, KillEntitiesAcceptsTheDenseEntitiesOfAComponent) {
+    ecs::Registry registry;
+    std::vector<ecs::Entity> spawned;
+    for (int i = 0; i < 5; ++i) {
+        spawned.push_back(registry.spawnEntity());
+        registry.addComponent(spawned.back(), Position{});
+    }
+    const auto& dense = static_cast<const ecs::Registry&>(registry).findComponents<Position>()->getDenseEntities();
+    registry.killEntities(dense);
+    for (const ecs::Entity e : spawned) {
+        EXPECT_FALSE(registry.isAlive(e));
+    }
 }

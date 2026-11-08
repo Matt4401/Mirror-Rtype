@@ -6,6 +6,7 @@
 #include <cmath>
 
 #include "components/CameraComponent.hpp"
+#include "components/Hidden.hpp"
 #include "components/Renderable.hpp"
 #include "components/SpriteInstances.hpp"
 #include "components/Transform.hpp"
@@ -23,8 +24,12 @@ RenderSystem::RenderSystem(const TextureStore& textures) : _textures(&textures),
 
 void RenderSystem::collect(ecs::Registry& registry) {
     _queue.clear();
+    const auto* hidden = static_cast<const ecs::Registry&>(registry).findComponents<ecs::Hidden>();
     registry.runSystem<ecs::Transform, ecs::Renderable>(
-        [this](ecs::Entity entity, const ecs::Transform& transform, const ecs::Renderable& renderable) {
+        [this, hidden](ecs::Entity entity, const ecs::Transform& transform, const ecs::Renderable& renderable) {
+            if (hidden != nullptr && hidden->contains(entity)) {
+                return;
+            }
             _queue.push_back(DrawItem{
                 .entity = entity,
                 .layer = renderable.layer,
@@ -36,7 +41,10 @@ void RenderSystem::collect(ecs::Registry& registry) {
             });
         });
     registry.runSystem<ecs::SpriteInstances, ecs::Renderable>(
-        [this](ecs::Entity entity, const ecs::SpriteInstances& pool, const ecs::Renderable& renderable) {
+        [this, hidden](ecs::Entity entity, const ecs::SpriteInstances& pool, const ecs::Renderable& renderable) {
+            if (hidden != nullptr && hidden->contains(entity)) {
+                return;
+            }
             for (const auto& inst : pool.instances) {
                 _queue.push_back(DrawItem{
                     .entity = entity,

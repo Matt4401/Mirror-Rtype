@@ -22,6 +22,7 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
+#include "gameplay/GameplayEvents.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "protocol/Messages.hpp"
 
@@ -49,6 +50,8 @@ inline constexpr float RAPID_FIRE_COOLDOWN = 0.08F;
  *   the others die on the first hit, and the kill gives `POINTS_PER_KILL` to the shooter.
  * - An enemy shot, an enemy or an obstacle touching a ship that is not `Respawning` publishes `ShipDestroyed`.
  * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time.
+ * - On `LevelFinished`, publishes the `protocol::LevelComplete` with the scores, then `protocol::GameOver{Victory}`
+ *   after the last level. The room sends them to its players: the plugin itself knows nothing about the network.
  */
 class CombatPlugin final : public engine::IPlugin {
   public:
@@ -126,6 +129,10 @@ class CombatPlugin final : public engine::IPlugin {
     bool takeHit(ecs::Entity target);
     /** @brief Spawns a replicated player bullet. */
     void fire(const PendingShot& shot);
+    /** @brief Publishes the protocol messages of a finished level, with the scores. */
+    void onLevelFinished(const LevelFinished& finished);
+    /** @brief Scores of the players of the game, in player order. */
+    [[nodiscard]] std::vector<std::uint32_t> playerScores() const;
     /** @brief Writes the scores in the server log. */
     void logScores() const;
 
@@ -143,6 +150,8 @@ class CombatPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _contactToken;
     /** @brief Subscription to the power-ups touched. */
     std::optional<ecs::EventBus::EventToken> _powerUpToken;
+    /** @brief Subscription to the finished levels. */
+    std::optional<ecs::EventBus::EventToken> _levelToken;
     /** @brief Shots requested since the last fixed step. */
     std::vector<PendingShot> _pendingShots;
     /** @brief Seconds before each player can fire again. */

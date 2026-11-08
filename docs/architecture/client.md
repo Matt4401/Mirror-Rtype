@@ -16,41 +16,42 @@ flowchart TD
     Engine --> NetPlugin["client::RTypeNetworkPlugin"]
     Engine --> Control["client::PlayerControlPlugin"]
     Engine --> GamePlugin["client::RTypeGamePlugin"]
+    Engine --> Scenes["client::ClientScenesPlugin (scene::ScenePlugin)"]
 
-    NetPlugin -->|"GameStarted"| Control
+    Scenes -->|"ConnectRequest, JoinRoomRequest, SetReadyRequest..."| NetPlugin
+    NetPlugin -->|"SessionConnected, RoomUpdated, GameStarted, LevelStarted, GameEnded..."| Scenes
+    NetPlugin -->|"GameStarted, GameEnded"| Control
+    Scenes -->|"setPaused (pause menu)"| Control
     Control -->|"inputs, Predicted / Interpolated"| Replication
     Replication -->|"ReplicatedEntitySpawned"| GamePlugin
     GamePlugin -->|"sprites"| RenderPlugin
     InputPlugin -->|"InputState"| Control
-    InputPlugin -->|"ready"| NetPlugin
 ```
 
 ---
 
 ## 2. Entry Point (`main.cpp`)
 
-`r-type_client [host] [port]`, by default `127.0.0.1` and port 4242 (`client/src/ClientOptions.cpp`). It exits with code
-84 if the arguments are invalid, or if the connection fails or is lost. `main()` only assembles the engine:
+`r-type_client [host] [port]`, by default `127.0.0.1` and port 4242 (`client/src/ClientOptions.cpp`). The address only
+fills the connect screen in: nothing connects before the player asks. A host given on the command line wins over the
+last server saved in the settings. The client exits with code 84 only if the arguments are invalid. `main()` only
+assembles the engine:
 
 ```cpp
 engine::Engine engine;
-engine.addPlugin<render::RenderPlugin>()
-    .addPlugin<input::InputPlugin>()
-    .addPlugin<audio::AudioPlugin>()
-    .addPlugin<systems::PhysicsPlugin>()
-    .addPlugin<systems::AnimationPlugin>()
-    .addPlugin<prefabs::PrefabPlugin>()
-    .addPlugin<scripting::ScriptPlugin>()
+engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.escapeClosesWindow = false})
+    // ... input, audio, physics, animation, prefabs, scripting, hierarchy, ui ...
+    .addPlugin<scene::ScenePlugin>()
+    .addPlugin<scene::SceneScriptingPlugin>()
+    .addPlugin<settings::SettingsPlugin>(config::userConfigDirectory("rtype") / "settings.toml")
     .addPlugin<client::RTypeGamePlugin>();
-client::addNetworkPlugins(engine, *options);
-
+client::addNetworkPlugins(engine);
+engine.addPlugin<client::ClientScenesPlugin>(options->host, options->port, args.size() > 1);
 engine.run();
-return engine.getPlugin<client::RTypeNetworkPlugin>().failed() ? EXIT_ERROR : 0;
 ```
 
-`client::addNetworkPlugins()` (`client/src/net/ClientNetwork.cpp`) creates the transport, adds the network plugins and
-starts connecting. `connect()` never blocks: the window is open while the client connects, and a failure arrives as a
-`Disconnected` event.
+`client::addNetworkPlugins()` (`client/src/net/ClientNetwork.cpp`) adds the network plugins. `connect()` never blocks:
+the window stays responsive while the client connects, and a failure arrives as a `Disconnected` event.
 
 ---
 
@@ -62,24 +63,55 @@ The client splits what needs a window from what does not, so that the network lo
 
 No window and no rendering (`client/src/net/`, tested by `test_client_network` and `test_server_e2e`).
 
-- **Session:** sends `Hello` when connected. On `LobbyList`, while it is in no room, it joins the first room waiting for
-  players, or creates one. If the room started in the meantime, the join is refused, and the server pushes a new list
-  because the room changed: the client tries again from it.
-- **Ready:** the `ready` action (key R, gamepad Start) toggles the ready state while in a room.
-- **Game start:** `GameStart` opens UDP on the port received in `Welcome`, then publishes `client::GameStarted` with the
-  player's index. If UDP cannot be opened, the game does not start: the client stops.
-- **Connection failed or lost:** logs why (`INetworkClient::disconnectReason()`: server unreachable or full, other version
-  of the game, connection lost) and stops the engine; `failed()` then makes `main()` exit with code 84.
+It is driven by request events and reports what happens with result events (`client/src/net/SessionEvents.hpp`), so
+the screens and the session never call each other:
+
+| Request              | Valid in        | Effect                                                   |
+|----------------------|-----------------|----------------------------------------------------------|
+| `ConnectRequest`     | offline         | New transport from the factory, `connect()`, then `Hello` |
+| `DisconnectRequest`  | any             | `Leave`, stops the transport                             |
+| `RefreshRoomsRequest`| lobby, room     | `LobbyListRequest`                                       |
+| `CreateRoomRequest`  | lobby           | `LobbyCreate`                                            |
+| `JoinRoomRequest`    | lobby           | `LobbyJoin`                                              |
+| `SetReadyRequest`    | room            | `LobbyReady`                                             |
+| `LeaveRoomRequest`   | room, game      | `Leave`; in game, closes UDP and resets the replication  |
+
+| Result             | When                                                                         |
+|--------------------|------------------------------------------------------------------------------|
+| `SessionConnected` | `Welcome` received: the client is in the lobby                               |
+| `SessionClosed`    | connection refused, failed or lost, with a reason for the player            |
+| `RoomListUpdated`, `RoomUpdated`, `PlayerLeftRoom`, `RoomLeft` | lobby and room changes            |
+| `GameStarted`      | `GameStart`: UDP opened                                                      |
+| `LevelStarted`, `LevelCompleted` | `LevelStart`, `LevelComplete`                                  |
+| `GameEnded`        | `GameOver`: UDP closed, replicated entities removed, back in the lobby       |
+
+- A request that makes no sense in the current state (`SessionState`) is ignored.
+- The last list of rooms, room, level and result are kept (`rooms()`, `room()`, `level()`, `lastResult()`), for a
+  screen opened after the event.
+- **One transport per connection.** A transport connects only once, so each `ConnectRequest` builds a new one and puts
+  it in the shared `ecs::net::ClientConnection`. A failed connection can therefore be retried.
+- **Clean games.** Leaving a game or receiving `GameOver` calls `ClientReplicationPlugin::reset()`. The next game,
+  whose snapshot ticks start again from 1, is not dropped as stale.
+- **No forced exit.** A failure never stops the engine: the scenes go back to the connect screen, which shows the
+  reason.
 
 ### `PlayerControlPlugin`: the local player in game
 
 Also without window or rendering (`client/src/net/`, same tests).
 
-- **Inputs:** after `GameStarted`, once per fixed step, publishes `ecs::net::LocalInput` with the actions held and the axes
-  of the local `InputState`. The `ready` action is not a game input and is not sent.
+- **Inputs:** from `GameStarted` until the game ends or is left, once per fixed step, publishes `ecs::net::LocalInput`
+  with the actions held and the axes of the local `InputState`, unless `setPaused(true)` (local pause). The `ready`
+  action is not a game input and is not sent.
 - **Replicated entities:** the ship whose `subtype` is the player's index becomes `ecs::Predicted`, and every other entity
   `ecs::Interpolated`. On `InputApplied`, it moves the entity with `rtype::game::applyShipInput`, the same function as the
   server.
+
+### `ShipMetricsPlugin`: the game's line on the metrics board
+
+`client/src/metrics/`, tested by `test_client_metrics`. Every `metrics::REFRESH_PERIOD`, writes the position of the
+`ecs::Predicted` ship to the `Position` line of the `metrics::MetricsBoard`; there is no line before the game starts. It
+requires `metrics::MetricsPlugin`, and stays out of `PlayerControlPlugin`, which only handles the player's inputs and
+ship. See [In-Game Metrics](metrics.md).
 
 ### `RTypeGamePlugin`: what is on screen
 
@@ -90,7 +122,51 @@ Also without window or rendering (`client/src/net/`, same tests).
 - **Shots:** the client spawns nothing. The `shoot` action travels in the player's input, and the bullets arrive in the
   snapshots like any other entity, interpolated: a shot appears one round trip after the key press.
 
-There is no lobby screen yet, because the engine cannot draw text: the state of the lobby is printed in the terminal.
+### Scenes: the menus (`client/src/scenes/`)
+
+The screens are engine scenes (see [Scenes](scene.md)), built with the engine UI widgets (see
+[User Interface](ui.md)) through `MenuKit`. `ClientScenesPlugin` registers them and opens the title screen.
+
+```mermaid
+stateDiagram-v2
+    Title --> Connect: PLAY
+    Title --> Settings: SETTINGS (push)
+    Connect --> Lobby: SessionConnected
+    Lobby --> Room: RoomUpdated
+    Room --> Game: GameStarted
+    Game --> Pause: back (push, overlay)
+    Pause --> Settings: SETTINGS (push)
+    Game --> LevelTransition: LevelStarted / LevelCompleted (push, Wren overlay)
+    Game --> GameOver: GameEnded
+    GameOver --> Lobby
+    Pause --> Lobby: LEAVE (RoomLeft)
+    Lobby --> Title: back (disconnects)
+    Lobby --> Connect: SessionClosed
+    Room --> Connect: SessionClosed
+    Game --> Connect: SessionClosed
+```
+
+| Scene             | Mode           | Content                                                                         |
+|-------------------|----------------|---------------------------------------------------------------------------------|
+| `Title`           | exclusive      | Play, Settings, Quit                                                            |
+| `Connect`         | exclusive      | host and port fields (last server saved, else the command line), progress, error |
+| `Settings`        | exclusive      | master, music and effects volumes, metrics panel; saved by `SettingsPlugin`     |
+| `Lobby`           | exclusive      | scrollable list of rooms (only open ones are focusable), create, refresh, back  |
+| `Room`            | exclusive      | players and their ready state, ready toggle, leave                              |
+| `Game`            | exclusive      | HUD (player, level, score); back opens the pause menu                           |
+| `LevelTransition` | overlay        | written in Wren (`scripts/scenes/LevelTransition.wren`): spawns the C++ `level_banner` prefab, waits 2.5 s, pops itself |
+| `Pause`           | overlay        | local only: the game goes on below and for the others, the ship gets no input   |
+| `GameOver`        | exclusive      | victory or defeat, scores, back to the lobby                                    |
+
+- **Navigation.** Mouse, or keyboard and gamepad through the UI focus. Escape and gamepad B mean "back": the window
+  does not close on Escape, and the game quits from the title screen.
+- **No missed event.** A scene entered after an event (the first `LevelStart` follows `GameStart` at once, a room
+  update may arrive before the room screen opens) reads the state the session keeps.
+- **One owner per action.** Click and back handlers only act while their scene is the top of the stack, so the title
+  under the settings, or the game under the pause menu, never react to them.
+- **Settings.** `ClientScenesPlugin` declares them, applies the volumes and the metrics panel
+  (`MetricsOverlayPlugin::setVisible`) on `SettingChanged`, and toggles the metrics setting on F3. The panel is hidden
+  by default.
 
 ---
 

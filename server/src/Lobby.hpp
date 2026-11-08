@@ -70,7 +70,15 @@ class Lobby {
      * @param client The client; ignored if it is in no room.
      */
     void leaveRoom(ClientId client);
-    /** @brief Destroys every room and stops their threads. */
+    /**
+     * @brief Destroys the rooms whose game is over; their players are back in the lobby and get the list of rooms.
+     *
+     * Called by the `ServerManager` at every iteration of its loop.
+     */
+    void update();
+
+    /** @brief Sends `GameOver{ServerShutdown}` to the players in game, then destroys every room and stops their
+     * threads. */
     void clear();
 
   private:

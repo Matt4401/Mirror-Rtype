@@ -5,8 +5,10 @@
 
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <span>
@@ -30,11 +32,35 @@ namespace systems {
 /**
  * @brief Represents a suspended Wren Fiber waiting for a timed delay (Engine.wait).
  */
+/**
+ * @brief Opaque identifier of what is running Wren code: a script entity, or anything an extension defines.
+ *
+ * Entity scripts use their entity handle (52 bits). Extensions use values with the top bit set (see
+ * `ScriptSystem::EXTENSION_OWNER_BIT`) so they never collide with an entity.
+ */
+using ScriptOwner = std::uint64_t;
+
+/** @brief `ScriptOwner` meaning "nobody": code run outside any script or extension call. */
+inline constexpr ScriptOwner NO_SCRIPT_OWNER = std::numeric_limits<ScriptOwner>::max();
+
+/** @brief Moment of a hot-reload VM swap reported to `ScriptSystem::addVmResetListener` listeners. */
+enum class VmResetPhase : std::uint8_t {
+    /** @brief The VM is about to be destroyed: release every handle into it. */
+    Before,
+    /** @brief The new VM is ready, with the core bindings, the replays and the reloaded modules. */
+    After,
+};
+
+/**
+ * @brief Represents a suspended Wren Fiber waiting for a timed delay (Engine.wait).
+ */
 struct SleepingFiber {
     /** @brief Owning RAII handle to the suspended Wren Fiber. */
     scripting::detail::UniqueWrenHandle fiber;
     /** @brief Remaining duration in seconds before resumption. */
     float timeRemaining = 0.0F;
+    /** @brief Owner running when the fiber went to sleep; restored while it runs again. */
+    ScriptOwner owner = NO_SCRIPT_OWNER;
 };
 
 /**
@@ -231,7 +257,143 @@ class ScriptSystem {
      */
     void addBinderReplay(std::function<void(scripting::WrenVM&)> callback);
 
+    /** @brief Top bit of a `ScriptOwner` defined by an extension, so it never equals an entity handle. */
+    static constexpr ScriptOwner EXTENSION_OWNER_BIT = ScriptOwner{1} << 63U;
+
+    /**
+     * @brief Called for every entity that Wren code spawns through `Engine.spawnPrefab`, once it is built.
+     * @param context Pointer given to `setSpawnDecorator`.
+     * @param registry Registry holding the entity.
+     * @param spawned The new entity.
+     * @param owner Owner that was running when the spawn was requested.
+     */
+    using SpawnDecorator = void (*)(void* context, ecs::Registry& registry, ecs::Entity spawned, ScriptOwner owner);
+
+    /**
+     * @brief Gets the owner of the Wren code running now.
+     * @return The entity whose script runs, the owner set by an extension, or `NO_SCRIPT_OWNER`.
+     */
+    [[nodiscard]] ScriptOwner currentOwner() const noexcept { return _extensions.currentOwner; }
+
+    /**
+     * @brief Sets the owner of the Wren code about to run; fibers put to sleep and spawns record it.
+     * @param owner New owner.
+     * @return The previous owner, to restore once the call is done.
+     */
+    ScriptOwner setCurrentOwner(ScriptOwner owner) noexcept {
+        const ScriptOwner previous = _extensions.currentOwner;
+        _extensions.currentOwner = owner;
+        return previous;
+    }
+
+    /**
+     * @brief Drops the sleeping fibers of an owner, so they never run again.
+     * @param owner Owner whose fibers to cancel.
+     */
+    void cancelFibers(ScriptOwner owner);
+
+    /**
+     * @brief Sets the callback run on every entity spawned from Wren, for instance to tag it with its owner.
+     * @param decorator Callback, or null to remove it.
+     * @param context Pointer passed back to the callback.
+     */
+    void setSpawnDecorator(SpawnDecorator decorator, void* context) noexcept {
+        _extensions.spawnDecorator = decorator;
+        _extensions.spawnContext = context;
+    }
+
+    /**
+     * @brief Gets the callback run on entities spawned from Wren.
+     * @return The callback, or null.
+     */
+    [[nodiscard]] SpawnDecorator spawnDecorator() const noexcept { return _extensions.spawnDecorator; }
+
+    /**
+     * @brief Gets the context passed to the spawn decorator.
+     * @return The context given to `setSpawnDecorator`.
+     */
+    [[nodiscard]] void* spawnDecoratorContext() const noexcept { return _extensions.spawnContext; }
+
+    /**
+     * @brief Adds a built-in module that scripts can import by name, like `core/Engine`.
+     *
+     * Checked after the core modules and before the files on disk. Kept across hot reloads.
+     * @param name Import name (e.g. `core/Scene`).
+     * @param source Wren source of the module.
+     */
+    void addModuleSource(std::string name, std::string source);
+
+    /**
+     * @brief Imports a script module (built-in or `<name>.wren` on disk), and watches its file for hot reload.
+     * @param moduleName Module name.
+     * @return True if the module is loaded.
+     */
+    bool loadModule(const std::string& moduleName) { return ensureScriptModuleLoaded(moduleName); }
+
+    /**
+     * @brief Registers a callback told before and after a hot reload replaces the VM.
+     * @param listener Callback receiving the phase.
+     * @return Id for `removeVmResetListener`.
+     */
+    std::size_t addVmResetListener(std::function<void(VmResetPhase)> listener);
+
+    /**
+     * @brief Removes a VM reset listener.
+     * @param id Id returned by `addVmResetListener`; unknown ids are ignored.
+     */
+    void removeVmResetListener(std::size_t id);
+
   private:
+    /** @brief Restores the previous script owner when it goes out of scope. */
+    class OwnerScope {
+      public:
+        /**
+         * @brief Sets `owner` as the current owner of `system`.
+         * @param system System whose owner changes.
+         * @param owner Owner for the scope.
+         */
+        OwnerScope(ScriptSystem& system, ScriptOwner owner) noexcept
+            : _system(system), _previous(system.setCurrentOwner(owner)) {}
+        /** @brief Restores the previous owner. */
+        ~OwnerScope() { (void)_system.setCurrentOwner(_previous); }
+        /** @brief Deleted copy constructor. */
+        OwnerScope(const OwnerScope&) = delete;
+        /** @brief Deleted copy assignment. */
+        OwnerScope& operator=(const OwnerScope&) = delete;
+        /** @brief Deleted move constructor. */
+        OwnerScope(OwnerScope&&) = delete;
+        /** @brief Deleted move assignment. */
+        OwnerScope& operator=(OwnerScope&&) = delete;
+
+      private:
+        /** @brief System whose owner was changed. */
+        ScriptSystem& _system;
+        /** @brief Owner to restore. */
+        ScriptOwner _previous;
+    };
+
+    /** @brief State used by engine extensions (owners, spawn decorator, reset listeners), moved as one block. */
+    struct Extensions {
+        /** @brief Owner of the Wren code running now. */
+        ScriptOwner currentOwner = NO_SCRIPT_OWNER;
+        /** @brief Callback run on entities spawned from Wren. */
+        SpawnDecorator spawnDecorator = nullptr;
+        /** @brief Context of `spawnDecorator`. */
+        void* spawnContext = nullptr;
+        /** @brief Hot-reload listeners, with their ids. */
+        std::vector<std::pair<std::size_t, std::function<void(VmResetPhase)>>> vmResetListeners;
+        /** @brief Next listener id. */
+        std::size_t nextListenerId = 0;
+        /** @brief Fibers woken this frame; capacity kept between frames. */
+        std::vector<SleepingFiber> readyFibers;
+    };
+
+    /**
+     * @brief Tells the VM reset listeners about a phase of a hot reload.
+     * @param phase Phase to report.
+     */
+    void notifyVmReset(VmResetPhase phase);
+
     /**
      * @brief Calls `signature` (a one-argument method) on the script instance of `target`, passing `arg` wrapped in an
      * `Entity` (or as the raw number when `core/Entity` is not loaded). Does nothing if the instance or handle is
@@ -406,6 +568,14 @@ class ScriptSystem {
     float _reloadCheckTimer = 0.0F;
     /** @brief Configuration flag enabling or disabling hot-reloading. */
     bool _hotReloadEnabled = true;
+    /** @brief State used by engine extensions. */
+    Extensions _extensions;
+    /**
+     * @brief Built-in modules added by extensions, by import name.
+     * Shared with the module loader, which outlives moves of the system and is copied into the staging VMs.
+     */
+    std::shared_ptr<std::unordered_map<std::string, std::string>> _extraModules =
+        std::make_shared<std::unordered_map<std::string, std::string>>();
 };
 
 }  // namespace systems

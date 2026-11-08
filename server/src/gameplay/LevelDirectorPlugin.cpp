@@ -21,6 +21,7 @@
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
+#include "protocol/Messages.hpp"
 #include "timeline/TimelineEvent.hpp"
 #include "timeline/TimelineEvents.hpp"
 #include "timeline/TimelinePlugin.hpp"
@@ -94,6 +95,16 @@ void LevelDirectorPlugin::shutdown(engine::Engine& /*engine*/) {
     _timeline = nullptr;
 }
 
+void LevelDirectorPlugin::startGame() {
+    _gameStarted = true;
+    const std::string name = _level != nullptr ? _level->name : "";
+    _bus->publish(protocol::LevelStart{
+        .levelIndex = 0,
+        .levelCount = 1,
+        .name = name.substr(0, protocol::MAX_LEVEL_NAME_LENGTH),
+    });
+}
+
 void LevelDirectorPlugin::startLevel() {
     if (_timeline == nullptr || _level == nullptr) {
         return;
@@ -106,6 +117,9 @@ void LevelDirectorPlugin::startLevel() {
 }
 
 void LevelDirectorPlugin::play(const timeline::TimelineEvent& event) {
+    if (_finished) {
+        return;
+    }
     if (_scrollHeld && event.type != level::EVENT_BOSS) {
         _heldEvents.push_back(event);
         return;
@@ -115,6 +129,11 @@ void LevelDirectorPlugin::play(const timeline::TimelineEvent& event) {
         spawnEnemy(event.params);
     } else if (event.type == level::EVENT_SCROLL) {
         _timeline->setSpeed(event.params.get("speed", _timeline->speed()));
+    } else if (event.type == level::EVENT_END && _gameStarted) {
+        log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete");
+        _finished = true;
+        _timeline->setSpeed(0.0F);
+        _bus->publish(LevelFinished{.levelIndex = 0, .lastLevel = true});
     } else if (event.type == level::EVENT_END) {
         log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete, restarting it");
         startLevel();

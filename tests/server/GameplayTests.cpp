@@ -57,6 +57,7 @@ using rtype::server::gameplay::RESPAWN_DURATION;
 using rtype::server::gameplay::shipSpawnPoint;
 using rtype::server::gameplay::ShipSpawnPoint;
 namespace game = rtype::game;
+namespace protocol = rtype::protocol;
 namespace level = rtype::server::level;
 
 constexpr float FIXED_DT = 1.0F / 60.0F;
@@ -313,7 +314,7 @@ TEST_F(GameplayTest, ScrollEventChangesTheSpeed) {
     EXPECT_FLOAT_EQ(player().speed(), SLOW_SPEED);
 }
 
-TEST_F(GameplayTest, EndOfLevelRestartsIt) {
+TEST_F(GameplayTest, EndOfLevelRestartsItBeforeTheGameStarts) {
     // Ends at 5 s (180 px at 60 px/s, then 60 px at 30 px/s): the speed is back to the start and the waves replay.
     run(5.1F);
     EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
@@ -321,6 +322,60 @@ TEST_F(GameplayTest, EndOfLevelRestartsIt) {
 
     run(1.0F);
     EXPECT_EQ(entitiesOf(game::KIND_ALIEN_SCOUT).size(), 3U);
+}
+
+/** @brief Gameplay engine recording the session messages the room would send. */
+class GameFlowTest : public GameplayTest {
+  protected:
+    GameFlowTest() {
+        ecs::EventBus& bus = engine.eventBus();
+        bus.subscribe<protocol::LevelStart>([this](const protocol::LevelStart& message) {
+            log.push_back("start " + std::to_string(message.levelIndex) + "/" + std::to_string(message.levelCount) +
+                          " " + message.name);
+        });
+        bus.subscribe<protocol::LevelComplete>([this](const protocol::LevelComplete& message) {
+            log.push_back("complete " + std::to_string(message.levelIndex));
+            complete = message;
+        });
+        bus.subscribe<protocol::GameOver>([this](const protocol::GameOver& message) {
+            log.push_back(message.reason == protocol::GameOverReason::Victory ? "victory" : "other");
+            over = message;
+        });
+    }
+
+    std::vector<std::string> log;
+    std::optional<protocol::LevelComplete> complete;
+    std::optional<protocol::GameOver> over;
+};
+
+TEST_F(GameFlowTest, StartGameAnnouncesTheLevel) {
+    engine.getPlugin<LevelDirectorPlugin>().startGame();
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/1 Test"}));
+}
+
+TEST_F(GameFlowTest, EndOfLevelWinsTheGameWithTheScores) {
+    const ecs::Entity ship = spawnShip(1, 200.0F, LANE_Y);
+    engine.getPlugin<LevelDirectorPlugin>().startGame();
+    spawnEnemy(500.0F, LANE_Y);
+    shoot(ship);
+    // The level ends at 5 s.
+    run(5.1F);
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/1 Test", "complete 0", "victory"}));
+    ASSERT_TRUE(complete.has_value());
+    ASSERT_TRUE(over.has_value());
+    EXPECT_EQ(over->score, POINTS_PER_KILL);
+    EXPECT_EQ(over->playerScores, (std::vector<std::uint32_t>{0, POINTS_PER_KILL}));
+    EXPECT_EQ(complete->playerScores, over->playerScores);
+}
+
+TEST_F(GameFlowTest, NothingIsPlayedAfterTheGameIsWon) {
+    engine.getPlugin<LevelDirectorPlugin>().startGame();
+    run(5.1F);
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F);
+    const std::size_t enemies = entitiesOf(game::KIND_ALIEN_SCOUT).size();
+    run(3.0F);
+    EXPECT_LE(entitiesOf(game::KIND_ALIEN_SCOUT).size(), enemies) << "the level must not restart";
+    EXPECT_EQ(log.size(), 3U);
 }
 
 TEST_F(GameplayTest, EnemiesThatLeaveTheScreenAreDestroyed) {

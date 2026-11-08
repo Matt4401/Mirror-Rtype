@@ -29,7 +29,9 @@ namespace rtype::server::gameplay {
  *
  * - Publishes every event it plays as a `LevelEventPlayed`, for the plugins that handle `terrain` and `boss`. It
  *   handles the others: `spawn` creates the enemies, `scroll` changes the speed, and `end` restarts the level
- *   (`LevelStarted`) until there are several levels.
+ *   (`LevelStarted`).
+ * - Once `startGame()` was called, the level is the whole game: `startGame()` publishes its `protocol::LevelStart`, and
+ *   its `end` stops the scroll and publishes `LevelFinished` instead of restarting it. Nothing is played after that.
  * - Holds the scroll from `BossFightStarted` to `BossFightEnded` and from `ShipRespawnStarted` to `AllRespawnsOver`:
  *   it resumes, at its speed before the hold, once both are over. The events reached while it is held (in the same
  *   step as a boss) wait for it, so a `scroll` does not restart the scroll and an `end` does not restart the level
@@ -63,6 +65,13 @@ class LevelDirectorPlugin final : public engine::IPlugin {
      * @param engine Host engine.
      */
     void shutdown(engine::Engine& engine) override;
+
+    /**
+     * @brief Starts the game: publishes the `protocol::LevelStart` of the level, which the room sends to its players.
+     *
+     * Called when the room starts, after `GameStart` was sent. From then on, the level `end` finishes the game.
+     */
+    void startGame();
 
     /**
      * @brief Prefabs a level may use, per event type, and the parameters they read: the level catalog given to
@@ -102,6 +111,10 @@ class LevelDirectorPlugin final : public engine::IPlugin {
     timeline::TimelinePlugin* _timeline = nullptr;
     /** @brief Subscriptions, removed by `shutdown()`. */
     std::vector<std::pair<ecs::EventBus::EventToken, void (*)(ecs::EventBus&, ecs::EventBus::EventToken)>> _tokens;
+    /** @brief True once `startGame()` was called. */
+    bool _gameStarted = false;
+    /** @brief True once the level reached its `end` during a game: nothing is played any more. */
+    bool _finished = false;
     /** @brief True during a boss fight. */
     bool _bossFight = false;
     /** @brief True while at least one ship is respawning. */

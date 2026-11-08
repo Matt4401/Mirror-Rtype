@@ -62,7 +62,15 @@ void engineSpawnPrefab(scripting::ForeignCall& call) {
         std::cerr << "[ScriptSystem] Engine.spawnPrefab(\"" << *prefabName << "\"): no PrefabManager set\n";
         return;
     }
-    (void)manager->spawn(*prefabName, scriptSystem->getCommandBuffer(), {{"x", *x}, {"y", *y}});
+    ScriptSystem::SpawnDecorator const decorator = scriptSystem->spawnDecorator();
+    if (decorator == nullptr) {
+        (void)manager->spawn(*prefabName, scriptSystem->getCommandBuffer(), {{"x", *x}, {"y", *y}});
+        return;
+    }
+    (void)manager->spawn(
+        *prefabName, scriptSystem->getCommandBuffer(), {{"x", *x}, {"y", *y}},
+        [decorator, context = scriptSystem->spawnDecoratorContext(), owner = scriptSystem->currentOwner()](
+            ecs::Entity e, ecs::Registry& registry) { decorator(context, registry, e, owner); });
 }
 
 /**
@@ -297,10 +305,13 @@ void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
 }
 
 void ScriptSystem::loadCoreModules() {
-    _vm.setModuleLoader([](std::string_view moduleName) -> std::string {
+    _vm.setModuleLoader([extraModules = _extraModules](std::string_view moduleName) -> std::string {
         std::string_view const coreSource = scripting::getCoreModuleSource(moduleName);
         if (!coreSource.empty()) {
             return std::string(coreSource);
+        }
+        if (auto const it = extraModules->find(std::string(moduleName)); it != extraModules->end()) {
+            return it->second;
         }
 
         std::string const filename = std::string(moduleName) + ".wren";

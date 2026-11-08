@@ -31,6 +31,28 @@ struct SnapshotState {
     std::uint32_t lastProcessedInput = 0;
 };
 
+/** @brief Client resource: how the replication behaves on this connection. Created by `ClientReplicationPlugin`. */
+struct ReplicationStats {
+    /**
+     * @brief Smoothed time between sending an input and receiving a snapshot saying the server applied it, in ms.
+     *
+     * It is the responsiveness felt by the player: the network round trip, plus the time the input waits on the server
+     * for its step. Nothing before the first acknowledged input.
+     */
+    std::optional<float> inputRttMs;
+    /** @brief Snapshots received in time, each counted once however many parts it has. */
+    std::uint64_t snapshotsReceived = 0;
+    /**
+     * @brief Server steps with no snapshot, seen as a jump in the ticks.
+     *
+     * Mostly snapshots lost or still on their way, but also the steps a late server caught up in one frame, since it
+     * then sends one snapshot for all of them.
+     */
+    std::uint64_t snapshotsMissed = 0;
+    /** @brief Parts of snapshots dropped because a newer snapshot had already arrived. */
+    std::uint64_t snapshotsStale = 0;
+};
+
 /** @brief Older inputs sent again with each new one, as long as the server has not acknowledged them. */
 inline constexpr std::size_t INPUT_RESEND_COUNT = 2;
 
@@ -70,7 +92,7 @@ class ClientReplicationPlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Creates the `SnapshotState` resource and subscribes to packets and local inputs.
+     * @brief Creates the `SnapshotState` and `ReplicationStats` resources and subscribes to packets and local inputs.
      * @param engine Host engine.
      */
     void init(engine::Engine& engine) override;
@@ -88,6 +110,16 @@ class ClientReplicationPlugin final : public engine::IPlugin {
      */
     void shutdown(engine::Engine& engine) override;
 
+    /**
+     * @brief Forgets the current session, for instance when leaving a game to join another one.
+     *
+     * Every replicated entity is removed (with `ReplicatedEntityDespawned`), the `SnapshotState` goes back to "no
+     * snapshot yet" (so the first snapshot of a new game is not dropped as older than the last one of the previous
+     * game), and the partial snapshot and the inputs waiting to be sent again are dropped.
+     * @param engine Host engine.
+     */
+    void reset(engine::Engine& engine);
+
   private:
     /** @brief An input already sent, kept to be sent again. */
     struct SentInput {
@@ -97,6 +129,20 @@ class ClientReplicationPlugin final : public engine::IPlugin {
         Bytes bytes;
     };
 
+    /** @brief When an input was sent, to measure how long the server takes to acknowledge it. */
+    struct PendingInput {
+        /** @brief Sequence of the input. */
+        std::uint32_t sequence = 0;
+        /** @brief Instant of `Clock::now()` when it was sent. */
+        double sentAt = 0.0;
+    };
+
+    /**
+     * @brief Measures the round trip of the latest input acknowledged, if the server acknowledged a new one.
+     * @param engine Host engine.
+     * @param acknowledged Sequence of the last input applied by the server.
+     */
+    void measureInputRtt(engine::Engine& engine, std::uint32_t acknowledged);
     /**
      * @brief Applies a packet if it is a part of a snapshot not older than the last one, and not received yet.
      * @param engine Host engine.
@@ -118,6 +164,8 @@ class ClientReplicationPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _inputs;
     /** @brief Last inputs sent, oldest first, at most `INPUT_RESEND_COUNT`. */
     std::deque<SentInput> _sentInputs;
+    /** @brief Inputs not acknowledged yet, oldest first, at most `MAX_PENDING_INPUTS`. */
+    std::deque<PendingInput> _pendingInputs;
     /** @brief Seconds between the previous snapshot and the current one, used to interpolate. */
     float _snapshotInterval = 0.0F;
     /** @brief Parts of the current snapshot received so far, one bit per `partIndex`. */

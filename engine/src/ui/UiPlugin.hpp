@@ -12,6 +12,7 @@
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/time/Time.hpp"
+#include "ui/system/UiInteractionSystem.hpp"
 #include "ui/system/UiLayout.hpp"
 #include "ui/system/UiRenderSystem.hpp"
 
@@ -20,7 +21,9 @@ namespace ui {
 /**
  * @brief Engine plugin driving HUD layout, button interaction and HUD drawing.
  *
- * - `update`: lays the HUD out and runs `UiButtonSystem` (hover, press, click events).
+ * - `init`: emplaces the `UiFocus` and `UiNavigation` resources (if the game did not).
+ * - `update`: lays the HUD out, runs `UiButtonSystem` (hover, press, click events), then `UiInteractionSystem`
+ *   (focus navigation, text inputs, sliders, toggles, list scrolling).
  * - `lateUpdate`: lays the HUD out again, after every plugin's `update`, and submits it to
  *   `engine::IScreenDrawService`, which draws it on top of the world in the same frame.
  *
@@ -63,7 +66,7 @@ class UiPlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Creates the UI render system.
+     * @brief Creates the UI render system and the navigation resources.
      * @param engine Reference to host Engine.
      */
     void init(engine::Engine& engine) override;
@@ -71,7 +74,7 @@ class UiPlugin final : public engine::IPlugin {
     /**
      * @brief Lays the HUD out and updates button interaction states.
      * @param engine Reference to host Engine.
-     * @param time   Current frame time (unused).
+     * @param time   Current frame time (key repeat, caret blink).
      */
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
@@ -100,6 +103,8 @@ class UiPlugin final : public engine::IPlugin {
     std::unique_ptr<UiRenderSystem> _uiRenderSystem;
     /** @brief Layout computed in update() for button hit-testing; capacity is kept between frames. */
     std::vector<UiLayoutNode> _layout;
+    /** @brief Focus navigation, text inputs, sliders, toggles and list scrolling. */
+    UiInteractionSystem _interaction;
 };
 
 }  // namespace ui

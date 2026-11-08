@@ -30,6 +30,9 @@ Window::Window(const WindowConfig& config) {
         throw std::runtime_error("Failed to create the game window");
     }
     SetTargetFPS(config.targetFps);
+    if (!config.escapeClosesWindow) {
+        SetExitKey(KEY_NULL);
+    }
 }
 
 Window::~Window() {

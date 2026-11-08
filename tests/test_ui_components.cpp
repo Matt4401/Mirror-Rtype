@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
-#include <variant>
 #include <vector>
 
 #include "components/Renderable.hpp"
@@ -22,7 +21,6 @@
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
 #include "ui/system/UiButtonSystem.hpp"
-#include "ui/system/UiDrawItem.hpp"
 #include "ui/system/UiLayout.hpp"
 #include "ui/system/UiRenderSystem.hpp"
 
@@ -71,6 +69,7 @@ struct FakeWindow : engine::IWindowService {
     }
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return {.x = mx, .y = my}; }
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return 0.0F; }
+    [[nodiscard]] char32_t nextTypedCharacter() noexcept override { return U'\0'; }
 };
 
 static ecs::Entity makeButton(ecs::Registry& reg, float ancX, float ancY, float w = 120.0F, float h = 36.0F,
@@ -130,6 +129,10 @@ struct FakeScreenDraw final : engine::IScreenDrawService {
     void drawText(std::string_view text, float x, float y, float /*fontSize*/, float /*spacing*/,
                   const ecs::Rgba& color, engine::FontId /*font*/) override {
         calls.push_back({.kind = "text", .rect = {.x = x, .y = y}, .color = color, .text = std::string(text)});
+    }
+    void drawTexture(ecs::TextureId /*texture*/, const ecs::TextureRect& /*source*/, const engine::ScreenRect& dest,
+                     float /*rotation*/, const ecs::Rgba& tint) override {
+        calls.push_back({.kind = "texture", .rect = dest, .color = tint, .text = {}});
     }
 };
 
@@ -307,42 +310,6 @@ TEST(UiProgressBarRatio, ClampsAboveMax) {
 TEST(UiProgressBarRatio, ZeroRangeReturnsZero) {
     const ui::UiProgressBar bar{.value = 5.0F, .min = 5.0F, .max = 5.0F};
     EXPECT_FLOAT_EQ(computeRatio(bar), 0.0F);
-}
-
-TEST(UiDrawItem, HoldsUiRect) {
-    const ui::UiDrawItem item{
-        .entity = 1,
-        .screenX = 100.0F,
-        .screenY = 200.0F,
-        .drawable = ui::UiRect{.width = 50.0F, .height = 20.0F},
-    };
-
-    ASSERT_TRUE(std::holds_alternative<ui::UiRect>(item.drawable));
-    EXPECT_EQ(std::get<ui::UiRect>(item.drawable).width, 50.0F);
-}
-
-TEST(UiDrawItem, HoldsUiText) {
-    const ui::UiDrawItem item{
-        .entity = 2,
-        .screenX = 0.0F,
-        .screenY = 0.0F,
-        .drawable = ui::UiText{.text = "HP"},
-    };
-
-    ASSERT_TRUE(std::holds_alternative<ui::UiText>(item.drawable));
-    EXPECT_EQ(std::get<ui::UiText>(item.drawable).text, "HP");
-}
-
-TEST(UiDrawItem, HoldsUiProgressBar) {
-    const ui::UiDrawItem item{
-        .entity = 3,
-        .screenX = 0.0F,
-        .screenY = 0.0F,
-        .drawable = ui::UiProgressBar{.value = 75.0F, .max = 100.0F},
-    };
-
-    ASSERT_TRUE(std::holds_alternative<ui::UiProgressBar>(item.drawable));
-    EXPECT_EQ(std::get<ui::UiProgressBar>(item.drawable).value, 75.0F);
 }
 
 TEST(UiButton, DefaultValues) {

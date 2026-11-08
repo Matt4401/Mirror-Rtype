@@ -59,6 +59,7 @@ class FakeWindow final : public engine::IWindowService {
     [[nodiscard]] bool isMouseButtonReleased(engine::MouseButton /*button*/) const noexcept override { return false; }
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return _mousePosition; }
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return _mouseWheel; }
+    [[nodiscard]] char32_t nextTypedCharacter() noexcept override { return U'\0'; }
 
   private:
     engine::Key _heldKey;

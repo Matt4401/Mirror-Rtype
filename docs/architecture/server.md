@@ -19,6 +19,10 @@ entities does not slow down the others. The mutex of a room is only contended wh
 then waits for the step in progress. An exception in a simulation stops that room only.
 See [Network Architecture](network.md#6-threading-model).
 
+The server thread and the room threads sleep 1 ms between two passes. `main()` holds an `ecs::time::PreciseSleepScope`
+for the whole run so that this stays true on Windows, where a sleep lasts about 15.6 ms by default. See
+[Engine Clock — Sleeping between two passes](clock.md#sleeping-between-two-passes).
+
 ## `ServerManager`
 
 Owns the transport and the `Lobby`, and holds no game logic. Each loop iteration, about every millisecond:
@@ -43,7 +47,7 @@ A room holds at most `MAX_PLAYERS_PER_ROOM` players: 2 for now, while the protoc
 | `LobbyCreate`      | Creates a room with the client in it, sends `LobbyUpdate`                                |
 | `LobbyJoin`        | Adds the client if the room is open, sends `LobbyUpdate` to the room                     |
 | `LobbyReady`       | Updates the room; when everyone is ready, starts it and sends `GameStart` to each player |
-| `Leave`            | Removes the client from its room (a disconnection does the same)                         |
+| `Leave`            | Removes the client from its room, waiting or in game; it stays connected, back in the lobby (a disconnection does the same) |
 
 - A departure sends `PlayerLeft` to the others. In a lobby it can also start the room, if the player who left was the
   last one not ready.
@@ -51,6 +55,10 @@ A room holds at most `MAX_PLAYERS_PER_ROOM` players: 2 for now, while the protoc
 - Each change of the list is pushed as `LobbyList` to the clients not in a game.
 - A message in the wrong phase is dropped, as the [RFC](../protocol/packets.md#8-validation) requires.
 - Rooms are referred to by `RoomId`, never by pointer: an event for a room that no longer exists is ignored.
+- `GameStart` is sent before the room starts, because starting it sends the `LevelStart` of the first level.
+- `Lobby::update()`, called at every iteration of the server loop, destroys the rooms whose game is over
+  (`Room::hasEnded()`). Their players are back in the lobby and get the list of rooms.
+- When the server stops, the players in game receive `GameOver{SERVER_SHUTDOWN}` before the rooms are destroyed.
 
 ## `Room`
 
@@ -99,8 +107,8 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 
 | Plugin | Job | Publishes | Listens to |
 |--------|-----|-----------|------------|
-| `LevelDirectorPlugin` | Plays the level, spawns the enemies, holds the scroll | `LevelEventPlayed`, `LevelStarted` | `TimelineEventFired`, `BossFightStarted`/`Ended`, `ShipRespawnStarted`, `AllRespawnsOver` |
-| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed` | inputs, collision events |
+| `LevelDirectorPlugin` | Plays the level, spawns the enemies, holds the scroll | `LevelEventPlayed`, `LevelStarted`, `LevelFinished`, `protocol::LevelStart` | `TimelineEventFired`, `BossFightStarted`/`Ended`, `ShipRespawnStarted`, `AllRespawnsOver` |
+| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed`, `protocol::LevelComplete`, `protocol::GameOver` | inputs, collision events, `LevelFinished` |
 | `BossFightPlugin` | Spawns the bosses, follows the fight | `BossFightStarted`, `BossFightEnded` | `LevelEventPlayed` (`boss`) |
 | `RespawnPlugin` | Brings destroyed ships back | `ShipRespawnStarted`, `AllRespawnsOver` | `ShipDestroyed` |
 | `TerrainPlugin` | Builds and scrolls the terrain | | `LevelEventPlayed` (`terrain`), `LevelStarted` |
@@ -108,8 +116,8 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 
 - **Level:** the server loads `server/levels/level_01.toml` at start-up and every room plays it. `TimelinePlugin` moves
   a cursor at the scroll speed; `LevelDirectorPlugin` handles the events it reaches: `spawn` creates the enemies, `scroll`
-  changes the speed, `end` restarts the level. A `boss` event stops the scroll until its `boss_core` is destroyed, and
-  `[[terrain]]` sections scroll as 256 px blocks that destroy the ships touching them. See
+  changes the speed, `end` wins the game (see [Game flow](#game-flow)). A `boss` event stops the scroll until its
+  `boss_core` is destroyed, and `[[terrain]]` sections scroll as 256 px blocks that destroy the ships touching them. See
   [Level Files](../gameplay/levels.md).
 - **Respawn:** a destroyed ship comes back at its start position (`gameplay::shipSpawnPoint()`) and blinks for
   `RESPAWN_DURATION` (3 s) with the `invulnerable` flag: it cannot be hit, and the scroll, the terrain and the next
@@ -126,10 +134,25 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
   Each player has their own score.
 - **Cleanup:** player bullets more than 64 px past the right edge, and enemies, enemy shots and power-ups more than
   64 px past the left one, are destroyed.
-- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`. Scores are not sent to the
-  clients yet.
+- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`. The clients get the scores
+  at the end of the game.
+
+### Game flow
+
+`Room::start()` calls `LevelDirectorPlugin::startGame()`; the game is the level the server loaded:
+
+1. **Start.** A `protocol::LevelStart` (index 0 of 1, the level name) is published on the room's bus, and the room
+   sends it to its players.
+2. **End.** When the level reaches its `end` event, the scroll stops and `LevelDirectorPlugin` publishes
+   `LevelFinished`. `CombatPlugin`, which keeps the scores, publishes a `protocol::LevelComplete` and then
+   `protocol::GameOver{VICTORY}` with them. The room forwards both, marks itself ended, and the lobby destroys it.
+
+Before `startGame()` (in the tests), the `end` event restarts the level instead. There are no lives yet, so the game
+never ends in `ALL_DEAD`.
+
+The gameplay never touches the network: it only publishes protocol structs, and the room broadcasts them.
 
 ## What is not simulated yet
 
-Enemy shots, ship damage, power-ups and `GameOver` are still to do, as well as `Chat`, which the server drops. A snapshot is the complete state of the room, split into as many datagrams as needed: 36 entities per
+Enemy shots, ship damage and power-ups are still to do (so `ALL_DEAD` cannot happen yet), as well as `Chat`, which the server drops. A snapshot is the complete state of the room, split into as many datagrams as needed: 36 entities per
 datagram, and at most 64 of them, about 2300 entities. Past that it is not sent (an error is logged).

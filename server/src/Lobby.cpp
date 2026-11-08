@@ -54,8 +54,37 @@ void Lobby::onUnreliableData(const ClientId client, const ecs::net::Bytes& data)
 }
 
 void Lobby::clear() {
+    const auto shutdown = protocol::encode(protocol::GameOver{.reason = protocol::GameOverReason::ServerShutdown});
+    for (const auto& [id, room] : _rooms) {
+        if (!room.isPlaying() || room.hasEnded()) {
+            continue;
+        }
+        for (const RoomPlayer& player : room.players()) {
+            _network->send(player.client, shutdown, ecs::net::Channel::Reliable);
+        }
+    }
     _rooms.clear();
     _roomOf.clear();
+}
+
+void Lobby::update() {
+    bool reaped = false;
+    for (auto it = _rooms.begin(); it != _rooms.end();) {
+        if (!it->second.hasEnded()) {
+            ++it;
+            continue;
+        }
+        // The room already sent GameOver to its players: they are back in the lobby.
+        for (const RoomPlayer& player : it->second.players()) {
+            _roomOf.erase(player.client);
+        }
+        log::info(LOG_TAG, "room ", it->first, " ended");
+        it = _rooms.erase(it);  // joins the room's thread
+        reaped = true;
+    }
+    if (reaped) {
+        broadcastLobbyList();
+    }
 }
 
 void Lobby::onLobbyCreate(const ClientId client) {
@@ -138,9 +167,7 @@ bool Lobby::startIfReady(const RoomId id, Room& room) {
     if (room.isPlaying() || !room.isEveryoneReady()) {
         return false;
     }
-    room.start();
-    room.runInBackground();
-    log::info(LOG_TAG, "room ", id, " started with ", room.players().size(), " players");
+    // GameStart goes out first: starting the room sends the LevelStart of the first level.
     const auto count = static_cast<std::uint8_t>(room.players().size());
     std::uint8_t index = 0;
     for (const RoomPlayer& player : room.players()) {
@@ -149,6 +176,9 @@ bool Lobby::startIfReady(const RoomId id, Room& room) {
                        ecs::net::Channel::Reliable);
         ++index;
     }
+    room.start();
+    room.runInBackground();
+    log::info(LOG_TAG, "room ", id, " started with ", room.players().size(), " players");
     broadcastLobbyList();
     return true;
 }

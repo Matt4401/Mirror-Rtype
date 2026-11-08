@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "ecs/Entity.hpp"
 #include "timeline/TimelineEvent.hpp"
 
@@ -22,6 +24,19 @@ struct LevelEventPlayed {
 
 /** @brief The level starts, or restarts after its `end` event. */
 struct LevelStarted {};
+
+/**
+ * @brief The level reached its `end` event during a game (after `LevelDirectorPlugin::startGame()`).
+ *
+ * The plugin keeping the scores turns it into the protocol messages the room sends: `protocol::LevelComplete`, then
+ * `protocol::GameOver` after the last level.
+ */
+struct LevelFinished {
+    /** @brief Index of the finished level. */
+    std::uint8_t levelIndex = 0;
+    /** @brief True for the last level of the game: the game is won. */
+    bool lastLevel = true;
+};
 
 /** @brief A boss was spawned: the scroll waits until the fight is over. Published for each boss. */
 struct BossFightStarted {};

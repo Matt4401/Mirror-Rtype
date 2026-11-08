@@ -18,10 +18,12 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
+#include "events/EventBus.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "gameplay/CombatPlugin.hpp"
 #include "gameplay/Gameplay.hpp"
+#include "gameplay/LevelDirectorPlugin.hpp"
 #include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
@@ -36,6 +38,8 @@
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/player_ship/PlayerShip.hpp"
+#include "protocol/Messages.hpp"
+#include "protocol/Protocol.hpp"
 #include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "systems/script/ScriptSystem.hpp"
@@ -48,6 +52,18 @@ namespace {
 // Sleep between two iterations of a room's thread. Short enough to keep the step jitter around 1 ms, long enough not to
 // burn a core.
 constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
+
+/**
+ * @brief Sends a message to every player of a room on the reliable channel (TCP).
+ *
+ * Only for session events: level start and end, game over. They come a few times per game and must not be lost, like
+ * `GameStart`. Nothing of the game loop goes there: snapshots and inputs stay on UDP.
+ * @param connection Peers of the room.
+ * @param message Message to send.
+ */
+void broadcastReliable(ecs::net::PeerGroupConnection& connection, const protocol::Message& message) {
+    connection.broadcast(protocol::encode(message), ecs::net::Channel::Reliable);
+}
 
 }  // namespace
 
@@ -65,6 +81,15 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<prefabs::PrefabPlugin>();
     // On fixed steps: the room loop advances the engine about every millisecond, scripts follow the 60 Hz simulation.
     _engine.addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::FixedStep);
+    ecs::EventBus& bus = _engine.eventBus();
+    bus.subscribe<protocol::LevelStart>(
+        [this](const protocol::LevelStart& message) { broadcastReliable(*_connection, message); });
+    bus.subscribe<protocol::LevelComplete>(
+        [this](const protocol::LevelComplete& message) { broadcastReliable(*_connection, message); });
+    bus.subscribe<protocol::GameOver>([this](const protocol::GameOver& message) {
+        broadcastReliable(*_connection, message);
+        _ended = true;
+    });
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
         if (registry.hasComponent<ecs::Transform>(event.entity)) {
@@ -151,6 +176,7 @@ void Room::start() {
         ++index;
     }
     _engine.getPlugin<gameplay::CombatPlugin>().setPlayerCount(_players.size());
+    _engine.getPlugin<gameplay::LevelDirectorPlugin>().startGame();
     _playing = true;
     _engine.clock().reset();
 }
@@ -172,6 +198,8 @@ void Room::runInBackground() {
             }
         } catch (const std::exception& error) {
             log::error(LOG_TAG, "room stopped by an error in its simulation: ", error.what());
+            broadcastReliable(*_connection, protocol::GameOver{.reason = protocol::GameOverReason::ServerShutdown});
+            _ended = true;
         }
     });
 }

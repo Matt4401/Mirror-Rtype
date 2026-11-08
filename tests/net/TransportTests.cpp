@@ -365,6 +365,61 @@ TEST(Transport, ConnectingTwiceIsRefused) {
     EXPECT_FALSE(client->connect("127.0.0.1", PORT));
 }
 
+TEST(Transport, StatsCountTheTrafficOnBothSides) {
+    constexpr std::uint16_t PORT = 21390;
+    const auto server = ecs::net::createServer({.protocolId = GAME_A});
+    ASSERT_TRUE(server->start(PORT));
+    const auto client = ecs::net::createClient({.protocolId = GAME_A});
+    EXPECT_EQ(client->stats().bytesSent, 0U);
+    ASSERT_TRUE(client->connect("127.0.0.1", PORT));
+    ASSERT_TRUE(
+        has(pollUntil(*client, [](const auto& e) { return has(e, EventType::Connected); }), EventType::Connected));
+    ASSERT_TRUE(
+        has(pollUntil(*server, [](const auto& e) { return has(e, EventType::Connected); }), EventType::Connected));
+
+    client->send(Bytes{1, 2, 3}, Channel::Reliable);
+    ASSERT_TRUE(has(pollUntil(*server, [](const auto& e) { return has(e, EventType::Data); }), EventType::Data));
+
+    // Handshake `[header 5][protocol 4]`, then Data `[header 5][payload 3]`.
+    EXPECT_EQ(server->stats().bytesReceived, 17U);
+    EXPECT_EQ(server->stats().packetsReceived, 2U);
+    // The server sees the frame as soon as it is written: the client learns it was written just after.
+    const auto deadline = std::chrono::steady_clock::now() + WAIT;
+    while (client->stats().packetsSent < 2 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    EXPECT_EQ(client->stats().bytesSent, 17U);
+    EXPECT_EQ(client->stats().packetsSent, 2U);
+    // Welcome `[header 5][id 4][token 4]`.
+    EXPECT_EQ(server->stats().bytesSent, 13U);
+    EXPECT_EQ(client->stats().bytesReceived, 13U);
+}
+
+TEST(Transport, StatsCountTheDatagrams) {
+    constexpr std::uint16_t PORT = 21391;
+    const auto server = ecs::net::createServer({.protocolId = GAME_A});
+    ASSERT_TRUE(server->start(PORT));
+    const auto client = ecs::net::createClient({.protocolId = GAME_A});
+    ASSERT_TRUE(client->connect("127.0.0.1", PORT));
+    ASSERT_TRUE(
+        has(pollUntil(*client, [](const auto& e) { return has(e, EventType::Connected); }), EventType::Connected));
+    ASSERT_TRUE(
+        has(pollUntil(*server, [](const auto& e) { return has(e, EventType::Connected); }), EventType::Connected));
+    ASSERT_TRUE(client->openUdp(PORT));
+    const auto beforeSent = client->stats().packetsSent;
+    const auto beforeReceived = server->stats().bytesReceived;
+
+    // The first datagrams can arrive before `UdpOpen`, which goes through TCP: send until one gets through.
+    const auto received = pollUntil(*server, [&client](const auto& e) {
+        client->send(Bytes{9}, Channel::Unreliable);
+        return has(e, EventType::Data);
+    });
+
+    ASSERT_TRUE(has(received, EventType::Data));
+    EXPECT_GT(client->stats().packetsSent, beforeSent);
+    EXPECT_GT(server->stats().bytesReceived, beforeReceived);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

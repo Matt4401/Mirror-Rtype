@@ -347,3 +347,15 @@ If a designer accidentally saves a script containing a syntax error or a broken 
 2. If compilation fails, the error is logged to the console with the file name and line number.
 3. The engine **aborts the reload** and keeps running the previous stable version without crashing or interrupting the game session.
 4. Once the designer fixes the typo and saves again, the valid script is reloaded immediately.
+
+## 11. Scenes from Wren
+
+With `scene::SceneScriptingPlugin` loaded, scripts can change the scene stack and whole scenes can be written in
+Wren. See [Scenes](../architecture/scene.md#scenes-in-wren) for the details.
+
+```wren
+import "core/Scene" for Scene
+
+Scene.push("Pause")          // also switchTo(name), replace(name), pop()
+if (Scene.current == "Game") { ... }
+```

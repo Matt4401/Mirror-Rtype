@@ -29,11 +29,16 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
   `engine_scripting` (scripting/, systems/script/), `engine_physics` (systems/physics/),
   `engine_network` (net/: transport interfaces, `NetworkConfig`, `NetworkPlugin`, replication plugins — no asio),
   `engine_network_asio` (net/asio/: asio transport behind `net/NetworkFactory.hpp`),
-  `engine_render` (render/, systems/render/), `engine_input` (input/). `engine_all` is a phony aggregate.
+  `engine_metrics` (metrics/), `engine_metrics_overlay` (metrics/overlay/), `engine_network_metrics` (net/metrics/),
+  `engine_render` (render/, systems/render/), `engine_input` (input/), `engine_scene` (scene/: scene stack,
+  headless), `engine_scene_scripting` (scene/scripting/: Wren bridge),
+  `engine_settings` (settings/: persisted user settings). `engine_all` is a phony aggregate.
 - `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`src/protocol/`), protobuf types stay
   private
 - `game/src/` — `rtype_game`: R-Type code shared by server and client (replication codec, ship movement)
 - `server/src/`, `client/src/` — the R-Type game executables
+- `rlss/` — second sample game (2D car football): `shared/` (protocol, arena), `game/` (codec, Wren bindings),
+  `server/`, `client/`, `scripts/` (Wren car physics, loaded from the repo root); see `docs/rlss/index.md`
 - `scripts/` — Wren scripts (`scripts/core/*.wren`) + tooling scripts
 - `tests/` — GoogleTest binaries, one `target` per suite in `tests/xmake.lua`
 - `docs/` — architecture, protocol, comparative study, accessibility, dev guides

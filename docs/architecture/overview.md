@@ -19,6 +19,9 @@ The project is structured into three primary tiers:
       No Asio.
     - **`engine_network_asio`**: Asio implementation of the transport, created through `ecs::net::createServer()` /
       `createClient()`.
+    - **`engine_metrics`**, **`engine_metrics_overlay`**, **`engine_network_metrics`**: in-game measures on a
+      `MetricsBoard` (frame rate, process, then network), and the HUD panel showing them. See
+      [In-Game Metrics](metrics.md).
     - **`engine_prefabs`**: Named entity template registry plugin (`PrefabPlugin`).
     - **`engine_all`**: Meta/phony target building all engine sub-components together.
 2. **Authoritative Server:** Hosts game simulation sessions, one `engine::Engine` per room, runs logical systems, enforces

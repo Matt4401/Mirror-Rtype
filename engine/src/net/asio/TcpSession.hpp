@@ -11,6 +11,7 @@
 #include <system_error>
 
 #include "net/INetworkManager.hpp"
+#include "net/asio/TransportCounters.hpp"
 #include "net/asio/Wire.hpp"
 
 namespace ecs::net::detail {
@@ -40,10 +41,12 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
      * @param socket Connected socket.
      * @param id Peer id passed back to the handlers.
      * @param limits Size limits.
+     * @param counters Counts the traffic of the session; must outlive the network thread.
      * @param onMessage Frame handler.
      * @param onClose Close handler.
      */
-    TcpSession(asio::ip::tcp::socket socket, PeerId id, Limits limits, MessageHandler onMessage, CloseHandler onClose);
+    TcpSession(asio::ip::tcp::socket socket, PeerId id, Limits limits, TransportCounters& counters,
+               MessageHandler onMessage, CloseHandler onClose);
 
     /** @brief Starts reading frames. */
     void start();
@@ -79,6 +82,8 @@ class TcpSession : public std::enable_shared_from_this<TcpSession> {
     PeerId _id;
     /** @brief Size limits. */
     Limits _limits;
+    /** @brief Counts the traffic of the session. */
+    TransportCounters* _counters;
     /** @brief Frame handler. */
     MessageHandler _onMessage;
     /** @brief Close handler. */

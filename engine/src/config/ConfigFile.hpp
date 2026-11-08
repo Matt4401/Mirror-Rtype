@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -89,6 +90,40 @@ class ConfigFile {
      * @return Full dotted keys starting with `table.`, sorted.
      */
     [[nodiscard]] std::vector<std::string> keysUnder(std::string_view table) const;
+
+    /**
+     * @brief Sets a value, replacing any value of the same key.
+     * @param key Dotted key (`audio.master`); each dot opens a TOML table when saved.
+     * @param value New value.
+     */
+    void set(std::string key, Value value);
+
+    /**
+     * @brief Removes a value.
+     * @param key Dotted key.
+     */
+    void erase(std::string_view key);
+
+    /**
+     * @brief Gets every value, by dotted key.
+     * @return Values sorted by key.
+     */
+    [[nodiscard]] const std::map<std::string, Value, std::less<>>& values() const noexcept { return _values; }
+
+    /**
+     * @brief Writes the values as a TOML document: dotted keys become nested tables.
+     * @return TOML text that `parse` reads back to the same values.
+     */
+    [[nodiscard]] std::string toToml() const;
+
+    /**
+     * @brief Writes the values to a file, atomically: a temporary file is written, then renamed over `path`.
+     *
+     * Missing parent directories are created. A crash during the write never leaves a truncated file.
+     * @param path Destination file.
+     * @return Nothing on success, or the reason of the failure.
+     */
+    [[nodiscard]] std::expected<void, std::string> save(const std::filesystem::path& path) const;
 
     /** @brief Why the file could not be used, if it could not. */
     [[nodiscard]] const std::optional<std::string>& error() const noexcept { return _error; }

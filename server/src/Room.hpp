@@ -51,6 +51,9 @@ struct RoomPlayer {
  * Once started, the `ServerManager` calls `runInBackground()`: a room has its own thread, so that a room with many
  * entities does not slow down the others. The engine is only touched under `_mutex`; everything else (the players, the
  * ready states) belongs to the thread of the `ServerManager`.
+ *
+ * The level messages the gameplay publishes on the room's bus (`protocol::LevelStart`, `protocol::LevelComplete`,
+ * `protocol::GameOver`) are sent to the players of the room on the reliable channel, from the room's thread.
  */
 class Room {
   public:
@@ -118,8 +121,9 @@ class Room {
      * @brief Starts the game: no player can join anymore, and `advance()` runs the simulation.
      *
      * Each player's index becomes its position in `players()`, without holes whoever left the lobby, and its ship goes
-     * to its spawn point. Resets the room's clock, so that the game time (`tickCount`, `totalElapsedTime`) starts at 0
-     * now, whatever how long the room waited for its players.
+     * to its spawn point. The first level starts, which sends its `protocol::LevelStart`: send `GameStart` to the
+     * players before calling this. Resets the room's clock, so that the game time (`tickCount`, `totalElapsedTime`)
+     * starts at 0 now, whatever how long the room waited for its players.
      */
     void start();
 
@@ -141,6 +145,12 @@ class Room {
 
     /** @brief True once `start()` has been called. */
     [[nodiscard]] bool isPlaying() const { return _playing; }
+    /**
+     * @brief True once the game is over (`protocol::GameOver` sent) or the simulation stopped on an error.
+     *
+     * Thread-safe. The lobby then destroys the room and its players are back in the lobby.
+     */
+    [[nodiscard]] bool hasEnded() const { return _ended.load(); }
     /** @brief True when no other player can join. */
     [[nodiscard]] bool isFull() const { return _players.size() >= _maxPlayers; }
     /** @brief True when the last player has left: the `ServerManager` then destroys the room. */
@@ -179,6 +189,8 @@ class Room {
     mutable std::mutex _mutex;
     /** @brief Set by the destructor to stop `_thread`. */
     std::atomic<bool> _stopping{false};
+    /** @brief Set from the room's thread when the game is over. */
+    std::atomic<bool> _ended{false};
     /** @brief Runs the simulation once `runInBackground()` was called. */
     std::thread _thread;
 };

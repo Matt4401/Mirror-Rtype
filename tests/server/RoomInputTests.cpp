@@ -261,7 +261,20 @@ TEST_F(RoomInputTest, EachStepSendsASnapshotWithTheShipAndTheAcknowledgedInput) 
     EXPECT_EQ(ship.subtype, 0);
     EXPECT_FLOAT_EQ(ship.x, shipOf(PLAYER).x);
     EXPECT_FLOAT_EQ(ship.y, shipOf(PLAYER).y);
-    EXPECT_EQ(network.sent[0].channel, Channel::Unreliable);
+    EXPECT_EQ(network.sent.back().channel, Channel::Unreliable);
+}
+
+TEST_F(RoomInputTest, StartingSendsTheFirstLevelReliably) {
+    ASSERT_FALSE(network.sent.empty());
+    const auto& first = network.sent.front();
+    EXPECT_EQ(first.client, PLAYER);
+    EXPECT_EQ(first.channel, Channel::Reliable);
+    const auto decoded = protocol::decode(first.data);
+    ASSERT_TRUE(decoded && std::holds_alternative<protocol::LevelStart>(*decoded));
+    const auto& level = std::get<protocol::LevelStart>(*decoded);
+    EXPECT_EQ(level.levelIndex, 0);
+    EXPECT_EQ(level.levelCount, 1U);
+    EXPECT_FALSE(room.hasEnded());
 }
 
 TEST_F(RoomInputTest, CatchUpStepsSendASingleSnapshot) {

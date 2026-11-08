@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
@@ -14,8 +16,9 @@ namespace client {
 /**
  * @brief What the local player does in game: the replication leaves the inputs and the movement to the game.
  *
- * - Once `GameStarted` is received, sends the state of the `input::InputState` of player 0 as `ecs::net::LocalInput`,
- *   once per fixed step.
+ * - From `GameStarted` until the game ends or is left (`GameEnded`, `RoomLeft`, `SessionClosed`), sends the state of
+ * the `input::InputState` of player 0 as `ecs::net::LocalInput`, once per fixed step, unless `setPaused(true)` (a local
+ * pause menu: the game goes on, the ship just receives no input).
  * - The ship of this player is `ecs::Predicted`, moved by `InputApplied` like on the server; the other replicated
  *   entities are `ecs::Interpolated`.
  *
@@ -54,6 +57,18 @@ class PlayerControlPlugin final : public engine::IPlugin {
      */
     void shutdown(engine::Engine& engine) override;
 
+    /**
+     * @brief Stops or resumes sending the inputs, for a local pause.
+     * @param paused `true` to send no input.
+     */
+    void setPaused(bool paused) noexcept { _paused = paused; }
+
+    /**
+     * @brief Tells whether the inputs are paused.
+     * @return Value given to `setPaused`.
+     */
+    [[nodiscard]] bool paused() const noexcept { return _paused; }
+
   private:
     /**
      * @brief The ship of this player becomes `ecs::Predicted`, every other replicated entity `ecs::Interpolated`.
@@ -72,6 +87,10 @@ class PlayerControlPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _spawned;
     /** @brief Subscription to `InputApplied`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _inputs;
+    /** @brief Subscriptions to the end of a game (`GameEnded`, `RoomLeft`, `SessionClosed`), while initialized. */
+    std::vector<std::function<void()>> _endings;
+    /** @brief No input is sent while paused. */
+    bool _paused = false;
 };
 
 }  // namespace client

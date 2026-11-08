@@ -58,6 +58,9 @@ TEST(Protocol, RoundTripsEveryMessage) {
         GameStart{.roomId = 3, .playerIndex = 1, .playerCount = 2},
         GameOver{.reason = GameOverReason::Victory, .score = 123456, .playerScores = {100, 200, 0, 0}},
         PlayerLeft{.clientId = 5},
+        LevelStart{.levelIndex = 2, .levelCount = 3, .name = "Asteroid Belt"},
+        LevelStart{.levelIndex = 0, .levelCount = 1, .name = ""},
+        LevelComplete{.levelIndex = 1, .score = 42, .playerScores = {20, 22}},
         Leave{},
         Chat{.clientId = 2, .text = "hello \xC3\xA9"},
         PlayerInput{.sequence = 0xFFFFFFFF,
@@ -254,4 +257,23 @@ TEST(Protocol, IgnoresVersion1InputBitmask) {
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
+}
+
+TEST(Protocol, RejectsInvalidLevelMessages) {
+    EXPECT_FALSE(decode(encode(LevelStart{.levelIndex = 0, .levelCount = 0, .name = "x"})).has_value());
+    EXPECT_FALSE(decode(encode(LevelStart{.levelIndex = 3, .levelCount = 3, .name = "x"})).has_value());
+    EXPECT_FALSE(decode(encode(LevelStart{
+                            .levelIndex = 0, .levelCount = static_cast<std::uint8_t>(MAX_LEVELS + 1), .name = "x"}))
+                     .has_value());
+    EXPECT_FALSE(decode(encode(LevelStart{
+                            .levelIndex = 0, .levelCount = 1, .name = std::string(MAX_LEVEL_NAME_LENGTH + 1, 'a')}))
+                     .has_value());
+    EXPECT_TRUE(
+        decode(encode(LevelStart{.levelIndex = 0, .levelCount = 1, .name = std::string(MAX_LEVEL_NAME_LENGTH, 'a')}))
+            .has_value());
+
+    EXPECT_FALSE(decode(encode(LevelComplete{.levelIndex = static_cast<std::uint8_t>(MAX_LEVELS)})).has_value());
+    LevelComplete complete{.levelIndex = 0, .score = 0, .playerScores = {}};
+    complete.playerScores.resize(MAX_PLAYERS + 1);
+    EXPECT_FALSE(decode(encode(complete)).has_value());
 }

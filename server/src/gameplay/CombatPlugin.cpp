@@ -4,7 +4,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
+#include <span>
 #include <sstream>
+#include <vector>
 
 #include "LogTag.hpp"
 #include "Logger.hpp"
@@ -25,6 +28,7 @@
 #include "prefabs/CollisionCategories.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
+#include "protocol/Messages.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 
 namespace rtype::server::gameplay {
@@ -50,6 +54,7 @@ void CombatPlugin::init(engine::Engine& engine) {
         [this](const collision::ShipContactEvent& contact) { onShipContact(contact); });
     _powerUpToken = _bus->subscribe<collision::PowerUpTouchedEvent>(
         [this](const collision::PowerUpTouchedEvent& touch) { onPowerUpTouched(touch); });
+    _levelToken = _bus->subscribe<LevelFinished>([this](const LevelFinished& finished) { onLevelFinished(finished); });
 }
 
 void CombatPlugin::shutdown(engine::Engine& /*engine*/) {
@@ -69,6 +74,10 @@ void CombatPlugin::shutdown(engine::Engine& /*engine*/) {
         _bus->unsubscribe<ecs::net::InputApplied>(*_inputToken);
         _inputToken.reset();
     }
+    if (_levelToken) {
+        _bus->unsubscribe<LevelFinished>(*_levelToken);
+        _levelToken.reset();
+    }
     _router.reset();
 }
 
@@ -78,6 +87,22 @@ void CombatPlugin::setPlayerCount(const std::size_t playerCount) noexcept {
 
 std::uint32_t CombatPlugin::score(const std::size_t playerIndex) const noexcept {
     return playerIndex < _scores.size() ? _scores.at(playerIndex) : 0;
+}
+
+std::vector<std::uint32_t> CombatPlugin::playerScores() const {
+    const auto played = std::span(_scores).first(_playerCount);
+    return {played.begin(), played.end()};
+}
+
+void CombatPlugin::onLevelFinished(const LevelFinished& finished) {
+    std::vector<std::uint32_t> scores = playerScores();
+    const std::uint32_t total = std::accumulate(scores.begin(), scores.end(), std::uint32_t{0});
+    _bus->publish(protocol::LevelComplete{.levelIndex = finished.levelIndex, .score = total, .playerScores = scores});
+    if (finished.lastLevel) {
+        log::info(LOG_TAG, "game won, score ", total);
+        _bus->publish(
+            protocol::GameOver{.reason = protocol::GameOverReason::Victory, .score = total, .playerScores = scores});
+    }
 }
 
 void CombatPlugin::onInput(const ecs::net::InputApplied& event) {

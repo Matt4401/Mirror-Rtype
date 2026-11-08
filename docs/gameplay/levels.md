@@ -119,7 +119,8 @@ Another `boss` at the same distance joins the current fight.
 
 ### `end`: end of the level
 
-No key. For now there is a single level, so `end` restarts it from the start.
+No key. For now a game is a single level, so `end` wins the game: the players get `LevelComplete` then
+`GameOver{VICTORY}` (see [Server](../architecture/server.md#game-flow)).
 
 ## `[[terrain]]`
 

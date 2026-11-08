@@ -26,7 +26,6 @@
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/ShipBlink.hpp"
-#include "hierarchy/Hierarchy.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
@@ -35,10 +34,6 @@
 #include "render/texture/TextureStore.hpp"
 #include "systems/render/AnimationPlugin.hpp"
 #include "ui/UiPlugin.hpp"
-#include "ui/components/UiAnchor.hpp"
-#include "ui/components/UiProgressBar.hpp"
-#include "ui/components/UiRect.hpp"
-#include "ui/components/UiText.hpp"
 
 namespace client {
 
@@ -171,51 +166,6 @@ void applyBox(ecs::Registry& registry, const ecs::Entity entity, const float wid
                                                    });
 }
 
-// Demo HUD layout. Anchors are fractions of the screen size: (0, 0) is the top-left corner, (1, 1) the bottom-right.
-constexpr float HUD_TOP_ANCHOR = 0.04F;
-constexpr float HP_BAR_LEFT_ANCHOR = 0.02F;
-constexpr float HP_BAR_WIDTH = 220.0F;
-constexpr float HP_BAR_HEIGHT = 22.0F;
-constexpr float HP_BAR_BORDER_THICKNESS = 2.0F;
-constexpr float HP_MIN = 0.0F;
-constexpr float HP_MAX = 100.0F;
-constexpr float HP_DEMO_VALUE = 75.0F;
-constexpr float SCORE_LEFT_ANCHOR = 0.75F;
-constexpr float SCORE_FONT_SIZE = 26.0F;
-constexpr ecs::Rgba COLOR_SCORE = {.r = 255, .g = 220, .b = 50, .a = 255};
-constexpr ecs::Rgba COLOR_TRANSPARENT = {.r = 0, .g = 0, .b = 0, .a = 0};
-
-/** @brief Spawns the demo HUD: a health bar with its border and a score label. */
-void spawnHud(ecs::Registry& registry) {
-    const ecs::Entity hpBar = registry.spawnEntity();
-    registry.addComponent<ui::UiAnchor>(hpBar, ui::UiAnchor{.anchorX = HP_BAR_LEFT_ANCHOR, .anchorY = HUD_TOP_ANCHOR});
-    registry.addComponent<ui::UiProgressBar>(hpBar, ui::UiProgressBar{
-                                                        .value = HP_DEMO_VALUE,
-                                                        .min = HP_MIN,
-                                                        .max = HP_MAX,
-                                                        .width = HP_BAR_WIDTH,
-                                                        .height = HP_BAR_HEIGHT,
-                                                    });
-
-    // Child of the bar: anchored at its top-left corner and drawn on top of it, so it follows the bar wherever it goes.
-    const ecs::Entity hpBorder = registry.spawnEntity();
-    registry.addComponent<ui::UiAnchor>(hpBorder, ui::UiAnchor{});
-    registry.addComponent<ui::UiRect>(hpBorder, ui::UiRect{
-                                                    .width = HP_BAR_WIDTH,
-                                                    .height = HP_BAR_HEIGHT,
-                                                    .fillColor = COLOR_TRANSPARENT,
-                                                    .borderColor = COLOR_WHITE,
-                                                    .borderThickness = HP_BAR_BORDER_THICKNESS,
-                                                });
-    hierarchy::setParent(registry, hpBorder, hpBar);
-
-    const ecs::Entity scoreText = registry.spawnEntity();
-    registry.addComponent<ui::UiAnchor>(scoreText,
-                                        ui::UiAnchor{.anchorX = SCORE_LEFT_ANCHOR, .anchorY = HUD_TOP_ANCHOR});
-    registry.addComponent<ui::UiText>(
-        scoreText, ui::UiText{.text = "SCORE: 1337", .fontSize = SCORE_FONT_SIZE, .color = COLOR_SCORE});
-}
-
 }  // namespace
 
 void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
@@ -254,7 +204,6 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
 
     ecs::Registry& registry = engine.registry();
     spawnStarfield(registry, _starSmallId, _starMediumId, _starLargeId);
-    spawnHud(registry);
     registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});
     // The local player's actions, sent to the server by the network plugins. Nothing of the game is spawned here:
     // ships, enemies and bullets come from the snapshots of the server.

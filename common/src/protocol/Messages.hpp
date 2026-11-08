@@ -34,6 +34,10 @@ inline constexpr std::size_t MAX_PLAYERS = 4;
 inline constexpr std::size_t MAX_ROOMS = 256;
 /** @brief Maximum size of a chat message, in UTF-8 bytes. */
 inline constexpr std::size_t MAX_CHAT_LENGTH = 256;
+/** @brief Most levels in a game. */
+inline constexpr std::size_t MAX_LEVELS = 64;
+/** @brief Longest level name, in bytes. */
+inline constexpr std::size_t MAX_LEVEL_NAME_LENGTH = 64;
 /** @brief Largest encoded message accepted by `decode()`: the reliable channel's maximum payload (64 KiB). */
 inline constexpr std::size_t MAX_MESSAGE_SIZE = std::size_t{64} * 1024;
 /** @brief Largest encoded message that fits in one UDP datagram (1200 bytes minus the 8-byte library header). */
@@ -169,6 +173,28 @@ struct GameOver {
     bool operator==(const GameOver&) const = default;
 };
 
+/** @brief S -> C: a level starts (the first one right after `GameStart`, the next ones after `LevelComplete`). */
+struct LevelStart {
+    /** @brief Index of the level, below `levelCount`. */
+    std::uint8_t levelIndex = 0;
+    /** @brief Number of levels of the game (1-`MAX_LEVELS`). */
+    std::uint8_t levelCount = 1;
+    /** @brief Display name, UTF-8, at most `MAX_LEVEL_NAME_LENGTH` bytes. */
+    std::string name;
+    bool operator==(const LevelStart&) const = default;
+};
+
+/** @brief S -> C: a level was cleared; the next `LevelStart` (or `GameOver` after the last level) follows. */
+struct LevelComplete {
+    /** @brief Index of the cleared level, below `MAX_LEVELS`. */
+    std::uint8_t levelIndex = 0;
+    /** @brief Cumulative score of the room so far. */
+    std::uint32_t score = 0;
+    /** @brief Score per player slot, at most `MAX_PLAYERS`. */
+    std::vector<std::uint32_t> playerScores;
+    bool operator==(const LevelComplete&) const = default;
+};
+
 /** @brief S -> C: a player left the room. */
 struct PlayerLeft {
     /** @brief Network id of the player who left. */
@@ -176,7 +202,7 @@ struct PlayerLeft {
     bool operator==(const PlayerLeft&) const = default;
 };
 
-/** @brief C -> S: graceful disconnection, sent before closing the connection. */
+/** @brief C -> S: leaves the current room (lobby or game) and goes back to the lobby; also sent before closing. */
 struct Leave {
     bool operator==(const Leave&) const = default;
 };
@@ -276,7 +302,8 @@ struct WorldState {
 };
 
 /** @brief Any message of the game protocol: one `Envelope` on the wire. */
-using Message = std::variant<Hello, Welcome, LobbyListRequest, LobbyList, LobbyCreate, LobbyJoin, LobbyReady,
-                             LobbyUpdate, GameStart, GameOver, PlayerLeft, Leave, Chat, PlayerInput, WorldState>;
+using Message =
+    std::variant<Hello, Welcome, LobbyListRequest, LobbyList, LobbyCreate, LobbyJoin, LobbyReady, LobbyUpdate,
+                 GameStart, GameOver, PlayerLeft, Leave, Chat, PlayerInput, WorldState, LevelStart, LevelComplete>;
 
 }  // namespace rtype::protocol

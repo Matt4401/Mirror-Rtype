@@ -96,6 +96,18 @@ message GameOver {
 }
 
 // S -> C, reliable. A player left the room during the game.
+message LevelStart {
+    uint32 level_index = 1;  // below level_count
+    uint32 level_count = 2;  // 1 to MAX_LEVELS
+    string name = 3;         // UTF-8, 0-MAX_LEVEL_NAME_LENGTH bytes
+}
+
+message LevelComplete {
+    uint32 level_index = 1;             // below MAX_LEVELS
+    uint32 score = 2;                   // cumulative score of the room so far
+    repeated uint32 player_scores = 3;  // one per player slot, at most MAX_PLAYERS
+}
+
 message PlayerLeft {
     uint32 client_id = 1;
 }
@@ -173,6 +185,8 @@ message Envelope {
         GameStart game_start = 48;
         GameOver game_over = 49;
         PlayerLeft player_left = 50;
+        LevelStart level_start = 51;
+        LevelComplete level_complete = 52;
 
         Leave leave = 64;
         Chat chat = 65;

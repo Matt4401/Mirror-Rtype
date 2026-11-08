@@ -18,6 +18,7 @@
 #include "Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/asio/LogTag.hpp"
+#include "net/asio/TransportCounters.hpp"
 #include "net/asio/Wire.hpp"
 
 namespace ecs::net::detail {
@@ -29,11 +30,12 @@ constexpr auto LINGER_TIMEOUT = std::chrono::milliseconds(500);
 
 }  // namespace
 
-TcpSession::TcpSession(asio::ip::tcp::socket socket, const PeerId id, const Limits limits, MessageHandler onMessage,
-                       CloseHandler onClose)
+TcpSession::TcpSession(asio::ip::tcp::socket socket, const PeerId id, const Limits limits, TransportCounters& counters,
+                       MessageHandler onMessage, CloseHandler onClose)
     : _socket(std::move(socket)),
       _id(id),
       _limits(limits),
+      _counters(&counters),
       _onMessage(std::move(onMessage)),
       _onClose(std::move(onClose)),
       _lingerTimer(_socket.get_executor()) {}
@@ -77,6 +79,7 @@ void TcpSession::readBody(const std::uint32_t size) {
 }
 
 void TcpSession::deliver(Bytes payload) {
+    _counters->onReceived(wire::TCP_HEADER_SIZE + payload.size());
     if (_closing) {
         return;
     }
@@ -125,6 +128,7 @@ void TcpSession::write() {
                               self->onError(ec);
                               return;
                           }
+                          self->_counters->onSent(self->_writeQueue.front().size());
                           self->_queuedBytes -= self->_writeQueue.front().size();
                           self->_writeQueue.pop_front();
                           if (!self->_writeQueue.empty()) {
