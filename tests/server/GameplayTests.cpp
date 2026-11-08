@@ -43,6 +43,9 @@ namespace {
 
 using rtype::server::gameplay::GameplayPlugin;
 using rtype::server::gameplay::POINTS_PER_KILL;
+using rtype::server::gameplay::RESPAWN_DURATION;
+using rtype::server::gameplay::shipSpawnPoint;
+using rtype::server::gameplay::ShipSpawnPoint;
 namespace game = rtype::game;
 namespace level = rtype::server::level;
 
@@ -391,13 +394,21 @@ TEST_F(TerrainTest, TerrainScrollsAtTheScrollSpeed) {
     EXPECT_NEAR(before - after, LEVEL_SPEED, 2.0F);
 }
 
-TEST_F(TerrainTest, ShipTouchingTheTerrainIsDestroyed) {
-    const ecs::Entity grounded = spawnShip(0, 1200.0F, 700.0F);
-    const ecs::Entity flying = spawnShip(1, 1200.0F, LANE_Y);
-    run(4.0F);
+TEST_F(TerrainTest, ShipTouchingTheTerrainRespawnsAtItsStart) {
+    const ecs::Entity grounded = spawnShip(1, 1200.0F, 700.0F);
+    const ecs::Entity flying = spawnShip(0, 1200.0F, LANE_Y);
+    const auto& transforms = registry().getComponents<ecs::Transform>();
+    for (int step = 0; step < 400 && transforms.get(grounded).x == 1200.0F; ++step) {
+        run(FIXED_DT);
+    }
 
-    EXPECT_FALSE(registry().isAlive(grounded));
-    EXPECT_TRUE(registry().isAlive(flying));
+    ASSERT_TRUE(registry().isAlive(grounded));
+    const ShipSpawnPoint spawn = shipSpawnPoint(1);
+    EXPECT_FLOAT_EQ(transforms.get(grounded).x, spawn.x);
+    EXPECT_FLOAT_EQ(transforms.get(grounded).y, spawn.y);
+    EXPECT_NE(registry().getComponents<game::EntityNetState>().get(grounded).flags & game::FLAG_INVULNERABLE, 0);
+    EXPECT_FLOAT_EQ(transforms.get(flying).x, 1200.0F);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(flying).flags & game::FLAG_INVULNERABLE, 0);
 }
 
 TEST_F(TerrainTest, TerrainLeavingTheScreenIsDestroyed) {

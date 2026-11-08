@@ -57,6 +57,12 @@ constexpr float SCENE_WIDTH = 1280.0F;
 constexpr float SCENE_HEIGHT = 720.0F;
 /** @brief Margin past the screen edges after which bullets and enemies are destroyed. */
 constexpr float OFFSCREEN_MARGIN = 64.0F;
+/** @brief A ship that just respawned: invulnerable until `secondsLeft` reaches 0. */
+struct Respawning {
+    /** @brief Seconds before the ship can be hit again. */
+    float secondsLeft = RESPAWN_DURATION;
+};
+
 /** @brief Marks a terrain column, built by the gameplay from a level `terrain` event. */
 struct TerrainColumn {
     /** @brief Half-width of the column. */
@@ -238,7 +244,7 @@ void GameplayPlugin::crashShipsIntoTerrain() {
     std::vector<ecs::Entity> crashed;
     registry.runSystem<ecs::Transform, ecs::Replicated>(
         [&](const ecs::Entity ship, const ecs::Transform& transform, const ecs::Replicated& replicated) {
-            if (replicated.kind != game::KIND_PLAYER_SHIP) {
+            if (replicated.kind != game::KIND_PLAYER_SHIP || registry.hasComponent<Respawning>(ship)) {
                 return;
             }
             const bool hit = std::ranges::any_of(columns, [&transform](const auto& column) {
@@ -251,7 +257,47 @@ void GameplayPlugin::crashShipsIntoTerrain() {
         });
     for (const ecs::Entity ship : crashed) {
         log::info(LOG_TAG, "a ship crashed into the terrain");
-        registry.killEntity(ship);
+        destroyShip(ship);
+    }
+}
+
+void GameplayPlugin::destroyShip(const ecs::Entity ship) {
+    ecs::Registry& registry = *_registry;
+    std::uint8_t playerIndex = 0;
+    if (registry.hasComponent<game::EntityNetState>(ship)) {
+        game::EntityNetState& state = registry.getComponents<game::EntityNetState>().get(ship);
+        playerIndex = state.subtype;
+        state.flags |= game::FLAG_INVULNERABLE;
+    }
+    if (registry.hasComponent<ecs::Transform>(ship)) {
+        const ShipSpawnPoint spawn = shipSpawnPoint(playerIndex);
+        auto& transform = registry.getComponents<ecs::Transform>().get(ship);
+        transform.x = spawn.x;
+        transform.y = spawn.y;
+    }
+    registry.addComponent(ship, Respawning{});
+    _respawning = true;
+    holdScroll();
+}
+
+void GameplayPlugin::updateRespawns(const float deltaTime) {
+    ecs::Registry& registry = *_registry;
+    std::vector<ecs::Entity> over;
+    _respawning = false;
+    registry.runSystem<Respawning>([&](const ecs::Entity ship, Respawning& respawn) {
+        respawn.secondsLeft -= deltaTime;
+        if (respawn.secondsLeft <= 0.0F) {
+            over.push_back(ship);
+        } else {
+            _respawning = true;
+        }
+    });
+    for (const ecs::Entity ship : over) {
+        registry.removeComponent<Respawning>(ship);
+        if (registry.hasComponent<game::EntityNetState>(ship)) {
+            auto& flags = registry.getComponents<game::EntityNetState>().get(ship).flags;
+            flags = static_cast<std::uint8_t>(flags & ~game::FLAG_INVULNERABLE);
+        }
     }
 }
 
@@ -309,7 +355,7 @@ void GameplayPlugin::holdScroll() {
 }
 
 void GameplayPlugin::updateScrollHold() {
-    if (!_scrollHeld || _bossFight) {
+    if (!_scrollHeld || _bossFight || _respawning) {
         return;
     }
     _scrollHeld = false;
@@ -411,6 +457,7 @@ void GameplayPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Ti
     _pendingShots.clear();
 
     updateBossFight();
+    updateRespawns(time.deltaTime);
     updateScrollHold();
     updateTerrain();
     crashShipsIntoTerrain();

@@ -37,6 +37,31 @@ inline constexpr float SHOT_COOLDOWN = 0.2F;
 inline constexpr float SCORE_LOG_INTERVAL = 5.0F;
 /** @brief Points given to a player for each enemy their shots destroy. */
 inline constexpr std::uint32_t POINTS_PER_KILL = 1;
+/** @brief Seconds a destroyed ship blinks after coming back: it cannot be hit, and the level waits for it. */
+inline constexpr float RESPAWN_DURATION = 3.0F;
+/** @brief Abscissa where the ships start and respawn. */
+inline constexpr float SHIP_SPAWN_X = 200.0F;
+/** @brief Ordinate where the first player's ship starts and respawns. */
+inline constexpr float SHIP_SPAWN_FIRST_Y = 120.0F;
+/** @brief Vertical gap between the start positions of two players. */
+inline constexpr float SHIP_SPAWN_SPACING_Y = 160.0F;
+
+/** @brief Position where a ship starts and respawns. */
+struct ShipSpawnPoint {
+    /** @brief Abscissa. */
+    float x = SHIP_SPAWN_X;
+    /** @brief Ordinate. */
+    float y = SHIP_SPAWN_FIRST_Y;
+};
+
+/**
+ * @brief Gives the start position of a player's ship, one row per player.
+ * @param playerIndex Index of the player, 0 for the first one.
+ * @return Where the ship starts and respawns.
+ */
+[[nodiscard]] constexpr ShipSpawnPoint shipSpawnPoint(const std::uint8_t playerIndex) noexcept {
+    return {.x = SHIP_SPAWN_X, .y = SHIP_SPAWN_FIRST_Y + (SHIP_SPAWN_SPACING_Y * static_cast<float>(playerIndex))};
+}
 
 /**
  * @brief R-Type rules of one room, run by the room's engine.
@@ -50,6 +75,8 @@ inline constexpr std::uint32_t POINTS_PER_KILL = 1;
  * - A `terrain` event starts a section along the top or bottom edge. It is built column by column
  *   (`game::TERRAIN_COLUMN_WIDTH` wide, `KIND_OBSTACLE`) as it enters the screen, and the columns move left at the
  *   scroll speed, so they stop during a boss fight. A ship overlapping a column is destroyed; player shots stop on it.
+ * - A destroyed ship respawns at its start position (`shipSpawnPoint()`) with `game::FLAG_INVULNERABLE` for
+ *   `RESPAWN_DURATION` seconds: it cannot be hit, and the scroll is held like during a boss fight.
  * - An enemy with a `prefabs::Health` loses one point per player shot and dies at 0; its `EntityNetState::health`
  *   follows. The other enemies die on the first hit.
  * - Fires a `player_bullet` from a ship while its input holds `game::ACTION_SHOOT`, at most every `SHOT_COOLDOWN`.
@@ -181,8 +208,18 @@ class GameplayPlugin final : public engine::IPlugin {
     void startTerrain(const prefabs::PrefabParams& params);
     /** @brief Builds the columns entering the screen, moves every column at the scroll speed. */
     void updateTerrain();
-    /** @brief Destroys the ships overlapping a terrain column. */
+    /** @brief Destroys the ships overlapping a terrain column, unless they are respawning. */
     void crashShipsIntoTerrain();
+    /**
+     * @brief Destroys a ship: it comes back at its start position, invulnerable, and the scroll is held.
+     * @param ship Player ship.
+     */
+    void destroyShip(ecs::Entity ship);
+    /**
+     * @brief Counts down the respawns, and makes the ships whose respawn is over vulnerable again.
+     * @param deltaTime Seconds since the previous step.
+     */
+    void updateRespawns(float deltaTime);
     /** @brief Handles a `boss` event: stops the scroll and spawns the replicated, possibly scripted, boss. */
     void startBossFight(const prefabs::PrefabParams& params);
     /** @brief Stops the bosses that reached their place, and ends the fight once no boss is left. */
@@ -192,7 +229,8 @@ class GameplayPlugin final : public engine::IPlugin {
     /**
      * @brief Resumes the scroll once nothing holds it any more, then plays the level events that waited.
      *
-     * Several things may hold the scroll at once (a boss fight, ...): it only resumes when all of them are over.
+     * Several things may hold the scroll at once (a boss fight, a respawning ship): it only resumes when all of them
+     * are over.
      */
     void updateScrollHold();
     /**
@@ -237,6 +275,8 @@ class GameplayPlugin final : public engine::IPlugin {
     std::vector<TerrainSection> _terrain;
     /** @brief True from a `boss` event until no boss is left. */
     bool _bossFight = false;
+    /** @brief True while at least one ship is respawning. */
+    bool _respawning = false;
     /** @brief True while the scroll is stopped by the game, see `holdScroll()`. */
     bool _scrollHeld = false;
     /** @brief Scroll speed when the scroll was held, restored once it resumes. */

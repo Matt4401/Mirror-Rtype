@@ -42,9 +42,6 @@ namespace rtype::server {
 
 namespace {
 
-constexpr float SPAWN_X = 200.0F;
-constexpr float SPAWN_FIRST_Y = 120.0F;
-constexpr float SPAWN_SPACING_Y = 160.0F;
 // Sleep between two iterations of a room's thread. Short enough to keep the step jitter around 1 ms, long enough not to
 // burn a core.
 constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
@@ -144,8 +141,9 @@ void Room::start() {
     for (const RoomPlayer& player : _players) {
         registry.getComponents<game::EntityNetState>().get(player.entity).subtype = index;
         auto& transform = registry.getComponents<ecs::Transform>().get(player.entity);
-        transform.x = SPAWN_X;
-        transform.y = SPAWN_FIRST_Y + (SPAWN_SPACING_Y * static_cast<float>(index));
+        const gameplay::ShipSpawnPoint spawn = gameplay::shipSpawnPoint(index);
+        transform.x = spawn.x;
+        transform.y = spawn.y;
         ++index;
     }
     _engine.getPlugin<gameplay::GameplayPlugin>().setPlayerCount(_players.size());
