@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <string_view>
 
@@ -28,6 +29,19 @@ class NetworkMetricsPlugin final : public engine::IPlugin {
      * @param transport Transport to read the traffic of.
      */
     explicit NetworkMetricsPlugin(std::shared_ptr<const INetworkManager> transport);
+
+    /** @brief Reads the traffic counters of the current transport. */
+    using StatsSource = std::function<TransportStats()>;
+
+    /**
+     * @brief Creates the plugin over a transport that may be replaced, for instance one per connection.
+     *
+     * When the counters go down (a fresh transport), the plugin counts from them again instead of reporting a
+     * negative rate.
+     *
+     * @param source Gives the counters of the current transport.
+     */
+    explicit NetworkMetricsPlugin(StatsSource source);
 
     /**
      * @brief Gets plugin name.
@@ -63,7 +77,7 @@ class NetworkMetricsPlugin final : public engine::IPlugin {
     void publishReplication(metrics::MetricsBoard& board, const ReplicationStats& stats);
 
     /** @brief Transport to read the traffic of. */
-    std::shared_ptr<const INetworkManager> _transport;
+    StatsSource _source;
     /** @brief Paces the refreshes. */
     metrics::RefreshTimer _timer;
     /** @brief Traffic at the last refresh. */

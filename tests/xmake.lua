@@ -289,7 +289,8 @@ target("test_client_network")
     set_kind("binary")
     add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_input", "rtype_game")
     add_packages("gtest")
-    add_files("client/NetworkPluginTests.cpp", "../client/src/ClientOptions.cpp", "../client/src/net/RTypeNetworkPlugin.cpp", "../client/src/net/PlayerControlPlugin.cpp")
+    add_files("client/NetworkPluginTests.cpp", "../client/src/ClientOptions.cpp", "../client/src/net/RTypeNetworkPlugin.cpp", "../client/src/net/PlayerControlPlugin.cpp",
+              "../client/src/net/AutoLobbyPlugin.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_network")
 

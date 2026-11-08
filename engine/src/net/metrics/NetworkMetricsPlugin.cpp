@@ -41,7 +41,9 @@ float perSecond(const std::uint64_t increase, const float elapsed) { return stat
 }  // namespace
 
 NetworkMetricsPlugin::NetworkMetricsPlugin(std::shared_ptr<const INetworkManager> transport)
-    : _transport(std::move(transport)) {}
+    : _source([transport = std::move(transport)] { return transport ? transport->stats() : TransportStats{}; }) {}
+
+NetworkMetricsPlugin::NetworkMetricsPlugin(StatsSource source) : _source(std::move(source)) {}
 
 void NetworkMetricsPlugin::build(engine::PluginBuilder& builder) { builder.require<metrics::MetricsPlugin>(); }
 
@@ -59,7 +61,11 @@ void NetworkMetricsPlugin::update(engine::Engine& engine, const ecs::time::Time&
 }
 
 void NetworkMetricsPlugin::publishTraffic(metrics::MetricsBoard& board, const float elapsed) {
-    const TransportStats traffic = _transport->stats();
+    const TransportStats traffic = _source ? _source() : TransportStats{};
+    if (traffic.bytesReceived < _lastTraffic.bytesReceived || traffic.bytesSent < _lastTraffic.bytesSent ||
+        traffic.packetsReceived < _lastTraffic.packetsReceived || traffic.packetsSent < _lastTraffic.packetsSent) {
+        _lastTraffic = {};  // A new transport: its counters started again from 0.
+    }
     const float bytesIn = perSecond(traffic.bytesReceived - _lastTraffic.bytesReceived, elapsed);
     const float bytesOut = perSecond(traffic.bytesSent - _lastTraffic.bytesSent, elapsed);
     const float packetsIn = perSecond(traffic.packetsReceived - _lastTraffic.packetsReceived, elapsed);

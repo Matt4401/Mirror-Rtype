@@ -19,8 +19,8 @@
 #include "metrics/MetricsPlugin.hpp"
 #include "metrics/ShipMetricsPlugin.hpp"
 #include "metrics/overlay/MetricsOverlayPlugin.hpp"
+#include "net/AutoLobbyPlugin.hpp"
 #include "net/ClientNetwork.hpp"
-#include "net/RTypeNetworkPlugin.hpp"
 #include "prefabs/PrefabPlugin.hpp"
 #include "render/RenderPlugin.hpp"
 #include "scripting/ScriptPlugin.hpp"
@@ -56,10 +56,11 @@ int main(int ac, char** av) {
             .addPlugin<metrics::MetricsOverlayPlugin>()
             .addPlugin<client::ShipMetricsPlugin>()
             .addPlugin<client::RTypeGamePlugin>();
-        client::addNetworkPlugins(engine, *options);
+        client::addNetworkPlugins(engine);
+        engine.addPlugin<client::AutoLobbyPlugin>(*options);
 
         engine.run();
-        return engine.getPlugin<client::RTypeNetworkPlugin>().failed() ? EXIT_ERROR : 0;
+        return engine.getPlugin<client::AutoLobbyPlugin>().failed() ? EXIT_ERROR : 0;
     } catch (const std::exception& error) {
         std::cerr << "client error: " << error.what() << '\n';
         return EXIT_ERROR;
