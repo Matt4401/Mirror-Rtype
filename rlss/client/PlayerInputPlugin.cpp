@@ -3,16 +3,13 @@
 #include <algorithm>
 #include <utility>
 
-#include "ActionId.hpp"
 #include "ClientEvents.hpp"
 #include "components/InputBuffer.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
-#include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "game/Components.hpp"
-#include "input/ActionMapping.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "net/ClientReplicationPlugin.hpp"
@@ -26,33 +23,6 @@ namespace {
 constexpr int LOCAL_PLAYER = 0;
 
 }  // namespace
-
-input::ActionMapping makeControls() {
-    input::ActionMapping mapping;
-    mapping.registerAction(game::ACTION_STEER, input::ActionType::Axis);
-    mapping.bindAxisComposite(game::ACTION_STEER, engine::Key::A, engine::Key::D);
-    mapping.bindAxisComposite(game::ACTION_STEER, engine::Key::Q, engine::Key::D);
-    mapping.bindAxisComposite(game::ACTION_STEER, engine::Key::Left, engine::Key::Right);
-    mapping.bindGamepadAxis(game::ACTION_STEER, engine::GamepadAxis::LeftX, 1.0F);
-
-    // Up / down: where the nose aims in the air. W (QWERTY) and Z (AZERTY) are the same key, like A and Q.
-    mapping.registerAction(game::ACTION_PITCH, input::ActionType::Axis);
-    mapping.bindAxisComposite(game::ACTION_PITCH, engine::Key::S, engine::Key::W);
-    mapping.bindAxisComposite(game::ACTION_PITCH, engine::Key::S, engine::Key::Z);
-    mapping.bindAxisComposite(game::ACTION_PITCH, engine::Key::Down, engine::Key::Up);
-    mapping.bindGamepadAxis(game::ACTION_PITCH, engine::GamepadAxis::LeftY, -1.0F);  // the stick is negative up
-
-    mapping.registerAction(game::ACTION_JUMP, input::ActionType::Button);
-    mapping.bindKey(game::ACTION_JUMP, engine::Key::Space);
-    mapping.bindGamepadButton(game::ACTION_JUMP, engine::GamepadButton::RightFaceDown);
-
-    mapping.registerAction(game::ACTION_BOOST, input::ActionType::Button);
-    mapping.bindKey(game::ACTION_BOOST, engine::Key::LeftShift);
-    mapping.bindKey(game::ACTION_BOOST, engine::Key::RightShift);
-    mapping.bindGamepadButton(game::ACTION_BOOST, engine::GamepadButton::RightFaceRight);
-    mapping.bindGamepadButton(game::ACTION_BOOST, engine::GamepadButton::RightTrigger2);
-    return mapping;
-}
 
 void PlayerInputPlugin::build(engine::PluginBuilder& builder) {
     builder.require<input::InputPlugin>();

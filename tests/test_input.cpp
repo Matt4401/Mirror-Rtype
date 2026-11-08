@@ -450,19 +450,19 @@ TEST(RTypeBindings, ASecondaryKeyUsedAsAMainKeyIsDropped) {
 }
 
 TEST(KeyNames, EveryKeyIdReadsBackAsItsKey) {
-    for (const client::input::KeyName& name : client::input::keyNames()) {
-        EXPECT_EQ(client::input::keyFromId(client::input::keyId(name.key)), name.key) << name.id;
+    for (const input::KeyName& name : input::keyNames()) {
+        EXPECT_EQ(input::keyFromId(input::keyId(name.key)), name.key) << name.id;
     }
-    EXPECT_FALSE(client::input::keyFromId("NotAKey").has_value());
-    EXPECT_TRUE(client::input::keyId(engine::Key::Unknown).empty());
+    EXPECT_FALSE(input::keyFromId("NotAKey").has_value());
+    EXPECT_TRUE(input::keyId(engine::Key::Unknown).empty());
 }
 
 TEST(KeyNames, LabelsFollowTheKeyboardLayout) {
-    EXPECT_EQ(client::input::keyLabel(engine::Key::W, input::KeyboardLayout::Qwerty), "W");
-    EXPECT_EQ(client::input::keyLabel(engine::Key::W, input::KeyboardLayout::Azerty), "Z");
-    EXPECT_EQ(client::input::keyLabel(engine::Key::A, input::KeyboardLayout::Azerty), "Q");
-    EXPECT_EQ(client::input::keyLabel(engine::Key::LeftShift, input::KeyboardLayout::Qwerty), "LEFT SHIFT");
-    EXPECT_EQ(client::input::keyLabel(engine::Key::Unknown, input::KeyboardLayout::Qwerty), "NONE");
+    EXPECT_EQ(input::keyLabel(engine::Key::W, input::KeyboardLayout::Qwerty), "W");
+    EXPECT_EQ(input::keyLabel(engine::Key::W, input::KeyboardLayout::Azerty), "Z");
+    EXPECT_EQ(input::keyLabel(engine::Key::A, input::KeyboardLayout::Azerty), "Q");
+    EXPECT_EQ(input::keyLabel(engine::Key::LeftShift, input::KeyboardLayout::Qwerty), "LEFT SHIFT");
+    EXPECT_EQ(input::keyLabel(engine::Key::Unknown, input::KeyboardLayout::Qwerty), "NONE");
 }
 
 int main(int argc, char** argv) {

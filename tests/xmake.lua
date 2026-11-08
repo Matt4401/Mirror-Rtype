@@ -189,7 +189,7 @@ target("test_input")
     set_kind("binary")
     add_deps("engine_core", "engine_events", "engine_input")
     add_packages("gtest")
-    add_files("test_input.cpp", "../client/src/input/RTypeBindings.cpp", "../client/src/input/KeyNames.cpp")
+    add_files("test_input.cpp", "../client/src/input/RTypeBindings.cpp")
     add_includedirs("../client/src")
     add_tests("test_input")
 
@@ -418,7 +418,7 @@ target("test_client_scenes")
     add_packages("gtest", "wren")
     add_files("client/ClientScenesTests.cpp", "../client/src/net/RTypeNetworkPlugin.cpp",
               "../client/src/net/PlayerControlPlugin.cpp", "../client/src/scenes/*.cpp",
-              "../client/src/input/RTypeBindings.cpp", "../client/src/input/KeyNames.cpp")
+              "../client/src/input/RTypeBindings.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_scenes")
 
@@ -450,7 +450,8 @@ target("test_rlss_menu")
     add_deps("rlss_shared", "rlss_game", "log", "engine_core", "engine_time", "engine_events", "engine_network",
              "engine_input", "engine_hierarchy", "engine_ui", "engine_scene", "engine_config", "engine_settings")
     add_packages("gtest")
-    add_files("rlss/MenuScenesTests.cpp", "../rlss/client/menu/*.cpp", "../rlss/client/ServerLink.cpp")
+    add_files("rlss/MenuScenesTests.cpp", "../rlss/client/menu/*.cpp", "../rlss/client/ServerLink.cpp",
+              "../rlss/client/Controls.cpp")
     add_includedirs("../rlss/client")
     add_tests("test_rlss_menu")
 

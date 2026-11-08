@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -13,15 +14,20 @@
 
 #include "Arena.hpp"
 #include "AssetsPlugin.hpp"
+#include "Controls.hpp"
 #include "components/Renderable.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "core/services/IScreenDrawService.hpp"
+#include "core/services/IWindowService.hpp"
+#include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/UiEvents.hpp"
 #include "hierarchy/Hierarchy.hpp"
+#include "input/KeyNames.hpp"
+#include "input/KeyboardLayout.hpp"
 #include "menu/MenuKit.hpp"
 #include "menu/MenuScenesPlugin.hpp"
 #include "protocol/Protocol.hpp"
@@ -57,6 +63,40 @@ constexpr float ROW_PADDING = 24.0F;
 constexpr std::string_view NAME_CHARACTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -.";
 /** @brief Prefix of the action of a match row; the match id follows. */
 constexpr std::string_view JOIN_PREFIX = "browser.join.";
+/** @brief Prefix of the action of a control button; the control id follows. */
+constexpr std::string_view CONTROL_PREFIX = "controls.key.";
+/** @brief Top of the first control button, as a fraction of the screen height. */
+constexpr float CONTROLS_TOP = 0.2F;
+/** @brief Distance between two control buttons, as a fraction of the screen height. */
+constexpr float CONTROLS_STEP = 0.085F;
+/** @brief Height of a button on the controls screen, smaller than a menu button so the six rows fit. */
+constexpr float CONTROL_BUTTON_HEIGHT = menu::BUTTON_HEIGHT * 0.7F;
+
+/**
+ * @brief Gets the saved settings, if the program has them.
+ * @param context Scene context.
+ * @return The settings, or `nullptr`.
+ */
+config::Settings* settingsOf(scene::SceneContext& context) {
+    auto service = context.engine().mediator().getService<config::Settings>();
+    return service ? &service->get() : nullptr;
+}
+
+/**
+ * @brief Tells whether a key may be given to a control: Escape stays the back key.
+ * @param key Key.
+ * @return Whether it can be bound.
+ */
+bool isBindable(engine::Key key) noexcept { return key != engine::Key::Escape; }
+
+/**
+ * @brief Gets the layout of the player's keyboard, detected once.
+ * @return The layout.
+ */
+input::KeyboardLayout layout() {
+    static const input::KeyboardLayout detected = input::detectKeyboardLayout();
+    return detected;
+}
 
 /**
  * @brief Gets the state shared by the menus.
@@ -497,7 +537,9 @@ void SettingsScene::onEnter(scene::SceneContext& context) {
             first = slider;
         }
     }
-    (void)menu::button(context, ecs::NULL_ENTITY, 0.5F, 0.7F, menu::BUTTON_WIDTH, menu::BUTTON_HEIGHT * 0.8F, "RETOUR",
+    (void)menu::button(context, ecs::NULL_ENTITY, 0.5F, 0.62F, menu::BUTTON_WIDTH, menu::BUTTON_HEIGHT * 0.8F,
+                       "TOUCHES", "settings.controls", order++);
+    (void)menu::button(context, ecs::NULL_ENTITY, 0.5F, 0.72F, menu::BUTTON_WIDTH, menu::BUTTON_HEIGHT * 0.8F, "RETOUR",
                        "settings.back", order);
     menu::focus(registry, first);
 
@@ -516,9 +558,126 @@ void SettingsScene::onEnter(scene::SceneContext& context) {
     menu::onClick(context, [&context](std::string_view action) {
         if (action == "settings.back") {
             context.manager().pop();
+        } else if (action == "settings.controls") {
+            context.manager().push<ControlsScene>();
         }
     });
     menu::onBack(context, [&context] { context.manager().pop(); });
+}
+
+void ControlsScene::onEnter(scene::SceneContext& context) {
+    _waiting.reset();
+    _wasDown.fill(true);  // A key held when the scene opens (Enter on "TOUCHES") is not a new press.
+    _justBound = engine::Key::Unknown;
+
+    ecs::Registry& registry = context.registry();
+    (void)menu::overlay(context);
+    (void)menu::text(context, ecs::NULL_ENTITY, 0.5F, 0.08F, "TOUCHES", HEADING_CAP, menu::TEXT);
+    int order = 0;
+    float anchorY = CONTROLS_TOP;
+    for (const Control control : CONTROLS) {
+        const auto index = static_cast<std::size_t>(control);
+        const ecs::Entity button =
+            menu::button(context, ecs::NULL_ENTITY, 0.5F, anchorY, menu::BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, "",
+                         std::string(CONTROL_PREFIX).append(controlId(control)), order++);
+        const ecs::Entity label = menu::text(context, button, 0.5F, 0.5F, "", menu::LABEL_CAP, menu::TEXT);
+        registry.getComponents<ui::UiAnchor>().get(label).offsetY -= menu::LABEL_CAP / 2.0F;
+        _buttons.at(index) = button;
+        _labels.at(index) = label;
+        anchorY += CONTROLS_STEP;
+    }
+    anchorY += CONTROLS_STEP * 0.3F;
+    (void)menu::button(context, ecs::NULL_ENTITY, 0.5F, anchorY, menu::BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT,
+                       "PAR DEFAUT", "controls.reset", order++);
+    anchorY += CONTROLS_STEP;
+    (void)menu::button(context, ecs::NULL_ENTITY, 0.5F, anchorY, menu::BUTTON_WIDTH, CONTROL_BUTTON_HEIGHT, "RETOUR",
+                       "controls.back", order);
+    (void)menu::text(context, ecs::NULL_ENTITY, 0.5F, anchorY + CONTROLS_STEP, "ECHAP ANNULE - MANETTE NON MODIFIABLE",
+                     menu::TINY_CAP, menu::DIM);
+    refreshLabels(context);
+    menu::focus(registry, _buttons.front());
+
+    menu::onBack(context, [this, &context] {
+        if (_waiting) {
+            _waiting.reset();
+            refreshLabels(context);
+        } else {
+            context.manager().pop();
+        }
+    });
+    menu::onClick(context, [this, &context](std::string_view action) {
+        if (_waiting || _justBound != engine::Key::Unknown) {
+            return;
+        }
+        if (action == "controls.back") {
+            context.manager().pop();
+            return;
+        }
+        config::Settings* settings = settingsOf(context);
+        if (action == "controls.reset") {
+            if (settings != nullptr) {
+                writeControlKeys(*settings, defaultControlKeys());
+            }
+            refreshLabels(context);
+            return;
+        }
+        if (!action.starts_with(CONTROL_PREFIX)) {
+            return;
+        }
+        for (const Control control : CONTROLS) {
+            if (action.substr(CONTROL_PREFIX.size()) == controlId(control)) {
+                _waiting = control;
+                // The key that clicked (Enter, Space) may still be down: only a press after this one counts.
+                _wasDown.fill(true);
+                menu::setText(context.registry(), _labels.at(static_cast<std::size_t>(control)),
+                              std::string(controlLabel(control)) + " : APPUIE SUR UNE TOUCHE");
+            }
+        }
+    });
+    context.addSystem(scene::SceneStage::Update,
+                      [this, &context](engine::Engine& /*engine*/, const ecs::time::Time&) { pollKeys(context); });
+}
+
+void ControlsScene::refreshLabels(scene::SceneContext& context) const {
+    const config::Settings* settings = settingsOf(context);
+    const ControlKeys keys = settings != nullptr ? readControlKeys(*settings) : defaultControlKeys();
+    for (const Control control : CONTROLS) {
+        const auto index = static_cast<std::size_t>(control);
+        menu::setText(context.registry(), _labels.at(index),
+                      std::string(controlLabel(control)) + " : " + input::keyLabel(keys.at(index), layout()));
+    }
+}
+
+void ControlsScene::pollKeys(scene::SceneContext& context) {
+    auto window = context.engine().mediator().getService<engine::IWindowService>();
+    if (!window) {
+        return;
+    }
+    std::optional<engine::Key> pressed;
+    for (const input::KeyName& name : input::keyNames()) {
+        const bool down = window->get().isKeyDown(name.key);
+        bool& wasDown = _wasDown.at(static_cast<std::size_t>(name.key));
+        if (down && !wasDown && !pressed && isBindable(name.key)) {
+            pressed = name.key;
+        }
+        wasDown = down;
+    }
+    if (_justBound != engine::Key::Unknown && !window->get().isKeyDown(_justBound)) {
+        _justBound = engine::Key::Unknown;
+    }
+    if (!_waiting || !pressed) {
+        return;
+    }
+    if (config::Settings* settings = settingsOf(context)) {
+        ControlKeys keys = readControlKeys(*settings);
+        assignKey(keys, *_waiting, *pressed);
+        writeControlKeys(*settings, keys);
+    }
+    // The arrows also move the focus: give it back to the control that was rebound.
+    menu::focus(context.registry(), _buttons.at(static_cast<std::size_t>(*_waiting)));
+    _waiting.reset();
+    _justBound = *pressed;
+    refreshLabels(context);
 }
 
 }  // namespace rlss::client

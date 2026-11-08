@@ -21,6 +21,7 @@
 #include "CameraPlugin.hpp"
 #include "CarViewPlugin.hpp"
 #include "CommandLine.hpp"
+#include "Controls.hpp"
 #include "GoalEffectPlugin.hpp"
 #include "HudPlugin.hpp"
 #include "Logger.hpp"

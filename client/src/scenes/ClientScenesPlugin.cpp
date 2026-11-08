@@ -111,7 +111,7 @@ void applyMetrics(engine::Engine& engine, const config::Settings& settings) {
 input::ControlKeys readControlKeys(const config::Settings& settings) {
     input::ControlKeys keys = input::defaultControlKeys();
     for (const input::Control control : input::CONTROLS) {
-        if (const auto key = input::keyFromId(settings.getString(settings_keys::controlKey(control)))) {
+        if (const auto key = ::input::keyFromId(settings.getString(settings_keys::controlKey(control)))) {
             keys.at(static_cast<std::size_t>(control)) = *key;
         }
     }
@@ -174,7 +174,7 @@ void ClientScenesPlugin::init(engine::Engine& engine) {
     const input::ControlKeys defaults = input::defaultControlKeys();
     for (const input::Control control : input::CONTROLS) {
         settings.define(settings_keys::controlKey(control),
-                        std::string(input::keyId(defaults.at(static_cast<std::size_t>(control)))));
+                        std::string(::input::keyId(defaults.at(static_cast<std::size_t>(control)))));
     }
     settings.define(std::string(settings_keys::LAST_HOST), std::string{});
     settings.define(std::string(settings_keys::LAST_PORT), std::int64_t{_port});

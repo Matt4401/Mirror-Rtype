@@ -355,10 +355,10 @@ void ControlsScene::refreshLabels(scene::SceneContext& context) const {
         const auto index = static_cast<std::size_t>(control);
         engine::Key key = defaults.at(index);
         if (settings != nullptr) {
-            key = input::keyFromId(settings->getString(settings_keys::controlKey(control))).value_or(key);
+            key = ::input::keyFromId(settings->getString(settings_keys::controlKey(control))).value_or(key);
         }
         menu::setText(context.registry(), _buttons.at(index),
-                      std::string(input::controlLabel(control)) + ": " + input::keyLabel(key, layout()));
+                      std::string(input::controlLabel(control)) + ": " + ::input::keyLabel(key, layout()));
     }
 }
 
@@ -368,7 +368,7 @@ void ControlsScene::pollKeys(scene::SceneContext& context) {
         return;
     }
     std::optional<engine::Key> pressed;
-    for (const input::KeyName& name : input::keyNames()) {
+    for (const ::input::KeyName& name : ::input::keyNames()) {
         const bool down = window->get().isKeyDown(name.key);
         bool& wasDown = _wasDown.at(static_cast<std::size_t>(name.key));
         if (down && !wasDown && !pressed && isBindable(name.key)) {
@@ -388,12 +388,12 @@ void ControlsScene::pollKeys(scene::SceneContext& context) {
         for (const input::Control control : input::CONTROLS) {
             const auto index = static_cast<std::size_t>(control);
             keys.at(index) =
-                input::keyFromId(settings->getString(settings_keys::controlKey(control))).value_or(keys.at(index));
+                ::input::keyFromId(settings->getString(settings_keys::controlKey(control))).value_or(keys.at(index));
         }
         input::assignKey(keys, *_waiting, *pressed);
         for (const input::Control control : input::CONTROLS) {
             (void)settings->set(settings_keys::controlKey(control),
-                                std::string(input::keyId(keys.at(static_cast<std::size_t>(control)))));
+                                std::string(::input::keyId(keys.at(static_cast<std::size_t>(control)))));
         }
     }
     // The arrows also move the focus: give it back to the control that was rebound.
