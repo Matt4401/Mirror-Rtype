@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "components/Renderable.hpp"
@@ -45,6 +47,21 @@ void updateHitFlashes(ecs::Registry& registry, const float deltaTime) {
             flash.lastHealth = state.health;
             renderable.tint = flash.remaining > 0.0F ? HIT_FLASH_TINT : flash.baseTint;
         });
+}
+
+int healthStage(const std::span<const float> thresholds, const std::uint8_t health,
+                const std::uint8_t spawnHealth) noexcept {
+    if (spawnHealth == 0) {
+        return -1;
+    }
+    const float fraction = static_cast<float>(health) / static_cast<float>(spawnHealth);
+    int stage = -1;
+    for (std::size_t i = 0; i < thresholds.size(); ++i) {
+        if (fraction <= thresholds[i]) {
+            stage = static_cast<int>(i);
+        }
+    }
+    return stage;
 }
 
 bool diedInCombat(const HitFlash& flash) noexcept {

@@ -170,6 +170,7 @@ frame_height = 16
 
 | Key | Default | Range | Description |
 |-----|---------|-------|-------------|
+| `below_health` | none | 0.01–1 | `[[boss]]` and `[[part]]` only: a damaged look of the same `variant` / `look`, shown once the hit points fall to that part of their value at spawn. Several stages can follow each other (0.66, then 0.33). The entry without it is the look at full health. |
 | `variant` / `look` / `prefab` | required | 0–255 / prefab name | Which boss variant, part look or entity the entry is for. A later entry with the same id wins. |
 | `width`, `height` | default box | 0–2048 px | Box drawn without a sprite; 0 keeps the default size (128×160 for a boss, 48×48 for a part, the hitbox for an entity). |
 | `texture` | none | relative path, no `..` | Spritesheet; without it, the entry is a box. |

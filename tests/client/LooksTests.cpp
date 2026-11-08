@@ -230,6 +230,34 @@ TEST(Looks, ReadsMirroredSpritesAndFramesOfDifferentWidths) {
     EXPECT_FALSE(sprite->loop);
 }
 
+TEST(Looks, ReadsTheDamagedLooksOfABoss) {
+    std::vector<std::string> warnings;
+    const looks::Looks result = read(R"(
+        [[boss]]
+        variant = 2
+        width = 100.0
+
+        [[boss]]
+        variant = 2
+        below_health = 0.25
+        width = 60.0
+
+        [[boss]]
+        variant = 2
+        below_health = 0.5
+        width = 80.0
+    )",
+                                     warnings);
+
+    EXPECT_TRUE(warnings.empty());
+    EXPECT_FLOAT_EQ(result.bosses.at(2).width, 100.0F) << "the entry without below_health is the full-health look";
+    const auto& stages = result.bossStages.at(2);
+    ASSERT_EQ(stages.size(), 2U);
+    EXPECT_FLOAT_EQ(stages[0].belowHealth, 0.5F) << "highest threshold first";
+    EXPECT_FLOAT_EQ(stages[0].look.width, 80.0F);
+    EXPECT_FLOAT_EQ(stages[1].belowHealth, 0.25F);
+}
+
 TEST(Looks, ShippedFileReadsWithoutWarnings) {
     std::vector<std::string> warnings;
     const looks::Looks shipped =

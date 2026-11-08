@@ -331,28 +331,7 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                                .lastHealth = health,
                                .baseTint = registry.getComponents<ecs::Renderable>().get(event.entity).tint});
     } else if (event.kind == rtype::game::KIND_BOSS_CORE || event.kind == rtype::game::KIND_BOSS_PART) {
-        // The subtype picks the look: the variant of a boss, the look of a part.
-        const bool part = event.kind == rtype::game::KIND_BOSS_PART;
-        const std::uint8_t id = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
-        const auto& configured = part ? _looks.parts : _looks.bosses;
-        const auto found = configured.find(id);
-        const looks::Look* look = found != configured.end() ? &found->second : nullptr;
-        if (part) {
-            applyLook(registry, event.entity, look, {BOSS_PART_PLACEHOLDER_SIZE, BOSS_PART_PLACEHOLDER_SIZE},
-                      COLOR_BOSS_PART, 3);
-        } else {
-            applyLook(registry, event.entity, look, {rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT},
-                      COLOR_BOSS, 2);
-        }
-        // Whatever can be worn down (a boss, a turret) flashes on each hit.
-        const std::uint8_t health = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).health;
-        if (!part || health > 1) {
-            registry.addComponent(
-                event.entity,
-                gameplay::HitFlash{.spawnHealth = health,
-                                   .lastHealth = health,
-                                   .baseTint = registry.getComponents<ecs::Renderable>().get(event.entity).tint});
-        }
+        applyBossLook(registry, event.entity, event.kind == rtype::game::KIND_BOSS_PART);
     } else if (event.kind == rtype::game::KIND_OBSTACLE) {
         // A terrain column carries its height in its subtype; the columns touch, so the terrain looks continuous.
         const std::uint8_t units = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
@@ -376,6 +355,32 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .frameDuration = BULLET_FRAME_DURATION,
                         .loop = false,
                     });
+    }
+}
+
+void RTypeGamePlugin::applyBossLook(ecs::Registry& registry, const ecs::Entity entity, const bool part) const {
+    // The subtype picks the look: the variant of a boss, the look of a part.
+    const std::uint8_t id = registry.getComponents<rtype::game::EntityNetState>().get(entity).subtype;
+    const auto& configured = part ? _looks.parts : _looks.bosses;
+    const auto found = configured.find(id);
+    const looks::Look* look = found != configured.end() ? &found->second : nullptr;
+    if (part) {
+        applyLook(registry, entity, look, {BOSS_PART_PLACEHOLDER_SIZE, BOSS_PART_PLACEHOLDER_SIZE}, COLOR_BOSS_PART, 3);
+    } else {
+        applyLook(registry, entity, look, {rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT}, COLOR_BOSS, 2);
+    }
+    // A look with damaged stages switches to them as the hit points go down.
+    const auto& stages = part ? _looks.partStages : _looks.bossStages;
+    if (stages.contains(id)) {
+        registry.addComponent(entity, gameplay::LookStage{.id = id, .part = part});
+    }
+    // Whatever can be worn down (a boss, a turret) flashes on each hit.
+    const std::uint8_t health = registry.getComponents<rtype::game::EntityNetState>().get(entity).health;
+    if (!part || health > 1) {
+        registry.addComponent(
+            entity, gameplay::HitFlash{.spawnHealth = health,
+                                       .lastHealth = health,
+                                       .baseTint = registry.getComponents<ecs::Renderable>().get(entity).tint});
     }
 }
 
@@ -529,8 +534,57 @@ void RTypeGamePlugin::applyLook(ecs::Registry& registry, const ecs::Entity entit
     applyBox(registry, entity, width, height, color, layer);
 }
 
+void RTypeGamePlugin::updateLookStages(ecs::Registry& registry) const {
+    // Collected first: switching a look replaces components of the entity, which must not happen mid-iteration.
+    std::vector<std::pair<ecs::Entity, int>> changes;
+    registry.runSystem<gameplay::LookStage, gameplay::HitFlash, rtype::game::EntityNetState>(
+        [this, &changes](const ecs::Entity entity, const gameplay::LookStage& stage, const gameplay::HitFlash& flash,
+                         const rtype::game::EntityNetState& state) {
+            const auto& table = stage.part ? _looks.partStages : _looks.bossStages;
+            const auto found = table.find(stage.id);
+            if (found == table.end()) {
+                return;
+            }
+            std::vector<float> thresholds;
+            thresholds.reserve(found->second.size());
+            for (const looks::HealthStage& entry : found->second) {
+                thresholds.push_back(entry.belowHealth);
+            }
+            const int wanted = gameplay::healthStage(thresholds, state.health, flash.spawnHealth);
+            if (wanted != stage.current) {
+                changes.emplace_back(entity, wanted);
+            }
+        });
+    for (const auto& [entity, wanted] : changes) {
+        auto& stage = registry.getComponents<gameplay::LookStage>().get(entity);
+        stage.current = wanted;
+        const looks::Look* look = nullptr;
+        if (wanted >= 0) {
+            look = &(stage.part ? _looks.partStages : _looks.bossStages)
+                        .at(stage.id)
+                        .at(static_cast<std::size_t>(wanted))
+                        .look;
+        } else {
+            const auto& base = stage.part ? _looks.parts : _looks.bosses;
+            const auto found = base.find(stage.id);
+            look = found != base.end() ? &found->second : nullptr;
+        }
+        if (stage.part) {
+            applyLook(registry, entity, look, {BOSS_PART_PLACEHOLDER_SIZE, BOSS_PART_PLACEHOLDER_SIZE}, COLOR_BOSS_PART,
+                      3);
+        } else {
+            applyLook(registry, entity, look, {rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT}, COLOR_BOSS,
+                      2);
+        }
+        // The flash goes back to the tint of the new look.
+        registry.getComponents<gameplay::HitFlash>().get(entity).baseTint =
+            registry.getComponents<ecs::Renderable>().get(entity).tint;
+    }
+}
+
 void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& time) {
     _elapsed += time.deltaTime;
+    updateLookStages(engine.registry());
     gameplay::blinkInvulnerableShips(engine.registry(), _elapsed);
     gameplay::updateHitFlashes(engine.registry(), time.deltaTime);
     gameplay::updateExplosions(engine.registry(), time.deltaTime);

@@ -97,3 +97,15 @@ TEST(BossEffects, BossHealthSumsTheBossesOnScreen) {
     EXPECT_FLOAT_EQ(health->points, 40.0F) << "turrets do not count";
     EXPECT_FLOAT_EQ(health->max, 80.0F);
 }
+
+TEST(BossEffects, HealthStagePicksTheMostDamagedLookReached) {
+    const std::vector<float> oneStage{0.5F};
+    EXPECT_EQ(gameplay::healthStage(oneStage, 45, 45), -1) << "full health";
+    EXPECT_EQ(gameplay::healthStage(oneStage, 23, 45), -1);
+    EXPECT_EQ(gameplay::healthStage(oneStage, 22, 45), 0) << "under half";
+    const std::vector<float> twoStages{0.66F, 0.33F};
+    EXPECT_EQ(gameplay::healthStage(twoStages, 20, 40), 0);
+    EXPECT_EQ(gameplay::healthStage(twoStages, 10, 40), 1);
+    EXPECT_EQ(gameplay::healthStage({}, 1, 40), -1) << "no damaged look";
+    EXPECT_EQ(gameplay::healthStage(oneStage, 0, 0), -1);
+}

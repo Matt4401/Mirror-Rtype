@@ -138,6 +138,21 @@ class RTypeGamePlugin final : public engine::IPlugin {
     /** @brief Looks of the boss variants and of the boss parts. */
     looks::Looks _looks;
     /**
+     * @brief Gives a new boss or boss part its look from its subtype (the variant of a boss, the look of a part), its
+     * damaged stages if it has some, and its hit flash.
+     * @param registry Client registry.
+     * @param entity The new entity.
+     * @param part True for a boss part, false for a boss.
+     */
+    void applyBossLook(ecs::Registry& registry, ecs::Entity entity, bool part) const;
+
+    /**
+     * @brief Switches the bosses and parts with damaged looks to the one matching their hit points.
+     * @param registry Client registry.
+     */
+    void updateLookStages(ecs::Registry& registry) const;
+
+    /**
      * @brief Finds the `[[entity]]` look of a kind: the entry for its subtype if any, else the entry for the kind.
      * @param kind Replicated kind.
      * @param subtype Replicated subtype.

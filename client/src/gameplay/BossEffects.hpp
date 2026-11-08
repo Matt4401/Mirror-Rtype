@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "components/Renderable.hpp"
@@ -84,6 +85,29 @@ struct BurstSpec {
  * @return The bursts, in the order they appear.
  */
 [[nodiscard]] std::vector<BurstSpec> explosionBursts(float x, float y, float width, float height);
+
+/**
+ * @brief Damaged looks of a boss or a part: which one it shows, set by the client on the entities whose look has
+ * `below_health` stages.
+ */
+struct LookStage {
+    /** @brief Variant of the boss, or look of the part. */
+    std::uint8_t id = 0;
+    /** @brief True for a boss part, false for a boss. */
+    bool part = false;
+    /** @brief Stage shown: -1 for the look at full health, else the index of the damaged look. */
+    int current = -1;
+};
+
+/**
+ * @brief Picks the damaged look to show for some hit points.
+ * @param thresholds `below_health` of the damaged looks, highest first.
+ * @param health Hit points left.
+ * @param spawnHealth Hit points at spawn.
+ * @return The index of the most damaged look whose threshold the hit points reached, or -1 for the full-health look.
+ */
+[[nodiscard]] int healthStage(std::span<const float> thresholds, std::uint8_t health,
+                              std::uint8_t spawnHealth) noexcept;
 
 /** @brief Hit points of the bosses on screen, for the boss health bar. */
 struct BossHealth {

@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <map>
 #include <optional>
 #include <string>
@@ -22,6 +23,8 @@ namespace {
 constexpr std::size_t MAX_LOOK_ID = 255;
 /** @brief Degrees in a full turn: the bounds of `first_angle`. */
 constexpr float FULL_TURN = 360.0F;
+/** @brief Smallest `below_health`: a stage at 0 would never show, the entity being destroyed at 0 hit points. */
+constexpr float MIN_STAGE_HEALTH = 0.01F;
 /** @brief Shortest frame duration, in seconds. */
 constexpr float MIN_FRAME_DURATION = 0.01F;
 /** @brief Longest frame duration, in seconds. */
@@ -116,9 +119,11 @@ Look readLook(const config::ConfigFile& file, config::ConfigReader& reader, cons
  * @param array Array name.
  * @param idKey Key holding the id of an entry (`variant` or `look`).
  * @param out Receives the looks by id.
+ * @param stages Receives the damaged looks by id (entries with `below_health`).
  */
 void readEntries(const config::ConfigFile& file, config::ConfigReader& reader, const std::string_view array,
-                 const std::string_view idKey, std::map<std::uint8_t, Look>& out) {
+                 const std::string_view idKey, std::map<std::uint8_t, Look>& out,
+                 std::map<std::uint8_t, std::vector<HealthStage>>& stages) {
     std::size_t count = file.arraySize(array);
     if (count > MAX_LOOKS) {
         reader.warn(std::format("{}: {} entries, only the first {} are kept", array, count, MAX_LOOKS));
@@ -132,7 +137,15 @@ void readEntries(const config::ConfigFile& file, config::ConfigReader& reader, c
             continue;
         }
         const auto key = static_cast<std::uint8_t>(reader.count(id, 0, 0, MAX_LOOK_ID));
-        out[key] = readLook(file, reader, entry);
+        const std::string below = entry + ".below_health";
+        if (!file.contains(below)) {
+            out[key] = readLook(file, reader, entry);
+            continue;
+        }
+        const float threshold = reader.number(below, 1.0F, MIN_STAGE_HEALTH, 1.0F);
+        std::vector<HealthStage>& list = stages[key];
+        list.push_back(HealthStage{.belowHealth = threshold, .look = readLook(file, reader, entry)});
+        std::ranges::sort(list, std::ranges::greater{}, &HealthStage::belowHealth);
     }
 }
 
@@ -171,8 +184,8 @@ void readEntities(const config::ConfigFile& file, config::ConfigReader& reader, 
 Looks readLooks(const config::ConfigFile& file, std::vector<std::string>& warnings) {
     config::ConfigReader reader(file, warnings);
     Looks looks;
-    readEntries(file, reader, "boss", "variant", looks.bosses);
-    readEntries(file, reader, "part", "look", looks.parts);
+    readEntries(file, reader, "boss", "variant", looks.bosses, looks.bossStages);
+    readEntries(file, reader, "part", "look", looks.parts, looks.partStages);
     readEntities(file, reader, looks);
     looks.explosion = readSprite(file, reader, "explosion");
     reader.reportUnknownKeys("explosion");

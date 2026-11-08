@@ -81,6 +81,14 @@ struct Look {
     std::optional<SpriteLook> sprite;
 };
 
+/** @brief A look shown once the hit points fall to a part of their value at spawn, such as a broken boss. */
+struct HealthStage {
+    /** @brief Part of the hit points at spawn, in (0, 1], at or under which this look is shown. */
+    float belowHealth = 1.0F;
+    /** @brief The look. */
+    Look look;
+};
+
 /**
  * @brief Every configured look: bosses by `variant`, parts by `look`, other entities by prefab name. A missing entry
  * keeps the default look of the client.
@@ -90,6 +98,10 @@ struct Looks {
     std::map<std::uint8_t, Look> bosses;
     /** @brief Looks of the boss parts. */
     std::map<std::uint8_t, Look> parts;
+    /** @brief Damaged looks of the boss variants (entries with `below_health`), by threshold, highest first. */
+    std::map<std::uint8_t, std::vector<HealthStage>> bossStages;
+    /** @brief Damaged looks of the boss parts (entries with `below_health`), by threshold, highest first. */
+    std::map<std::uint8_t, std::vector<HealthStage>> partStages;
     /** @brief Looks of the other entities (`ENTITY_PREFABS`), by prefab name, whatever their `subtype`. */
     std::map<std::string, Look> entities;
     /** @brief Looks of the other entities with a given `subtype` (such as the missiles of one shooter). */
@@ -102,7 +114,9 @@ struct Looks {
  * @brief Reads the looks of a configuration file.
  *
  * Reads the `[[boss]]` entries (key `variant`), the `[[part]]` entries (key `look`) and the `[[entity]]` entries (key
- * `prefab`, one of `ENTITY_PREFABS`, and optionally `subtype`, 0–255). Each entry sets `width` and
+ * `prefab`, one of `ENTITY_PREFABS`, and optionally `subtype`, 0–255). A `[[boss]]` or `[[part]]` entry with
+ * `below_health` (0–1) is a damaged look of its id, shown once the hit points fall to that part of their value at
+ * spawn; the entry without it is the look at full health. Each entry sets `width` and
  * `height` (box drawn without a sprite) and, optionally, a sprite: `texture`, `frame_x`, `frame_y`, `frame_width`,
  * `frame_height`, `frame_stride`, `frame_widths`, `frames`, `frame_duration`, `loop`, `scale`, `directional`,
  * `first_angle`, `flip_x` and `face_motion`.
