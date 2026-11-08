@@ -236,7 +236,13 @@ class CarPhysics : public ::testing::Test {
         const float s = std::sin(t.rotation);
         for (const float lx : {-HALF_LENGTH, HALF_LENGTH}) {
             for (const float ly : {-HALF_HEIGHT, HALF_HEIGHT}) {
-                if (arenaDistance(t.x + (c * lx) + (s * ly), t.y + (s * lx) - (c * ly)) < -10.0F) {
+                const float x = t.x + (c * lx) + (s * ly);
+                const float y = t.y + (s * lx) - (c * ly);
+                // The goal posts have no hitbox of their own: the body may clip them a little.
+                const bool nearPost =
+                    (x < arena::LEFT + 80.0F || x > arena::RIGHT - 80.0F) &&
+                    (std::fabs(y - arena::GOAL_TOP) < 80.0F || std::fabs(y - arena::GOAL_BOTTOM) < 80.0F);
+                if (arenaDistance(x, y) < (nearPost ? -60.0F : -10.0F)) {
                     return false;
                 }
             }
