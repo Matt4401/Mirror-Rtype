@@ -33,6 +33,7 @@
 #include "net/ServerReplicationPlugin.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabPlugin.hpp"
+#include "prefabs/player_ship/PlayerShip.hpp"
 #include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "systems/script/ScriptSystem.hpp"
@@ -98,7 +99,8 @@ bool Room::addPlayer(const ClientId player) {
     registry.addComponent(entity, ecs::NetworkOwner{player});
     registry.addComponent(entity, ecs::InputBuffer{.capacity = MAX_PENDING_INPUTS});
     registry.addComponent(entity, game::EntityNetState{});
-    registry.addComponent(entity, ecs::Transform{});
+    // Its collider makes the physics report what touches it: enemies, enemy shots, terrain and power-ups.
+    ::prefabs::buildPlayerShip(entity, registry, {});
     _connection->addPeer(player);
     _players.push_back({.client = player, .entity = entity});
     return true;
