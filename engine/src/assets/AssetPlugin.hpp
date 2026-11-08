@@ -10,7 +10,6 @@
 #include <utility>
 
 #include "core/IPlugin.hpp"
-#include "core/PluginBuilder.hpp"
 
 namespace assets {
 
