@@ -124,6 +124,10 @@ void GameplayPlugin::init(engine::Engine& engine) {
         _bus->subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) { onInput(event); });
     _hitToken =
         _bus->subscribe<collision::ShotHitEvent>([this](const collision::ShotHitEvent& hit) { onShotHit(hit); });
+    _contactToken = _bus->subscribe<collision::ShipContactEvent>(
+        [this](const collision::ShipContactEvent& contact) { onShipContact(contact); });
+    _powerUpToken = _bus->subscribe<collision::PowerUpTouchedEvent>(
+        [this](const collision::PowerUpTouchedEvent& touch) { onPowerUpTouched(touch); });
     _levelToken = _bus->subscribe<timeline::TimelineEventFired>(
         [this](const timeline::TimelineEventFired& fired) { onLevelEvent(fired); });
     _timeline = &engine.getPlugin<timeline::TimelinePlugin>();
@@ -240,7 +244,7 @@ void GameplayPlugin::crashShipsIntoTerrain() {
     std::vector<ecs::Entity> crashed;
     registry.runSystem<ecs::Transform, ecs::Replicated>(
         [&](const ecs::Entity ship, const ecs::Transform& transform, const ecs::Replicated& replicated) {
-            if (replicated.kind != game::KIND_PLAYER_SHIP || registry.hasComponent<Respawning>(ship)) {
+            if (replicated.kind != game::KIND_PLAYER_SHIP || !isVulnerable(ship)) {
                 return;
             }
             const bool hit = std::ranges::any_of(columns, [&transform](const auto& column) {
@@ -375,6 +379,14 @@ void GameplayPlugin::shutdown(engine::Engine& /*engine*/) {
         _bus->unsubscribe<collision::ShotHitEvent>(*_hitToken);
         _hitToken.reset();
     }
+    if (_contactToken) {
+        _bus->unsubscribe<collision::ShipContactEvent>(*_contactToken);
+        _contactToken.reset();
+    }
+    if (_powerUpToken) {
+        _bus->unsubscribe<collision::PowerUpTouchedEvent>(*_powerUpToken);
+        _powerUpToken.reset();
+    }
     if (_inputToken) {
         _bus->unsubscribe<ecs::net::InputApplied>(*_inputToken);
         _inputToken.reset();
@@ -403,7 +415,7 @@ void GameplayPlugin::onInput(const ecs::net::InputApplied& event) {
     if (index >= _shotCooldowns.size() || _shotCooldowns.at(index) > 0.0F) {
         return;
     }
-    _shotCooldowns.at(index) = SHOT_COOLDOWN;
+    _shotCooldowns.at(index) = _rapidFire.at(index) > 0.0F ? RAPID_FIRE_COOLDOWN : SHOT_COOLDOWN;
     const auto& transform = registry.getComponents<ecs::Transform>().get(event.entity);
     // Fired at the next fixed step: the inputs are applied while the replication plugin walks the input buffers.
     _pendingShots.push_back({.playerIndex = index, .x = transform.x, .y = transform.y});
@@ -411,7 +423,19 @@ void GameplayPlugin::onInput(const ecs::net::InputApplied& event) {
 
 void GameplayPlugin::onShotHit(const collision::ShotHitEvent& hit) {
     ecs::Registry& registry = *_registry;
-    if (!hit.byPlayer || !registry.isAlive(hit.shot)) {
+    if (!registry.isAlive(hit.shot)) {
+        return;
+    }
+    if (!hit.byPlayer) {
+        // An enemy shot stops on what it hits; a ship that just respawned lets it through.
+        if ((hit.targetCategory & ::prefabs::collision::PLAYER) != 0) {
+            if (!isVulnerable(hit.target)) {
+                return;
+            }
+            log::info(LOG_TAG, "a ship was shot down");
+            destroyShip(hit.target);
+        }
+        registry.killEntity(hit.shot);
         return;
     }
     // The contacts are published after the physics step: a shot touching two enemies in the same step only gets one.
@@ -426,6 +450,34 @@ void GameplayPlugin::onShotHit(const collision::ShotHitEvent& hit) {
         registry.killEntity(hit.target);
     }
     registry.killEntity(hit.shot);
+}
+
+void GameplayPlugin::onShipContact(const collision::ShipContactEvent& contact) {
+    if (!isVulnerable(contact.ship) || !_registry->isAlive(contact.other)) {
+        return;
+    }
+    log::info(LOG_TAG, "a ship crashed into an enemy");
+    destroyShip(contact.ship);
+}
+
+void GameplayPlugin::onPowerUpTouched(const collision::PowerUpTouchedEvent& touch) {
+    ecs::Registry& registry = *_registry;
+    if (!registry.isAlive(touch.powerUp) || !registry.isAlive(touch.ship)) {
+        return;
+    }
+    registry.killEntity(touch.powerUp);
+    if (!registry.hasComponent<game::EntityNetState>(touch.ship)) {
+        return;
+    }
+    const std::uint8_t index = registry.getComponents<game::EntityNetState>().get(touch.ship).subtype;
+    if (index < _rapidFire.size()) {
+        _rapidFire.at(index) = RAPID_FIRE_DURATION;
+        log::info(LOG_TAG, "player ", static_cast<int>(index) + 1, " picked up a power-up: rapid fire");
+    }
+}
+
+bool GameplayPlugin::isVulnerable(const ecs::Entity ship) const {
+    return _registry->isAlive(ship) && !_registry->hasComponent<Respawning>(ship);
 }
 
 bool GameplayPlugin::takeHit(const ecs::Entity target) {
@@ -446,6 +498,9 @@ bool GameplayPlugin::takeHit(const ecs::Entity target) {
 void GameplayPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time& time) {
     for (float& cooldown : _shotCooldowns) {
         cooldown = std::max(cooldown - time.deltaTime, 0.0F);
+    }
+    for (float& rapidFire : _rapidFire) {
+        rapidFire = std::max(rapidFire - time.deltaTime, 0.0F);
     }
     for (const PendingShot& shot : _pendingShots) {
         fire(shot);

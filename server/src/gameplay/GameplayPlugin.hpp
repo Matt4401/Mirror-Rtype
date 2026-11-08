@@ -37,6 +37,10 @@ inline constexpr float SHOT_COOLDOWN = 0.2F;
 inline constexpr float SCORE_LOG_INTERVAL = 5.0F;
 /** @brief Points given to a player for each enemy their shots destroy. */
 inline constexpr std::uint32_t POINTS_PER_KILL = 1;
+/** @brief Seconds of rapid fire given by a power-up. */
+inline constexpr float RAPID_FIRE_DURATION = 5.0F;
+/** @brief Seconds between two shots of a player with rapid fire. */
+inline constexpr float RAPID_FIRE_COOLDOWN = 0.08F;
 /** @brief Seconds a destroyed ship blinks after coming back: it cannot be hit, and the level waits for it. */
 inline constexpr float RESPAWN_DURATION = 3.0F;
 /** @brief Abscissa where the ships start and respawn. */
@@ -82,7 +86,9 @@ struct ShipSpawnPoint {
  * - Fires a `player_bullet` from a ship while its input holds `game::ACTION_SHOOT`, at most every `SHOT_COOLDOWN`.
  *   The bullet's `EntityNetState::subtype` is the index of the player who fired it.
  * - Turns physics contacts into R-Type events with a `collision::CollisionRouter`; a player shot touching an enemy
- *   destroys both and gives `POINTS_PER_KILL` to its shooter.
+ *   destroys both and gives `POINTS_PER_KILL` to its shooter. An enemy shot or an enemy touching a ship destroys the
+ *   ship (it respawns). A power-up touched by a ship is picked up: its player fires every `RAPID_FIRE_COOLDOWN` for
+ *   `RAPID_FIRE_DURATION` seconds.
  * - Destroys bullets and enemies that left the screen.
  * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time.
  *
@@ -174,8 +180,13 @@ class GameplayPlugin final : public engine::IPlugin {
 
     /** @brief Queues a shot if the input holds the shoot action and the player's cooldown is over. */
     void onInput(const ecs::net::InputApplied& event);
-    /** @brief Destroys the shot and the enemy it hit, and scores the kill. */
+    /** @brief Applies a shot: a player shot hurts the enemy it hit and scores the kill, an enemy shot destroys the ship
+     * it hit. */
     void onShotHit(const collision::ShotHitEvent& hit);
+    /** @brief Destroys a ship touching an enemy or an obstacle. */
+    void onShipContact(const collision::ShipContactEvent& contact);
+    /** @brief Picks up a power-up touched by a ship: the power-up disappears and its player gets rapid fire. */
+    void onPowerUpTouched(const collision::PowerUpTouchedEvent& touch);
     /** @brief Spawns a replicated player bullet. */
     void fire(const PendingShot& shot);
     /** @brief Handles a level event: spawn, scroll speed change or end of level. */
@@ -208,6 +219,12 @@ class GameplayPlugin final : public engine::IPlugin {
     void startTerrain(const prefabs::PrefabParams& params);
     /** @brief Builds the columns entering the screen, moves every column at the scroll speed. */
     void updateTerrain();
+    /**
+     * @brief Tells whether a ship can be destroyed now: alive, and not respawning.
+     * @param ship Player ship.
+     * @return True if a hit destroys it.
+     */
+    [[nodiscard]] bool isVulnerable(ecs::Entity ship) const;
     /** @brief Destroys the ships overlapping a terrain column, unless they are respawning. */
     void crashShipsIntoTerrain();
     /**
@@ -257,10 +274,16 @@ class GameplayPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _inputToken;
     /** @brief Subscription to the shot hits. */
     std::optional<ecs::EventBus::EventToken> _hitToken;
+    /** @brief Subscription to the ship contacts. */
+    std::optional<ecs::EventBus::EventToken> _contactToken;
+    /** @brief Subscription to the power-ups touched. */
+    std::optional<ecs::EventBus::EventToken> _powerUpToken;
     /** @brief Shots requested since the last fixed step. */
     std::vector<PendingShot> _pendingShots;
     /** @brief Seconds before each player can fire again. */
     std::array<float, protocol::MAX_PLAYERS> _shotCooldowns{};
+    /** @brief Seconds of rapid fire left for each player. */
+    std::array<float, protocol::MAX_PLAYERS> _rapidFire{};
     /** @brief Score of each player. */
     std::array<std::uint32_t, protocol::MAX_PLAYERS> _scores{};
     /** @brief Number of players whose score is logged. */
