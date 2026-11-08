@@ -204,6 +204,11 @@ TEST(PreciseSleepScope, ScopesCanBeNested) {
 }
 
 TEST(PreciseSleepScope, OneMillisecondSleepsStayShort) {
+#ifndef _WIN32
+    // The scope does nothing elsewhere: timing sleeps would only measure the scheduler, and the macOS CI machines group
+    // timers into ~10 ms batches.
+    GTEST_SKIP() << "the scope only changes something on Windows";
+#endif
     constexpr int SLEEPS = 20;
     // Half the default Windows timer period (15.6 ms): without the scope, every sleep there lasts a whole period.
     constexpr auto MAX_AVERAGE = std::chrono::milliseconds(8);
