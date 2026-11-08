@@ -319,7 +319,7 @@ Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPref
     config::ConfigReader reader(file, warnings);
     Level level;
     level.name = reader.text("level.name", "Unnamed level");
-    level.scrollSpeed = reader.number("level.scroll_speed", DEFAULT_SCROLL_SPEED, 0.0F, MAX_SCROLL_SPEED);
+    level.scrollSpeed = reader.number("level.scroll_speed", DEFAULT_SCROLL_SPEED, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED);
     reader.reportUnknownKeys("level");
 
     float scrollSpeed = level.scrollSpeed;
@@ -331,7 +331,8 @@ Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPref
                 warnings.push_back(std::format("events.{}: scroll without 'speed', event skipped", event.index));
                 continue;
             }
-            scrollSpeed = reader.number(eventKey(event.index, "speed"), scrollSpeed, 0.0F, MAX_SCROLL_SPEED);
+            scrollSpeed =
+                reader.number(eventKey(event.index, "speed"), scrollSpeed, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED);
             level.timeline.add(timeline::TimelineEvent{
                 .position = event.at,
                 .type = std::string(EVENT_SCROLL),

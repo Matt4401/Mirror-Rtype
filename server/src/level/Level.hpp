@@ -16,7 +16,7 @@ namespace rtype::server::level {
 /** @brief Event type spawning one entity: `prefab` plus its parameters (`x`, `y`, and any extra key). */
 inline constexpr std::string_view EVENT_SPAWN = "spawn";
 
-/** @brief Event type changing the scroll speed: `speed` in pixels per second, 0 stops the scroll. */
+/** @brief Event type changing the scroll speed: `speed` in pixels per second, at least `MIN_SCROLL_SPEED`. */
 inline constexpr std::string_view EVENT_SCROLL = "scroll";
 
 /**

@@ -24,6 +24,14 @@ inline constexpr std::size_t MAX_EVENTS = 1024;
 /** @brief Most enemies a single wave may spawn. */
 inline constexpr std::size_t MAX_WAVE_COUNT = 32;
 
+/**
+ * @brief Lowest scroll speed accepted, in pixels per second.
+ *
+ * The timeline cursor is the scroll distance: at 0, no later event could ever fire, so the level would be frozen for
+ * good. Only the gameplay stops the scroll, during a boss fight or a respawn, and it resumes it.
+ */
+inline constexpr float MIN_SCROLL_SPEED = 10.0F;
+
 /** @brief Highest scroll speed accepted, in pixels per second. */
 inline constexpr float MAX_SCROLL_SPEED = 2000.0F;
 

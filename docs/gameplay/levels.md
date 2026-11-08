@@ -63,7 +63,7 @@ height = 120.0
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `name` | string | `"Unnamed level"` | Display name, in the server logs. |
-| `scroll_speed` | number | `60` | Scroll speed at the start, in px/s, from 0 to 2000. |
+| `scroll_speed` | number | `60` | Scroll speed at the start, in px/s, from 10 to 2000. |
 
 ## `[[events]]`
 
@@ -89,7 +89,11 @@ speed in effect where the wave starts, so a `scroll` event in the middle of a wa
 
 | Key | Type | Description |
 |-----|------|-------------|
-| `speed` | number | New scroll speed in px/s, from 0 to 2000. 0 stops the scroll, and the level with it. |
+| `speed` | number | New scroll speed in px/s, from 10 to 2000. |
+
+The speed cannot be 0: positions are scroll distances, so a stopped scroll would never reach the next event and the
+level would be frozen for good. Only the game stops the scroll, during a boss fight or a respawn, and it always resumes
+it.
 
 ### `boss`: a boss fight
 
