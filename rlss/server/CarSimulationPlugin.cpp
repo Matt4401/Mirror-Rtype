@@ -53,6 +53,7 @@ void CarSimulationPlugin::init(engine::Engine& engine) {
                                       .goalTop = arena::GOAL_TOP,
                                       .goalBottom = arena::GOAL_BOTTOM,
                                       .goalDepth = arena::GOAL_DEPTH,
+                                      .goalCornerRadius = arena::GOAL_CORNER_RADIUS,
                                   });
     registry.addComponent(_arena, game::MatchState{});
     // The match script steps every car and the ball together.
@@ -72,6 +73,8 @@ void CarSimulationPlugin::init(engine::Engine& engine) {
                                      .moduleName = std::string(game::BALL_SCRIPT_MODULE),
                                      .className = "Ball",
                                  });
+    registry.addComponent(_ball, game::ShotGlow{});
+    registry.addComponent(_ball, game::BallCues{});
     ecs::net::replicate(registry, _ball, game::KIND_BALL);
 
     // A player who joins gets the score at once; afterwards, `update` sends it when it changes.
@@ -90,12 +93,16 @@ void CarSimulationPlugin::init(engine::Engine& engine) {
         }
         input::InputState& state = states.get(event.entity);
         float steer = 0.0F;
+        float pitch = 0.0F;
         for (const ecs::NetAxis& axis : event.input.axes) {
             if (axis.action == game::STEER_ID) {
                 steer = std::clamp(axis.value, -1.0F, 1.0F);
+            } else if (axis.action == game::PITCH_ID) {
+                pitch = std::clamp(axis.value, -1.0F, 1.0F);
             }
         }
         state.setAxis(game::STEER_ID, steer);
+        state.setAxis(game::PITCH_ID, pitch);
         const auto held = [&event](const input::ActionId action) {
             return std::ranges::find(event.input.held, action) != event.input.held.end();
         };
@@ -126,9 +133,12 @@ std::optional<protocol::MatchStatus> CarSimulationPlugin::currentStatus(engine::
     return protocol::MatchStatus{
         .blueScore = score(state.blueScore),
         .orangeScore = score(state.orangeScore),
-        .phase = static_cast<protocol::MatchPhase>(std::clamp(state.phase, 0, 2)),
+        .phase = static_cast<protocol::MatchPhase>(
+            std::clamp(state.phase, 0, static_cast<int>(protocol::MatchPhase::Ended))),
         .countdown =
             static_cast<std::uint8_t>(std::clamp(state.countdown, 0, static_cast<int>(protocol::MAX_COUNTDOWN))),
+        .clock = static_cast<std::uint16_t>(std::clamp(state.clock, 0, static_cast<int>(protocol::MAX_CLOCK))),
+        .overtime = state.overtime,
     };
 }
 

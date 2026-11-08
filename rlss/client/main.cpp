@@ -15,14 +15,21 @@
 #include <utility>
 
 #include "ArenaViewPlugin.hpp"
+#include "AssetsPlugin.hpp"
 #include "BallViewPlugin.hpp"
+#include "CameraPlugin.hpp"
 #include "CarViewPlugin.hpp"
 #include "CommandLine.hpp"
+#include "GoalEffectPlugin.hpp"
+#include "HudPlugin.hpp"
 #include "Logger.hpp"
+#include "MenuPlugin.hpp"
+#include "NameTagPlugin.hpp"
 #include "PlayerInputPlugin.hpp"
-#include "ScoreboardPlugin.hpp"
 #include "ServerLink.hpp"
 #include "SessionPlugin.hpp"
+#include "SoundPlugin.hpp"
+#include "audio/AudioPlugin.hpp"
 #include "core/Engine.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "input/InputPlugin.hpp"
@@ -34,6 +41,7 @@
 #include "render/RenderPlugin.hpp"
 #include "render/window/WindowConfig.hpp"
 #include "scripting/ScriptPlugin.hpp"
+#include "systems/render/AnimationPlugin.hpp"
 
 namespace {
 
@@ -78,20 +86,29 @@ int main(int ac, char** av) {
         }
         const auto link = std::make_shared<rlss::client::ServerLink>(transport, std::move(*received));
 
-        // Connected: open the game window.
+        // Connected: open the game window, on the menu.
         engine::Engine engine;
         engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.title = std::string(rlss::protocol::GAME_TITLE)})
             .addPlugin<input::InputPlugin>(rlss::client::makeControls())
+            .addPlugin<systems::AnimationPlugin>()
+            .addPlugin<audio::AudioPlugin>()
             .addPlugin<ecs::net::NetworkPlugin>(link, link)
             .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
             // After the replication: the CarView scripts read the car transforms once interpolated.
             .addPlugin<scripting::ScriptPlugin>()
             .addPlugin<rlss::client::SessionPlugin>(transport)
+            .addPlugin<rlss::client::AssetsPlugin>()
             .addPlugin<rlss::client::ArenaViewPlugin>()
             .addPlugin<rlss::client::CarViewPlugin>()
             .addPlugin<rlss::client::BallViewPlugin>()
-            .addPlugin<rlss::client::ScoreboardPlugin>()
-            .addPlugin<rlss::client::PlayerInputPlugin>();
+            .addPlugin<rlss::client::CameraPlugin>()
+            // Drawn on screen in this order: name tags, HUD, then the menus on top.
+            .addPlugin<rlss::client::NameTagPlugin>()
+            .addPlugin<rlss::client::HudPlugin>()
+            .addPlugin<rlss::client::GoalEffectPlugin>()
+            .addPlugin<rlss::client::SoundPlugin>()
+            .addPlugin<rlss::client::PlayerInputPlugin>()
+            .addPlugin<rlss::client::MenuPlugin>(link);
         engine.run();
         return engine.getPlugin<rlss::client::SessionPlugin>().connectionLost() ? EXIT_ERROR : 0;
     } catch (const std::exception& error) {

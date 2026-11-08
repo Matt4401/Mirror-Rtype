@@ -19,10 +19,16 @@ TextureStore::~TextureStore() {
     }
 }
 
-ecs::TextureId TextureStore::load(const std::string& path) {
-    const Texture2D texture = LoadTexture(path.c_str());
+ecs::TextureId TextureStore::load(const std::string& path, const TextureFilter filter) {
+    Texture2D texture = LoadTexture(path.c_str());
     if (texture.id == 0) {
         return ecs::NO_TEXTURE;
+    }
+    if (filter == TextureFilter::Smooth) {
+        GenTextureMipmaps(&texture);
+        SetTextureFilter(texture, TEXTURE_FILTER_TRILINEAR);
+        // Clamped: the filter must not blend an edge with the opposite one (seams between tiled pictures).
+        SetTextureWrap(texture, TEXTURE_WRAP_CLAMP);
     }
     _textures.push_back(texture);
     return static_cast<ecs::TextureId>(_textures.size());

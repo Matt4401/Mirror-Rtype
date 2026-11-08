@@ -44,6 +44,18 @@ struct Rect {
  */
 ecs::Entity spawnRect(ecs::Registry& registry, const Rect& rect, ecs::Rgba color, int layer);
 
+/** @brief Which corners of a rectangle are rounded. */
+struct RoundedCorners {
+    /** @brief Top-left corner. */
+    bool topLeft = true;
+    /** @brief Top-right corner. */
+    bool topRight = true;
+    /** @brief Bottom-left corner. */
+    bool bottomLeft = true;
+    /** @brief Bottom-right corner. */
+    bool bottomRight = true;
+};
+
 /**
  * @brief Fills a rectangle with rounded corners, made of rectangles (corners are stacks of thin strips).
  * @param registry World.
@@ -51,8 +63,10 @@ ecs::Entity spawnRect(ecs::Registry& registry, const Rect& rect, ecs::Rgba color
  * @param radius Corner radius.
  * @param color Fill color.
  * @param layer Draw layer.
+ * @param rounded Corners to round; the others stay square.
  */
-void fillRoundedRect(ecs::Registry& registry, const Rect& rect, float radius, ecs::Rgba color, int layer);
+void fillRoundedRect(ecs::Registry& registry, const Rect& rect, float radius, ecs::Rgba color, int layer,
+                     RoundedCorners rounded = {});
 
 /**
  * @brief Draws a ring of short segments.

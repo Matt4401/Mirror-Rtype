@@ -2,6 +2,7 @@
 
 #include <string>
 
+#include "components/CameraComponent.hpp"
 #include "components/Transform.hpp"
 #include "game/Components.hpp"
 #include "input/InputState.hpp"
@@ -45,7 +46,8 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&ArenaShape::cornerRadius>("cornerRadius")
         .property<&ArenaShape::goalTop>("goalTop")
         .property<&ArenaShape::goalBottom>("goalBottom")
-        .property<&ArenaShape::goalDepth>("goalDepth");
+        .property<&ArenaShape::goalDepth>("goalDepth")
+        .property<&ArenaShape::goalCornerRadius>("goalCornerRadius");
     ok = define(vm, arena) && ok;
 
     scripting::ComponentBinder<CarParts> parts(vm, module, "CarParts");
@@ -56,37 +58,72 @@ bool registerComponentClasses(scripting::WrenVM& vm) {
         .property<&CarParts::headlight>("headlight")
         .property<&CarParts::flame>("flame")
         .property<&CarParts::gaugeBack>("gaugeBack")
-        .property<&CarParts::gaugeFill>("gaugeFill");
+        .property<&CarParts::gaugeFill>("gaugeFill")
+        .property<&CarParts::flash>("flash");
     ok = define(vm, parts) && ok;
 
     scripting::ComponentBinder<CarStatus> status(vm, module, "CarStatus");
     status.property<&CarStatus::boost>("boost")
         .property<&CarStatus::boosting>("boosting")
-        .property<&CarStatus::placeAtKickoff>("placeAtKickoff");
+        .property<&CarStatus::placeAtKickoff>("placeAtKickoff")
+        .property<&CarStatus::flipReset>("flipReset");
     ok = define(vm, status) && ok;
+
+    scripting::ComponentBinder<CarCues> carCues(vm, module, "CarCues");
+    carCues.property<&CarCues::jumps>("jumps")
+        .property<&CarCues::jumpKind>("jumpKind")
+        .property<&CarCues::impacts>("impacts")
+        .property<&CarCues::impactSpeed>("impactSpeed");
+    ok = define(vm, carCues) && ok;
+
+    scripting::ComponentBinder<BallCues> ballCues(vm, module, "BallCues");
+    ballCues.property<&BallCues::hits>("hits")
+        .property<&BallCues::hitSpeed>("hitSpeed")
+        .property<&BallCues::bounces>("bounces")
+        .property<&BallCues::bounceSpeed>("bounceSpeed");
+    ok = define(vm, ballCues) && ok;
 
     scripting::ComponentBinder<BallPart> ballPart(vm, module, "BallPart");
     ballPart.property<&BallPart::parent>("parent")
         .property<&BallPart::offsetX>("offsetX")
         .property<&BallPart::offsetY>("offsetY")
         .property<&BallPart::angle>("angle")
-        .property<&BallPart::spins>("spins");
+        .property<&BallPart::spins>("spins")
+        .property<&BallPart::glow>("glow");
     ok = define(vm, ballPart) && ok;
+
+    scripting::ComponentBinder<ShotGlow> glow(vm, module, "ShotGlow");
+    glow.property<&ShotGlow::shot>("shot");
+    ok = define(vm, glow) && ok;
 
     scripting::ComponentBinder<MatchState> match(vm, module, "MatchState");
     match.property<&MatchState::blueScore>("blueScore")
         .property<&MatchState::orangeScore>("orangeScore")
         .property<&MatchState::phase>("phase")
-        .property<&MatchState::countdown>("countdown");
+        .property<&MatchState::countdown>("countdown")
+        .property<&MatchState::clock>("clock")
+        .property<&MatchState::overtime>("overtime");
     ok = define(vm, match) && ok;
 
-    scripting::ComponentBinder<ScoreCell> cell(vm, module, "ScoreCell");
-    cell.property<&ScoreCell::display>("display")
-        .property<&ScoreCell::slot>("slot")
-        .property<&ScoreCell::row>("row")
-        .property<&ScoreCell::column>("column")
-        .property<&ScoreCell::size>("size");
-    ok = define(vm, cell) && ok;
+    scripting::ComponentBinder<ecs::CameraComponent> camera(vm, module, "Camera");
+    camera.property<&ecs::CameraComponent::targetX>("targetX")
+        .property<&ecs::CameraComponent::targetY>("targetY")
+        .property<&ecs::CameraComponent::offsetX>("offsetX")
+        .property<&ecs::CameraComponent::offsetY>("offsetY")
+        .property<&ecs::CameraComponent::zoom>("zoom");
+    ok = define(vm, camera) && ok;
+
+    scripting::ComponentBinder<CameraRig> rig(vm, module, "CameraRig");
+    rig.property<&CameraRig::car>("car")
+        .property<&CameraRig::ball>("ball")
+        .property<&CameraRig::phase>("phase")
+        .property<&CameraRig::viewWidth>("viewWidth")
+        .property<&CameraRig::viewHeight>("viewHeight")
+        .property<&CameraRig::boundsLeft>("boundsLeft")
+        .property<&CameraRig::boundsTop>("boundsTop")
+        .property<&CameraRig::boundsRight>("boundsRight")
+        .property<&CameraRig::boundsBottom>("boundsBottom");
+    ok = define(vm, rig) && ok;
 
     return ok;
 }

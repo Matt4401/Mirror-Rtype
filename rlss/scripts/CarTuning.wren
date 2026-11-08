@@ -1,6 +1,10 @@
 /**
  * @class CarTuning
- * @brief Car physics constants, taken from Rocket League (units: uu, seconds, radians).
+ * @brief Car physics constants (units: uu, seconds, radians).
+ *
+ * Based on Rocket League's measured values, adjusted toward Sideswipe where it differs: stronger gravity (shorter jumps,
+ * snappier game), a surface grip that holds the car upside down while it drives, a flip available until the car touches
+ * a surface again. Sideswipe's own values are not published: the ones marked "estimate" are tuned by hand.
  *
  * Edit and save while the server runs: hot-reload picks the change up.
  */
@@ -18,7 +22,12 @@ class CarTuning {
     static HALF_HEIGHT { 18 }
 
     // --- World ---
-    static GRAVITY { 650 }
+    /**
+     * @brief Always toward the bottom of the screen (the ball has its own, lighter one: `BallTuning.GRAVITY`).
+     * Estimate: stronger than Rocket League's 650 so that jumps stay short (a full jump rises about 160 uu instead of
+     * 230), but below the air boost (1185), so that boosting nose up still climbs.
+     */
+    static GRAVITY { 900 }
     /** @brief No car goes faster than this (2300 uu/s in Rocket League, reached with boost or gravity). */
     static MAX_SPEED { 2300 }
 
@@ -31,8 +40,13 @@ class CarTuning {
     static COAST { 525 }
     /** @brief Below this speed, steering the other way turns the car around instead of braking. */
     static TURN_SPEED { 200 }
-    /** @brief Pull toward the surface while the wheels touch it: lets the car drive on walls. */
+    /** @brief Pull toward the surface while the wheels touch it and the car coasts: holds it on walls, not upside down. */
     static STICKY { 325 }
+    /**
+     * @brief Pull toward the surface while the car drives (throttle or boost). Estimate: stronger than gravity, so the
+     * car drives on the ceiling as long as it keeps driving, and falls when it lets go.
+     */
+    static DRIVING_STICKY { 1050 }
     /** @brief How far the car can move away from a surface before its wheels lose contact. */
     static SUSPENSION_TRAVEL { 20 }
     /** @brief Speed at which a compressed suspension relaxes, in uu/s. */
@@ -60,9 +74,13 @@ class CarTuning {
      * value: an estimate of Sideswipe's refill (empty to full in about 4 s).
      */
     static BOOST_REFILL_RATE { 25 }
-    /** @brief Acceleration given by boosting, toward the nose. */
-    static BOOST_ACCEL_GROUND { 2975 / 3 }
-    static BOOST_ACCEL_AIR { 3175 / 3 }
+    /**
+     * @brief Acceleration given by boosting, toward the nose. Estimates: on the ground, about 12% above Rocket League
+     * (991.7); in the air, 1.61 times the gravity like in Rocket League (1058.3 against 650), so that boosting nose up
+     * climbs clearly (550 uu/s² net) against the stronger gravity.
+     */
+    static BOOST_ACCEL_GROUND { 1110 }
+    static BOOST_ACCEL_AIR { 1450 }
     /** @brief A boost, once started, lasts at least this long. */
     static BOOST_MIN_TIME { 0.1 }
 
@@ -73,8 +91,6 @@ class CarTuning {
     static JUMP_HOLD_ACCEL { 1458 }
     /** @brief ...for at most this long. */
     static JUMP_HOLD_TIME { 0.2 }
-    /** @brief The second jump (double jump or dodge) is available this long after the first jump. */
-    static SECOND_JUMP_WINDOW { 1.25 }
     /** @brief The car cannot land again right after jumping. */
     static JUMP_LAND_DELAY { 0.1 }
 
@@ -89,12 +105,24 @@ class CarTuning {
     static DODGE_VERTICAL_KEEP { 0.5 }
 
     // --- Air control ---
-    /** @brief Angular acceleration given by the stick in the air (Rocket League pitch). */
+    /**
+     * @brief Angular acceleration of the air control (Rocket League pitch): the car starts and stops turning this fast
+     * toward where the stick aims.
+     */
     static AIR_TORQUE { 12.46 }
     /** @brief Angular damping when the stick is released. */
     static AIR_DAMPING { 2.798 }
-    /** @brief Fastest rotation of a car. */
-    static MAX_ANGULAR_SPEED { 5.5 }
+    /** @brief Fastest rotation given by the air control (Rocket League: 5.5, slowed down for a calmer flight). */
+    static MAX_ANGULAR_SPEED { 4.2 }
+    /**
+     * @brief Deceleration the air control plans with when the nose gets close to where the stick aims (below
+     * `AIR_TORQUE`, so that it always has room to stop): it slows down in time instead of overshooting.
+     */
+    static AIM_BRAKING { 10 }
+    /** @brief Close to the aim, the rotation speed is at most this times the angle left (rad/s per rad): no jitter. */
+    static AIM_GAIN { 12 }
+    /** @brief Spin of a dodge (flip), faster than the air control. */
+    static DODGE_SPIN { 5.5 }
 
     // --- Contacts other than the wheels ---
     /** @brief Landing on the wheels needs the roof within ~60° of the surface normal (cos 60° = 0.5). */
@@ -105,8 +133,21 @@ class CarTuning {
     static RESTITUTION { 0.1 }
     /** @brief Friction of the body sliding against a wall, in uu/s². */
     static BODY_FRICTION { 1200 }
-    /** @brief How fast a car lying on its side tips over, per second. */
+    /** @brief How fast a car touching a wall with its body tips onto its wheels, per second. */
     static TIP_RATE { 6 }
+    /**
+     * @brief Self-righting: a car about to touch a surface on its roof or side (contact expected within this time, or
+     * already this close) spins onto its wheels first, never faster than `SELF_RIGHT_MAX_SPIN` rad/s.
+     */
+    static SELF_RIGHT_TIME { 0.25 }
+    static SELF_RIGHT_GAP { 20 }
+    static SELF_RIGHT_MIN_TIME { 0.06 }
+    static SELF_RIGHT_MAX_SPIN { 16 }
+    /**
+     * @brief A landing or the body hitting a wall faster than this (speed into the surface, uu/s) makes a sound. A full
+     * jump lands at about 540 uu/s.
+     */
+    static IMPACT_SOUND_SPEED { 250 }
     /** @brief Time a car on its roof takes to roll back on its wheels after pressing jump. */
     static RECOVERY_TIME { 0.55 }
 }

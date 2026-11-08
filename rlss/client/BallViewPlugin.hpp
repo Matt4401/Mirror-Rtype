@@ -21,8 +21,10 @@ namespace rlss::client {
  * @brief Builds the look of the ball sent by the server.
  *
  * When the ball appears (`ecs::net::ReplicatedEntitySpawned` of kind `KIND_BALL`), spawns its pieces, each tagged
- * "ball_part" with a `BallPart`: a disc made of horizontal strips, and two seams that turn with the ball. Attaches the
- * `BallView` script, which places them every frame from the ball `Transform`. When it disappears, removes them.
+ * "ball_part" with a `BallPart`: the panels (a texture that turns with the ball), its lighting (a texture that does
+ * not turn, so the ball keeps looking lit from above), and one soft colored halo per shot color (red, purple, gold),
+ * shown while the ball glows after that shot. Attaches the `BallView` script, which places them every frame from the
+ * ball `Transform`. When it disappears, removes them.
  */
 class BallViewPlugin final : public engine::IPlugin {
   public:

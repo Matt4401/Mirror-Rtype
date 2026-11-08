@@ -397,6 +397,11 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
     }
 
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return GetMouseWheelMove(); }
+
+    [[nodiscard]] char32_t nextTypedCharacter() noexcept override {
+        const int character = GetCharPressed();
+        return character > 0 ? static_cast<char32_t>(character) : U'\0';
+    }
 };
 
 /**
@@ -464,7 +469,7 @@ void RenderPlugin::init(engine::Engine& engine) {
 
     _windowService = std::make_shared<WindowServiceImpl>();
     _renderService = std::make_shared<RenderServiceImpl>(*_renderSystem);
-    _screenDrawService = std::make_shared<ScreenDrawService>();
+    _screenDrawService = std::make_shared<ScreenDrawService>(_textures.get());
 
     if (const auto res = engine.mediator().registerService<engine::IWindowService>(_windowService); !res) {
         throw engine::MediatorError(res.error());

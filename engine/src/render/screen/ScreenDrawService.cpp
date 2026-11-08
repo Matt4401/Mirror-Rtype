@@ -70,6 +70,37 @@ void ScreenDrawService::drawText(std::string_view text, float x, float y, float 
     });
 }
 
+void ScreenDrawService::drawTexture(const ecs::TextureId texture, const ecs::TextureRect& source,
+                                    const engine::ScreenRect& dest, const float rotation, const ecs::Rgba& tint) {
+    _commands.emplace_back(
+        TextureCommand{.texture = texture, .source = source, .dest = dest, .rotation = rotation, .tint = tint});
+}
+
+void ScreenDrawService::drawQueued(const TextureCommand& command) const {
+    const Texture2D* texture = _textures != nullptr ? _textures->get(command.texture) : nullptr;
+    if (texture == nullptr) {
+        return;
+    }
+    const bool whole = command.source.width == 0 && command.source.height == 0;
+    const Rectangle source = whole ? Rectangle{.x = 0.0F,
+                                               .y = 0.0F,
+                                               .width = static_cast<float>(texture->width),
+                                               .height = static_cast<float>(texture->height),}
+                                   : Rectangle{.x = static_cast<float>(command.source.x),
+                                               .y = static_cast<float>(command.source.y),
+                                               .width = static_cast<float>(command.source.width),
+                                               .height = static_cast<float>(command.source.height),};
+    // raylib rotates around `origin`, given relative to the destination's top-left corner: pivot on the center.
+    const Vector2 half{.x = command.dest.width / 2.0F, .y = command.dest.height / 2.0F};
+    const Rectangle dest{
+        .x = command.dest.x + half.x,
+        .y = command.dest.y + half.y,
+        .width = command.dest.width,
+        .height = command.dest.height,
+    };
+    DrawTexturePro(*texture, source, dest, half, command.rotation * RAD2DEG, toRaylib(command.tint));
+}
+
 void ScreenDrawService::flush() {
     for (const Command& command : _commands) {
         std::visit(
@@ -82,6 +113,8 @@ void ScreenDrawService::flush() {
                 } else if constexpr (std::is_same_v<T, TextCommand>) {
                     DrawTextEx(resolveFont(cmd.font), cmd.text.c_str(), Vector2{.x = cmd.x, .y = cmd.y}, cmd.fontSize,
                                cmd.spacing, toRaylib(cmd.color));
+                } else if constexpr (std::is_same_v<T, TextureCommand>) {
+                    drawQueued(cmd);
                 }
             },
             command);

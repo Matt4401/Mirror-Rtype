@@ -11,6 +11,7 @@
 
 #include "net/INetworkClient.hpp"
 #include "net/INetworkManager.hpp"
+#include "protocol/Protocol.hpp"
 
 namespace rlss::client {
 
@@ -36,6 +37,13 @@ std::vector<ecs::net::NetworkEvent> ServerLink::poll() {
     std::vector<ecs::net::NetworkEvent> events = std::exchange(_pending, {});
     std::vector<ecs::net::NetworkEvent> received = _client->poll();
     events.insert(events.end(), std::make_move_iterator(received.begin()), std::make_move_iterator(received.end()));
+    std::erase_if(events, [this](const ecs::net::NetworkEvent& event) {
+        if (event.type != ecs::net::EventType::Data) {
+            return false;
+        }
+        const auto match = protocol::snapshotMatch(event.data);
+        return match && match != _match;
+    });
     return events;
 }
 

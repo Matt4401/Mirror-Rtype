@@ -125,6 +125,17 @@ class IWindowService {
      * @return Wheel movement, positive when scrolling up.
      */
     [[nodiscard]] virtual float mouseWheelDelta() const noexcept = 0;
+
+    /**
+     * @brief Takes the next character typed since the last frame, for text fields.
+     *
+     * Unlike `isKeyDown`, it follows the keyboard layout and the shift state (an AZERTY "a" gives 'a'), and repeats
+     * while a key is held. Each character is returned once: call it until it returns 0 every frame a text field is
+     * focused.
+     *
+     * @return The Unicode code point of the character, or 0 when none is left.
+     */
+    [[nodiscard]] virtual char32_t nextTypedCharacter() noexcept = 0;
 };
 
 }  // namespace engine
