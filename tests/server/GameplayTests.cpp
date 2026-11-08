@@ -204,6 +204,28 @@ class TerrainTest : public GameplayTest {
     [[nodiscard]] std::vector<ecs::Entity> columns() { return entitiesOf(game::KIND_OBSTACLE); }
 };
 
+/** @brief Boss event at 1 s, followed in the same step by a `scroll` and an `end`. */
+std::shared_ptr<const level::Level> bossThenEndLevel() {
+    auto built = std::make_shared<level::Level>();
+    built->scrollSpeed = LEVEL_SPEED;
+    built->timeline.add(
+        {.position = 60.0F, .type = std::string(level::EVENT_BOSS), .params = {{"prefab", std::string("boss_core")}}});
+    built->timeline.add({.position = 60.0F,
+                         .type = std::string(level::EVENT_SCROLL),
+                         .params = {{"speed", static_cast<double>(SLOW_SPEED)}}});
+    built->timeline.add({.position = 60.0F, .type = std::string(level::EVENT_END), .params = {}});
+    return built;
+}
+
+/** @brief Room playing `bossThenEndLevel()`. */
+class BossThenEndTest : public GameplayTest {
+  protected:
+    BossThenEndTest() : GameplayTest(bossThenEndLevel()) {}
+
+    /** @brief The bosses alive. */
+    [[nodiscard]] std::vector<ecs::Entity> bosses() { return entitiesOf(game::KIND_BOSS_CORE); }
+};
+
 }  // namespace
 
 TEST_F(GameplayTest, LevelSpawnsEnemiesAtTheirScrollDistance) {
@@ -313,6 +335,33 @@ TEST_F(BossFightTest, ShotsWearTheBossDownThenTheScrollResumes) {
     EXPECT_EQ(gameplay().score(0), POINTS_PER_KILL);
     run(FIXED_DT * 2);
     EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
+}
+
+TEST_F(BossThenEndTest, EventsInTheSameStepAsTheBossWaitForTheFight) {
+    run(1.1F);
+    ASSERT_EQ(bosses().size(), 1U);
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F) << "the scroll event must not restart the scroll mid-fight";
+
+    run(5.0F);
+    EXPECT_EQ(bosses().size(), 1U) << "the end event must not restart the level while the boss is alive";
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F);
+}
+
+TEST_F(BossThenEndTest, WaitingEventsPlayOnceTheBossIsDestroyed) {
+    run(1.1F);
+    const auto spawned = bosses();
+    ASSERT_EQ(spawned.size(), 1U);
+    registry().killEntity(spawned.front());
+
+    // The scroll event sets the slow speed, then the end restarts the level at its initial speed.
+    run(FIXED_DT * 2);
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
+    EXPECT_TRUE(bosses().empty());
+
+    // The restarted level reaches its boss again: one boss, not two.
+    run(1.1F);
+    EXPECT_EQ(bosses().size(), 1U);
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F);
 }
 
 TEST_F(TerrainTest, TerrainEntersFromTheRightColumnByColumn) {
