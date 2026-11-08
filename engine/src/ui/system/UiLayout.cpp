@@ -26,6 +26,24 @@ namespace ui {
 
 namespace {
 
+/** @brief Scratch buffers of `computeLayout`. */
+struct LayoutScratch {
+    /** @brief Elements laid out against the screen. */
+    std::vector<ecs::Entity> roots;
+    /** @brief Elements waiting to be laid out, with their container. */
+    std::vector<std::pair<ecs::Entity, UiScreenRect>> stack;
+};
+
+/**
+ * @brief Gets the scratch buffers of this thread; they keep their capacity between frames, so a steady UI lays out
+ *        without allocating. One set per thread, since several engines may lay out at once.
+ * @return The buffers.
+ */
+LayoutScratch& layoutScratch() {
+    thread_local LayoutScratch scratch;
+    return scratch;
+}
+
 /**
  * @brief Checks whether an element is laid out against the screen rather than against a parent element.
  * @param registry Registry owning the element.
@@ -104,16 +122,16 @@ UiSize elementSize(const ecs::Registry& registry, ecs::Entity entity, const UiTe
 void computeLayout(ecs::Registry& registry, const UiScreenRect& screen, const UiTextMeasure& measure,
                    std::vector<UiLayoutNode>& out) {
     out.clear();
-    // Scratch buffers keep their capacity between frames: a steady UI lays out without allocating.
-    thread_local std::vector<ecs::Entity> roots;
-    thread_local std::vector<std::pair<ecs::Entity, UiScreenRect>> stack;
+    LayoutScratch& scratch = layoutScratch();
+    std::vector<ecs::Entity>& roots = scratch.roots;
+    std::vector<std::pair<ecs::Entity, UiScreenRect>>& stack = scratch.stack;
     roots.clear();
     stack.clear();
 
     const auto* hidden = static_cast<const ecs::Registry&>(registry).findComponents<ecs::Hidden>();
     const auto isHidden = [hidden](ecs::Entity entity) { return hidden != nullptr && hidden->contains(entity); };
 
-    registry.runSystem<UiAnchor>([&registry, &isHidden](ecs::Entity entity, const UiAnchor& /*anchor*/) {
+    registry.runSystem<UiAnchor>([&registry, &isHidden, &roots](ecs::Entity entity, const UiAnchor& /*anchor*/) {
         if (!isHidden(entity) && isLayoutRoot(registry, entity)) {
             roots.push_back(entity);
         }
@@ -121,7 +139,7 @@ void computeLayout(ecs::Registry& registry, const UiScreenRect& screen, const Ui
 
     auto* lists =
         registry.findComponents<UiScrollList>() != nullptr ? &registry.getComponents<UiScrollList>() : nullptr;
-    const auto pushChild = [&registry, &isHidden](ecs::Entity child, const UiScreenRect& container) {
+    const auto pushChild = [&registry, &isHidden, &stack](ecs::Entity child, const UiScreenRect& container) {
         if (registry.isAlive(child) && registry.hasComponent<UiAnchor>(child) && !isHidden(child)) {
             stack.emplace_back(child, container);
         }

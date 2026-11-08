@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include <optional>
 #include <string_view>
+#include <utility>
 
 #include "ClientOptions.hpp"
 #include "core/IPlugin.hpp"
