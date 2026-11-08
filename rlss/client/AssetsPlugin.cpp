@@ -39,12 +39,15 @@ void AssetsPlugin::build(engine::PluginBuilder& builder) {
 void AssetsPlugin::init(engine::Engine& engine) {
     auto& manager = engine.registry().getResource<assets::AssetManager>();
     manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
-    // A missing file is drawn as the checkerboard (the game stays playable), but always reported.
+    // A missing file is drawn as the checkerboard (the game stays playable), but always reported. A file absent
+    // from its directory is not even declared by the preload: it gets the checkerboard too.
     const auto texture = [&manager](const std::string_view alias) {
-        if (manager.status<assets::Texture>(alias) != assets::AssetStatus::Loaded) {
+        const assets::AssetStatus status = manager.status<assets::Texture>(alias);
+        if (status != assets::AssetStatus::Loaded) {
             rtype::log::warning(LOG_TAG, "texture '", alias, "' not loaded (run the client from the repository root)");
         }
-        return manager.get<assets::Texture>(alias);
+        return status == assets::AssetStatus::Unknown ? manager.fallback<assets::Texture>()
+                                                      : manager.get<assets::Texture>(alias);
     };
     const auto isDeclared = [&manager](const std::string& alias) {
         return manager.status<assets::Texture>(alias) != assets::AssetStatus::Unknown;

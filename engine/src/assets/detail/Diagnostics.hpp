@@ -16,7 +16,10 @@ namespace assets::detail {
 /** @brief Warnings kept at most; older ones are dropped, so a script looping on a bad call cannot grow memory. */
 inline constexpr std::size_t MAX_KEPT_WARNINGS = 256;
 
-/** @brief Distinct keys `warnOnce` remembers at most; past it, every warning is printed again. */
+/**
+ * @brief Distinct keys `warnOnce` remembers at most; past it, keys already seen stay silent and new ones are warned
+ * every time.
+ */
 inline constexpr std::size_t MAX_WARN_ONCE_KEYS = 1024;
 
 /** @brief Collects the warnings of the asset manager. */
@@ -50,8 +53,8 @@ class Diagnostics {
   private:
     /** @brief Warnings kept, oldest first. */
     std::deque<std::string> _warnings;
-    /** @brief Keys already reported by `warnOnce`. */
-    std::unordered_set<std::string> _onceKeys;
+    /** @brief Hashes of the keys already reported by `warnOnce`: bounded memory whatever the key sizes. */
+    std::unordered_set<std::size_t> _onceKeys;
 };
 
 }  // namespace assets::detail

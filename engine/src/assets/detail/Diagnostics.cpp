@@ -1,5 +1,7 @@
 #include "assets/detail/Diagnostics.hpp"
 
+#include <cstddef>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -16,10 +18,12 @@ void Diagnostics::warn(std::string message) {
 }
 
 void Diagnostics::warnOnce(const std::string_view key, std::string message) {
+    const std::size_t hash = std::hash<std::string_view>{}(key);
+    if (_onceKeys.contains(hash)) {
+        return;
+    }
     if (_onceKeys.size() < MAX_WARN_ONCE_KEYS) {
-        if (!_onceKeys.emplace(key).second) {
-            return;
-        }
+        _onceKeys.insert(hash);
     }
     warn(std::move(message));
 }

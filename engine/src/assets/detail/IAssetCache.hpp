@@ -121,6 +121,9 @@ class IAssetCache {
 
     /** @brief Removes the declarations still stale after the hot reload: the script no longer makes them. */
     virtual void dropStaleDeclarations() = 0;
+
+    /** @brief Keeps the stale declarations as they were: the hot reload failed, nothing is replaced. */
+    virtual void keepStaleDeclarations() = 0;
 };
 
 }  // namespace assets::detail

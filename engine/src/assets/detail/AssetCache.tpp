@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -115,7 +114,8 @@ AssetCache<Kind>::Id AssetCache<Kind>::load(const std::string_view aliasOrPath, 
         index = declare({}, aliasOrPath, group, options);
     } else if (const auto it = _byAlias.find(aliasOrPath); it != _byAlias.end()) {
         index = it->second;
-        addDeclaration(*index, {}, group);
+        // Under the alias, so that undeclaring or rebinding it also takes this group's hold away.
+        addDeclaration(*index, aliasOrPath, group);
     } else {
         // Not a path (no '/', '\' or '.'): a typo in an alias, never a file to look for on the disk.
         _context->diagnostics.warnOnce(
@@ -199,7 +199,19 @@ std::size_t AssetCache<Kind>::preloadAny(const std::filesystem::path& directory,
     }
     std::size_t taken = 0;
     for (const std::filesystem::path& file : files) {
-        if (declare(toUtf8(file.stem()), toUtf8(file), group, options)) {
+        const std::string alias = toUtf8(file.stem());
+        const std::string path = toUtf8(file);
+        if (const std::optional<std::size_t> owner = liveAliasOwner(alias)) {
+            const std::optional<std::string> normalized = normalizeAssetPath(path);
+            if (normalized && _entries[*owner].key != cache_detail::entryKey(*normalized, options)) {
+                // "ship.jpg" next to "ship.png", or an alias another declaration uses: never steal it.
+                _context->diagnostics.warn(std::string(Kind::NAME) + " " + quoteForLog(path, MAX_PATH_LENGTH) +
+                                           ": alias " + quoteForLog(alias) + " already names " + _entries[*owner].path +
+                                           ", file skipped");
+                continue;
+            }
+        }
+        if (declare(alias, path, group, options)) {
             ++taken;
         }
     }
@@ -291,7 +303,7 @@ template <AssetKind Kind>
 void AssetCache<Kind>::markScriptDeclarationsStale() {
     for (Entry& entry : _entries) {
         for (Declaration& declaration : entry.declarations) {
-            declaration.stale = declaration.fromScript;
+            declaration.stale = declaration.byScript;
         }
     }
 }
@@ -299,8 +311,26 @@ void AssetCache<Kind>::markScriptDeclarationsStale() {
 template <AssetKind Kind>
 void AssetCache<Kind>::dropStaleDeclarations() {
     for (std::size_t index = 0; index < _entries.size(); ++index) {
-        if (_entries[index].used) {
-            removeDeclarations(index, [](const Declaration& declaration) { return declaration.stale; });
+        if (!_entries[index].used) {
+            continue;
+        }
+        // Only the script's part goes: a declaration C++ also made stays.
+        for (Declaration& declaration : _entries[index].declarations) {
+            if (declaration.stale) {
+                declaration.byScript = false;
+                declaration.stale = false;
+            }
+        }
+        removeDeclarations(index,
+                           [](const Declaration& declaration) { return !declaration.byCode && !declaration.byScript; });
+    }
+}
+
+template <AssetKind Kind>
+void AssetCache<Kind>::keepStaleDeclarations() {
+    for (Entry& entry : _entries) {
+        for (Declaration& declaration : entry.declarations) {
+            declaration.stale = false;
         }
     }
 }
@@ -312,7 +342,7 @@ void AssetCache<Kind>::setLoader(AssetLoader<Kind> loader) {
     }
     _loader.emplace(std::move(loader));
     if (_loader->reserve) {
-        Id last = Kind::NONE;
+        Id last = _highestHandle;
         for (const Entry& entry : _entries) {
             last = std::max(last, entry.lastId);
         }
@@ -364,6 +394,18 @@ std::optional<std::size_t> AssetCache<Kind>::find(const std::string_view aliasOr
 }
 
 template <AssetKind Kind>
+std::optional<std::size_t> AssetCache<Kind>::liveAliasOwner(const std::string_view alias) const {
+    const auto it = _byAlias.find(alias);
+    if (it == _byAlias.end()) {
+        return std::nullopt;
+    }
+    const bool live = std::ranges::any_of(_entries[it->second].declarations, [alias](const Declaration& declaration) {
+        return declaration.alias == alias && !declaration.stale;
+    });
+    return live ? std::optional<std::size_t>(it->second) : std::nullopt;
+}
+
+template <AssetKind Kind>
 void AssetCache<Kind>::acquire(const std::size_t index, const std::string_view group) {
     Entry& entry = _entries[index];
     cache_detail::addUnique(entry.holders, group);
@@ -387,16 +429,22 @@ template <AssetKind Kind>
 void AssetCache<Kind>::addDeclaration(const std::size_t index, const std::string_view alias,
                                       const std::string_view group) {
     Entry& entry = _entries[index];
+    const bool byScript = _context->scriptWindow;
     const auto it = std::ranges::find_if(entry.declarations, [&](const Declaration& declaration) {
         return declaration.alias == alias && declaration.group == group;
     });
     if (it != entry.declarations.end()) {
-        it->stale = false;
-        it->fromScript = it->fromScript || _context->scriptWindow;
+        if (byScript) {
+            it->byScript = true;
+            it->stale = false;
+        } else {
+            it->byCode = true;
+        }
     } else {
         entry.declarations.push_back(Declaration{.alias = std::string(alias),
                                                  .group = std::string(group),
-                                                 .fromScript = _context->scriptWindow,
+                                                 .byCode = !byScript,
+                                                 .byScript = byScript,
                                                  .stale = false});
     }
     cache_detail::addUnique(_byGroup[std::string(group)], index);
@@ -448,20 +496,41 @@ void AssetCache<Kind>::removeDeclarations(const std::size_t index, const Predica
 
 template <AssetKind Kind>
 void AssetCache<Kind>::moveAlias(const std::size_t from, const std::size_t to, const std::string_view alias) {
-    std::vector<std::string> groups;
+    std::vector<Declaration> moved;
     for (const Declaration& declaration : _entries[from].declarations) {
         if (declaration.alias == alias) {
-            groups.push_back(declaration.group);
+            moved.push_back(declaration);
         }
     }
-    // Declared on the new entry first, so a group holding both never sees the alias unloaded in between.
-    for (const std::string& group : groups) {
-        addDeclaration(to, alias, group);
-        if (_context->isGroupLoaded(group)) {
-            acquire(to, group);
-        }
-    }
+    const Id previousHandle = _entries[from].lastId;
+    // Holds made by `load` in a group that is not "loaded" move too.
+    const std::vector<std::string> previousHolders = _entries[from].holders;
     removeDeclarations(from, [alias](const Declaration& declaration) { return declaration.alias == alias; });
+    // The old file is gone: the new one takes its handle, so the entities and C++ code that kept it now show the new
+    // file instead of nothing (hot reload of a path).
+    Entry& target = _entries[to];
+    if (!_entries[from].used && target.id == Kind::NONE && target.lastId == Kind::NONE) {
+        target.lastId = previousHandle;
+    }
+    // Declarations move with their ownership and staleness: a group the script no longer names stays stale.
+    for (Declaration& declaration : moved) {
+        Entry& entry = _entries[to];
+        const auto it = std::ranges::find_if(entry.declarations, [&](const Declaration& existing) {
+            return existing.alias == declaration.alias && existing.group == declaration.group;
+        });
+        if (it != entry.declarations.end()) {
+            it->byCode = it->byCode || declaration.byCode;
+            it->byScript = it->byScript || declaration.byScript;
+            it->stale = it->stale && declaration.stale;
+        } else {
+            entry.declarations.push_back(declaration);
+        }
+        cache_detail::addUnique(_byGroup[declaration.group], to);
+        if (_context->isGroupLoaded(declaration.group) ||
+            std::ranges::find(previousHolders, declaration.group) != previousHolders.end()) {
+            acquire(to, declaration.group);
+        }
+    }
 }
 
 template <AssetKind Kind>
@@ -479,6 +548,7 @@ void AssetCache<Kind>::ensureLoaded(Entry& entry) {
         return;
     }
     entry.lastId = entry.id;
+    _highestHandle = std::max(_highestHandle, entry.id);
 }
 
 template <AssetKind Kind>

@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <utility>
@@ -16,8 +17,14 @@
 
 namespace ecs {
 
-/** @brief Most empty slots a `preferred` handle or a reservation may add past the end of a store. */
+/** @brief Most empty slots a `preferred` handle may add past the end of a store. */
 inline constexpr std::size_t MAX_SLOT_GAP = 4096;
+
+/**
+ * @brief Highest handle a reservation may keep, whatever the store's size: a replacement store starts empty, and the
+ * handles of a long run must still be kept (65536 slots of a few dozen bytes each at most).
+ */
+inline constexpr std::size_t MAX_RESERVED_SLOTS = 65536;
 
 /**
  * @brief Stores a loaded slot, in the slot of `preferred` when that one is free.
@@ -32,7 +39,7 @@ inline constexpr std::size_t MAX_SLOT_GAP = 4096;
 template <typename Slot, std::unsigned_integral Id>
 [[nodiscard]] Id placeInSlot(std::vector<Slot>& slots, Slot slot, const Id preferred) {
     const auto wanted = static_cast<std::size_t>(preferred);
-    if (wanted != 0 && wanted <= slots.size() + MAX_SLOT_GAP) {
+    if (wanted != 0 && wanted <= std::max(slots.size() + MAX_SLOT_GAP, MAX_RESERVED_SLOTS)) {
         if (wanted > slots.size()) {
             slots.resize(wanted);
         }
@@ -56,7 +63,7 @@ template <typename Slot, std::unsigned_integral Id>
 template <typename Slot, std::unsigned_integral Id>
 void reserveSlots(std::vector<Slot>& slots, const Id last) {
     const auto wanted = static_cast<std::size_t>(last);
-    if (wanted > slots.size() && wanted <= slots.size() + MAX_SLOT_GAP) {
+    if (wanted > slots.size() && wanted <= std::max(slots.size() + MAX_SLOT_GAP, MAX_RESERVED_SLOTS)) {
         slots.resize(wanted);
     }
 }

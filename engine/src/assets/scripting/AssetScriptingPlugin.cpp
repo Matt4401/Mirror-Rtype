@@ -48,6 +48,20 @@ AssetManager* managerOf(const scripting::ForeignCall& call) {
 }
 
 /**
+ * @brief Tells whether a foreign call comes from the staging VM a hot reload validates a modified module in.
+ *
+ * That VM has the same bindings as the live one, but what it runs must not change anything: if the module is
+ * rejected, the live declarations and loaded assets stay as they are. Mutating calls do nothing there and answer as
+ * if they had succeeded, so that a script checking their result still validates.
+ * @param call Foreign call.
+ * @return True for a call from another VM than the script system's live one.
+ */
+bool isStagingCall(const scripting::ForeignCall& call) {
+    auto* scripts = call.userData<systems::ScriptSystem>();
+    return scripts != nullptr && call.raw() != scripts->getVm().raw();
+}
+
+/**
  * @brief Reads a string argument.
  * @param call Foreign call.
  * @param slot Argument slot.
@@ -101,7 +115,9 @@ std::string_view kindArgument(const scripting::ForeignCall& call, const AssetMan
  * @return The normalised path, or nothing (warning).
  */
 std::optional<std::string> confinedPath(AssetManager& manager, const std::string_view path) {
-    std::optional<std::string> normalized = normalizeAssetPath(path);
+    // The working directory itself, for a directory preload.
+    std::optional<std::string> normalized =
+        fromUtf8(path).lexically_normal() == "." ? std::optional<std::string>(".") : normalizeAssetPath(path);
     if (!normalized) {
         manager.warn("invalid path " + quoteForLog(path));
         return std::nullopt;
@@ -116,11 +132,14 @@ std::optional<std::string> confinedPath(AssetManager& manager, const std::string
 
 /**
  * @brief Builds the load options of a script declaration.
+ * @param kind Kind name: only textures are filtered, so other kinds always get the default options (one entry, not
+ * two, for a sound declared "smooth").
  * @param smooth True for a smooth (mipmapped) texture.
  * @return Options.
  */
-LoadOptions optionsOf(const bool smooth) {
-    return LoadOptions{.filter = smooth ? TextureFilter::Smooth : TextureFilter::Nearest};
+LoadOptions optionsOf(const std::string_view kind, const bool smooth) {
+    const bool filtered = smooth && kind == Texture::NAME;
+    return LoadOptions{.filter = filtered ? TextureFilter::Smooth : TextureFilter::Nearest};
 }
 
 /**
@@ -167,12 +186,16 @@ void assetsDeclare(const scripting::ForeignCall& call) {
     const std::string_view path = stringArgument(call, 3, "path");
     const std::string_view group = stringArgument(call, 4, "group");
     const bool smooth = boolArgument(call, 5, "smooth");
+    if (isStagingCall(call)) {
+        call.ret(true);
+        return;
+    }
     if (manager == nullptr) {
         call.ret(false);
         return;
     }
     const std::optional<std::string> confined = confinedPath(*manager, path);
-    call.ret(confined && manager->declare(kind, alias, *confined, group, optionsOf(smooth)));
+    call.ret(confined && manager->declare(kind, alias, *confined, group, optionsOf(kind, smooth)));
 }
 
 /**
@@ -185,7 +208,7 @@ void assetsPreload(const scripting::ForeignCall& call) {
     const std::string_view directory = stringArgument(call, 2, "directory");
     const std::string_view group = stringArgument(call, 3, "group");
     const bool smooth = boolArgument(call, 4, "smooth");
-    if (manager == nullptr) {
+    if (manager == nullptr || isStagingCall(call)) {
         call.ret(0.0);
         return;
     }
@@ -194,7 +217,7 @@ void assetsPreload(const scripting::ForeignCall& call) {
         call.ret(0.0);
         return;
     }
-    call.ret(static_cast<double>(manager->preloadDirectory(kind, *confined, group, optionsOf(smooth))));
+    call.ret(static_cast<double>(manager->preloadDirectory(kind, fromUtf8(*confined), group, optionsOf(kind, smooth))));
 }
 
 /**
@@ -205,6 +228,10 @@ void assetsUndeclare(const scripting::ForeignCall& call) {
     AssetManager* manager = managerOf(call);
     const std::string_view kind = kindArgument(call, manager);
     const std::string_view alias = stringArgument(call, 2, "alias");
+    if (isStagingCall(call)) {
+        call.ret(true);
+        return;
+    }
     call.ret(manager != nullptr && manager->undeclare(kind, alias));
 }
 
@@ -262,6 +289,10 @@ void assetsHasKind(const scripting::ForeignCall& call) {
  */
 void assetsLoadGroup(const scripting::ForeignCall& call) {
     const std::string_view group = stringArgument(call, 1, "group");
+    if (isStagingCall(call)) {
+        call.ret(true);
+        return;
+    }
     AssetManager* manager = managerOf(call);
     call.ret(manager != nullptr && manager->loadGroup(group));
 }
@@ -277,7 +308,7 @@ void assetsLoadGroupStep(const scripting::ForeignCall& call) {
         throw std::invalid_argument("Assets: maxLoads must be a number of at least 0");
     }
     AssetManager* manager = managerOf(call);
-    if (manager == nullptr) {
+    if (manager == nullptr || isStagingCall(call)) {
         call.ret(true);
         return;
     }
@@ -301,7 +332,8 @@ void assetsGroupProgress(const scripting::ForeignCall& call) {
  */
 void assetsUnloadGroup(const scripting::ForeignCall& call) {
     const std::string_view group = stringArgument(call, 1, "group");
-    if (AssetManager* manager = managerOf(call); manager != nullptr && scriptMayRelease(*manager, group)) {
+    if (AssetManager* manager = managerOf(call);
+        manager != nullptr && !isStagingCall(call) && scriptMayRelease(*manager, group)) {
         manager->unloadGroup(group);
     }
     call.retNull();
@@ -313,7 +345,8 @@ void assetsUnloadGroup(const scripting::ForeignCall& call) {
  */
 void assetsForgetGroup(const scripting::ForeignCall& call) {
     const std::string_view group = stringArgument(call, 1, "group");
-    if (AssetManager* manager = managerOf(call); manager != nullptr && scriptMayRelease(*manager, group)) {
+    if (AssetManager* manager = managerOf(call);
+        manager != nullptr && !isStagingCall(call) && scriptMayRelease(*manager, group)) {
         manager->forgetGroup(group);
     }
     call.retNull();
@@ -369,7 +402,7 @@ void AssetScriptingPlugin::init(engine::Engine& engine) {
     ecs::Registry& registry = engine.registry();
     auto& manager = registry.getResource<AssetManager>();
     // A hot reload runs every module again: the declarations they no longer make are dropped at the end.
-    _resetListener = scripts.addVmResetListener([&registry](const systems::VmResetPhase phase) {
+    _resetListener = scripts.addVmResetListener([&registry, &scripts](const systems::VmResetPhase phase) {
         if (!registry.hasResource<AssetManager>()) {
             return;
         }
@@ -377,7 +410,9 @@ void AssetScriptingPlugin::init(engine::Engine& engine) {
         if (phase == systems::VmResetPhase::Before) {
             assets.beginScriptDeclarations(true);
         } else {
-            assets.endScriptDeclarations();
+            // A module that failed to run again did not reach all its declarations: dropping them would unload
+            // assets still in use, so nothing is replaced then.
+            assets.endScriptDeclarations(scripts.lastReplaySucceeded());
         }
     });
 

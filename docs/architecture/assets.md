@@ -126,14 +126,19 @@ unknown alias, never looked for on the disk.
 **Hot reload.** Declaring the same asset again changes nothing, so the modules can be hot reloaded: they run again and
 nothing is loaded twice. The declarations made by scripts while they run (module top level) are replaced by the new
 run: a line deleted from the script releases its asset at the next reload. An alias declared again for another file
-names the new file in all its groups (with a warning), and the old file is released if nothing else needs it.
-Declarations made from C++, or from script callbacks such as `onEnter`, are kept.
+names the new file in all its groups (with a warning), the old file is released if nothing else needs it, and the new
+file takes the old one's handle, so the entities that kept it draw the new file. Declarations made from C++, or from
+script callbacks such as `onEnter`, are kept, even when a script also made them. A modified module is first validated
+in a staging VM, where `core/Assets` changes nothing; if the reload is rejected, or a module fails while it runs again,
+no declaration is dropped.
 
 **Untrusted input.** A value of the wrong type (or an unknown kind) aborts the calling fiber with an error. An empty,
 too long (`MAX_PATH_LENGTH`, `MAX_NAME_LENGTH`) or NUL-holding path or name is rejected with a warning, and so is a
 path leaving the working directory (absolute, drive letter, or starting with `..`). Scripts cannot unload or forget the
 `"global"` group, which C++ code relies on for the whole run. A directory preload takes at most `MAX_DIRECTORY_FILES`
-files. Warnings cut long names, so a script cannot flood the logs.
+files (`"."` names the working directory) and skips a file whose alias already names another file (`ship.jpg` next to
+`ship.png`, or an alias another group declared). The `smooth` option only applies to textures. Symbolic links are
+followed: the declaration scripts are trusted game data, not downloaded content. Warnings cut long names, so a script cannot flood the logs.
 
 ## Using assets from C++
 

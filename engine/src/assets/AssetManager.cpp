@@ -27,6 +27,7 @@ AssetManager::AssetManager() : _owner(std::this_thread::get_id()) {
 bool AssetManager::hasKind(const std::string_view kind) const { return findCache(kind) != nullptr; }
 
 std::vector<std::string_view> AssetManager::kinds() const {
+    checkThread();
     std::vector<std::string_view> names;
     names.reserve(_caches.size());
     for (const auto& cache : _caches) {
@@ -136,15 +137,20 @@ void AssetManager::beginScriptDeclarations(const bool replacing) {
     _context.scriptWindow = true;
 }
 
-void AssetManager::endScriptDeclarations() {
+void AssetManager::endScriptDeclarations(const bool dropStale) {
     checkThread();
     _context.scriptWindow = false;
     for (const auto& cache : _caches) {
-        cache->dropStaleDeclarations();
+        if (dropStale) {
+            cache->dropStaleDeclarations();
+        } else {
+            cache->keepStaleDeclarations();
+        }
     }
 }
 
 detail::IAssetCache* AssetManager::findCache(const std::string_view kind) const {
+    checkThread();
     const auto it = std::ranges::find_if(_caches, [kind](const auto& cache) { return cache->kindName() == kind; });
     return it != _caches.end() ? it->get() : nullptr;
 }

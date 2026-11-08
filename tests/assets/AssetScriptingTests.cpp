@@ -258,6 +258,44 @@ TEST_F(AssetScriptingTest, HotReloadingWithoutALineReleasesItsAsset) {
     EXPECT_EQ(textures->loads.size(), 1U);
 }
 
+TEST_F(AssetScriptingTest, ARejectedHotReloadChangesNothing) {
+    // Validated in the staging VM, then rejected: its undeclare must not reach the live manager.
+    declarations.write(std::string(DECLARATIONS_SOURCE) +
+                       "Assets.undeclare(\"texture\", \"ship\")\nFiber.abort(\"broken\")\n");
+    EXPECT_FALSE(scripts().reloadModifiedScripts());
+    EXPECT_EQ(manager().status<assets::Texture>("ship"), assets::AssetStatus::Loaded);
+    EXPECT_TRUE(textures->unloads.empty());
+}
+
+TEST_F(AssetScriptingTest, AHotReloadThatFailsToReplayKeepsTheDeclarations) {
+    // Passes in the staging VM (declarations answer true there) but aborts in the live one; it no longer declares
+    // the theme, which must stay since the replay never finished.
+    std::string source(DECLARATIONS_SOURCE);
+    const std::string line = "Assets.music(\"theme\", \"music/theme.ogg\")\n";
+    source.erase(source.find(line), line.size());
+    source += "if (!Assets.texture(\"bad\", \"\")) Fiber.abort(\"live run fails\")\n";
+    declarations.write(source);
+    scripts().reloadModifiedScripts();
+    EXPECT_FALSE(scripts().lastReplaySucceeded());
+    EXPECT_EQ(manager().status<assets::Music>("theme"), assets::AssetStatus::Loaded);
+    EXPECT_TRUE(musics->unloads.empty());
+}
+
+TEST_F(AssetScriptingTest, TheWorkingDirectoryCanBePreloaded) {
+    manager().clearWarnings();
+    ASSERT_TRUE(run(R"(Assets.preloadTextures(".", "scratch"))"));
+    EXPECT_TRUE(manager().warnings().empty());
+}
+
+TEST_F(AssetScriptingTest, OnlyTexturesTakeTheSmoothOption) {
+    ASSERT_TRUE(run(R"(
+        Assets.declare_("sound", "a", "sounds/a.wav", "global", true)
+        Assets.declare_("sound", "b", "sounds/a.wav", "global", false)
+    )"));
+    // One entry, loaded once, for both declarations.
+    EXPECT_EQ(sounds->loads, std::vector<std::string>{"sounds/a.wav"});
+}
+
 TEST(AssetScriptingPlugin, AMissingDeclarationModuleIsReported) {
     engine::Engine engine;
     engine.addPlugin<scripting::ScriptPlugin>()

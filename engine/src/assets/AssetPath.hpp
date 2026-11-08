@@ -74,6 +74,13 @@ inline constexpr std::size_t MAX_DIRECTORY_FILES = 1024;
 [[nodiscard]] std::string toUtf8(const std::filesystem::path& path);
 
 /**
+ * @brief Builds a path from UTF-8 text, whatever the platform's native encoding.
+ * @param text UTF-8 path.
+ * @return Path.
+ */
+[[nodiscard]] std::filesystem::path fromUtf8(std::string_view text);
+
+/**
  * @brief Cuts a name or path for a log line, so that a script cannot fill the logs with huge strings.
  * @param text Text to show.
  * @param limit Longest part kept, in bytes.

@@ -134,7 +134,9 @@ class AssetCache final : public IAssetCache {
                            const LoadOptions& options) override;
     /** @copydoc IAssetCache::handleOf */
     [[nodiscard]] std::uint64_t handleOf(std::string_view aliasOrPath) const override {
-        return static_cast<std::uint64_t>(get(aliasOrPath));
+        const Id id = get(aliasOrPath);
+        // 0 means "none" for scripts, whatever the kind's own `NONE`.
+        return id == Kind::NONE ? 0 : static_cast<std::uint64_t>(id);
     }
     /** @copydoc IAssetCache::statusOf */
     [[nodiscard]] AssetStatus statusOf(std::string_view aliasOrPath) const override;
@@ -154,6 +156,8 @@ class AssetCache final : public IAssetCache {
     void markScriptDeclarationsStale() override;
     /** @copydoc IAssetCache::dropStaleDeclarations */
     void dropStaleDeclarations() override;
+    /** @copydoc IAssetCache::keepStaleDeclarations */
+    void keepStaleDeclarations() override;
 
   private:
     /** @brief One reason for an entry to exist: a group needs it, maybe under an alias. */
@@ -162,9 +166,11 @@ class AssetCache final : public IAssetCache {
         std::string alias;
         /** @brief Group needing the entry. */
         std::string group;
+        /** @brief Made from C++ (or a script callback): kept by hot reloads. */
+        bool byCode = false;
         /** @brief Made while a declaration script ran: a hot reload of the script may drop it. */
-        bool fromScript = false;
-        /** @brief Not made again (yet) by the hot reload in progress. */
+        bool byScript = false;
+        /** @brief The script's part is not made again (yet) by the hot reload in progress. */
         bool stale = false;
     };
 
@@ -196,6 +202,13 @@ class AssetCache final : public IAssetCache {
      * @return The entry, or nothing.
      */
     [[nodiscard]] std::optional<std::size_t> find(std::string_view aliasOrPath) const;
+
+    /**
+     * @brief Finds the entry an alias names through a declaration not being replaced by a hot reload.
+     * @param alias Alias.
+     * @return The entry, or nothing.
+     */
+    [[nodiscard]] std::optional<std::size_t> liveAliasOwner(std::string_view alias) const;
 
     /**
      * @brief Makes `group` hold an entry and loads it if needed.
@@ -289,6 +302,11 @@ class AssetCache final : public IAssetCache {
     std::optional<AssetLoader<Kind>> _loader;
     /** @brief Fallback handle of the loader, once asked for. */
     std::optional<Id> _fallback;
+    /**
+     * @brief Highest handle any loader returned, freed entries included: reserved for the next loader, so a handle
+     * kept after its asset was forgotten never names another asset.
+     */
+    Id _highestHandle = Kind::NONE;
 };
 
 }  // namespace assets::detail

@@ -332,8 +332,12 @@ class AssetManager {
      */
     void beginScriptDeclarations(bool replacing);
 
-    /** @brief Closes the window opened by `beginScriptDeclarations`, dropping the stale declarations. */
-    void endScriptDeclarations();
+    /**
+     * @brief Closes the window opened by `beginScriptDeclarations`.
+     * @param dropStale True to drop the stale declarations; false when the scripts failed to run again, so that
+     * the declarations they did not reach stay (and their assets stay loaded).
+     */
+    void endScriptDeclarations(bool dropStale = true);
 
     /**
      * @brief Reports a problem found by a caller of the manager (a bridge rejecting script input).
