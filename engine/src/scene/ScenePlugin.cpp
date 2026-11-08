@@ -1,5 +1,6 @@
 #include "scene/ScenePlugin.hpp"
 
+#include <exception>
 #include <stdexcept>
 
 #include "core/Engine.hpp"
@@ -41,9 +42,18 @@ void ScenePlugin::lateUpdate(engine::Engine& engine, const ecs::time::Time& time
 }
 
 void ScenePlugin::shutdown(engine::Engine& engine) {
-    _manager->clear();
+    // A throwing hook must not keep the manager registered or bound to the engine: finish, then report it.
+    std::exception_ptr error;
+    try {
+        _manager->clear();
+    } catch (...) {
+        error = std::current_exception();
+    }
     engine.mediator().removeService<SceneManager>();
     _manager->detach();
+    if (error) {
+        std::rethrow_exception(error);
+    }
 }
 
 }  // namespace scene

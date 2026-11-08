@@ -158,6 +158,9 @@ class Engine {
     /**
      * @brief Shuts down all initialized plugins in reverse topological order. This is final: `init()`, `run()` and
      * `advance()` do nothing afterwards.
+     *
+     * Every plugin is shut down even if an earlier one throws; the first error is then rethrown. The destructor,
+     * which calls it when it was not called, drops that error.
      */
     void shutdown();
 

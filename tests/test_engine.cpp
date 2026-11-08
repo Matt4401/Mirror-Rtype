@@ -70,6 +70,13 @@ class FailingInitPlugin final : public engine::IPlugin {
     void init(engine::Engine& /*engine*/) override { throw std::runtime_error("Simulated init failure"); }
 };
 
+class FailingShutdownPlugin final : public engine::IPlugin {
+  public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "FailingShutdownPlugin"; }
+    void build(engine::PluginBuilder& /*builder*/) override {}
+    void shutdown(engine::Engine& /*engine*/) override { throw std::runtime_error("shutdown"); }
+};
+
 class IndependentUserPlugin final : public engine::IPlugin {
   public:
     [[nodiscard]] std::string_view name() const noexcept override { return "IndependentUserPlugin"; }
@@ -140,6 +147,18 @@ TEST(Engine, RunPassesRealDeltaTimeToUpdate) {
     engineInstance.run();
 
     EXPECT_NEAR(recordedDt, 0.006944F, 0.0001F);
+}
+
+TEST(Engine, ShutdownReachesEveryPluginWhenOneThrows) {
+    std::vector<std::string> log;
+    engine::Engine engineInstance;
+    engineInstance.addPlugin<FailingShutdownPlugin>();
+    engineInstance.addPlugin<LifecycleRecorderPlugin>(log);
+    engineInstance.init();
+
+    EXPECT_THROW(engineInstance.shutdown(), std::runtime_error);
+    EXPECT_EQ(log.back(), "shutdown");
+    EXPECT_NO_THROW(engineInstance.shutdown());  // final: the second call does nothing
 }
 
 TEST(Engine, InitFailureReleasesAlreadyInitializedPlugins) {

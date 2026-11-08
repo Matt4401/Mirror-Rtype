@@ -6,6 +6,7 @@
 #include "core/Engine.hpp"
 
 #include <cstddef>
+#include <exception>
 #include <memory>
 #include <ranges>
 #include <typeindex>
@@ -25,7 +26,10 @@ Engine::Engine(ecs::time::Clock::TimeSource timeSource) : _clock(std::move(timeS
 
 Engine::~Engine() {
     if (_initialized) {
-        shutdown();
+        try {
+            shutdown();
+        } catch (...) {  // NOLINT(bugprone-empty-catch): a destructor cannot report it; call shutdown() to see it.
+        }
     }
 }
 
@@ -95,12 +99,23 @@ void Engine::shutdown() {
         return;
     }
 
+    // Every plugin shuts down even if an earlier one throws; the first error is rethrown at the end.
+    std::exception_ptr error;
     for (IPlugin* plugin : _pluginGraph.shutdownOrder()) {
-        plugin->shutdown(*this);
+        try {
+            plugin->shutdown(*this);
+        } catch (...) {
+            if (!error) {
+                error = std::current_exception();
+            }
+        }
     }
 
     _initialized = false;
     _shutdown = true;
+    if (error) {
+        std::rethrow_exception(error);
+    }
 }
 
 std::size_t Engine::advance() {

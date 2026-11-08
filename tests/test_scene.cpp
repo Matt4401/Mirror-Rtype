@@ -451,6 +451,52 @@ TEST_F(SceneTest, WhatDestroyListenersAddToAnExitingSceneIsReleasedToo) {
     EXPECT_EQ(runs, 0);
 }
 
+TEST_F(SceneTest, ExitDestroysLongChainsOfEntitiesSpawnedDuringTheExit) {
+    // Each destroyed member spawns the next one into the exiting scene, deeper than any fixed number of passes.
+    constexpr int CHAIN = 20;
+    SceneContext& context = manager().context(game);
+    std::vector<ecs::Entity> chain;
+    manager().get<GameScene>().onEnterHook = [&](SceneContext& ctx) { chain.push_back(ctx.spawn()); };
+    engine.registry().addDestroyListener([&](ecs::Entity entity) {
+        if (!chain.empty() && entity == chain.back() && chain.size() < CHAIN) {
+            chain.push_back(context.spawn());
+        }
+    });
+    manager().switchTo(game);
+    frame();
+
+    manager().switchTo(menu);
+    EXPECT_NO_THROW(manager().applyTransitions());
+    ASSERT_EQ(chain.size(), static_cast<std::size_t>(CHAIN));
+    for (const ecs::Entity entity : chain) {
+        EXPECT_FALSE(engine.registry().isAlive(entity));
+    }
+}
+
+TEST(SceneShutdown, ThrowingDestroyListenerStillDetachesTheManager) {
+    std::vector<std::string> log;
+    engine::Engine engine;
+    engine.addPlugin<scene::ScenePlugin>();
+    SceneManager& manager = engine.getPlugin<scene::ScenePlugin>().manager();
+    const SceneId game = manager.registerScene<GameScene>(log);
+    ecs::Entity owned = ecs::NULL_ENTITY;
+    manager.get<GameScene>().onEnterHook = [&](SceneContext& context) { owned = context.spawn(); };
+    engine.init();
+    engine.registry().addDestroyListener([&owned](ecs::Entity entity) {
+        if (entity == owned) {
+            throw std::runtime_error("destroy");
+        }
+    });
+    manager.switchTo(game);
+    (void)engine.advance();
+
+    EXPECT_THROW(engine.shutdown(), std::runtime_error);
+    EXPECT_FALSE(engine.registry().isAlive(owned));
+    EXPECT_FALSE(manager.isActive(game));
+    EXPECT_EQ(manager.engine(), nullptr);
+    EXPECT_FALSE(engine.mediator().getService<SceneManager>().has_value());
+}
+
 TEST_F(SceneTest, SceneSystemsCannotApplyOrClearTheStack) {
     bool cleared = false;
     manager().get<GameScene>().onEnterHook = [&](SceneContext& context) {
