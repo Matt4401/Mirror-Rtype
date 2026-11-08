@@ -33,18 +33,18 @@
 
 ## About the Project
 
-This project is part of the **Advanced C++** curriculum in the 3rd year of EPITECH. The objective is to design a generic, modular, and performant game engine utilizing an **Entity-Component-System (ECS)** architecture, and to implement a networked 2D shooter (**R-Type**) on top of it using an **authoritative server model**.
+This is the third-year EPITECH Advanced C++ project. We wrote a generic game engine built on an Entity-Component-System (ECS), then a networked 2D shooter (R-Type) on top of it, with an authoritative server. A second game, RLSS, runs on the same engine to check that the engine does not depend on R-Type.
 
 ---
 
 ## Key Features
 
-- **Custom ECS Architecture**: Cache-friendly sparse/dense storage with type-safe entity management and reactive lifecycle listeners.
-- **Authoritative Server**: Server-authoritative state synchronization, input validation, and collision management over UDP.
-- **Client Interpolation & Prediction**: Smooth rendering and lag compensation for high-latency connections.
-- **2D Physics Engine**: Rigid-body physics and collision detection powered by Box2D.
-- **Scripting Engine**: Extensible game logic and event scripting using Wren.
-- **Cross-Platform**: Seamless builds across Linux, Windows, and macOS via `xmake`.
+- ECS with sparse/dense component storage and listeners on component add and remove.
+- Authoritative server: it validates the inputs, runs the collisions and sends the world state over UDP.
+- Client prediction, reconciliation and interpolation, so the game stays playable with latency.
+- 2D physics and collision detection with Box2D.
+- Gameplay scripts in Wren.
+- Builds on Linux, Windows and macOS with `xmake`.
 
 ---
 
@@ -65,12 +65,12 @@ The project is fully self-contained using **xmake**, which automatically manages
 
 ## Quick Start
 
-> **Full Guide**: For detailed platform-specific setup and options, see the **[Getting Started Documentation](docs/getting-started/index.md)**.
+> Platform-specific setup and build options are in the [Getting Started documentation](docs/getting-started/index.md).
 
 ### Prerequisites
 
-- A **C++23** compliant compiler (`gcc` 13+, `clang` 16+, or MSVC 2022+).
-- **[xmake](https://xmake.io/)** (latest version recommended).
+- A C++23 compiler (`gcc` 13+, `clang` 16+, or MSVC 2022+).
+- [xmake](https://xmake.io/), a recent version.
 
 <details>
 <summary><b>Installing xmake</b></summary>
@@ -91,7 +91,7 @@ The project is fully self-contained using **xmake**, which automatically manages
 
 ### Installation & Build
 
-For comprehensive instructions, check the **[Building Guide](docs/getting-started/building.md)**.
+The [Building Guide](docs/getting-started/building.md) has the details.
 
 ```bash
 # 1. Clone the repository
@@ -162,19 +162,17 @@ The codebase is organized into modular libraries and applications:
 └── tests/         # Unit and integration test suites (GoogleTest)
 ```
 
-For an in-depth breakdown of each subsystem, see the **[Architecture Overview](docs/architecture/overview.md)**.
+Each module is described in the [Architecture Overview](docs/architecture/overview.md).
 
 ---
 
 ## Network Protocol
 
-The game uses a lightweight binary protocol over UDP designed for low-latency transmission:
+Lobby and session messages go over TCP; in-game inputs and world snapshots go over UDP. Both carry a small binary
+header followed by a Protobuf payload. The server checks every input it receives before applying it, and sends the
+world state to each client in its room.
 
-- Dedicated packet IDs with structured payloads.
-- Client inputs are validated server-side to prevent desynchronization.
-- State updates are broadcast to connected clients.
-
-Read the specifications:
+Specifications:
 
 - **[Network RFC](docs/protocol/rfc.txt)**
 - **[Packet Definitions](docs/protocol/packets.md)**
@@ -184,7 +182,7 @@ Read the specifications:
 
 ## Testing & Quality Assurance
 
-We maintain strict test coverage and code quality standards:
+The tests are GoogleTest suites, one binary per module:
 
 ```bash
 # Run all automated tests
@@ -214,7 +212,7 @@ pre-commit install
 ## Documentation
 
 The documentation is hosted at **<https://matt4401.github.io/Mirror-Rtype/>** (rebuilt on every push to `main`).
-It is written with **MkDocs Material** and **Doxygen**; to build it locally:
+It is written with MkDocs Material and Doxygen. To build it locally:
 
 ```bash
 # Install documentation dependencies
@@ -235,10 +233,9 @@ Browse the documentation topics:
 
 ## Contributing
 
-Contributions are welcome! Please follow our commit standards and guidelines before submitting a pull request:
-
-- Review **[CONTRIBUTING.md](CONTRIBUTING.md)** for our [Conventional Commits](https://www.conventionalcommits.org/) standards and pull request workflows.
-- Check our **[Development Workflow](docs/development/workflow.md)** and **[Coding Style Guide](docs/development/coding-style.md)**.
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/) and go through pull requests; see
+[CONTRIBUTING.md](CONTRIBUTING.md), the [development workflow](docs/development/workflow.md) and the
+[coding style](docs/development/coding-style.md).
 
 ---
 
