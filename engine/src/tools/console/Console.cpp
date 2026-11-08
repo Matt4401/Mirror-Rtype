@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <exception>
+#include <filesystem>
 #include <map>
 #include <optional>
 #include <span>
@@ -17,6 +18,7 @@
 #include "tools/console/CommandLine.hpp"
 #include "tools/console/ConsoleHelpers.hpp"
 #include "tools/console/ConsoleTypes.hpp"
+#include "tools/console/ScriptFile.hpp"
 #include "tools/cvars/CVar.hpp"
 #include "tools/cvars/CVarManager.hpp"
 #include "tools/cvars/CVarTypes.hpp"
@@ -52,46 +54,152 @@ bool Console::execute(std::string_view line) {
         return true;
     }
     print(OutputLevel::Echo, "> " + detail::printable(line));
+    if (validateCommandLine(line)) {
+        remember(line);
+    }
+    return run(line);
+}
+
+bool Console::run(std::string_view line) {
+    if (detail::isBlankLine(line)) {
+        return true;
+    }
+    if (auto valid = validateCommandLine(line); !valid) {
+        print(OutputLevel::Error, valid.error());
+        return false;
+    }
+    if (const std::optional<bool> raw = runRaw(line)) {
+        return *raw;
+    }
     auto statements = splitCommandLine(line);
     if (!statements) {
         print(OutputLevel::Error, statements.error());
         return false;
     }
-    remember(line);
     bool ok = true;
     for (const Statement& statement : *statements) {
-        ok = run(statement) && ok;
+        ok = runStatement(statement) && ok;
     }
     return ok;
 }
 
-bool Console::run(const std::vector<std::string>& statement) {
+std::optional<bool> Console::runRaw(std::string_view line) {
+    const std::size_t start = line.find_first_not_of(" \t");
+    const std::size_t end = std::min(line.find_first_of(" \t", start), line.size());
+    const std::string name = detail::toLower(line.substr(start, end - start));
+    const auto it = _commands.find(name);
+    if (it == _commands.end() || !it->second.raw) {
+        return std::nullopt;
+    }
+    std::string_view rest = line.substr(end);
+    rest.remove_prefix(std::min(rest.find_first_not_of(" \t"), rest.size()));
+    rest.remove_suffix(rest.size() - std::min(rest.find_last_not_of(" \t") + 1, rest.size()));
+    std::vector<std::string> args;
+    if (!rest.empty()) {
+        args.emplace_back(rest);
+    }
+    return invoke(name, it->second, args);
+}
+
+bool Console::runStatement(const std::vector<std::string>& statement) {
     const std::string name = detail::toLower(statement.front());
     const std::span<const std::string> args = std::span(statement).subspan(1);
 
     if (const auto it = _commands.find(name); it != _commands.end()) {
-        const Command& command = it->second;
-        if (command.cheat && !_cvars->cheatsAllowed()) {
-            print(OutputLevel::Error, "'" + name + "' is a cheat command and cheats are disabled");
-            return false;
-        }
-        if (args.size() < command.minArgs || args.size() > command.maxArgs) {
-            print(OutputLevel::Error, "Usage: " + name + (command.usage.empty() ? "" : " " + command.usage));
-            return false;
-        }
-        CommandContext context(*this, args);
-        try {
-            command.handler(context);
-        } catch (const std::exception& e) {
-            context.error("'" + name + "' failed: " + e.what());
-        }
-        return !context.failed();
+        return invoke(name, it->second, args);
     }
     if (_cvars->find(name) != nullptr) {
         return runCVar(name, args);
     }
     print(OutputLevel::Error, "Unknown command or cvar '" + detail::printable(name) + "' (type 'help' for the list)");
     return false;
+}
+
+bool Console::invoke(const std::string& name, const Command& command, std::span<const std::string> args) {
+    if (command.cheat && !_cvars->cheatsAllowed()) {
+        print(OutputLevel::Error, "'" + name + "' is a cheat command and cheats are disabled");
+        return false;
+    }
+    if (args.size() < command.minArgs || args.size() > command.maxArgs) {
+        print(OutputLevel::Error, "Usage: " + name + (command.usage.empty() ? "" : " " + command.usage));
+        return false;
+    }
+    CommandContext context(*this, args);
+    try {
+        command.handler(context);
+    } catch (const std::exception& e) {
+        context.error("'" + name + "' failed: " + e.what());
+    }
+    return !context.failed();
+}
+
+void Console::addScriptRunner(std::string_view extension, ScriptRunner runner) {
+    if (!extension.starts_with('.') || extension.size() < 2) {
+        throw std::invalid_argument("Console: script extension '" + std::string(extension) + "' must start with a dot");
+    }
+    if (!runner) {
+        throw std::invalid_argument("Console: script runner for '" + std::string(extension) + "' is empty");
+    }
+    _scriptRunners.insert_or_assign(detail::toLower(extension), std::move(runner));
+}
+
+bool Console::removeScriptRunner(std::string_view extension) {
+    const auto it = _scriptRunners.find(detail::toLower(extension));
+    if (it == _scriptRunners.end()) {
+        return false;
+    }
+    _scriptRunners.erase(it);
+    return true;
+}
+
+bool Console::runScript(CommandContext& context, std::string_view path) {
+    if (_scriptDepth >= MAX_SCRIPT_DEPTH) {
+        context.error("Scripts nested too deep (at most " + std::to_string(MAX_SCRIPT_DEPTH) + ")");
+        return false;
+    }
+    auto source = readScriptFile(_scriptRoot, path);
+    if (!source) {
+        context.error(source.error());
+        return false;
+    }
+    // Counts this script as running until it returns, even if its runner throws.
+    class DepthGuard {
+      public:
+        explicit DepthGuard(std::size_t& depth) noexcept : _depth(&depth) { ++*_depth; }
+        ~DepthGuard() { --*_depth; }
+        DepthGuard(const DepthGuard&) = delete;
+        DepthGuard& operator=(const DepthGuard&) = delete;
+        DepthGuard(DepthGuard&&) = delete;
+        DepthGuard& operator=(DepthGuard&&) = delete;
+
+      private:
+        std::size_t* _depth;
+    };
+    const DepthGuard guard(_scriptDepth);
+
+    const std::string extension = detail::toLower(std::filesystem::path(path).extension().string());
+    if (const auto runner = _scriptRunners.find(extension); runner != _scriptRunners.end()) {
+        runner->second(context, *source, path);
+        return !context.failed();
+    }
+    // No script engine for this extension: a file of console lines.
+    std::size_t failures = 0;
+    std::string_view rest = *source;
+    while (!rest.empty()) {
+        const std::size_t end = std::min(rest.find('\n'), rest.size());
+        std::string_view line = rest.substr(0, end);
+        rest.remove_prefix(std::min(end + 1, rest.size()));
+        if (line.ends_with('\r')) {
+            line.remove_suffix(1);
+        }
+        if (!run(line)) {
+            ++failures;
+        }
+    }
+    if (failures > 0) {
+        context.error("'" + std::string(path) + "': " + std::to_string(failures) + " line(s) failed");
+    }
+    return failures == 0;
 }
 
 bool Console::runCVar(const std::string& name, std::span<const std::string> args) {

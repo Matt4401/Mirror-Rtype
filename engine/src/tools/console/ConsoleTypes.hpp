@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <string>
@@ -48,6 +49,14 @@ using CommandHandler = std::function<void(CommandContext&)>;
 using ArgumentCompleter = std::function<std::vector<std::string>(const Console&, std::size_t, std::string_view)>;
 
 /**
+ * @brief Runs a script file read by `exec`.
+ *
+ * Called with the context of the `exec` command, the content of the file and its path as typed (relative to the script
+ * root). Errors go through `CommandContext::error`.
+ */
+using ScriptRunner = std::function<void(CommandContext&, std::string_view source, std::string_view path)>;
+
+/**
  * @brief Description of a console command.
  */
 struct Command {
@@ -65,6 +74,11 @@ struct Command {
     bool cheat = false;
     /** @brief Suggests argument values for tab completion; may be empty. */
     ArgumentCompleter completer;
+    /**
+     * @brief Takes the rest of the line as one argument, without splitting it: `;`, quotes and `//` are kept (code
+     * typed for a script engine...). Only applies when the command starts the line; no argument when nothing follows.
+     */
+    bool raw = false;
 };
 
 /** @brief Result of a tab completion. */
@@ -81,6 +95,8 @@ struct Completion {
 struct ConsoleConfig {
     /** @brief Whether cheat cvars and commands are allowed (keep `false` on competitive servers). */
     bool allowCheats = false;
+    /** @brief Directory `exec` reads its scripts from; empty for the current directory. */
+    std::filesystem::path scriptRoot;
 };
 
 }  // namespace tools

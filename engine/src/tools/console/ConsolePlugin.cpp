@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
@@ -19,6 +20,7 @@ namespace tools {
 ConsolePlugin::ConsolePlugin(ConsoleConfig config)
     : _cvars(std::make_shared<CVarManager>()), _console(std::make_shared<Console>(*_cvars)) {
     _cvars->setCheatsAllowed(config.allowCheats);
+    _console->setScriptRoot(std::move(config.scriptRoot));
     registerBuiltinCommands(*_console);
 }
 

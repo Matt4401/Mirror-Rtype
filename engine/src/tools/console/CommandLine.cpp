@@ -121,12 +121,19 @@ class Splitter {
 
 }  // namespace
 
-std::expected<std::vector<Statement>, std::string> splitCommandLine(std::string_view line) {
+std::expected<void, std::string> validateCommandLine(std::string_view line) {
     if (line.size() > MAX_LINE_LENGTH) {
         return std::unexpected("Line too long (at most " + std::to_string(MAX_LINE_LENGTH) + " characters)");
     }
     if (std::ranges::any_of(line, isForbiddenControl)) {
         return std::unexpected(std::string("Line contains control characters"));
+    }
+    return {};
+}
+
+std::expected<std::vector<Statement>, std::string> splitCommandLine(std::string_view line) {
+    if (auto valid = validateCommandLine(line); !valid) {
+        return std::unexpected(std::move(valid.error()));
     }
     return Splitter(line).run();
 }

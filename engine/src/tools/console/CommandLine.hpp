@@ -22,6 +22,13 @@ inline constexpr std::size_t MAX_LINE_LENGTH = 1024;
 inline constexpr std::size_t MAX_LINE_WORDS = 64;
 
 /**
+ * @brief Checks the limits every console line must respect, before reading it.
+ * @param line Line as typed, untrusted.
+ * @return An error message if it is longer than `MAX_LINE_LENGTH` or holds control characters other than tabs.
+ */
+[[nodiscard]] std::expected<void, std::string> validateCommandLine(std::string_view line);
+
+/**
  * @brief Splits a console line into statements.
  *
  * - Words are separated by spaces or tabs; `;` ends a statement (`set a 1; set b 2`).

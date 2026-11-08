@@ -125,6 +125,8 @@ void toggle(CommandContext& context) {
     printValue(context, name);
 }
 
+void exec(CommandContext& context) { (void)context.console().runScript(context, context.args().front()); }
+
 void echo(const CommandContext& context) {
     std::string text;
     for (const std::string& word : context.args()) {
@@ -179,6 +181,14 @@ void registerBuiltinCommands(Console& console) {
                                     .maxArgs = 1,
                                     .completer = completeCVarName,
                                 });
+    console.addCommand("exec", {
+                                   .usage = "<file>",
+                                   .description = "Runs a script file of the script directory (console lines, or "
+                                                  "the script engine registered for its extension)",
+                                   .handler = exec,
+                                   .minArgs = 1,
+                                   .maxArgs = 1,
+                               });
     console.addCommand("toggle", {
                                      .usage = "<cvar>",
                                      .description = "Flips a bool cvar",

@@ -1,6 +1,6 @@
 /**
  * @file BuiltinCommands.hpp
- * @brief Commands every console has: help, clear, echo, cvar_list, set, reset, toggle.
+ * @brief Commands every console has: help, clear, echo, cvar_list, set, reset, toggle, exec.
  */
 
 #pragma once
@@ -18,6 +18,7 @@ class Console;
  * - `cvar_list [prefix]`: lists the cvars, with value, default, flags and description.
  * - `set <cvar> <value>` / `reset <cvar>`: changes a cvar / restores its default.
  * - `toggle <cvar>`: flips a `bool` cvar.
+ * - `exec <file>`: runs a script file (see `Console::runScript`).
  *
  * They replace any command already added under one of these names.
  * @param console Console to fill.
