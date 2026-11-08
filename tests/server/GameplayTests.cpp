@@ -32,6 +32,9 @@
 #include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
+#include "prefabs/missile/Missile.hpp"
+#include "prefabs/player_ship/PlayerShip.hpp"
+#include "prefabs/power_up/PowerUp.hpp"
 #include "protocol/Messages.hpp"
 #include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
@@ -43,6 +46,7 @@ namespace {
 
 using rtype::server::gameplay::GameplayPlugin;
 using rtype::server::gameplay::POINTS_PER_KILL;
+using rtype::server::gameplay::RAPID_FIRE_DURATION;
 using rtype::server::gameplay::RESPAWN_DURATION;
 using rtype::server::gameplay::shipSpawnPoint;
 using rtype::server::gameplay::ShipSpawnPoint;
@@ -104,10 +108,10 @@ class GameplayTest : public ::testing::Test {
         }
     }
 
-    /** @brief Spawns the ship of a player, as the room does. */
+    /** @brief Spawns the ship of a player, as the room does: with the collider of the `player_ship` prefab. */
     ecs::Entity spawnShip(const std::uint8_t playerIndex, const float x, const float y) {
         const ecs::Entity ship = registry().spawnEntity();
-        registry().addComponent(ship, ecs::Transform{.x = x, .y = y});
+        ::prefabs::buildPlayerShip(ship, registry(), {{"x", x}, {"y", y}});
         registry().addComponent(ship, game::EntityNetState{.subtype = playerIndex});
         ecs::net::replicate(registry(), ship, game::KIND_PLAYER_SHIP);
         return ship;
@@ -327,6 +331,72 @@ TEST_F(GameplayTest, EnemiesThatLeaveTheScreenAreDestroyed) {
 TEST_F(GameplayWithoutLevelTest, NoLevelSpawnsNoEnemy) {
     run(5.0F);
     EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty());
+}
+
+TEST_F(GameplayWithoutLevelTest, MissileHittingAShipDestroysIt) {
+    const ecs::Entity ship = spawnShip(1, 600.0F, 360.0F);
+    const ecs::Entity missile = registry().spawnEntity();
+    ::prefabs::buildMissile(missile, registry(), {{"x", 700.0F}, {"y", 360.0F}});
+    ecs::net::replicate(registry(), missile, game::KIND_MISSILE);
+    run(0.5F);
+
+    EXPECT_FALSE(registry().isAlive(missile));
+    ASSERT_TRUE(registry().isAlive(ship));
+    EXPECT_FLOAT_EQ(registry().getComponents<ecs::Transform>().get(ship).x, shipSpawnPoint(1).x);
+    EXPECT_NE(registry().getComponents<game::EntityNetState>().get(ship).flags & game::FLAG_INVULNERABLE, 0);
+}
+
+TEST_F(GameplayWithoutLevelTest, MissileGoesThroughARespawningShip) {
+    const ShipSpawnPoint spawn = shipSpawnPoint(0);
+    const ecs::Entity ship = spawnShip(0, 600.0F, spawn.y);
+    const ecs::Entity first = registry().spawnEntity();
+    ::prefabs::buildMissile(first, registry(), {{"x", 700.0F}, {"y", spawn.y}});
+    run(0.5F);
+    ASSERT_FLOAT_EQ(registry().getComponents<ecs::Transform>().get(ship).x, spawn.x);
+
+    // Fired at the respawned ship: it flies through.
+    const ecs::Entity second = registry().spawnEntity();
+    ::prefabs::buildMissile(second, registry(), {{"x", spawn.x + 100.0F}, {"y", spawn.y}});
+    run(0.5F);
+    EXPECT_TRUE(registry().isAlive(second));
+    EXPECT_LT(registry().getComponents<ecs::Transform>().get(second).x, spawn.x);
+}
+
+TEST_F(GameplayWithoutLevelTest, EnemyTouchingAShipDestroysIt) {
+    const ecs::Entity ship = spawnShip(0, 600.0F, 360.0F);
+    const ecs::Entity enemy = spawnEnemy(600.0F, 360.0F);
+    run(0.2F);
+
+    EXPECT_TRUE(registry().isAlive(enemy));
+    EXPECT_FLOAT_EQ(registry().getComponents<ecs::Transform>().get(ship).x, shipSpawnPoint(0).x);
+    EXPECT_NE(registry().getComponents<game::EntityNetState>().get(ship).flags & game::FLAG_INVULNERABLE, 0);
+}
+
+TEST_F(GameplayWithoutLevelTest, PowerUpGivesRapidFire) {
+    const ecs::Entity ship = spawnShip(0, 100.0F, 360.0F);
+    // Holds the shoot button for 0.5 s, then counts the bullets: none has left the screen yet (900 px/s from x = 100).
+    // Waits first for the bullets of the previous burst to leave.
+    const auto burst = [&] {
+        run(1.6F);
+        for (int step = 0; step < 30; ++step) {
+            shoot(ship);
+            run(FIXED_DT);
+        }
+        return entitiesOf(game::KIND_PLAYER_BULLET).size();
+    };
+    // One shot every 0.2 s: at 0, 0.2 and 0.4 s.
+    EXPECT_EQ(burst(), 3U);
+
+    const ecs::Entity powerUp = registry().spawnEntity();
+    ::prefabs::buildPowerUp(powerUp, registry(), {{"x", 100.0F}, {"y", 360.0F}, {"speed", 0.0F}});
+    run(0.1F);
+    EXPECT_FALSE(registry().isAlive(powerUp));
+    // One shot every 0.08 s.
+    EXPECT_GE(burst(), 6U);
+
+    // The bonus wears off.
+    run(RAPID_FIRE_DURATION);
+    EXPECT_EQ(burst(), 3U);
 }
 
 TEST_F(BossFightTest, BossEventStopsTheScrollAndSpawnsTheBoss) {
