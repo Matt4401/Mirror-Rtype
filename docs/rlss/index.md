@@ -49,12 +49,17 @@ arena (with the mouse):
 - At the end of a match, the end screen shows the final score and whether your team won; **RETOUR AU MENU** takes you
   back to the menu. Closing the window (or Escape) quits.
 
-| Action                             | Keyboard                    | Gamepad           |
-|------------------------------------|-----------------------------|-------------------|
-| Drive (ground) / aim the nose (air) | A / D, Q / D, ← / →        | left stick        |
-| Aim the nose up / down (air)       | W / S, Z / S, ↑ / ↓         | left stick        |
-| Jump, then double jump or dodge    | Space                       | bottom face button |
-| Boost                              | Shift                       | right face button, right trigger |
+| Action                             | Keyboard (default)    | Gamepad           |
+|------------------------------------|-----------------------|-------------------|
+| Drive (ground) / aim the nose (air) | A / D, ← / →         | left stick        |
+| Aim the nose up / down (air)       | W / S, ↑ / ↓          | left stick        |
+| Jump, then double jump or dodge    | Space                 | bottom face button |
+| Boost                              | Left Shift, Right Shift | right face button, right trigger |
+
+The keys are positions, not letters: on an AZERTY keyboard the defaults are Q / D and Z / S. **PARAMETRES → TOUCHES**
+gives each of the six keys (left, right, nose up, nose down, jump, boost) another key; a key another control already
+has is swapped between the two, **PAR DEFAUT** puts the defaults back, and Escape cancels the wait for a key. The
+arrows and Right Shift stay as second keys unless one becomes a main key. The gamepad layout is fixed.
 
 In the air the stick aims: the nose turns toward where it points (up, down, left, right or in between). Point it up and
 boost to fly up.
@@ -216,7 +221,8 @@ sequenceDiagram
   | `Joining`  | exclusive | waiting for the `JoinResult`, 5 s at most; a refusal pops it with the reason, back cancels |
   | `Match`    | exclusive | nothing: the arena, cars, HUD and name tags are drawn by their plugins          |
   | `Ended`    | overlay   | victory or defeat over the arena, final score, RETOUR AU MENU                   |
-  | `Settings` | exclusive | volumes, saved at once                                                          |
+  | `Settings` | exclusive | volumes, saved at once; TOUCHES opens the controls screen                       |
+  | `Controls` | exclusive | one button per control showing its key; selecting one waits for a key; PAR DEFAUT, RETOUR |
 
   - **Input.** Mouse, keyboard and gamepad all work through the UI focus. Escape (gamepad B) goes back, and still
     quits from the main menu and in a match.
@@ -232,8 +238,10 @@ sequenceDiagram
   - **Leaving a match.** It calls `ClientReplicationPlugin::reset()`, which removes the replicated entities (each with
     its `ReplicatedEntityDespawned`) and forgets the last tick, so the next match counts its steps from 0. It then
     publishes `MatchLeft`.
-  - **Settings.** The player name and the volumes are user settings (`settings::SettingsPlugin`, file
-    `rlss/settings.toml` in the user's configuration directory).
+  - **Settings.** The player name, the volumes and the keys (`controls.<control>`, holding an `input::keyId` such as
+    `Space`) are user settings (`settings::SettingsPlugin`, file `rlss/settings.toml` in the user's configuration
+    directory). On a change of a key, `MenuScenesPlugin` rebuilds the `input::ActionMapping` with `setupBindings`
+    (`rlss/client/Controls.cpp`).
 
 ## Player names
 

@@ -12,7 +12,7 @@
 #include "core/services/InputCodes.hpp"
 #include "input/KeyboardLayout.hpp"
 
-namespace client::input {
+namespace input {
 
 namespace {
 
@@ -154,20 +154,20 @@ engine::Key azertyLabelKey(engine::Key key) noexcept {
 std::span<const KeyName> keyNames() noexcept { return KEY_NAMES; }
 
 std::string_view keyId(engine::Key key) noexcept {
-    const auto* found = std::ranges::find(KEY_NAMES, key, &KeyName::key);
+    const auto found = std::ranges::find(KEY_NAMES, key, &KeyName::key);
     return found != KEY_NAMES.end() ? found->id : std::string_view{};
 }
 
 std::optional<engine::Key> keyFromId(std::string_view id) noexcept {
-    const auto* found = std::ranges::find(KEY_NAMES, id, &KeyName::id);
+    const auto found = std::ranges::find(KEY_NAMES, id, &KeyName::id);
     if (found == KEY_NAMES.end()) {
         return std::nullopt;
     }
     return found->key;
 }
 
-std::string keyLabel(engine::Key key, ::input::KeyboardLayout layout) {
-    if (layout == ::input::KeyboardLayout::Azerty) {
+std::string keyLabel(engine::Key key, KeyboardLayout layout) {
+    if (layout == KeyboardLayout::Azerty) {
         key = azertyLabelKey(key);
     }
     const std::string_view id = keyId(key);
@@ -186,4 +186,4 @@ std::string keyLabel(engine::Key key, ::input::KeyboardLayout layout) {
     return label;
 }
 
-}  // namespace client::input
+}  // namespace input

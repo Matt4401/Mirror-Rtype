@@ -5,9 +5,14 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <optional>
 #include <string_view>
 #include <vector>
 
+#include "Controls.hpp"
+#include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "scene/IScene.hpp"
@@ -161,7 +166,7 @@ class EndedScene final : public scene::IScene {
     void onEnter(scene::SceneContext& context) override;
 };
 
-/** @brief Settings: volumes, saved at once. */
+/** @brief Settings: volumes, saved at once, and the way to the controls screen. */
 class SettingsScene final : public scene::IScene {
   public:
     /**
@@ -175,6 +180,49 @@ class SettingsScene final : public scene::IScene {
      * @param context Scene context.
      */
     void onEnter(scene::SceneContext& context) override;
+};
+
+/** @brief Number of `engine::Key` values the controls screen tracks (`engine::Key` is 8 bits). */
+inline constexpr std::size_t KEY_SLOTS = 256;
+
+/** @brief Controls: a button per control showing its key; selecting one waits for the new key. */
+class ControlsScene final : public scene::IScene {
+  public:
+    /**
+     * @brief Gets the scene name.
+     * @return "Controls".
+     */
+    [[nodiscard]] std::string_view name() const noexcept override { return "Controls"; }
+
+    /**
+     * @brief Spawns a button per control and starts listening for keys.
+     * @param context Scene context.
+     */
+    void onEnter(scene::SceneContext& context) override;
+
+  private:
+    /**
+     * @brief Writes the current key of every control on its button.
+     * @param context Scene context.
+     */
+    void refreshLabels(scene::SceneContext& context) const;
+
+    /**
+     * @brief Looks for a key pressed this frame while a control waits for one, and binds it.
+     * @param context Scene context.
+     */
+    void pollKeys(scene::SceneContext& context);
+
+    /** @brief Button of each control, indexed by `Control`. */
+    std::array<ecs::Entity, CONTROL_COUNT> _buttons{};
+    /** @brief Label of each button, indexed by `Control`. */
+    std::array<ecs::Entity, CONTROL_COUNT> _labels{};
+    /** @brief Control waiting for a key, if any. */
+    std::optional<Control> _waiting;
+    /** @brief Keys down at the previous frame, indexed by `engine::Key`, so only new presses count. */
+    std::array<bool, KEY_SLOTS> _wasDown{};
+    /** @brief Key just bound: clicks are ignored until it is released, so Enter or Space do not start a new wait. */
+    engine::Key _justBound = engine::Key::Unknown;
 };
 
 }  // namespace rlss::client

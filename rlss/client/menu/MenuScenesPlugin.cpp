@@ -6,13 +6,16 @@
 #include <variant>
 
 #include "ClientEvents.hpp"
+#include "Controls.hpp"
 #include "audio/types/AudioTypes.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/services/IAudioService.hpp"
+#include "core/services/IInputService.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
+#include "input/InputPlugin.hpp"
 #include "menu/MenuScenes.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkManager.hpp"
@@ -76,6 +79,17 @@ void applyVolumes(engine::Engine& engine, const config::Settings& settings) {
     audio->get().setVolume(audio::AudioBus::Sfx, static_cast<float>(settings.getNumber("audio.sfx")));
 }
 
+/**
+ * @brief Rebuilds the key bindings from the saved controls, if the program reads input.
+ * @param engine Host engine.
+ * @param settings Settings.
+ */
+void applyBindings(engine::Engine& engine, const config::Settings& settings) {
+    if (auto inputService = engine.mediator().getService<engine::IInputService>()) {
+        setupBindings(inputService->get().mapping(), readControlKeys(settings));
+    }
+}
+
 }  // namespace
 
 void MenuScenesPlugin::build(engine::PluginBuilder& builder) {
@@ -84,6 +98,7 @@ void MenuScenesPlugin::build(engine::PluginBuilder& builder) {
     builder.require<scene::ScenePlugin>();
     builder.require<settings::SettingsPlugin>();
     builder.require<ui::UiPlugin>();
+    builder.optionally<input::InputPlugin>();  // initialized first, so the saved keys replace the default ones
 }
 
 void MenuScenesPlugin::init(engine::Engine& engine) {
@@ -95,10 +110,14 @@ void MenuScenesPlugin::init(engine::Engine& engine) {
     settings.define("audio.master", 1.0);
     settings.define("audio.music", 0.8);
     settings.define("audio.sfx", 1.0);
+    defineControlSettings(settings);
     applyVolumes(engine, settings);
+    applyBindings(engine, settings);
     engine.eventBus().subscribe<settings::SettingChanged>([&engine, &settings](const settings::SettingChanged& event) {
         if (event.key.starts_with("audio.")) {
             applyVolumes(engine, settings);
+        } else if (event.key.starts_with(CONTROLS_PREFIX)) {
+            applyBindings(engine, settings);
         }
     });
 
@@ -117,6 +136,7 @@ void MenuScenesPlugin::init(engine::Engine& engine) {
     scenes.registerScene<MatchScene>();
     scenes.registerScene<EndedScene>();
     scenes.registerScene<SettingsScene>();
+    scenes.registerScene<ControlsScene>();
 
     // A name saved by an earlier session skips the name screen.
     if (!confirmName(engine, settings.getString(NAME_KEY))) {

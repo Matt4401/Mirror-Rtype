@@ -13,7 +13,7 @@
 #include "core/services/InputCodes.hpp"
 #include "input/KeyboardLayout.hpp"
 
-namespace client::input {
+namespace input {
 
 /** @brief One keyboard key and its saved id. */
 struct KeyName {
@@ -24,7 +24,7 @@ struct KeyName {
 };
 
 /**
- * @brief Every key the controls screen can bind, in enum order.
+ * @brief Every key a controls screen can bind, in enum order.
  * @return The keys and their ids; `engine::Key::Unknown` is not in the list.
  */
 [[nodiscard]] std::span<const KeyName> keyNames() noexcept;
@@ -53,6 +53,6 @@ struct KeyName {
  * @param layout Layout of the player's keyboard.
  * @return Upper-case label, e.g. "Z", "SPACE" or "LEFT SHIFT"; "NONE" for `engine::Key::Unknown`.
  */
-[[nodiscard]] std::string keyLabel(engine::Key key, ::input::KeyboardLayout layout);
+[[nodiscard]] std::string keyLabel(engine::Key key, KeyboardLayout layout);
 
-}  // namespace client::input
+}  // namespace input

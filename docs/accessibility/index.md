@@ -9,12 +9,12 @@ a disability. Every feature below can be shown in game; each one says where to f
 
 | Feature | How to try it |
 | --- | --- |
-| **Key rebinding.** Every control (move up/down/left/right, shoot, charge, ready) can be given another key. Choosing a key that another control uses swaps the two, so no key drives two controls. **RESET** restores the defaults. | Settings → **CONTROLS**, select a control, press the new key (Escape cancels). |
+| **Key rebinding.** In R-Type every control (move up/down/left/right, shoot, charge, ready) can be given another key; in RLSS the same goes for steer left/right, nose up/down, jump and boost. Choosing a key that another control uses swaps the two, so no key drives two controls. **RESET** (RLSS: **PAR DEFAUT**) restores the defaults. | R-Type: Settings → **CONTROLS**. RLSS: **PARAMETRES** → **TOUCHES**. Select a control, press the new key (Escape cancels). |
 | **Auto-fire.** One press of shoot starts firing and the next one stops it, so the player does not have to hold or mash a button. | Settings → **AUTO-FIRE**, then in game press shoot once. |
 | **Gamepad.** The ship moves with the left stick, shoots with the bottom face button and charges with the right trigger. The menus are driven with the D-pad, the bottom face button (confirm) and the right face button (back). | Plug a gamepad in before or during the game. |
 | **No mouse needed.** Every menu works with the keyboard alone: arrows or Tab move the focus, Enter or Space confirm, Escape goes back. The mouse also works for players who prefer it. | Any menu. |
 | **Two key sets by default.** Moving works with W A S D *and* the arrows, shooting with Space *and* Enter, charging with either Shift, so a player can use one hand on either side of the keyboard. | In game. |
-| **Physical key positions.** Bindings follow the key position, not the letter: the default movement keys are W A S D on QWERTY and Z Q S D on AZERTY, with no setup. The controls screen shows the letter printed on the player's keyboard. | Settings → **CONTROLS** on an AZERTY keyboard. |
+| **Physical key positions.** Bindings follow the key position, not the letter: the default movement keys are W A S D on QWERTY and Z Q S D on AZERTY, with no setup. The controls screens of both games show the letter printed on the player's keyboard. | Settings → **CONTROLS** (RLSS: **TOUCHES**) on an AZERTY keyboard. |
 | **Local pause.** Escape pauses the inputs at any time, so a player can rest without leaving the room. | Escape in game. |
 
 ## Audio and visual
@@ -47,9 +47,12 @@ a disability. Every feature below can be shown in game; each one says where to f
 
 ## Where it lives in the code
 
-- Rebinding: `client/src/input/RTypeBindings.cpp` (`setupBindings`, `assignKey`), key names and AZERTY labels in
-  `client/src/input/KeyNames.cpp`, screen in `ControlsScene` (`client/src/scenes/MenuScenes.cpp`). The engine side is
-  `input::ActionMapping` (`engine/src/input/ActionMapping.hpp`), which any game can rebind the same way.
+- Rebinding, engine side: `input::ActionMapping` (`engine/src/input/ActionMapping.hpp`) and the key names and AZERTY
+  labels of `engine/src/input/KeyNames.hpp` (`keyId`, `keyFromId`, `keyLabel`), shared by both games.
+- Rebinding in R-Type: `client/src/input/RTypeBindings.cpp` (`setupBindings`, `assignKey`), screen in `ControlsScene`
+  (`client/src/scenes/MenuScenes.cpp`).
+- Rebinding in RLSS: `rlss/client/Controls.cpp` (`setupBindings`, `assignKey`, the `controls.*` settings), screen in
+  `ControlsScene` (`rlss/client/menu/MenuScenes.cpp`).
 - Auto-fire: `client::AutoFireLatch` (`client/src/gameplay/AutoFire.hpp`), used by `PlayerControlPlugin`.
 - Text size: `menu::setScale` / `menu::MenuScale` (`client/src/scenes/MenuKit.hpp`).
 - Settings keys: `client/src/scenes/ClientSettings.hpp`, applied by `ClientScenesPlugin`.
