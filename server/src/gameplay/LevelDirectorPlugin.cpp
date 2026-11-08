@@ -56,7 +56,8 @@ std::optional<std::vector<std::string>> LevelDirectorPlugin::levelPrefab(const s
         return std::vector<std::string>{"speed", "z", "rotation", "scaleX", "scaleY"};
     }
     if (type == level::EVENT_BOSS && prefab == ::prefabs::BOSS_CORE_PREFAB) {
-        return std::vector<std::string>{"speed", "stop_x", "health", "z", "rotation", "scaleX", "scaleY"};
+        return std::vector<std::string>{"speed",  "stop_x", "health",   "variant", "width",
+                                        "height", "z",      "rotation", "scaleX",  "scaleY"};
     }
     return std::nullopt;
 }

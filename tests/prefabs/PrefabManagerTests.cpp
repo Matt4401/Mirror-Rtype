@@ -233,6 +233,45 @@ TEST(PrefabManager, BossCoreHealthAndStopCanBeSetPerSpawn) {
     EXPECT_FLOAT_EQ(registry.getComponents<prefabs::BossCore>().get(0).stopX, 900.0F);
 }
 
+TEST(PrefabManager, BossCoreVariantAndHitboxComeFromItsParameters) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer,
+                  {{"variant", std::int64_t{3}}, {"width", 300.0}, {"height", std::int64_t{200}}});
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {});
+    buffer.flush(registry);
+
+    EXPECT_EQ(registry.getComponents<prefabs::BossCore>().get(0).variant, 3);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(0).halfWidth, 150.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(0).halfHeight, 100.0F);
+    EXPECT_EQ(registry.getComponents<prefabs::BossCore>().get(1).variant, 0);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(1).halfWidth, prefabs::BOSS_CORE_HALF_WIDTH);
+}
+
+TEST(PrefabManager, BossCoreVariantAndHitboxAreClamped) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {{"variant", 1.0e30}, {"width", 1.0e30}, {"height", -4.0}});
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer,
+                  {{"variant", std::int64_t{-2}}, {"width", std::nan("")}, {"height", std::nan("")}});
+    buffer.flush(registry);
+
+    auto const& cores = registry.getComponents<prefabs::BossCore>();
+    auto const& colliders = registry.getComponents<ecs::Collider2D>();
+    EXPECT_EQ(cores.get(0).variant, std::numeric_limits<std::uint8_t>::max());
+    EXPECT_FLOAT_EQ(colliders.get(0).halfWidth, prefabs::MAX_BOSS_CORE_SIZE / 2.0F);
+    EXPECT_FLOAT_EQ(colliders.get(0).halfHeight, prefabs::MIN_BOSS_CORE_SIZE / 2.0F);
+    EXPECT_EQ(cores.get(1).variant, 0);
+    EXPECT_FLOAT_EQ(colliders.get(1).halfWidth, prefabs::BOSS_CORE_HALF_WIDTH);
+    EXPECT_FLOAT_EQ(colliders.get(1).halfHeight, prefabs::BOSS_CORE_HALF_HEIGHT);
+}
+
 TEST(PrefabManager, BossCoreHealthIsClampedToTheNetworkRange) {
     prefabs::PrefabManager manager;
     prefabs::registerRtypePrefabs(manager);

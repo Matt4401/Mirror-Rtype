@@ -49,8 +49,11 @@ void BossFightPlugin::startFight(ecs::Registry& registry, const ::prefabs::Prefa
     _bus->publish(BossFightStarted{});
     const ecs::Entity boss = registry.spawnEntity();
     ::prefabs::buildBossCore(boss, registry, params);
-    registry.addComponent(boss,
-                          game::EntityNetState{.health = registry.getComponents<::prefabs::Health>().get(boss).points});
+    // The variant goes out as the subtype: the clients pick the look of the boss from it.
+    registry.addComponent(boss, game::EntityNetState{
+                                    .subtype = registry.getComponents<::prefabs::BossCore>().get(boss).variant,
+                                    .health = registry.getComponents<::prefabs::Health>().get(boss).points,
+                                });
     if (const auto script = params.find<std::string>("script")) {
         // `scripts/Boss.wren` is the module `<data root>/scripts/Boss`, whose class is `Boss` unless the event names
         // another one.

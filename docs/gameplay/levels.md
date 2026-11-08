@@ -105,7 +105,7 @@ it.
 | `script` | string | none | Wren file driving the boss: a relative path ending in `.wren`, with `/` separators and no `..`. |
 | `class` | string | file name | Wren class of the script; `scripts/Boss.wren` uses the class `Boss`. |
 | `x`, `y` | number | `1328`, `360` | Spawn position. |
-| `health`, `stop_x`, `speed` | number | see [Boss Core](../prefabs/boss-core.md) | Passed to the prefab, like any other key. |
+| `health`, `stop_x`, `speed`, `variant`, `width`, `height` | number | see [Boss Core](../prefabs/boss-core.md) | Passed to the prefab, like any other key. `variant` picks the look of the boss on the clients, `width` and `height` its hitbox. |
 
 When the event fires, the scroll stops and the boss flies in from the right until its `stop_x`. Each player shot
 removes one hit point; at 0, the boss is destroyed, the shooter scores, and the scroll resumes at its speed before the

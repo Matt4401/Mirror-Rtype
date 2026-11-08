@@ -164,6 +164,8 @@ class GameplayWithoutLevelTest : public GameplayTest {
 
 /** @brief Health of the test boss: a few shots. */
 constexpr std::int64_t BOSS_HEALTH = 3;
+/** @brief Variant of the test boss, sent as its subtype. */
+constexpr std::int64_t BOSS_VARIANT = 2;
 /** @brief Height of the test boss, and of the ship fighting it. */
 constexpr float BOSS_Y = 360.0F;
 
@@ -177,6 +179,7 @@ std::shared_ptr<const level::Level> bossLevel() {
                                     {"x", 1328.0},
                                     {"y", static_cast<double>(BOSS_Y)},
                                     {"health", BOSS_HEALTH},
+                                    {"variant", BOSS_VARIANT},
                                     {"script", std::string("scripts/Boss.wren")}}});
     built->timeline.add({.position = 6000.0F, .type = std::string(level::EVENT_END), .params = {}});
     return built;
@@ -469,6 +472,7 @@ TEST_F(BossFightTest, BossEventStopsTheScrollAndSpawnsTheBoss) {
     const auto spawned = bosses();
     ASSERT_EQ(spawned.size(), 1U);
     EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(spawned.front()).health, BOSS_HEALTH);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(spawned.front()).subtype, BOSS_VARIANT);
     EXPECT_EQ(registry().getComponents<prefabs::Health>().get(spawned.front()).points, BOSS_HEALTH);
 }
 

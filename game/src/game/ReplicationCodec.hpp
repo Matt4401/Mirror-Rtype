@@ -21,15 +21,15 @@ inline constexpr protocol::EntityKind KIND_PLAYER_SHIP = protocol::makeEntityKin
 inline constexpr protocol::EntityKind KIND_PLAYER_BULLET = protocol::makeEntityKind("player_bullet");
 /** @brief Kind of the basic Bydos enemy. */
 inline constexpr protocol::EntityKind KIND_ALIEN_SCOUT = protocol::makeEntityKind("alien_scout");
-/** @brief Kind of the boss ending a level; its `health` is the hit points left. */
+/** @brief Kind of the boss ending a level; its `subtype` is its variant, its `health` the hit points left. */
 inline constexpr protocol::EntityKind KIND_BOSS_CORE = protocol::makeEntityKind("boss_core");
 /** @brief Kind of an enemy shot, fired by a boss script. */
 inline constexpr protocol::EntityKind KIND_MISSILE = protocol::makeEntityKind("missile");
 /** @brief Kind of a power-up, dropped by a boss script and picked up by touching it. */
 inline constexpr protocol::EntityKind KIND_POWER_UP = protocol::makeEntityKind("power_up");
-/** @brief Width of the boss hitbox, in pixels; the clients draw it at this size. */
+/** @brief Width of the default boss hitbox, in pixels; the clients draw a boss without a look at this size. */
 inline constexpr float BOSS_CORE_WIDTH = 128.0F;
-/** @brief Height of the boss hitbox, in pixels. */
+/** @brief Height of the default boss hitbox, in pixels. */
 inline constexpr float BOSS_CORE_HEIGHT = 160.0F;
 /** @brief Width of a missile hitbox, in pixels. */
 inline constexpr float MISSILE_WIDTH = 16.0F;
@@ -63,7 +63,7 @@ inline constexpr std::uint8_t FLAG_INVULNERABLE = 0x04;
  * without it is sent with the default values.
  */
 struct EntityNetState {
-    /** @brief Variant of the kind: player index of a ship or of a player bullet, 0 otherwise. */
+    /** @brief Variant of the kind: player index of a ship or of a player bullet, boss variant, terrain height. */
     std::uint8_t subtype = 0;
     /** @brief Health points; 0 means the entity died this tick. */
     std::uint8_t health = 1;
