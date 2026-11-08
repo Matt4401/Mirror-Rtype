@@ -76,14 +76,16 @@ with the same `at` keep the file order.
 |-----|------|---------|-------------|
 | `prefab` | string | required | Enemy to spawn. The server knows `alien_scout` and `boss_core`. |
 | `count` | integer | `1` | Number of enemies, from 1 to 32. |
-| `interval` | number | `0` | Seconds between two enemies, from 0 to 10. |
+| `interval` | number | `0` | Seconds of scrolling between two enemies, from 0 to 10. |
 | `x` | number | `1328` | Spawn abscissa: just past the right edge of the 1280 px screen. |
 | `y` | number | `360` | Spawn ordinate of the first enemy. |
 | `spacing_y` | number | `0` | Added to `y` for each next enemy. |
 | any other key | scalar | | Passed to the prefab as is (e.g. `speed`, `pattern`). |
 
-A wave is expanded at load time into one spawn per enemy. The enemies are spaced by `interval` seconds at the scroll
-speed in effect where the wave starts, so a `scroll` event in the middle of a wave does not change its spacing.
+A wave is expanded at load time into one spawn per enemy. The enemies are spaced by `interval` seconds of scrolling,
+following the `scroll` events on the way: if the scroll slows down in the middle of a wave, its next enemies come closer
+in distance but still `interval` seconds apart. While the scroll is stopped (boss fight, respawn), the rest of the wave
+waits too.
 
 ### `scroll`: change the scroll speed
 
