@@ -12,6 +12,8 @@
 
 #include "ClientOptions.hpp"
 #include "RTypeGamePlugin.hpp"
+#include "assets/AssetPlugin.hpp"
+#include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
@@ -56,6 +58,8 @@ int main(int ac, char** av) {
             .addPlugin<systems::AnimationPlugin>()
             .addPlugin<prefabs::PrefabPlugin>()
             .addPlugin<scripting::ScriptPlugin>()
+            .addPlugin<assets::AssetPlugin>()
+            .addPlugin<assets::AssetScriptingPlugin>("scripts/rtype/Assets")
             .addPlugin<hierarchy::HierarchyPlugin>()
             .addPlugin<ui::UiPlugin>()
             .addPlugin<metrics::MetricsPlugin>()

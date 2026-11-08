@@ -48,13 +48,14 @@ class RTypeGamePlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "RTypeGamePlugin"; }
 
     /**
-     * @brief Declares dependencies on RenderPlugin, InputPlugin, AnimationPlugin.
+     * @brief Declares dependencies on RenderPlugin, AssetScriptingPlugin, InputPlugin, AnimationPlugin, UiPlugin.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Loads textures, configures action bindings, and spawns the starfield, the camera and the local input.
+     * @brief Loads the global asset group, configures action bindings, and spawns the starfield, the camera and the
+     * local input.
      * @param engine Reference to host Engine.
      */
     void init(engine::Engine& engine) override;

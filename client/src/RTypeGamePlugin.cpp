@@ -9,8 +9,12 @@
 #include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
+#include "assets/AssetKinds.hpp"
+#include "assets/AssetManager.hpp"
+#include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
@@ -28,7 +32,6 @@
 #include "input/RTypeBindings.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "render/RenderPlugin.hpp"
-#include "render/texture/TextureStore.hpp"
 #include "systems/render/AnimationPlugin.hpp"
 #include "ui/UiPlugin.hpp"
 
@@ -138,33 +141,33 @@ void applySprite(ecs::Registry& registry, const ecs::Entity entity, const Entity
 
 void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
     builder.require<render::RenderPlugin>();
+    // Runs scripts/rtype/Assets.wren, which declares the textures resolved in init.
+    builder.require<assets::AssetScriptingPlugin>();
     builder.require<::input::InputPlugin>();
     builder.require<systems::AnimationPlugin>();
     builder.require<ui::UiPlugin>();
 }
 
 void RTypeGamePlugin::init(engine::Engine& engine) {
-    render::TextureStore* textures = engine.getPlugin<render::RenderPlugin>().textures();
-    if (textures == nullptr) {
-        throw std::runtime_error("RTypeGamePlugin: TextureStore not available");
-    }
-
-    const auto load = [&](const std::string& path) {
-        const ecs::TextureId id = textures->load(path);
+    auto& manager = engine.registry().getResource<assets::AssetManager>();
+    manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
+    // A missing file is drawn as the placeholder checkerboard; a missing alias means the declarations did not run.
+    const auto texture = [&manager](const std::string_view alias) {
+        const ecs::TextureId id = manager.get<assets::Texture>(alias);
         if (id == ecs::NO_TEXTURE) {
-            throw std::runtime_error("failed to load texture '" + path +
-                                     "' — run the client from the project root directory");
+            throw std::runtime_error("texture '" + std::string(alias) +
+                                     "' is not declared — run the client from the project root directory");
         }
         return id;
     };
 
-    _shipTexId = load("sprites/r-typesheet42.gif");
-    _bydosTexId = load("sprites/spritesheet5.png");
-    _bulletTexId = load("sprites/r-typesheet-amo.png");
+    _shipTexId = texture("player_ship");
+    _bydosTexId = texture("bydos");
+    _bulletTexId = texture("player_bullet");
 
-    _starSmallId = load("sprites/star_small.png");
-    _starMediumId = load("sprites/star_medium.png");
-    _starLargeId = load("sprites/star_large.png");
+    _starSmallId = texture("star_small");
+    _starMediumId = texture("star_medium");
+    _starLargeId = texture("star_large");
 
     if (engine.mediator().hasService<engine::IInputService>()) {
         client::input::setupDefaultBindings(engine.service<engine::IInputService>().mapping());
