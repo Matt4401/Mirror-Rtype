@@ -20,6 +20,12 @@ namespace rtype::server::gameplay {
 
 /** @brief Seconds a destroyed ship blinks after coming back: it cannot be hit, and the level waits for it. */
 inline constexpr float RESPAWN_DURATION = 3.0F;
+/** @brief Lives of a player at the start of a game. */
+inline constexpr std::uint8_t STARTING_LIVES = 3;
+
+/** @brief Abscissa where an eliminated ship is parked, far out of the screen and of every enemy. */
+inline constexpr float ELIMINATED_SHIP_X = -2000.0F;
+
 /** @brief Abscissa where the ships start and respawn. */
 inline constexpr float SHIP_SPAWN_X = 200.0F;
 /** @brief Ordinate where the first player's ship starts and respawns. */
@@ -45,7 +51,19 @@ struct ShipSpawnPoint {
 }
 
 /**
- * @brief Brings back the ships of `ShipDestroyed`.
+ * @brief Gives a ship its lives: they are replicated as its `health`, for the HUD of its player.
+ * @param registry Room registry.
+ * @param ship Player ship.
+ * @param lives Lives, the current one included.
+ */
+void giveLives(ecs::Registry& registry, ecs::Entity ship, std::uint8_t lives = STARTING_LIVES);
+
+/**
+ * @brief Brings back the ships of `ShipDestroyed`, while they have lives.
+ *
+ * A ship with `Lives` loses one each time it is destroyed. At 0 it is eliminated: it gets `Eliminated` and
+ * `game::FLAG_ELIMINATED`, is parked out of the screen (`ELIMINATED_SHIP_X`), and `ShipEliminated` is published;
+ * once every ship with lives is eliminated, `AllShipsEliminated`. A ship without `Lives` always respawns.
  *
  * A destroyed ship moves to its start position (`shipSpawnPoint()`) and gets `Respawning` and
  * `game::FLAG_INVULNERABLE` for `RESPAWN_DURATION` seconds (`ShipRespawnStarted`). Once the last respawn is over,
@@ -83,6 +101,12 @@ class RespawnPlugin final : public engine::IPlugin {
      * @param ship Player ship.
      */
     void respawn(ecs::Registry& registry, ecs::Entity ship);
+    /**
+     * @brief Takes a ship out of the game, then ends the game if no ship with lives is left.
+     * @param registry Room registry.
+     * @param ship Player ship that lost its last life.
+     */
+    void eliminate(ecs::Registry& registry, ecs::Entity ship);
 
     /** @brief Event bus of the room, set by `init()`. */
     ecs::EventBus* _bus = nullptr;

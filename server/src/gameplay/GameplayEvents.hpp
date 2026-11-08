@@ -56,6 +56,15 @@ struct ShipRespawnStarted {
     ecs::Entity ship = 0;
 };
 
+/** @brief A ship lost its last life: it is out of the game. */
+struct ShipEliminated {
+    /** @brief Player ship. */
+    ecs::Entity ship = 0;
+};
+
+/** @brief Every player ship with lives lost its last one: the game is lost. */
+struct AllShipsEliminated {};
+
 /** @brief The last respawning ship can be hit again: no respawn holds the scroll any more. */
 struct AllRespawnsOver {};
 

@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "game/ReplicationCodec.hpp"
 
 namespace rtype::server::gameplay {
@@ -21,6 +23,15 @@ struct Respawning {
     /** @brief Seconds before the ship can be hit again. */
     float secondsLeft = 0.0F;
 };
+
+/** @brief Lives left of a player ship; a ship without it respawns forever. Set by `giveLives()`. */
+struct Lives {
+    /** @brief Lives left, the current one included. */
+    std::uint8_t left = 0;
+};
+
+/** @brief A player ship that lost its last life: out of the game, it cannot be hit, move or shoot any more. */
+struct Eliminated {};
 
 /** @brief Marks a terrain block, built by `TerrainPlugin` from a level `terrain` event. */
 struct TerrainBlock {

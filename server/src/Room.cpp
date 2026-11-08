@@ -23,6 +23,7 @@
 #include "game/ShipMovement.hpp"
 #include "gameplay/CombatPlugin.hpp"
 #include "gameplay/Gameplay.hpp"
+#include "gameplay/GameplayComponents.hpp"
 #include "gameplay/LevelDirectorPlugin.hpp"
 #include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/ScriptBindings.hpp"
@@ -97,7 +98,9 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     });
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
-        if (registry.hasComponent<ecs::Transform>(event.entity)) {
+        // An eliminated ship stays parked out of the screen: its player only watches the others.
+        if (registry.hasComponent<ecs::Transform>(event.entity) &&
+            !registry.hasComponent<gameplay::Eliminated>(event.entity)) {
             game::applyShipInput(registry.getComponents<ecs::Transform>().get(event.entity), event.input,
                                  event.deltaTime);
         }
@@ -179,6 +182,9 @@ void Room::start() {
         transform.x = spawn.x;
         transform.y = spawn.y;
         ++index;
+    }
+    for (const RoomPlayer& player : _players) {
+        gameplay::giveLives(registry, player.entity);
     }
     _engine.getPlugin<gameplay::CombatPlugin>().setPlayerCount(_players.size());
     _engine.getPlugin<gameplay::LevelDirectorPlugin>().startGame();

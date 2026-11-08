@@ -108,9 +108,9 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 | Plugin | Job | Publishes | Listens to |
 |--------|-----|-----------|------------|
 | `LevelDirectorPlugin` | Plays the level, spawns the enemies, holds the scroll | `LevelEventPlayed`, `LevelStarted`, `LevelFinished`, `protocol::LevelStart` | `TimelineEventFired`, `BossFightStarted`/`Ended`, `ShipRespawnStarted`, `AllRespawnsOver` |
-| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed`, `protocol::ScoreUpdate`, `protocol::LevelComplete`, `protocol::GameOver` | inputs, collision events, `LevelFinished` |
+| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed`, `protocol::ScoreUpdate`, `protocol::LevelComplete`, `protocol::GameOver` | inputs, collision events, `LevelFinished`, `AllShipsEliminated` |
 | `BossFightPlugin` | Spawns the bosses, follows the fight | `BossFightStarted`, `BossFightEnded` | `LevelEventPlayed` (`boss`) |
-| `RespawnPlugin` | Brings destroyed ships back | `ShipRespawnStarted`, `AllRespawnsOver` | `ShipDestroyed` |
+| `RespawnPlugin` | Brings destroyed ships back while they have lives | `ShipRespawnStarted`, `AllRespawnsOver`, `ShipEliminated`, `AllShipsEliminated` | `ShipDestroyed` |
 | `TerrainPlugin` | Builds and scrolls the terrain | | `LevelEventPlayed` (`terrain`), `LevelStarted` |
 | `CleanupPlugin` | Destroys what left the screen | | |
 | `EnemyFirePlugin` | Fires the guns of the enemies (`prefabs::EnemyGun`) at the nearest ships | | |
@@ -122,10 +122,12 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
   changes the speed, `end` wins the game (see [Game flow](#game-flow)). A `boss` event stops the scroll until its
   `boss_core` is destroyed, and `[[terrain]]` sections scroll as 256 px blocks that destroy the ships touching them. See
   [Level Files](../gameplay/levels.md).
-- **Respawn:** a destroyed ship comes back at its start position (`gameplay::shipSpawnPoint()`) and blinks for
+- **Respawn and lives:** each player starts with `STARTING_LIVES` (3), replicated as the `health` of their ship. A
+  destroyed ship loses one and comes back at its start position (`gameplay::shipSpawnPoint()`), blinking for
   `RESPAWN_DURATION` (3 s) with the `invulnerable` flag: it cannot be hit, and the scroll, the terrain and the next
-  waves wait. Boss fights and respawns share one scroll hold: the scroll resumes once all of them are over. There are
-  no lives or game over yet.
+  waves wait. Boss fights and respawns share one scroll hold. After its last life, the ship is eliminated
+  (`eliminated` flag, parked out of the screen): it cannot move, shoot or be hit, and its player watches the others
+  until the end. Once every ship is eliminated, the game ends with `GameOver{ALL_DEAD}`.
 - **Scripts:** each room has its own Wren VM. What a script spawns with `Engine.spawnPrefab(name, x, y)` goes through
   `gameplay::registerScriptPrefabs()`, so it is replicated too (kind `makeEntityKind(name)`). Player ships and bullets
   cannot be spawned by a script, nor a `boss_core`: a boss fight only starts from a level `boss` event.
@@ -157,9 +159,10 @@ by `level::Level::next`:
    level starts, back to step 1.
 4. **Victory.** After the last level, `CombatPlugin` also publishes `protocol::GameOver{VICTORY}`. The room forwards it,
    marks itself ended, and the lobby destroys it.
+5. **Defeat.** When the last ship with lives is eliminated, `RespawnPlugin` publishes `AllShipsEliminated` and
+   `CombatPlugin` publishes `protocol::GameOver{ALL_DEAD}`, forwarded the same way.
 
-Before `startGame()` (in the tests), the `end` event restarts the level instead. There are no lives yet, so the game
-never ends in `ALL_DEAD`.
+Before `startGame()` (in the tests), the `end` event restarts the level instead.
 
 The gameplay never touches the network: it only publishes protocol structs, and the room broadcasts them.
 

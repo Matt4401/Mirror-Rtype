@@ -26,6 +26,7 @@
 #include "gameplay/BossFightPlugin.hpp"
 #include "gameplay/CombatPlugin.hpp"
 #include "gameplay/Gameplay.hpp"
+#include "gameplay/GameplayComponents.hpp"
 #include "gameplay/GameplayEvents.hpp"
 #include "gameplay/LevelDirectorPlugin.hpp"
 #include "gameplay/RespawnPlugin.hpp"
@@ -471,6 +472,28 @@ TEST_F(CampaignTest, BeforeTheGameStartsTheFirstLevelLoops) {
     run(1.1F);
     EXPECT_TRUE(log.empty());
     EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED) << "restarted, not waiting for the next level";
+}
+
+TEST_F(GameFlowTest, LosingEveryLifeEndsTheGame) {
+    const ecs::Entity ship = spawnShip(1, 200.0F, LANE_Y);
+    rtype::server::gameplay::giveLives(registry(), ship, 1);
+    engine.getPlugin<LevelDirectorPlugin>().startGame();
+    engine.eventBus().publish(rtype::server::gameplay::ShipDestroyed{.ship = ship});
+    ASSERT_TRUE(over.has_value());
+    EXPECT_EQ(over->reason, protocol::GameOverReason::AllDead);
+    EXPECT_EQ(log.back(), "other");
+}
+
+TEST_F(GameFlowTest, AnEliminatedShipNeitherShootsNorMoves) {
+    const ecs::Entity ship = spawnShip(0, 200.0F, LANE_Y);
+    const ecs::Entity other = spawnShip(1, 200.0F, LANE_Y + 300.0F);
+    rtype::server::gameplay::giveLives(registry(), ship, 1);
+    rtype::server::gameplay::giveLives(registry(), other, 3);
+    engine.eventBus().publish(rtype::server::gameplay::ShipDestroyed{.ship = ship});
+    EXPECT_FALSE(over.has_value()) << "another player is still in";
+    shoot(ship);
+    run(0.2F);
+    EXPECT_TRUE(entitiesOf(game::KIND_PLAYER_BULLET).empty());
 }
 
 TEST(Campaign, LengthFollowsTheChain) {
@@ -1439,6 +1462,55 @@ TEST_F(GameplayPluginAloneTest, LevelDirectorHoldsTheScrollUntilEveryHoldIsOver)
 
     bus.publish(rtype::server::gameplay::AllRespawnsOver{});
     EXPECT_FLOAT_EQ(player.speed(), LEVEL_SPEED);
+}
+
+TEST_F(GameplayPluginAloneTest, AShipLosesALifeEachTimeThenIsEliminated) {
+    engine.addPlugin<rtype::server::gameplay::RespawnPlugin>();
+    engine.init();
+    int eliminated = 0;
+    int lost = 0;
+    engine.eventBus().subscribe<rtype::server::gameplay::ShipEliminated>(
+        [&eliminated](const rtype::server::gameplay::ShipEliminated& /*event*/) { ++eliminated; });
+    engine.eventBus().subscribe<rtype::server::gameplay::AllShipsEliminated>(
+        [&lost](const rtype::server::gameplay::AllShipsEliminated& /*event*/) { ++lost; });
+    ecs::Registry& registry = engine.registry();
+    const auto ship = [&registry](const std::uint8_t player) {
+        const ecs::Entity entity = registry.spawnEntity();
+        registry.addComponent(entity, ecs::Transform{.x = 500.0F, .y = 300.0F});
+        registry.addComponent(entity, game::EntityNetState{.subtype = player});
+        rtype::server::gameplay::giveLives(registry, entity);
+        return entity;
+    };
+    const ecs::Entity first = ship(0);
+    const ecs::Entity second = ship(1);
+    EXPECT_EQ(registry.getComponents<game::EntityNetState>().get(first).health, rtype::server::gameplay::STARTING_LIVES)
+        << "the lives are replicated as the health of the ship";
+
+    const auto destroy = [this](const ecs::Entity entity) {
+        engine.eventBus().publish(rtype::server::gameplay::ShipDestroyed{.ship = entity});
+        run(RESPAWN_DURATION + 0.1F);
+    };
+    destroy(first);
+    destroy(first);
+    EXPECT_EQ(registry.getComponents<game::EntityNetState>().get(first).health, 1);
+    EXPECT_EQ(eliminated, 0);
+
+    destroy(first);
+    EXPECT_EQ(eliminated, 1);
+    EXPECT_EQ(lost, 0) << "the other player still plays";
+    const auto& state = registry.getComponents<game::EntityNetState>().get(first);
+    EXPECT_EQ(state.health, 0);
+    EXPECT_NE(state.flags & game::FLAG_ELIMINATED, 0);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Transform>().get(first).x, rtype::server::gameplay::ELIMINATED_SHIP_X);
+    EXPECT_FALSE(registry.hasComponent<rtype::server::gameplay::Respawning>(first)) << "no respawn";
+
+    destroy(first);
+    EXPECT_EQ(eliminated, 1) << "an eliminated ship cannot be destroyed again";
+
+    for (std::uint8_t life = 0; life < rtype::server::gameplay::STARTING_LIVES; ++life) {
+        destroy(second);
+    }
+    EXPECT_EQ(lost, 1) << "the last ship is out: the game is lost";
 }
 
 TEST_F(GameplayPluginAloneTest, RespawnPluginBringsADestroyedShipBack) {

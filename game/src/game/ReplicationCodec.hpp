@@ -62,6 +62,8 @@ inline constexpr std::uint8_t FLAG_ALIVE = 0x01;
 inline constexpr std::uint8_t FLAG_SHOOTING = 0x02;
 /** @brief `EntityNetState::flags` bit: the ship just respawned and cannot be hit; the clients make it blink. */
 inline constexpr std::uint8_t FLAG_INVULNERABLE = 0x04;
+/** @brief A player ship that lost its last life: it is out of the game, its player watches until the end. */
+inline constexpr std::uint8_t FLAG_ELIMINATED = 0x08;
 
 /**
  * @brief Fields of `protocol::EntityState` the engine does not know, as a component.

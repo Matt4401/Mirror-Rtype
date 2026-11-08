@@ -61,6 +61,12 @@ void CombatPlugin::init(engine::Engine& engine) {
     _powerUpToken = _bus->subscribe<collision::PowerUpTouchedEvent>(
         [this](const collision::PowerUpTouchedEvent& touch) { onPowerUpTouched(touch); });
     _levelToken = _bus->subscribe<LevelFinished>([this](const LevelFinished& finished) { onLevelFinished(finished); });
+    _lostToken = _bus->subscribe<AllShipsEliminated>([this](const AllShipsEliminated& /*lost*/) {
+        const std::vector<std::uint32_t> scores = playerScores();
+        _bus->publish(protocol::GameOver{.reason = protocol::GameOverReason::AllDead,
+                                         .score = std::accumulate(scores.begin(), scores.end(), std::uint32_t{0}),
+                                         .playerScores = scores});
+    });
 }
 
 void CombatPlugin::shutdown(engine::Engine& /*engine*/) {
@@ -83,6 +89,10 @@ void CombatPlugin::shutdown(engine::Engine& /*engine*/) {
     if (_levelToken) {
         _bus->unsubscribe<LevelFinished>(*_levelToken);
         _levelToken.reset();
+    }
+    if (_lostToken) {
+        _bus->unsubscribe<AllShipsEliminated>(*_lostToken);
+        _lostToken.reset();
     }
     _router.reset();
 }
@@ -117,7 +127,8 @@ void CombatPlugin::onInput(const ecs::net::InputApplied& event) {
     }
     const ecs::Registry& registry = *_registry;
     if (!registry.hasComponent<game::EntityNetState>(event.entity) ||
-        !registry.hasComponent<ecs::Transform>(event.entity)) {
+        !registry.hasComponent<ecs::Transform>(event.entity) || registry.hasComponent<Eliminated>(event.entity)) {
+        // An eliminated ship is out of the game: its player only watches.
         return;
     }
     const std::uint8_t index = registry.getComponents<game::EntityNetState>().get(event.entity).subtype;
@@ -197,7 +208,8 @@ void CombatPlugin::onPowerUpTouched(const collision::PowerUpTouchedEvent& touch)
 }
 
 bool CombatPlugin::isVulnerable(const ecs::Entity ship) const {
-    return _registry->isAlive(ship) && !_registry->hasComponent<Respawning>(ship);
+    return _registry->isAlive(ship) && !_registry->hasComponent<Respawning>(ship) &&
+           !_registry->hasComponent<Eliminated>(ship);
 }
 
 std::optional<ecs::Entity> CombatPlugin::damagedBy(const ecs::Entity target) const {

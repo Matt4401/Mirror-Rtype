@@ -56,7 +56,8 @@ inline constexpr float RAPID_FIRE_COOLDOWN = 0.08F;
  * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time, and publishes a
  *   `protocol::ScoreUpdate` when a score changed, at most every `SCORE_UPDATE_INTERVAL` seconds.
  * - On `LevelFinished`, publishes the `protocol::LevelComplete` with the scores, then `protocol::GameOver{Victory}`
- *   after the last level. The room sends them to its players: the plugin itself knows nothing about the network.
+ *   after the last level, and `protocol::GameOver{AllDead}` on `AllShipsEliminated`. The room sends them to its
+ *   players: the plugin itself knows nothing about the network. An eliminated ship cannot shoot nor be hit.
  */
 class CombatPlugin final : public engine::IPlugin {
   public:
@@ -175,6 +176,8 @@ class CombatPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _powerUpToken;
     /** @brief Subscription to the finished levels. */
     std::optional<ecs::EventBus::EventToken> _levelToken;
+    /** @brief Subscription to the end of the last ship with lives. */
+    std::optional<ecs::EventBus::EventToken> _lostToken;
     /** @brief Shots requested since the last fixed step. */
     std::vector<PendingShot> _pendingShots;
     /** @brief Power-ups to drop at the next fixed step. */
