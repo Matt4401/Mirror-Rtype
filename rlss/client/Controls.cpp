@@ -140,7 +140,7 @@ ControlKeys defaultControlKeys() noexcept {
 
 void assignKey(ControlKeys& keys, Control control, engine::Key key) noexcept {
     engine::Key& target = keys.at(slot(control));
-    if (auto other = std::ranges::find(keys, key); other != keys.end()) {
+    if (auto* other = std::ranges::find(keys, key); other != keys.end()) {
         *other = target;
     }
     target = key;
