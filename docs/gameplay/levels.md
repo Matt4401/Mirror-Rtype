@@ -166,5 +166,5 @@ Later event types (`checkpoint`, a campaign of several levels...) fit the format
 
 1. Add its type name in `server/src/level/Level.hpp`.
 2. Read and validate its keys in `buildLevel()` (`server/src/level/LevelLoader.cpp`), and turn it into timeline events.
-3. Handle it in `GameplayPlugin::onLevelEvent()`.
+3. Handle its `LevelEventPlayed` in a gameplay plugin (`server/src/gameplay/`), or in `LevelDirectorPlugin::play()`.
 4. Cover it in `tests/server/LevelLoaderTests.cpp` and document it here.

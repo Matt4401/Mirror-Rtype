@@ -86,16 +86,28 @@ The server classifies physics contacts with `rtype::server::collision::Collision
 | `ShipContactEvent` | Player ship ↔ enemy / obstacle |
 | `PowerUpTouchedEvent` | Player ship ↔ power-up |
 
-The router does not change any state: game rules (damage, kills, pickups) subscribe to these events. `GameplayPlugin` owns the router of each room.
+The router does not change any state: game rules (damage, kills, pickups) subscribe to these events. `gameplay::CombatPlugin` owns the router of each room.
 
 ## Gameplay
 
-Each room's engine runs `systems::PhysicsPlugin`, `timeline::TimelinePlugin`, `gameplay::GameplayPlugin`
+Each room's engine runs `systems::PhysicsPlugin`, `timeline::TimelinePlugin`, the gameplay plugins
 (`server/src/gameplay/`, target `rtype_gameplay`), `prefabs::PrefabPlugin` and `scripting::ScriptPlugin`. Every entity
 they spawn is replicated: the client only draws what the server simulates.
 
+`gameplay::addGameplayPlugins()` adds the gameplay plugins. Each has one job, and they never call each other: they
+talk through the events of `gameplay/GameplayEvents.hpp`.
+
+| Plugin | Job | Publishes | Listens to |
+|--------|-----|-----------|------------|
+| `LevelDirectorPlugin` | Plays the level, spawns the enemies, holds the scroll | `LevelEventPlayed`, `LevelStarted` | `TimelineEventFired`, `BossFightStarted`/`Ended`, `ShipRespawnStarted`, `AllRespawnsOver` |
+| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed` | inputs, collision events |
+| `BossFightPlugin` | Spawns the bosses, follows the fight | `BossFightStarted`, `BossFightEnded` | `LevelEventPlayed` (`boss`) |
+| `RespawnPlugin` | Brings destroyed ships back | `ShipRespawnStarted`, `AllRespawnsOver` | `ShipDestroyed` |
+| `TerrainPlugin` | Builds and scrolls the terrain | | `LevelEventPlayed` (`terrain`), `LevelStarted` |
+| `CleanupPlugin` | Destroys what left the screen | | |
+
 - **Level:** the server loads `server/levels/level_01.toml` at start-up and every room plays it. `TimelinePlugin` moves
-  a cursor at the scroll speed; `GameplayPlugin` handles the events it reaches: `spawn` creates the enemies, `scroll`
+  a cursor at the scroll speed; `LevelDirectorPlugin` handles the events it reaches: `spawn` creates the enemies, `scroll`
   changes the speed, `end` restarts the level. A `boss` event stops the scroll until its `boss_core` is destroyed, and
   `[[terrain]]` sections scroll as 256 px blocks that destroy the ships touching them. See
   [Level Files](../gameplay/levels.md).

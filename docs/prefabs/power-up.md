@@ -25,7 +25,7 @@ A collectible bonus slowly drifting to the left with the scrolling. Its collider
 Only players can pick it up. Shots, enemies and obstacles go through it. See [Collision Categories](collision-categories.md).
 
 In R-Type, a ship touching it picks it up: the power-up disappears and its player fires every 0.08 s instead of 0.2 s
-for 5 seconds (`RAPID_FIRE_COOLDOWN`, `RAPID_FIRE_DURATION` in `server/src/gameplay/GameplayPlugin.hpp`).
+for 5 seconds (`RAPID_FIRE_COOLDOWN`, `RAPID_FIRE_DURATION` in `server/src/gameplay/CombatPlugin.hpp`).
 
 ## Parameters
 
