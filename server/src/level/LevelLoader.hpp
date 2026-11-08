@@ -132,7 +132,7 @@ using PrefabCatalog = std::function<std::optional<std::vector<std::string>>(std:
  * @endcode
  *
  * Never fails: every invalid value is corrected or its event skipped, and reported in `warnings`. A wave is expanded
- * into one spawn event per enemy, `interval` seconds apart at the scroll speed in effect where the wave starts.
+ * into one spawn event per enemy, `interval` seconds of scrolling apart, across the `scroll` events on the way.
  *
  * @param file Parsed level file.
  * @param prefabs Prefabs the game can spawn per event type; an event naming another one is skipped.

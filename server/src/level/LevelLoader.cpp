@@ -12,6 +12,7 @@
 #include <expected>
 #include <filesystem>
 #include <format>
+#include <iterator>
 #include <optional>
 #include <span>
 #include <string>
@@ -274,19 +275,53 @@ void addBoss(const config::ConfigFile& file, config::ConfigReader& reader, const
     });
 }
 
+/** @brief Scroll speed set from a distance onwards, by the level or a `scroll` event. */
+struct SpeedChange {
+    /** @brief Scroll distance where the speed changes. */
+    float at = 0.0F;
+    /** @brief New speed, px/s, at least MIN_SCROLL_SPEED. */
+    float speed = 0.0F;
+};
+
+/**
+ * @brief Finds where the scroll is after scrolling for some time, across the speed changes on the way.
+ *
+ * The time only counts while the scroll moves, so a pause (boss fight, respawn) delays the result too.
+ *
+ * @param speeds Speed changes sorted by distance, the first one at 0.
+ * @param from Scroll distance at the start.
+ * @param seconds Scroll time.
+ * @return Scroll distance reached.
+ */
+float scrollAfter(const std::vector<SpeedChange>& speeds, float from, float seconds) {
+    auto next = std::ranges::upper_bound(speeds, from, {}, &SpeedChange::at);
+    float speed = std::prev(next)->speed;
+    float position = from;
+    for (; next != speeds.end(); ++next) {
+        const float untilChange = (next->at - position) / speed;
+        if (untilChange >= seconds) {
+            break;
+        }
+        seconds -= untilChange;
+        position = next->at;
+        speed = next->speed;
+    }
+    return position + (seconds * speed);
+}
+
 /**
  * @brief Adds the spawn events of a wave.
  * @param file Level file.
  * @param reader Reader reporting corrections.
  * @param event The wave.
- * @param scrollSpeed Scroll speed where the wave starts, used to space its enemies.
+ * @param speeds Scroll speeds of the level, used to space its enemies in time.
  * @param prefabs Prefabs the game can spawn per event type.
  * @param out Receives the events.
  * @param warnings Receives a message if the wave is skipped.
  */
-void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const RawEvent& event, float scrollSpeed,
-             const PrefabCatalog& prefabs, std::vector<timeline::TimelineEvent>& out,
-             std::vector<std::string>& warnings) {
+void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const RawEvent& event,
+             const std::vector<SpeedChange>& speeds, const PrefabCatalog& prefabs,
+             std::vector<timeline::TimelineEvent>& out, std::vector<std::string>& warnings) {
     const std::size_t i = event.index;
     const std::optional<EventPrefab> prefab = readPrefab(file, event, prefabs, warnings);
     if (!prefab.has_value()) {
@@ -299,7 +334,7 @@ void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const
     const float spacingY = reader.number(eventKey(i, "spacing_y"), 0.0F, -MAX_SPAWN_COORDINATE, MAX_SPAWN_COORDINATE);
     const prefabs::PrefabParams extra = extraParams(file, i, SPAWN_KEYS, *prefab, warnings);
 
-    const float step = interval * scrollSpeed;
+    float position = event.at;
     for (std::size_t n = 0; n < count; ++n) {
         const auto rank = static_cast<float>(n);
         prefabs::PrefabParams params = extra;
@@ -308,10 +343,11 @@ void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const
         params.set("y",
                    static_cast<double>(std::clamp(y + (rank * spacingY), -MAX_SPAWN_COORDINATE, MAX_SPAWN_COORDINATE)));
         out.push_back(timeline::TimelineEvent{
-            .position = std::min(event.at + (rank * step), MAX_LEVEL_DISTANCE),
+            .position = position,
             .type = std::string(EVENT_SPAWN),
             .params = std::move(params),
         });
+        position = std::min(scrollAfter(speeds, position, interval), MAX_LEVEL_DISTANCE);
     }
 }
 
@@ -432,9 +468,12 @@ Level buildLevel(const config::ConfigFile& file, const PrefabCatalog& prefabs, s
     reader.reportUnknownKeys("level");
 
     float scrollSpeed = level.scrollSpeed;
+    // Waves are expanded once every speed change is known, since a wave may span a `scroll` event.
+    std::vector<SpeedChange> speeds{{.at = 0.0F, .speed = level.scrollSpeed}};
+    std::vector<RawEvent> waves;
     for (const RawEvent& event : readEvents(file, reader, warnings)) {
         if (event.type == EVENT_SPAWN) {
-            addWave(file, reader, event, scrollSpeed, prefabs, events, warnings);
+            waves.push_back(event);
         } else if (event.type == EVENT_SCROLL) {
             reportUnknownEventKeys(file, event.index, SCROLL_KEYS, warnings);
             if (!file.getNumber(eventKey(event.index, "speed")).has_value()) {
@@ -443,6 +482,7 @@ Level buildLevel(const config::ConfigFile& file, const PrefabCatalog& prefabs, s
             }
             scrollSpeed =
                 reader.number(eventKey(event.index, "speed"), scrollSpeed, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED);
+            speeds.push_back({.at = event.at, .speed = scrollSpeed});
             events.push_back(timeline::TimelineEvent{
                 .position = event.at,
                 .type = std::string(EVENT_SCROLL),
@@ -457,6 +497,9 @@ Level buildLevel(const config::ConfigFile& file, const PrefabCatalog& prefabs, s
         } else {
             warnings.push_back(std::format("events.{}: unknown type '{}', event skipped", event.index, event.type));
         }
+    }
+    for (const RawEvent& wave : waves) {
+        addWave(file, reader, wave, speeds, prefabs, events, warnings);
     }
     addTerrain(file, reader, events, warnings);
     // One sort for the whole level: adding the events one by one would be quadratic.
