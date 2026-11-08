@@ -316,7 +316,8 @@ TEST_F(UiWidgetsTest, TextInputAcceptsUtf8AndErasesWholeCharacters) {
     const ecs::Entity input = widget(0.0F);
     registry.addComponent(input, ui::UiTextInput{.action = "name"});
     tap(engine::Key::Down);
-    window.typed = {U'J', U'\u00e9', U'\u20ac'};
+    // Code points rather than U'\u...' literals, which MSVC rejects without /utf-8.
+    window.typed = {U'J', static_cast<char32_t>(0xE9), static_cast<char32_t>(0x20AC)};
     frame();
     EXPECT_EQ(registry.getComponents<ui::UiTextInput>().get(input).text, "J\xc3\xa9\xe2\x82\xac");
     tap(engine::Key::Backspace);
