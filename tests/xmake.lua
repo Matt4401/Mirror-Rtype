@@ -425,3 +425,11 @@ target("test_console")
     add_packages("gtest")
     add_files("tools/ConsoleTests.cpp")
     add_tests("test_console")
+
+target("test_devconsole")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_tools", "engine_devconsole", "engine_ui",
+             "engine_hierarchy")
+    add_packages("gtest")
+    add_files("tools/DevConsoleTests.cpp")
+    add_tests("test_devconsole")
