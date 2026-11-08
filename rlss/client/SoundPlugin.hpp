@@ -29,10 +29,7 @@ struct Time;
 
 namespace rlss::client {
 
-/** @brief Directory of the sound files, relative to the working directory (the repository root, like the scripts). */
-inline constexpr std::string_view SOUND_DIRECTORY = "rlss/assets/sounds/";
-
-/** @brief Every sound of the game; `fileName()` gives its file in `SOUND_DIRECTORY`. */
+/** @brief Every sound of the game; `soundAlias()` gives its asset alias, declared by `rlss/scripts/Assets.wren`. */
 enum class Sound : std::uint8_t {
     /** @brief Engine hum of a car (loop), pitched with its speed. */
     Engine,
@@ -76,11 +73,11 @@ enum class Sound : std::uint8_t {
 inline constexpr std::size_t SOUND_COUNT = static_cast<std::size_t>(Sound::GoalExplosion) + 1;
 
 /**
- * @brief File name of a sound, in `SOUND_DIRECTORY`.
+ * @brief Asset alias of a sound: its file name in `rlss/assets/sounds/`, without extension.
  * @param sound Sound.
- * @return File name, such as "ball_hit.wav".
+ * @return Alias, such as "ball_hit".
  */
-[[nodiscard]] std::string_view fileName(Sound sound) noexcept;
+[[nodiscard]] std::string_view soundAlias(Sound sound) noexcept;
 
 /** @brief Client: what the sounds of a car last heard, kept on the car entity by `SoundPlugin`. */
 struct CarAudio {
@@ -130,7 +127,8 @@ class SoundPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "SoundPlugin"; }
 
     /**
-     * @brief Declares the dependencies on the audio, client replication, camera and scoreboard plugins.
+     * @brief Declares the dependencies on the audio (and its asset loaders), client replication, camera and
+     * scoreboard plugins.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;

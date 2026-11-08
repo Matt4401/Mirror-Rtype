@@ -10,8 +10,13 @@
 #include <cstdint>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 
+#include "assets/AssetKinds.hpp"
+#include "assets/AssetManager.hpp"
+#include "assets/render/RenderAssetsPlugin.hpp"
+#include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/ParallaxLayer.hpp"
@@ -31,7 +36,6 @@
 #include "input/RTypeBindings.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "render/RenderPlugin.hpp"
-#include "render/texture/TextureStore.hpp"
 #include "systems/render/AnimationPlugin.hpp"
 #include "ui/UiPlugin.hpp"
 
@@ -170,33 +174,42 @@ void applyBox(ecs::Registry& registry, const ecs::Entity entity, const float wid
 
 void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
     builder.require<render::RenderPlugin>();
+    // Runs scripts/rtype/Assets.wren, which declares the textures resolved in init.
+    builder.require<assets::AssetScriptingPlugin>();
+    // Plugs the texture loader into the manager, so that the global group really loads in init.
+    builder.require<assets::RenderAssetsPlugin>();
     builder.require<::input::InputPlugin>();
     builder.require<systems::AnimationPlugin>();
     builder.require<ui::UiPlugin>();
 }
 
 void RTypeGamePlugin::init(engine::Engine& engine) {
-    render::TextureStore* textures = engine.getPlugin<render::RenderPlugin>().textures();
-    if (textures == nullptr) {
-        throw std::runtime_error("RTypeGamePlugin: TextureStore not available");
-    }
-
-    const auto load = [&](const std::string& path) {
-        const ecs::TextureId id = textures->load(path);
-        if (id == ecs::NO_TEXTURE) {
-            throw std::runtime_error("failed to load texture '" + path +
-                                     "' — run the client from the project root directory");
+    auto& manager = engine.registry().getResource<assets::AssetManager>();
+    manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
+    // Fail fast, as before the asset manager: a sprite missing from the start is a broken install or a client run
+    // from the wrong directory, not something to play through with checkerboards.
+    const auto texture = [&manager](const std::string_view alias) {
+        switch (manager.status<assets::Texture>(alias)) {
+            case assets::AssetStatus::Loaded:
+                return manager.get<assets::Texture>(alias);
+            case assets::AssetStatus::Failed:
+                throw std::runtime_error("cannot load texture '" + std::string(alias) +
+                                         "' — run the client from the project root directory");
+            case assets::AssetStatus::Declared:
+            case assets::AssetStatus::Unknown:
+                break;
         }
-        return id;
+        throw std::runtime_error("texture '" + std::string(alias) +
+                                 "' is not declared by scripts/rtype/Assets.wren (or no texture loader is installed)");
     };
 
-    _shipTexId = load("sprites/r-typesheet42.gif");
-    _bydosTexId = load("sprites/spritesheet5.png");
-    _bulletTexId = load("sprites/r-typesheet-amo.png");
+    _shipTexId = texture("player_ship");
+    _bydosTexId = texture("bydos");
+    _bulletTexId = texture("player_bullet");
 
-    _starSmallId = load("sprites/star_small.png");
-    _starMediumId = load("sprites/star_medium.png");
-    _starLargeId = load("sprites/star_large.png");
+    _starSmallId = texture("star_small");
+    _starMediumId = texture("star_medium");
+    _starLargeId = texture("star_large");
 
     if (engine.mediator().hasService<engine::IInputService>()) {
         client::input::setupDefaultBindings(engine.service<engine::IInputService>().mapping());

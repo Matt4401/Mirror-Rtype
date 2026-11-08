@@ -338,6 +338,15 @@ class ScriptSystem {
     std::size_t addVmResetListener(std::function<void(VmResetPhase)> listener);
 
     /**
+     * @brief Tells whether every watched module ran again without error in the last hot reload.
+     *
+     * Read by `VmResetPhase::After` listeners: when false, some module stopped before its end, so what it would
+     * have redone (declarations, registrations) may be missing.
+     * @return True when the last replay succeeded, or before any hot reload.
+     */
+    [[nodiscard]] bool lastReplaySucceeded() const noexcept { return _lastReplaySucceeded; }
+
+    /**
      * @brief Removes a VM reset listener.
      * @param id Id returned by `addVmResetListener`; unknown ids are ignored.
      */
@@ -568,6 +577,8 @@ class ScriptSystem {
     float _reloadCheckTimer = 0.0F;
     /** @brief Configuration flag enabling or disabling hot-reloading. */
     bool _hotReloadEnabled = true;
+    /** @brief Whether every module of the last hot reload ran again without error. */
+    bool _lastReplaySucceeded = true;
     /** @brief State used by engine extensions. */
     Extensions _extensions;
     /**

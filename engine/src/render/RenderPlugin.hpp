@@ -83,6 +83,9 @@ class RenderPlugin final : public engine::IPlugin {
     /** @brief Gets const pointer to the internal TextureStore, or nullptr if uninitialized. */
     [[nodiscard]] const TextureStore* textures() const noexcept { return _textures.get(); }
 
+    /** @brief Gets the screen-space draw service (fonts included), or nullptr if uninitialized. */
+    [[nodiscard]] ScreenDrawService* screenDraw() noexcept { return _screenDrawService.get(); }
+
     /** @brief Gets mutable pointer to the active RenderSystem, or nullptr if uninitialized. */
     [[nodiscard]] RenderSystem* renderSystem() noexcept { return _renderSystem.get(); }
 

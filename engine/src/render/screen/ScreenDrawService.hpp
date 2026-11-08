@@ -42,6 +42,12 @@ class ScreenDrawService final : public engine::IScreenDrawService {
     engine::FontId loadFont(const std::string& path) override;
 
     /**
+     * @brief Gets the store of the fonts loaded through `loadFont`, for the asset manager's font loader.
+     * @return Font store.
+     */
+    [[nodiscard]] FontStore& fonts() noexcept { return _fonts; }
+
+    /**
      * @brief Measures text with the given font.
      * @param text Text to measure.
      * @param fontSize Font size in pixels.
