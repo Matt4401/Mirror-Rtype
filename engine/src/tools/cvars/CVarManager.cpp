@@ -15,6 +15,7 @@
 #include <variant>
 #include <vector>
 
+#include "tools/common/TextUtils.hpp"
 #include "tools/cvars/CVar.hpp"
 #include "tools/cvars/CVarRef.hpp"
 #include "tools/cvars/CVarTypes.hpp"
@@ -22,20 +23,6 @@
 namespace tools {
 
 namespace {
-
-/** @brief Tells whether a byte is an ASCII control character (tabs and newlines included). */
-[[nodiscard]] bool isControl(char c) noexcept {
-    const auto byte = static_cast<unsigned char>(c);
-    return byte < 0x20U || byte == 0x7FU;
-}
-
-/** @brief Lowercases ASCII letters. */
-[[nodiscard]] std::string toLower(std::string_view text) {
-    std::string lower(text);
-    std::ranges::transform(lower, lower.begin(),
-                           [](char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; });
-    return lower;
-}
 
 /** @brief Drops one leading `+`, which `std::from_chars` does not accept. */
 [[nodiscard]] std::string_view dropPlus(std::string_view text) noexcept {
@@ -46,7 +33,7 @@ namespace {
 }
 
 [[nodiscard]] std::expected<bool, std::string> parseBool(std::string_view text) {
-    const std::string lower = toLower(text);
+    const std::string lower = detail::toLower(text);
     if (lower == "1" || lower == "true" || lower == "on" || lower == "yes") {
         return true;
     }
@@ -110,7 +97,7 @@ namespace {
             return std::unexpected("string longer than " + std::to_string(CVarManager::MAX_STRING_LENGTH) +
                                    " characters");
         }
-        if (std::ranges::any_of(*text, isControl)) {
+        if (std::ranges::any_of(*text, detail::isControl)) {
             return std::unexpected(std::string("string contains control characters"));
         }
         return {};

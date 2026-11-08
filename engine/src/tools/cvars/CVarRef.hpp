@@ -54,7 +54,7 @@ class CVarRef {
      * @param value New value.
      * @return An error message if the value is out of bounds or invalid.
      */
-    std::expected<void, std::string> set(T value) const;
+    [[nodiscard]] std::expected<void, std::string> set(T value) const;
 
     /** @brief Tells whether the handle points to a variable. @return `true` once assigned. */
     [[nodiscard]] explicit operator bool() const noexcept { return _cvar != nullptr; }

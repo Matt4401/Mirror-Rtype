@@ -1,6 +1,6 @@
 /**
  * @file ConsoleHelpers.hpp
- * @brief Internal helpers of the Console: text sanitizing and tab-completion utilities.
+ * @brief Internal helpers of the Console: safe output and tab-completion utilities.
  */
 
 #pragma once
@@ -12,20 +12,6 @@
 #include <vector>
 
 namespace tools::detail {
-
-/**
- * @brief Tells whether a byte is an ASCII control character (tabs and newlines included).
- * @param c Byte.
- * @return `true` for bytes below 0x20 and for 0x7F.
- */
-[[nodiscard]] bool isControl(char c) noexcept;
-
-/**
- * @brief Lowercases ASCII letters.
- * @param text Text.
- * @return A lowercase copy; other bytes are unchanged.
- */
-[[nodiscard]] std::string toLower(std::string_view text);
 
 /**
  * @brief Makes untrusted text safe to show: control characters become `?`, text past `MAX_LINE_LENGTH` is cut.

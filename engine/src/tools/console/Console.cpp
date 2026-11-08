@@ -12,6 +12,7 @@
 #include <utility>
 #include <vector>
 
+#include "tools/common/TextUtils.hpp"
 #include "tools/console/CommandContext.hpp"
 #include "tools/console/CommandLine.hpp"
 #include "tools/console/ConsoleHelpers.hpp"

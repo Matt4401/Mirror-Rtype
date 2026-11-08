@@ -8,16 +8,16 @@
 #include <utility>
 #include <vector>
 
+#include "tools/common/TextUtils.hpp"
+
 namespace tools {
 
 namespace {
 
 [[nodiscard]] bool isBlank(char c) noexcept { return c == ' ' || c == '\t'; }
 
-[[nodiscard]] bool isForbiddenControl(char c) noexcept {
-    const auto byte = static_cast<unsigned char>(c);
-    return (byte < 0x20U && c != '\t') || byte == 0x7FU;
-}
+/** @brief Control characters refused in a line: all but the tab, which separates words. */
+[[nodiscard]] bool isForbiddenControl(char c) noexcept { return c != '\t' && detail::isControl(c); }
 
 /** @brief Reads a line character by character into statements. */
 class Splitter {

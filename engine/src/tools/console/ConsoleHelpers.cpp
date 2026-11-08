@@ -7,21 +7,10 @@
 #include <string_view>
 #include <vector>
 
+#include "tools/common/TextUtils.hpp"
 #include "tools/console/CommandLine.hpp"
 
 namespace tools::detail {
-
-bool isControl(char c) noexcept {
-    const auto byte = static_cast<unsigned char>(c);
-    return byte < 0x20U || byte == 0x7FU;
-}
-
-std::string toLower(std::string_view text) {
-    std::string lower(text);
-    std::ranges::transform(lower, lower.begin(),
-                           [](char c) { return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c; });
-    return lower;
-}
 
 std::string printable(std::string_view text) {
     std::string shown(text.substr(0, MAX_LINE_LENGTH));
