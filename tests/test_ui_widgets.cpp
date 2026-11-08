@@ -382,6 +382,34 @@ TEST_F(UiWidgetsTest, NavigationInsideAListScrollsIt) {
     EXPECT_EQ(scroll.first, 0U);
 }
 
+TEST_F(UiWidgetsTest, NavigationInsideAListSkipsRowsThatCannotTakeTheFocus) {
+    const ecs::Entity list = registry.spawnEntity();
+    registry.addComponent(list, ui::UiAnchor{});
+    registry.addComponent(list, ui::UiRect{.width = 200.0F, .height = 60.0F});
+    registry.addComponent(list, ui::UiScrollList{.visibleCount = 2, .itemHeight = 30.0F});
+    std::vector<ecs::Entity> rows;
+    for (int i = 0; i < 5; ++i) {
+        // Only the first and the last row are focusable: the three between are disabled entries.
+        const ecs::Entity row = (i == 0 || i == 4) ? button(0.0F, "row") : registry.spawnEntity();
+        if (i != 0 && i != 4) {
+            registry.addComponent(row, ui::UiAnchor{});
+            registry.addComponent(row, ui::UiRect{.width = 200.0F, .height = 30.0F});
+        }
+        hierarchy::setParent(registry, row, list);
+        rows.push_back(row);
+    }
+    auto& scroll = registry.getComponents<ui::UiScrollList>().get(list);
+
+    tap(engine::Key::Down);
+    EXPECT_EQ(focused(), rows[0]);
+    tap(engine::Key::Down);
+    EXPECT_EQ(focused(), rows[4]);
+    EXPECT_EQ(scroll.first, 3U);  // scrolled past the disabled rows to show the next focusable one
+    tap(engine::Key::Up);
+    EXPECT_EQ(focused(), rows[0]);
+    EXPECT_EQ(scroll.first, 0U);
+}
+
 TEST_F(UiWidgetsTest, WheelScrollsTheListUnderTheCursor) {
     const ecs::Entity list = registry.spawnEntity();
     registry.addComponent(list, ui::UiAnchor{});

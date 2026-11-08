@@ -11,7 +11,6 @@
 
 #include "ecs/Entity.hpp"
 #include "scene/IScene.hpp"
-#include "scene/SceneTypes.hpp"
 
 namespace client {
 
