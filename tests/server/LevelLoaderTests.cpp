@@ -177,6 +177,74 @@ TEST(LevelLoader, PrefabParametersArePassedToThePrefab) {
     EXPECT_FALSE(spawn.params.has("count"));
 }
 
+TEST(LevelLoader, EachEventTypeOnlyTakesItsPrefabs) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[events]]
+        at = 0.0
+        type = "spawn"
+        prefab = "boss_core"
+
+        [[events]]
+        at = 10.0
+        type = "boss"
+        prefab = "alien_scout"
+    )",
+                                     warnings);
+
+    EXPECT_TRUE(built.timeline.events().empty());
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.0: prefab 'boss_core' cannot be used by a spawn event"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.1: prefab 'alien_scout' cannot be used by a boss event"));
+}
+
+TEST(LevelLoader, TyposInEventKeysAreReported) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[events]]
+        at = 0.0
+        type = "spawn"
+        prefab = "alien_scout"
+        cout = 5
+        intervall = 0.4
+
+        [[events]]
+        at = 10.0
+        type = "scroll"
+        speed = 30.0
+        sped = 40.0
+
+        [[events]]
+        at = 20.0
+        type = "end"
+        when = "now"
+    )",
+                                     warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 3U);
+    EXPECT_FALSE(eventAt(built, 0).params.has("cout"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.0.cout: not a parameter of 'alien_scout'"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.0.intervall: not a parameter of 'alien_scout'"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.1.sped: unknown key"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.2.when: unknown key"));
+}
+
+TEST(LevelLoader, BossClassIsKept) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[events]]
+        at = 0.0
+        type = "boss"
+        prefab = "boss_core"
+        script = "scripts/Boss.wren"
+        class = "CoreBoss"
+    )",
+                                     warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 1U);
+    EXPECT_EQ(eventAt(built, 0).params.find<std::string>("class"), "CoreBoss");
+    EXPECT_TRUE(warnings.empty());
+}
+
 TEST(LevelLoader, ReadsScrollAndEndEvents) {
     const level::Level built = build(R"(
         [[events]]
