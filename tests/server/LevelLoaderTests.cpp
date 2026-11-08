@@ -310,6 +310,26 @@ TEST(LevelLoader, OutOfRangeValuesAreClampedWithAWarning) {
     EXPECT_TRUE(anyWarningMentions(warnings, "events.0.count"));
 }
 
+TEST(LevelLoader, ScrollSpeedCannotStopTheLevel) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [level]
+        scroll_speed = 0.0
+
+        [[events]]
+        at = 100.0
+        type = "scroll"
+        speed = 0.0
+    )",
+                                     warnings);
+
+    EXPECT_FLOAT_EQ(built.scrollSpeed, level::MIN_SCROLL_SPEED);
+    ASSERT_EQ(built.timeline.events().size(), 1U);
+    EXPECT_DOUBLE_EQ(eventAt(built, 0).params.find<double>("speed").value_or(0.0), level::MIN_SCROLL_SPEED);
+    EXPECT_TRUE(anyWarningMentions(warnings, "level.scroll_speed"));
+    EXPECT_TRUE(anyWarningMentions(warnings, "events.0.speed"));
+}
+
 TEST(LevelLoader, TooManyEventsAreTruncated) {
     std::string toml;
     for (std::size_t i = 0; i < level::MAX_EVENTS + 10; ++i) {
