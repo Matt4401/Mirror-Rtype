@@ -241,45 +241,6 @@ class Car {
         } else {
             fly_(dt, steer, pitch, jump, jumpPressed)
         }
-        collidePosts_()
-    }
-
-    // A goal post is a convex edge: it can poke into a flat side of the hitbox without any hitbox corner touching a
-    // wall, so it is checked on its own. The car is pushed so that the post leaves through the closest side.
-    collidePosts_() {
-        var c = _theta.cos
-        var s = _theta.sin
-        for (post in _arena.posts) {
-            var dx = post[0] - _x
-            var dy = post[1] - _y
-            var along = dx * c + dy * s
-            var up = dx * s - dy * c
-            var inAlong = CarTuning.HALF_LENGTH - along.abs
-            var inUp = CarTuning.HALF_HEIGHT - up.abs
-            if (inAlong > 0 && inUp > 0) {
-                var pushX = 0
-                var pushY = 0
-                var depth = 0
-                if (inAlong < inUp) {
-                    var side = along >= 0 ? 1 : -1
-                    pushX = -c * side
-                    pushY = -s * side
-                    depth = inAlong
-                } else {
-                    var side = up >= 0 ? 1 : -1
-                    pushX = -s * side
-                    pushY = c * side
-                    depth = inUp
-                }
-                _x = _x + pushX * depth
-                _y = _y + pushY * depth
-                var into = _vx * pushX + _vy * pushY
-                if (into < 0) {
-                    _vx = _vx - pushX * into
-                    _vy = _vy - pushY * into
-                }
-            }
-        }
     }
 
     /** @brief Publishes the state to the ECS, once per frame. */
@@ -343,8 +304,8 @@ class Car {
         if (steer == 0) _steerLocked = false
         if (!_steerLocked && tx.abs > 0.35) _steerSign = tx > 0 ? 1 : -1
         if (steer != 0) _steerLocked = true
-        // Boosting means full throttle forward, whatever the stick says.
-        var throttle = _boosting ? _facing : steer * _steerSign
+        // Boosting means full throttle forward, unless the stick asks for the other way: then the car turns around.
+        var throttle = steer != 0 ? steer * _steerSign : (_boosting ? _facing : 0)
 
         if (throttle != 0 && throttle.sign != _facing && s.abs < CarTuning.TURN_SPEED) _facing = throttle.sign
 
@@ -551,7 +512,9 @@ class Car {
         var speedRatio = (_vx * direction).max(0) / CarTuning.MAX_SPEED
         var impulse = CarTuning.BACK_DODGE_IMPULSE * (1 + 1.5 * speedRatio)
         if (forward) impulse = CarTuning.DODGE_IMPULSE * (1 + 0.9 * speedRatio)
-        _vx = _vx + direction * impulse
+        // The flip redirects the car: speed going against the stick is partly cancelled.
+        var against = (-_vx * direction).max(0)
+        _vx = _vx + direction * (impulse + against * CarTuning.DODGE_REDIRECT)
         _vy = _vy > 0 ? 0 : _vy * CarTuning.DODGE_VERTICAL_KEEP
         // Pushing right spins clockwise: a front flip for a car facing right, a back flip for one facing left.
         _spin = direction * CarTuning.DODGE_SPIN
@@ -644,7 +607,6 @@ class Car {
     /** @brief Pushes the hitbox back inside the arena (after the ball pushed the car), stopping it against the wall. */
     keepInArena() {
         blockCorners_()
-        collidePosts_()
     }
 
     // On the wheels, the nose or the roof can still run into a wall (the back of a goal): stop against it.
@@ -670,6 +632,9 @@ class Car {
         _grounded = true
         _separation = 0
         _normalSpeed = 0
+        // The stick direction kept from before the flight is stale on a new surface (the floor, then the ceiling):
+        // read the surface again, or the car would drive away from where the stick points.
+        _steerLocked = false
         _hasJumped = false
         _secondJumpUsed = false
         _jumpHold = 0

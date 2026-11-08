@@ -99,6 +99,8 @@ class CarTuning {
     static DODGE_IMPULSE { 500 }
     /** @brief Velocity given by a back dodge. */
     static BACK_DODGE_IMPULSE { 533 }
+    /** @brief Share of the speed going against the stick that a dodge cancels (redirects the car). */
+    static DODGE_REDIRECT { 0.8 }
     /** @brief While dodging, the car spins at full speed and ignores air control. */
     static DODGE_TIME { 0.65 }
     /** @brief Share of the upward speed kept when dodging (a falling car stops falling). */

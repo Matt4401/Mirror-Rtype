@@ -158,7 +158,7 @@ ends at the goal mouth (360 uu above the floor, 540 uu high, 240 uu deep). The g
 the curve (`arena::GOAL_DROP`): it cuts the end of the ramp, and the bottom post stands where they meet, on the curve,
 4 uu inside the arena. There is no wall above the ramp to drive on: a car driving fast up the ramp flies up the mouth or
 into the goal, and the walls above the goals are reached in the air. The crossbar and the bottom of each goal meet the
-wall at a post, a convex edge that the ball bounces off and the car collides with. The two back corners of each goal are rounded (`arena::GOAL_CORNER_RADIUS`, 120 uu, a bit more than
+wall at a post, a convex edge that the ball bounces off (the car has no extra hitbox there). The two back corners of each goal are rounded (`arena::GOAL_CORNER_RADIUS`, 120 uu, a bit more than
 the ball): a ball or a car rising along the back of the goal follows the curve instead of stopping in a sharp corner.
 The radius travels to the scripts in `ArenaShape.goalCornerRadius`, and the client draws the same curve.
 
