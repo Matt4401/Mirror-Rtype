@@ -101,7 +101,7 @@ they spawn is replicated: the client only draws what the server simulates.
   [Level Files](../gameplay/levels.md).
 - **Scripts:** each room has its own Wren VM. What a script spawns with `Engine.spawnPrefab(name, x, y)` goes through
   `gameplay::registerScriptPrefabs()`, so it is replicated too (kind `makeEntityKind(name)`). Player ships and bullets
-  cannot be spawned by a script.
+  cannot be spawned by a script, nor a `boss_core`: a boss fight only starts from a level `boss` event.
 - **Shots:** while a player's input holds `shoot`, its ship fires a `player_bullet` every 0.2 s at most. The bullet's
   `subtype` is the index of the player who fired it.
 - **Kills and scores:** a `ShotHitEvent` of a player shot on an enemy destroys both and gives 1 point to the shooter.
