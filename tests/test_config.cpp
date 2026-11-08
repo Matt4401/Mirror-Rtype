@@ -265,6 +265,17 @@ TEST(ConfigReader, MissingKeysGiveTheFallbackSilently) {
     EXPECT_TRUE(warnings.empty());
 }
 
+TEST(ConfigFile, KeysFlattenedTwiceAreReported) {
+    const config::ConfigFile file = config::ConfigFile::parse(R"(
+        keys = [10]
+        "keys.0" = 20
+    )");
+
+    ASSERT_EQ(file.warnings().size(), 1U);
+    EXPECT_NE(file.warnings()[0].find("keys.0: defined twice"), std::string::npos) << file.warnings()[0];
+    EXPECT_TRUE(file.getInteger("keys.0").has_value());
+}
+
 TEST(ConfigReader, ReadsValidValues) {
     const config::ConfigFile file =
         config::ConfigFile::parse("[game]\nspeed = 4\nlives = 5\nvsync = false\nname = \"Demo\"\n");
