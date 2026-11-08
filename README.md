@@ -88,6 +88,38 @@ The project is fully self-contained using **xmake**, which automatically manages
 
 </details>
 
+<details>
+<summary><b>Installing MSVC on Windows</b></summary>
+
+On Windows, xmake builds with MSVC. If MSVC is not installed, `xmake f` fails because it cannot find a
+compiler. Install Visual Studio 2022 with the **Desktop development with C++** workload (MSVC compiler + Windows SDK).
+
+- **Visual Studio Community (IDE + compiler)**, from PowerShell:
+
+  ```powershell
+  winget install --id Microsoft.VisualStudio.2022.Community --override "--passive --wait --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended"
+  ```
+
+- **Build Tools only (compiler without the IDE)**, from PowerShell:
+
+  ```powershell
+  winget install --id Microsoft.VisualStudio.2022.BuildTools --override "--passive --wait --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+  ```
+
+- **Visual Studio already installed, but without the C++ workload**: add it from PowerShell:
+
+  ```powershell
+  & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe" modify `
+      --installPath "${env:ProgramFiles}\Microsoft Visual Studio\2022\Community" `
+      --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended --passive
+  ```
+
+  Or open the **Visual Studio Installer**, click **Modify** and check **Desktop development with C++**.
+
+Then open a new terminal and run `xmake f -c`. xmake detects MSVC by itself.
+
+</details>
+
 ### Installation & Build
 
 For comprehensive instructions, check the **[Building Guide](docs/getting-started/building.md)**.

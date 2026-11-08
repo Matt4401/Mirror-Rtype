@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "assets/AssetManager.hpp"
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
@@ -24,7 +25,6 @@
 #include "gameplay/BossEffects.hpp"
 #include "looks/Looks.hpp"
 #include "net/ReplicationEvents.hpp"
-#include "render/texture/TextureStore.hpp"
 
 namespace client {
 
@@ -60,13 +60,15 @@ class RTypeGamePlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "RTypeGamePlugin"; }
 
     /**
-     * @brief Declares dependencies on RenderPlugin, InputPlugin, AnimationPlugin.
+     * @brief Declares dependencies on RenderPlugin, AssetScriptingPlugin, RenderAssetsPlugin, InputPlugin,
+     * AnimationPlugin and UiPlugin.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Loads textures, configures action bindings, and spawns the starfield, the camera and the local input.
+     * @brief Loads the global asset group, configures action bindings, and spawns the starfield, the camera and the
+     * local input.
      * @param engine Reference to host Engine.
      */
     void init(engine::Engine& engine) override;
@@ -114,14 +116,14 @@ class RTypeGamePlugin final : public engine::IPlugin {
     void spawnExplosion(ecs::Registry& registry, const std::vector<gameplay::BurstSpec>& bursts) const;
 
     /**
-     * @brief Reads `client/config/looks.toml` and loads the textures it names.
+     * @brief Reads `client/config/looks.toml`, from the content root, and loads the textures it names.
      *
      * A missing file keeps every boss a box; a texture that does not load turns its look back into a box. Every problem
      * is logged, none stops the client.
      *
-     * @param textures Texture store of the render plugin.
+     * @param manager Asset manager, which loads and caches the textures.
      */
-    void loadLooks(render::TextureStore& textures);
+    void loadLooks(assets::AssetManager& manager);
 
     /**
      * @brief Draws a boss or a boss part with its configured look, or as a box without one.

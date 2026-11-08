@@ -7,6 +7,8 @@
 
 #include <raylib.h>
 
+#include <bitset>
+#include <cstddef>
 #include <memory>
 #include <utility>
 
@@ -15,6 +17,7 @@
 #include "core/MediatorError.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
+#include "core/services/IInputCaptureService.hpp"
 #include "core/services/IRenderService.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "core/services/IWindowService.hpp"
@@ -341,10 +344,16 @@ namespace {
     return INVALID_GAMEPAD_AXIS;
 }
 
+/** @brief Number of `engine::Key` slots: every value of its 8-bit underlying type. */
+constexpr std::size_t KEY_SLOTS = 256;
+
 }  // namespace
 
 /**
  * @brief Concrete adapter implementing IWindowService via Raylib Window.
+ *
+ * While the input is captured (see `InputCaptureImpl`), every input query reports an idle device. Keys held when the
+ * capture is released stay hidden until they are released.
  */
 class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
   public:
@@ -360,35 +369,42 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
     [[nodiscard]] int height() const noexcept override { return GetScreenHeight(); }
 
     [[nodiscard]] bool isKeyDown(engine::Key key) const noexcept override {
-        const int code = toRaylib(key);
-        return code != KEY_NULL && IsKeyDown(code);
+        if (_captured) {
+            return false;
+        }
+        const bool down = rawKeyDown(key);
+        const auto index = static_cast<std::size_t>(key);
+        if (!down) {
+            _swallowed.reset(index);
+        }
+        return down && !_swallowed.test(index);
     }
 
     [[nodiscard]] bool isGamepadAvailable(int gamepad) const noexcept override { return IsGamepadAvailable(gamepad); }
 
     [[nodiscard]] bool isGamepadButtonDown(int gamepad, engine::GamepadButton button) const noexcept override {
         const int code = toRaylib(button);
-        return code != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(gamepad, code);
+        return !_captured && code != GAMEPAD_BUTTON_UNKNOWN && IsGamepadButtonDown(gamepad, code);
     }
 
     [[nodiscard]] float gamepadAxis(int gamepad, engine::GamepadAxis axis) const noexcept override {
         const int code = toRaylib(axis);
-        return code != INVALID_GAMEPAD_AXIS ? GetGamepadAxisMovement(gamepad, code) : 0.0F;
+        return !_captured && code != INVALID_GAMEPAD_AXIS ? GetGamepadAxisMovement(gamepad, code) : 0.0F;
     }
 
     [[nodiscard]] bool isMouseButtonDown(engine::MouseButton button) const noexcept override {
         const int code = toRaylib(button);
-        return code != INVALID_MOUSE_BUTTON && IsMouseButtonDown(code);
+        return !_captured && code != INVALID_MOUSE_BUTTON && IsMouseButtonDown(code);
     }
 
     [[nodiscard]] bool isMouseButtonPressed(engine::MouseButton button) const noexcept override {
         const int code = toRaylib(button);
-        return code != INVALID_MOUSE_BUTTON && IsMouseButtonPressed(code);
+        return !_captured && code != INVALID_MOUSE_BUTTON && IsMouseButtonPressed(code);
     }
 
     [[nodiscard]] bool isMouseButtonReleased(engine::MouseButton button) const noexcept override {
         const int code = toRaylib(button);
-        return code != INVALID_MOUSE_BUTTON && IsMouseButtonReleased(code);
+        return !_captured && code != INVALID_MOUSE_BUTTON && IsMouseButtonReleased(code);
     }
 
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override {
@@ -396,12 +412,71 @@ class RenderPlugin::WindowServiceImpl final : public engine::IWindowService {
         return engine::MousePosition{.x = position.x, .y = position.y};
     }
 
-    [[nodiscard]] float mouseWheelDelta() const noexcept override { return GetMouseWheelMove(); }
+    [[nodiscard]] float mouseWheelDelta() const noexcept override { return _captured ? 0.0F : rawWheelDelta(); }
 
-    [[nodiscard]] char32_t nextTypedCharacter() noexcept override {
+    [[nodiscard]] char32_t nextTypedCharacter() noexcept override { return _captured ? U'\0' : rawTypedCharacter(); }
+
+    /** @brief Captures or releases the input; releasing hides the keys still held until they are released. */
+    void setCaptured(bool captured) noexcept {
+        if (_captured && !captured) {
+            for (std::size_t index = 1; index < _swallowed.size(); ++index) {
+                if (rawKeyDown(static_cast<engine::Key>(index))) {
+                    _swallowed.set(index);
+                }
+            }
+        }
+        _captured = captured;
+    }
+
+    /** @brief Tells whether the input is captured. */
+    [[nodiscard]] bool isCaptured() const noexcept { return _captured; }
+
+    /** @brief Reads a key, ignoring the capture. */
+    [[nodiscard]] static bool rawKeyDown(engine::Key key) noexcept {
+        const int code = toRaylib(key);
+        return code != KEY_NULL && IsKeyDown(code);
+    }
+
+    /** @brief Pops the next typed character, ignoring the capture. */
+    [[nodiscard]] static char32_t rawTypedCharacter() noexcept {
         const int character = GetCharPressed();
         return character > 0 ? static_cast<char32_t>(character) : U'\0';
     }
+
+    /** @brief Reads the mouse wheel, ignoring the capture. */
+    [[nodiscard]] static float rawWheelDelta() noexcept { return GetMouseWheelMove(); }
+
+  private:
+    /** @brief Whether the input is hidden from the window service. */
+    bool _captured = false;
+    /** @brief Keys held when the capture was released, hidden until released (indexed by `engine::Key`). */
+    mutable std::bitset<KEY_SLOTS> _swallowed;
+};
+
+/**
+ * @brief Concrete adapter implementing IInputCaptureService on top of the window service state.
+ */
+class RenderPlugin::InputCaptureImpl final : public engine::IInputCaptureService {
+  public:
+    /**
+     * @brief Creates the adapter.
+     * @param window Window service whose input it captures.
+     */
+    explicit InputCaptureImpl(std::shared_ptr<WindowServiceImpl> window) noexcept : _window(std::move(window)) {}
+
+    void setCaptured(bool captured) override { _window->setCaptured(captured); }
+
+    [[nodiscard]] bool isCaptured() const noexcept override { return _window->isCaptured(); }
+
+    [[nodiscard]] bool isKeyDown(engine::Key key) const noexcept override { return WindowServiceImpl::rawKeyDown(key); }
+
+    [[nodiscard]] char32_t nextTypedCharacter() noexcept override { return WindowServiceImpl::rawTypedCharacter(); }
+
+    [[nodiscard]] float mouseWheelDelta() const noexcept override { return WindowServiceImpl::rawWheelDelta(); }
+
+  private:
+    /** @brief Window service whose input is captured. */
+    std::shared_ptr<WindowServiceImpl> _window;
 };
 
 /**
@@ -449,6 +524,7 @@ RenderPlugin::RenderPlugin(WindowConfig config) : _config(std::move(config)) {}
 RenderPlugin::~RenderPlugin() {
     _screenDrawService.reset();
     _renderService.reset();
+    _inputCapture.reset();
     _windowService.reset();
     _renderSystem.reset();
     _textures.reset();
@@ -458,6 +534,7 @@ RenderPlugin::~RenderPlugin() {
 void RenderPlugin::build(engine::PluginBuilder& builder) {
     builder.require<engine::CorePlugin>();
     builder.provides<engine::IWindowService>();
+    builder.provides<engine::IInputCaptureService>();
     builder.provides<engine::IRenderService>();
     builder.provides<engine::IScreenDrawService>();
 }
@@ -468,18 +545,25 @@ void RenderPlugin::init(engine::Engine& engine) {
     _renderSystem = std::make_unique<RenderSystem>(*_textures);
 
     _windowService = std::make_shared<WindowServiceImpl>();
+    _inputCapture = std::make_shared<InputCaptureImpl>(_windowService);
     _renderService = std::make_shared<RenderServiceImpl>(*_renderSystem);
     _screenDrawService = std::make_shared<ScreenDrawService>(_textures.get());
 
     if (const auto res = engine.mediator().registerService<engine::IWindowService>(_windowService); !res) {
         throw engine::MediatorError(res.error());
     }
+    if (const auto res = engine.mediator().registerService<engine::IInputCaptureService>(_inputCapture); !res) {
+        engine.mediator().removeService<engine::IWindowService>();
+        throw engine::MediatorError(res.error());
+    }
     if (const auto res = engine.mediator().registerService<engine::IRenderService>(_renderService); !res) {
+        engine.mediator().removeService<engine::IInputCaptureService>();
         engine.mediator().removeService<engine::IWindowService>();
         throw engine::MediatorError(res.error());
     }
     if (const auto res = engine.mediator().registerService<engine::IScreenDrawService>(_screenDrawService); !res) {
         engine.mediator().removeService<engine::IRenderService>();
+        engine.mediator().removeService<engine::IInputCaptureService>();
         engine.mediator().removeService<engine::IWindowService>();
         throw engine::MediatorError(res.error());
     }
@@ -504,6 +588,9 @@ void RenderPlugin::shutdown(engine::Engine& engine) {
     if (engine.mediator().hasService<engine::IRenderService>()) {
         engine.mediator().removeService<engine::IRenderService>();
     }
+    if (engine.mediator().hasService<engine::IInputCaptureService>()) {
+        engine.mediator().removeService<engine::IInputCaptureService>();
+    }
     if (engine.mediator().hasService<engine::IWindowService>()) {
         engine.mediator().removeService<engine::IWindowService>();
     }
@@ -513,6 +600,7 @@ void RenderPlugin::shutdown(engine::Engine& engine) {
     }
     _screenDrawService.reset();
     _renderService.reset();
+    _inputCapture.reset();
     _windowService.reset();
     _renderSystem.reset();
     _textures.reset();

@@ -8,6 +8,7 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -49,9 +50,10 @@ class MatchRoom {
      * @brief Creates and initializes the engine of a new match. Its clock starts with the first `advance()`.
      * @param transport Transport shared by every match; must outlive the room.
      * @param id Match id, written in the snapshots.
+     * @param scriptRoot Directory the Wren scripts are read from; empty for the working directory.
      * @throws std::runtime_error If the engine cannot start (Wren bindings refused).
      */
-    MatchRoom(ecs::net::INetworkServer& transport, std::uint16_t id);
+    MatchRoom(ecs::net::INetworkServer& transport, std::uint16_t id, const std::filesystem::path& scriptRoot = {});
     /** @brief Stops and joins the thread of the match, if it has one, then shuts its engine down. */
     ~MatchRoom();
 

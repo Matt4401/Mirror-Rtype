@@ -6,7 +6,9 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <string_view>
+#include <utility>
 
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
@@ -35,6 +37,16 @@ class ScriptPlugin final : public engine::IPlugin {
      * @param tick When the scripts run; every frame by default.
      */
     explicit ScriptPlugin(ScriptTick tick = ScriptTick::EveryFrame) noexcept : _tick(tick) {}
+
+    /**
+     * @brief Constructs ScriptPlugin reading the module files from `scriptRoot`.
+     * @param tick When the scripts run.
+     * @param scriptRoot Directory module files are read from, usually `engine::contentRoot()`; empty for the working
+     * directory.
+     */
+    ScriptPlugin(ScriptTick tick, std::filesystem::path scriptRoot) : _tick(tick) {
+        _scriptSystem.setScriptRoot(std::move(scriptRoot));
+    }
 
     /** @brief Destructor. */
     ~ScriptPlugin() override = default;

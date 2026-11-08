@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "components/ScriptComponent.hpp"
+#include "core/ContentRoot.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "scripting/WrenVM.hpp"
@@ -34,6 +35,7 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
     if (!filename.ends_with(".wren")) {
         filename += ".wren";
     }
+    filename = engine::resolveContentPath(*_scriptRoot, filename).string();
 
     std::error_code ec;
     if (std::filesystem::exists(filename, ec)) {

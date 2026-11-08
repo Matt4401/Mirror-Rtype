@@ -137,7 +137,7 @@ ship. See [In-Game Metrics](metrics.md).
 
 #### Looks file (`client/config/looks.toml`)
 
-Read at start-up by `looks::readLooks` (`client/src/looks/`). A missing file, a bad value or a texture that does
+Read at start-up from the content root (the directory of the executable, as the assets) by `looks::readLooks` (`client/src/looks/`). A missing file, a bad value or a texture that does
 not load is logged and never stops the client: the look falls back to a box.
 
 ```toml

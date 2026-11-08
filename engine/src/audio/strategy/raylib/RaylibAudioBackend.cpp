@@ -19,6 +19,7 @@
 #include "audio/types/AudioConstants.hpp"
 #include "audio/types/AudioTypes.hpp"
 #include "audio/types/SoundParams.hpp"
+#include "utils/StableSlots.hpp"
 
 namespace audio::detail {
 
@@ -80,7 +81,15 @@ RaylibAudioBackend::~RaylibAudioBackend() {
 
 bool RaylibAudioBackend::isAvailable() const noexcept { return _available; }
 
-SoundId RaylibAudioBackend::loadSound(const std::string& path) {
+SoundId RaylibAudioBackend::loadSound(const std::string& path) { return loadSoundAs(path, NO_SOUND); }
+
+MusicId RaylibAudioBackend::loadMusic(const std::string& path) { return loadMusicAs(path, NO_MUSIC); }
+
+void RaylibAudioBackend::reserveSounds(const SoundId last) { ecs::reserveSlots(_sounds, last); }
+
+void RaylibAudioBackend::reserveMusics(const MusicId last) { ecs::reserveSlots(_musics, last); }
+
+SoundId RaylibAudioBackend::loadSoundAs(const std::string& path, const SoundId preferred) {
     if (!_available) {
         return NO_SOUND;
     }
@@ -103,11 +112,10 @@ SoundId RaylibAudioBackend::loadSound(const std::string& path) {
         return NO_SOUND;
     }
 
-    _sounds.push_back(std::move(slot));
-    return static_cast<SoundId>(_sounds.size());
+    return ecs::placeInSlot(_sounds, std::move(slot), preferred);
 }
 
-MusicId RaylibAudioBackend::loadMusic(const std::string& path) {
+MusicId RaylibAudioBackend::loadMusicAs(const std::string& path, const MusicId preferred) {
     if (!_available) {
         return NO_MUSIC;
     }
@@ -115,8 +123,7 @@ MusicId RaylibAudioBackend::loadMusic(const std::string& path) {
     if (!IsMusicValid(music)) {
         return NO_MUSIC;
     }
-    _musics.push_back(MusicSlot{.music = music, .loaded = true});
-    return static_cast<MusicId>(_musics.size());
+    return ecs::placeInSlot(_musics, MusicSlot{.music = music, .loaded = true}, preferred);
 }
 
 void RaylibAudioBackend::unloadSound(SoundId id) {

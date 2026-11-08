@@ -24,6 +24,7 @@
 #include "LogTag.hpp"
 #include "Logger.hpp"
 #include "ServerManager.hpp"
+#include "core/ContentRoot.hpp"
 #include "ecs/time/PreciseSleep.hpp"
 #include "gameplay/LevelDirectorPlugin.hpp"
 #include "level/Level.hpp"
@@ -46,23 +47,18 @@ constexpr std::string_view LEVEL_EXTENSION = ".toml";
 std::atomic<rtype::server::ServerManager*> g_server{nullptr};
 
 /**
- * @brief Finds the directory holding the server data (`server/levels/`, `scripts/`): the directory of the executable,
- * which the build puts at the project root.
+ * @brief Finds the directory holding the server data (`server/levels/`, `scripts/`): `engine::contentRoot()`, the
+ * directory of the executable (which the build puts at the project root) unless `ENGINE_CONTENT_ROOT` names another.
  *
- * Resolved from `argv[0]`, which works on every platform when the server is started through a path. A bare name found
- * through `PATH` has no directory: the current directory is used then.
- *
- * @param program `argv[0]`.
- * @return The data directory.
+ * @return The data directory; the current directory if the platform cannot tell where the executable is.
  */
-std::filesystem::path dataRoot(const char* program) {
-    std::error_code error;
-    const std::filesystem::path executable(program != nullptr ? program : "");
-    if (!executable.has_parent_path()) {
-        return std::filesystem::current_path(error);
+std::filesystem::path dataRoot() {
+    std::filesystem::path root = engine::contentRoot();
+    if (root.empty()) {
+        std::error_code error;
+        root = std::filesystem::current_path(error);
     }
-    const std::filesystem::path directory = std::filesystem::absolute(executable, error).parent_path();
-    return error ? std::filesystem::current_path(error) : directory;
+    return root;
 }
 
 /**
@@ -151,7 +147,7 @@ int main(int ac, char** av) {
     // The server and room loops sleep 1 ms between two passes: without this, Windows makes it about 15.6 ms.
     const ecs::time::PreciseSleepScope preciseSleep;
 
-    const std::filesystem::path root = dataRoot(args.front());
+    const std::filesystem::path root = dataRoot();
     // A level asked for on the command line is played alone, and must load: playing another one would be misleading.
     std::shared_ptr<const rtype::server::level::Level> level;
     if (options->level) {

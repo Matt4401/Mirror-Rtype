@@ -55,8 +55,10 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _binderReplayList(std::move(other._binderReplayList)),
       _reloadCheckTimer(other._reloadCheckTimer),
       _hotReloadEnabled(other._hotReloadEnabled),
+      _lastReplaySucceeded(other._lastReplaySucceeded),
       _extensions(std::move(other._extensions)),
-      _extraModules(std::move(other._extraModules)) {
+      _extraModules(std::move(other._extraModules)),
+      _scriptRoot(std::move(other._scriptRoot)) {
     other.detachDestroyListener();
     _vm.setUserContext(this);
     attachDestroyListener();
@@ -96,8 +98,10 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _binderReplayList = std::move(other._binderReplayList);
         _reloadCheckTimer = other._reloadCheckTimer;
         _hotReloadEnabled = other._hotReloadEnabled;
+        _lastReplaySucceeded = other._lastReplaySucceeded;
         _extensions = std::move(other._extensions);
         _extraModules = std::move(other._extraModules);
+        _scriptRoot = std::move(other._scriptRoot);
         _vm.setUserContext(this);
         attachDestroyListener();
         std::swap(_collisionBus, other._collisionBus);

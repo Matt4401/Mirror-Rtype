@@ -10,6 +10,7 @@
 #include <string_view>
 #include <utility>
 
+#include "core/ContentRoot.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/SpatialQueries.hpp"
@@ -305,24 +306,24 @@ void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
 }
 
 void ScriptSystem::loadCoreModules() {
-    _vm.setModuleLoader([extraModules = _extraModules](std::string_view moduleName) -> std::string {
-        std::string_view const coreSource = scripting::getCoreModuleSource(moduleName);
-        if (!coreSource.empty()) {
-            return std::string(coreSource);
-        }
-        if (auto const it = extraModules->find(std::string(moduleName)); it != extraModules->end()) {
-            return it->second;
-        }
+    _vm.setModuleLoader(
+        [extraModules = _extraModules, scriptRoot = _scriptRoot](std::string_view moduleName) -> std::string {
+            std::string_view const coreSource = scripting::getCoreModuleSource(moduleName);
+            if (!coreSource.empty()) {
+                return std::string(coreSource);
+            }
+            if (auto const it = extraModules->find(std::string(moduleName)); it != extraModules->end()) {
+                return it->second;
+            }
 
-        std::string const filename = std::string(moduleName) + ".wren";
-        std::ifstream file(filename);
-        if (file.is_open()) {
-            std::stringstream buffer;
-            buffer << file.rdbuf();
-            return buffer.str();
-        }
-        return "";
-    });
+            std::ifstream file(engine::resolveContentPath(*scriptRoot, std::string(moduleName) + ".wren"));
+            if (file.is_open()) {
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+                return buffer.str();
+            }
+            return "";
+        });
 
     auto const res = _vm.interpret("_internal", scripting::INTERNAL_DISPATCHER_SOURCE);
     (void)res;

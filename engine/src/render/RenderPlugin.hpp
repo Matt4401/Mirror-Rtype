@@ -83,11 +83,15 @@ class RenderPlugin final : public engine::IPlugin {
     /** @brief Gets const pointer to the internal TextureStore, or nullptr if uninitialized. */
     [[nodiscard]] const TextureStore* textures() const noexcept { return _textures.get(); }
 
+    /** @brief Gets the screen-space draw service (fonts included), or nullptr if uninitialized. */
+    [[nodiscard]] ScreenDrawService* screenDraw() noexcept { return _screenDrawService.get(); }
+
     /** @brief Gets mutable pointer to the active RenderSystem, or nullptr if uninitialized. */
     [[nodiscard]] RenderSystem* renderSystem() noexcept { return _renderSystem.get(); }
 
   private:
     class WindowServiceImpl;
+    class InputCaptureImpl;
     class RenderServiceImpl;
 
     /** @brief Active window configuration settings. */
@@ -100,6 +104,8 @@ class RenderPlugin final : public engine::IPlugin {
     std::unique_ptr<RenderSystem> _renderSystem = nullptr;
     /** @brief Shared pointer to abstract window service adapter. */
     std::shared_ptr<WindowServiceImpl> _windowService = nullptr;
+    /** @brief Input capture, sharing the state of the window service. */
+    std::shared_ptr<InputCaptureImpl> _inputCapture = nullptr;
     /** @brief Shared pointer to abstract render service adapter. */
     std::shared_ptr<RenderServiceImpl> _renderService = nullptr;
     /** @brief Screen-space overlay drawing, flushed on top of the world each frame. */

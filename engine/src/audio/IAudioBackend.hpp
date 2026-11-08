@@ -51,10 +51,48 @@ class IAudioBackend {
     [[nodiscard]] virtual MusicId loadMusic(const std::string& path) = 0;
 
     /**
+     * @brief Loads a sound effect, giving back `preferred` if that handle is free.
+     *
+     * Used by the asset manager so that a sound loaded again keeps the handle components hold. The default ignores
+     * `preferred`.
+     * @param path Audio file path.
+     * @param preferred Handle the sound had before it was released, or `NO_SOUND`.
+     * @return The handle, or `NO_SOUND`.
+     */
+    [[nodiscard]] virtual SoundId loadSoundAs(const std::string& path, SoundId preferred) {
+        static_cast<void>(preferred);
+        return loadSound(path);
+    }
+
+    /**
+     * @brief Opens a music stream, giving back `preferred` if that handle is free.
+     * @param path Audio file path.
+     * @param preferred Handle the music had before it was released, or `NO_MUSIC`.
+     * @return The handle, or `NO_MUSIC`.
+     */
+    [[nodiscard]] virtual MusicId loadMusicAs(const std::string& path, MusicId preferred) {
+        static_cast<void>(preferred);
+        return loadMusic(path);
+    }
+
+    /**
+     * @brief Keeps every sound handle up to `last` for loads that ask for it as `preferred`. The default does nothing.
+     * @param last Highest handle to keep.
+     */
+    virtual void reserveSounds(SoundId last) { static_cast<void>(last); }
+
+    /**
+     * @brief Keeps every music handle up to `last` for loads that ask for it as `preferred`. The default does nothing.
+     * @param last Highest handle to keep.
+     */
+    virtual void reserveMusics(MusicId last) { static_cast<void>(last); }
+
+    /**
      * @brief Releases a sound effect, e.g. when leaving the level that used it.
      *
-     * Its playing instances stop and the handle becomes invalid. Handles are never reused, so a stale `SoundId`
-     * can never play another sound. Unknown or already unloaded handles are ignored.
+     * Its playing instances stop and the handle becomes invalid. A handle is only given back to the same sound
+     * (`loadSoundAs`), so a stale `SoundId` can never play another sound. Unknown or already unloaded handles are
+     * ignored.
      *
      * @param id Handle returned by `loadSound`.
      */
@@ -63,7 +101,7 @@ class IAudioBackend {
     /**
      * @brief Releases a music stream; stops it first if it is the current music.
      *
-     * Handles are never reused. Unknown or already unloaded handles are ignored.
+     * A handle is only given back to the same music (`loadMusicAs`). Unknown or already unloaded handles are ignored.
      *
      * @param id Handle returned by `loadMusic`.
      */

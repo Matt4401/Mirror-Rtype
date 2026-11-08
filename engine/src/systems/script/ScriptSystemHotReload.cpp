@@ -121,12 +121,14 @@ void ScriptSystem::recreateVmAndModules(const std::vector<std::pair<std::string,
         binderFn(_vm);
     }
 
+    _lastReplaySucceeded = true;
     for (auto const& [modName, watch] : _watchedScripts) {
         if (watch.lastGoodSource.empty()) {
             continue;
         }
         auto const scriptRes = _vm.interpret(modName, watch.lastGoodSource);
         if (!scriptRes) {
+            _lastReplaySucceeded = false;
             std::cerr << "[ScriptSystem] Failed to reload " << modName << ": " << scriptRes.error() << "\n";
         }
     }

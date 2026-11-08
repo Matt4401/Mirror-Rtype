@@ -29,7 +29,8 @@ struct ClientEnemy {};
  *
  * Sets up Transform, Renderable, AnimationComponent, a Kinematic RigidBody2D moving left, an `ENEMY` sensor
  * Collider2D and the ClientEnemy tag. Accepted parameters: transform keys (x, y, scaleX, scaleY), `speed`
- * (pixels/sec, positive values move left) and `textureId` (integer texture identifier set as a registration default).
+ * (pixels/sec, positive values move left), and `texture` (asset alias resolved by the `assets::AssetManager`) or
+ * `textureId` (raw texture identifier).
  *
  * @param e Freshly spawned entity.
  * @param registry Registry owning the entity.

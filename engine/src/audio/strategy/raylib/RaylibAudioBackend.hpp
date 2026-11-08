@@ -62,6 +62,18 @@ class RaylibAudioBackend final : public IAudioBackend {
     /** @copydoc IAudioBackend::loadMusic */
     [[nodiscard]] MusicId loadMusic(const std::string& path) override;
 
+    /** @copydoc IAudioBackend::loadSoundAs */
+    [[nodiscard]] SoundId loadSoundAs(const std::string& path, SoundId preferred) override;
+
+    /** @copydoc IAudioBackend::loadMusicAs */
+    [[nodiscard]] MusicId loadMusicAs(const std::string& path, MusicId preferred) override;
+
+    /** @copydoc IAudioBackend::reserveSounds */
+    void reserveSounds(SoundId last) override;
+
+    /** @copydoc IAudioBackend::reserveMusics */
+    void reserveMusics(MusicId last) override;
+
     /** @copydoc IAudioBackend::unloadSound */
     void unloadSound(SoundId id) override;
 
