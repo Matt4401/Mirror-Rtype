@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -55,6 +56,12 @@ struct Level {
 
     /** @brief Events by scroll distance. */
     timeline::Timeline timeline;
+
+    /**
+     * @brief Directory the relative `script` paths of the boss events are resolved from; empty for the current
+     * directory. Set by the server to its data directory, so that it does not depend on where it is started from.
+     */
+    std::filesystem::path dataRoot;
 };
 
 }  // namespace rtype::server::level

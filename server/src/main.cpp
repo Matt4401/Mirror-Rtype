@@ -8,10 +8,12 @@
 #include <atomic>
 #include <csignal>
 #include <cstddef>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <span>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -27,7 +29,7 @@
 
 namespace {
 constexpr int EXIT_ERROR = 84;
-/** @brief Level played by every room, relative to the directory the server is started from (the project root). */
+/** @brief Level played by every room, relative to the data directory (see `dataRoot()`). */
 constexpr const char* LEVEL_PATH = "server/levels/level_01.toml";
 
 // The signal handler cannot take arguments, so it reaches the server through a global.
@@ -35,25 +37,47 @@ constexpr const char* LEVEL_PATH = "server/levels/level_01.toml";
 std::atomic<rtype::server::ServerManager*> g_server{nullptr};
 
 /**
+ * @brief Finds the directory holding the server data (`server/levels/`, `scripts/`): the directory of the executable,
+ * which the build puts at the project root.
+ *
+ * Resolved from `argv[0]`, which works on every platform when the server is started through a path. A bare name found
+ * through `PATH` has no directory: the current directory is used then.
+ *
+ * @param program `argv[0]`.
+ * @return The data directory.
+ */
+std::filesystem::path dataRoot(const char* program) {
+    std::error_code error;
+    const std::filesystem::path executable(program != nullptr ? program : "");
+    if (!executable.has_parent_path()) {
+        return std::filesystem::current_path(error);
+    }
+    const std::filesystem::path directory = std::filesystem::absolute(executable, error).parent_path();
+    return error ? std::filesystem::current_path(error) : directory;
+}
+
+/**
  * @brief Loads the level played by every room.
  *
  * A level that cannot be read is not fatal: the server still runs, with no enemy, so that it can start without its data
  * files (from another directory, in a test environment...).
  *
+ * @param root Data directory: the level file and the boss scripts are looked up from it.
  * @return The level, or `nullptr` if it cannot be loaded.
  */
-std::shared_ptr<const rtype::server::level::Level> loadDefaultLevel() {
+std::shared_ptr<const rtype::server::level::Level> loadDefaultLevel(const std::filesystem::path& root) {
     std::vector<std::string> warnings;
     auto level =
-        rtype::server::level::loadLevel(LEVEL_PATH, rtype::server::gameplay::GameplayPlugin::canSpawn, warnings);
+        rtype::server::level::loadLevel(root / LEVEL_PATH, rtype::server::gameplay::GameplayPlugin::canSpawn, warnings);
     for (const std::string& warning : warnings) {
         rtype::log::warning(rtype::server::LOG_TAG, "level: ", warning);
     }
     if (!level) {
         rtype::log::warning(rtype::server::LOG_TAG, "cannot load the level: ", level.error(),
-                            "; the rooms play without a level (run the server from the project root)");
+                            "; the rooms play without a level");
         return nullptr;
     }
+    level->dataRoot = root;
     rtype::log::info(rtype::server::LOG_TAG, "level '", level->name, "' loaded: ", level->timeline.events().size(),
                      " events");
     return std::make_shared<const rtype::server::level::Level>(std::move(*level));
@@ -76,7 +100,7 @@ int main(int ac, char** av) {
     rtype::log::setVerbose(options->logs);
     rtype::log::setColored(options->colors);
 
-    const std::shared_ptr<const rtype::server::level::Level> level = loadDefaultLevel();
+    const std::shared_ptr<const rtype::server::level::Level> level = loadDefaultLevel(dataRoot(args.front()));
     rtype::server::ServerManager server(ecs::net::createServer({.protocolId = rtype::protocol::TRANSPORT_PROTOCOL_ID}),
                                         rtype::server::HANDSHAKE_TIMEOUT, level);
 

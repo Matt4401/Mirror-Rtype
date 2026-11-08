@@ -257,8 +257,9 @@ void GameplayPlugin::startBossFight(const ::prefabs::PrefabParams& params) {
     registry.addComponent(boss,
                           game::EntityNetState{.health = registry.getComponents<::prefabs::Health>().get(boss).points});
     if (const auto script = params.find<std::string>("script")) {
-        // `scripts/Boss.wren` is the module `scripts/Boss`, whose class is `Boss` unless the event names another one.
-        const std::filesystem::path path(*script);
+        // `scripts/Boss.wren` is the module `<data root>/scripts/Boss`, whose class is `Boss` unless the event names
+        // another one.
+        const std::filesystem::path path = (_level != nullptr ? _level->dataRoot : std::filesystem::path{}) / *script;
         registry.addComponent(boss, ecs::ScriptComponent{
                                         .moduleName = (path.parent_path() / path.stem()).generic_string(),
                                         .className = params.get<std::string>("class", path.stem().string()),
