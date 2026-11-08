@@ -70,6 +70,7 @@ nav:
       - Entity Hierarchy: architecture/hierarchy.md
       - Scenes: architecture/scene.md
       - User Interface: architecture/ui.md
+      - User Settings: architecture/settings.md
       - Plugins & Mediator: architecture/plugins.md
       - Engine Clock: architecture/clock.md
       - Physics: architecture/physics.md

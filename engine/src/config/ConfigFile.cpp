@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -9,6 +10,7 @@
 #include <ios>
 #include <map>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -129,6 +131,62 @@ std::vector<std::string> ConfigFile::keysUnder(std::string_view table) const {
         keys.push_back(it->first);
     }
     return keys;
+}
+
+void ConfigFile::set(std::string key, Value value) { _values.insert_or_assign(std::move(key), std::move(value)); }
+
+void ConfigFile::erase(std::string_view key) {
+    if (const auto it = _values.find(key); it != _values.end()) {
+        _values.erase(it);
+    }
+}
+
+std::string ConfigFile::toToml() const {
+    toml::table root;
+    for (const auto& [key, value] : _values) {
+        toml::table* table = &root;
+        std::string_view rest = key;
+        for (std::size_t dot = rest.find('.'); dot != std::string_view::npos; dot = rest.find('.')) {
+            const std::string_view part = rest.substr(0, dot);
+            rest.remove_prefix(dot + 1);
+            toml::node* child = table->get(part);
+            if (child == nullptr || !child->is_table()) {
+                table->insert_or_assign(part, toml::table{});
+                child = table->get(part);
+            }
+            table = child->as_table();
+        }
+        std::visit([&](const auto& scalar) { table->insert_or_assign(rest, scalar); }, value);
+    }
+    std::ostringstream out;
+    out << root << '\n';
+    return out.str();
+}
+
+std::expected<void, std::string> ConfigFile::save(const std::filesystem::path& path) const {
+    std::error_code error;
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path(), error);
+        if (error) {
+            return std::unexpected(std::format("{}: cannot create directory ({})", path.string(), error.message()));
+        }
+    }
+    std::filesystem::path temporary = path;
+    temporary += ".tmp";
+    {
+        std::ofstream stream(temporary, std::ios::binary | std::ios::trunc);
+        const std::string text = toToml();
+        if (!stream || !stream.write(text.data(), static_cast<std::streamsize>(text.size())) || !stream.flush()) {
+            return std::unexpected(std::format("{}: cannot write file", temporary.string()));
+        }
+    }
+    std::filesystem::rename(temporary, path, error);
+    if (error) {
+        const std::string reason = error.message();
+        std::filesystem::remove(temporary, error);
+        return std::unexpected(std::format("{}: cannot replace file ({})", path.string(), reason));
+    }
+    return {};
 }
 
 }  // namespace config

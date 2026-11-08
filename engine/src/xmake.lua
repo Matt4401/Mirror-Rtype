@@ -23,6 +23,13 @@ target("engine_config")
     add_includedirs(".", {public = true})
     add_packages("toml++")
 
+-- User settings: a config::Settings service loaded at start-up, change events, debounced saves.
+target("engine_settings")
+    set_kind("static")
+    add_files("settings/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core", "engine_events", "engine_config")
+
 target("engine_prefabs")
     set_kind("static")
     add_files("prefabs/**.cpp")
@@ -108,7 +115,7 @@ target("engine_scene_scripting")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end

@@ -99,6 +99,13 @@ target("test_config")
     add_files("test_config.cpp")
     add_tests("test_config")
 
+target("test_settings")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_settings")
+    add_packages("gtest")
+    add_files("test_settings.cpp")
+    add_tests("test_settings")
+
 target("test_prefabs")
     set_kind("binary")
     add_deps("engine_core", "engine_prefabs", "rtype_prefabs")
