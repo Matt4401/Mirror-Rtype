@@ -433,3 +433,11 @@ target("test_devconsole")
     add_packages("gtest")
     add_files("tools/DevConsoleTests.cpp")
     add_tests("test_devconsole")
+
+target("test_console_scripting")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_tools", "engine_tools_scripting",
+             "engine_scripting", "engine_input", "engine_prefabs")
+    add_packages("gtest", "wren")
+    add_files("tools/ConsoleScriptingTests.cpp")
+    add_tests("test_console_scripting")

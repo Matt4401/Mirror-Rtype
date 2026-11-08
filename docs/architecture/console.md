@@ -7,6 +7,7 @@ commands (`help`, `set`, `spawn alien`...) typed as text.
 | Module              | Contents                                                                           | Depends on    |
 |---------------------|------------------------------------------------------------------------------------|---------------|
 | `engine_tools`      | `CVarManager`, `Console`, `splitCommandLine`, built-in commands, `ConsolePlugin`   | core, events  |
+| `engine_tools_scripting` | `ConsoleScriptingPlugin`: the `wren` command and `.wren` files for `exec`     | tools, scripting |
 | `engine_devconsole` | `DevConsolePlugin`: the in-game window, toggled with `~` / `²`                      | tools, ui     |
 
 Sources are split by role: `tools/common/` holds shared text helpers, `tools/cvars/` the `CVarManager`,
@@ -93,6 +94,7 @@ Command names are case-insensitive. A command hides a cvar of the same name.
 | `set <cvar> <value>` | Changes a cvar                                             |
 | `reset <cvar>`       | Restores the default value                                 |
 | `toggle <cvar>`      | Flips a `bool` cvar                                        |
+| `exec <file>`        | Runs a script file of the script directory (see below)     |
 
 Game commands are added by the game, never by the engine:
 
@@ -120,11 +122,49 @@ console.addCommand("spawn", {.usage = "<prefab>",
 - `Console::history()` keeps the last 100 executed lines, without consecutive duplicates.
 - `Console::output()` keeps the last 512 output lines (echoed input, results, errors) for a UI or a terminal to show.
 
+## Script files: `exec`
+
+`exec <file>` runs a file of the script directory (`ConsoleConfig::scriptRoot`, the current directory by default):
+
+- The file goes to the **runner registered for its extension** (`Console::addScriptRunner(".wren", runner)`): a
+  script engine plugs itself in without the console knowing it.
+- Without a runner, the file is **console lines**, run one by one without echo or history (a `.cfg` of settings and
+  commands, `//` comments allowed). A failing line is reported and the next ones still run.
+- The path is untrusted: absolute paths and paths leaving the script directory (`..`, symbolic links) are refused,
+  files larger than 1 MiB are refused, and scripts running each other stop at a depth of 8.
+
+## Running Wren: `wren`
+
+`ConsoleScriptingPlugin` (module `engine_tools_scripting`) joins the console and the script plugin; add it with both:
+
+```cpp
+engine.addPlugin<tools::ConsolePlugin>(tools::ConsoleConfig{.allowCheats = true})
+    .addPlugin<scripting::ScriptPlugin>()
+    .addPlugin<tools::ConsoleScriptingPlugin>();
+```
+
+| Line                                     | Effect                                                          |
+|------------------------------------------|-----------------------------------------------------------------|
+| `wren 1 + 2`                             | An expression prints its value: `=> 3`                          |
+| `wren var speed = 3`                     | Defines a variable of the `console` module...                    |
+| `wren speed * 2`                         | ...still there on the next line: `=> 6`                         |
+| `wren System.print("hi")`                | `System.print` writes to the console (then `=> hi`, its value)  |
+| `wren import "core/Engine" for Engine`   | Reaches the engine API through the core modules                 |
+| `exec boss_test.wren`                    | Runs a Wren file in a module of its own (each run starts fresh) |
+
+- `wren` is a **raw** command (`Command::raw`): the rest of the line reaches Wren untouched, quotes, `;` and `//`
+  included.
+- The line is first tried as an expression whose value is printed; if it does not compile as one (a `var`, a
+  `class`...), it runs as it is. A runtime error never runs the code a second time.
+- While the code runs, `System.print` and the errors go to the console output; the VM handlers are restored after.
+- Running code can change anything in the game: `wren` and `.wren` files are **cheats**, refused when cheats are
+  disallowed. Both clients allow them: the server stays authoritative.
+
 ## ConsolePlugin
 
 - Owns the `CVarManager` and the `Console`, registered in the Mediator at `init` and removed at `shutdown`. Both
   are reachable before `init` through `cvars()` / `console()`.
-- Adds the built-in commands at construction.
+- Adds the built-in commands at construction, and reads its scripts from `ConsoleConfig::scriptRoot`.
 - Publishes one `tools::CVarChanged{name}` per changed cvar at the next `preUpdate`, before the simulation steps of
   the frame. Code that reads a `CVarRef` every frame does not need the event; it suits code that must react once
   (rebuild a resource, resize a buffer).

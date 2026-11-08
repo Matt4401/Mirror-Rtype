@@ -34,6 +34,7 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
   headless), `engine_scene_scripting` (scene/scripting/: Wren bridge),
   `engine_settings` (settings/: persisted user settings),
   `engine_tools` (tools/cvars/: CVar registry, tools/console/: interpreter and `ConsolePlugin`; headless),
+  `engine_tools_scripting` (tools/scripting/: `wren` console command, `.wren` files for `exec`),
   `engine_devconsole` (tools/devconsole/: in-game console window, drawn through engine services).
   `engine_all` is a phony aggregate.
 - `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`src/protocol/`), protobuf types stay

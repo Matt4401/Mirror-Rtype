@@ -1,7 +1,11 @@
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <vector>
 
 #include "tools/console/BuiltinCommands.hpp"
@@ -9,6 +13,7 @@
 #include "tools/console/CommandLine.hpp"
 #include "tools/console/Console.hpp"
 #include "tools/console/ConsoleTypes.hpp"
+#include "tools/console/ScriptFile.hpp"
 #include "tools/cvars/CVarManager.hpp"
 
 namespace {
@@ -315,6 +320,151 @@ TEST_F(ConsoleTest, LeavesTheLineAloneWithoutCandidates) {
     EXPECT_EQ(console.complete("set sv_gravity 1").line, "set sv_gravity 1");
     EXPECT_EQ(console.complete("echo \"r_").line, "echo \"r_");
     EXPECT_EQ(console.complete("").candidates.size(), console.commands().size() + cvars.size());
+}
+
+// --- Raw commands and quiet runs --------------------------------------------------------------------------------
+
+TEST_F(ConsoleTest, ARawCommandGetsTheRestOfTheLineUntouched) {
+    std::vector<std::string> received;
+    console.addCommand("code", {
+                                   .handler =
+                                       [&received](CommandContext& context) {
+                                           received.assign(context.args().begin(), context.args().end());
+                                       },
+                                   .raw = true,
+                               });
+    EXPECT_TRUE(console.execute(R"(  CODE   System.print("a; b") // kept  )"));
+    EXPECT_EQ(received, std::vector<std::string>{R"(System.print("a; b") // kept)"});
+
+    EXPECT_TRUE(console.execute("code"));
+    EXPECT_TRUE(received.empty());
+
+    // Raw only when the command starts the line.
+    EXPECT_TRUE(console.execute("echo x; code a \"b c\""));
+    EXPECT_EQ(received, (std::vector<std::string>{"a", "b c"}));
+}
+
+TEST_F(ConsoleTest, RawLinesStillRespectTheLineLimits) {
+    console.addCommand("code", {.handler = [](CommandContext& /*context*/) {}, .raw = true});
+    EXPECT_FALSE(console.execute("code \x1b[2J"));
+    EXPECT_FALSE(console.execute("code " + std::string(tools::MAX_LINE_LENGTH, 'a')));
+}
+
+TEST_F(ConsoleTest, RunNeitherEchoesNorRemembers) {
+    EXPECT_TRUE(console.run("echo quiet"));
+    ASSERT_EQ(console.output().size(), 1U);
+    EXPECT_EQ(last(), "quiet");
+    EXPECT_TRUE(console.history().empty());
+    EXPECT_FALSE(console.run("nope"));
+}
+
+// --- exec -------------------------------------------------------------------------------------------------------
+
+/** @brief Fresh script directory under the system temporary directory, removed afterwards. */
+class ScriptDir {
+  public:
+    ScriptDir() {
+        static int counter = 0;
+        _path = std::filesystem::temp_directory_path() /
+                ("rtype_console_scripts_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) + "_" +
+                 std::to_string(++counter));
+        std::filesystem::create_directories(_path);
+    }
+    ~ScriptDir() {
+        std::error_code error;
+        std::filesystem::remove_all(_path, error);
+    }
+    ScriptDir(const ScriptDir&) = delete;
+    ScriptDir& operator=(const ScriptDir&) = delete;
+    ScriptDir(ScriptDir&&) = delete;
+    ScriptDir& operator=(ScriptDir&&) = delete;
+
+    void write(const std::string& name, std::string_view content) const {
+        std::filesystem::create_directories((_path / name).parent_path());
+        std::ofstream(_path / name, std::ios::binary) << content;
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept { return _path; }
+
+  private:
+    std::filesystem::path _path;
+};
+
+TEST_F(ConsoleTest, ExecRunsAFileOfConsoleLines) {
+    const ScriptDir dir;
+    dir.write("debug.cfg", "// debug views\r\nr_wireframe 1\n\nr_draw_colliders on; echo done\n");
+    console.setScriptRoot(dir.path());
+
+    EXPECT_TRUE(console.execute("exec debug.cfg"));
+    EXPECT_TRUE(wireframe.get());
+    EXPECT_TRUE(colliders.get());
+    EXPECT_EQ(last(), "done");
+    EXPECT_EQ(console.history(), std::deque<std::string>{"exec debug.cfg"});  // the lines of the file are not
+}
+
+TEST_F(ConsoleTest, ExecReportsTheFailingLines) {
+    const ScriptDir dir;
+    dir.write("broken.cfg", "nope\nr_wireframe 1\nsv_gravity fast\n");
+    console.setScriptRoot(dir.path());
+
+    EXPECT_FALSE(console.execute("exec broken.cfg"));
+    EXPECT_TRUE(wireframe.get());  // the other lines still run
+    EXPECT_EQ(last(), "'broken.cfg': 2 line(s) failed");
+}
+
+TEST_F(ConsoleTest, ExecHandsFilesToTheRunnerOfTheirExtension) {
+    const ScriptDir dir;
+    dir.write("scripts/boss.LUA", "spawn boss");
+    console.setScriptRoot(dir.path());
+    std::string ran;
+    console.addScriptRunner(".lua",
+                            [&ran](CommandContext& /*context*/, std::string_view source, std::string_view path) {
+                                ran = std::string(path) + ": " + std::string(source);
+                            });
+
+    EXPECT_TRUE(console.execute("exec scripts/boss.LUA"));
+    EXPECT_EQ(ran, "scripts/boss.LUA: spawn boss");
+
+    EXPECT_TRUE(console.removeScriptRunner(".LUA"));
+    EXPECT_FALSE(console.execute("exec scripts/boss.LUA"));  // back to console lines: no `spawn` command
+}
+
+TEST_F(ConsoleTest, ExecStaysInsideTheScriptDirectory) {
+    const ScriptDir dir;
+    dir.write("inside/ok.cfg", "echo ok");
+    dir.write("secret.cfg", "echo secret");
+    console.setScriptRoot(dir.path() / "inside");
+
+    EXPECT_TRUE(console.execute("exec ok.cfg"));
+    EXPECT_FALSE(console.execute("exec ../secret.cfg"));
+    EXPECT_NE(last().find("outside the script directory"), std::string::npos);
+    EXPECT_FALSE(console.execute("exec " + (dir.path() / "secret.cfg").string()));
+    EXPECT_NE(last().find("relative"), std::string::npos);
+    EXPECT_FALSE(console.execute("exec missing.cfg"));
+    EXPECT_NE(last().find("no such script file"), std::string::npos);
+    EXPECT_FALSE(console.execute("exec ."));
+}
+
+TEST_F(ConsoleTest, ExecRefusesFilesTooLarge) {
+    const ScriptDir dir;
+    dir.write("huge.cfg", std::string(tools::MAX_SCRIPT_SIZE + 1, '\n'));
+    console.setScriptRoot(dir.path());
+    EXPECT_FALSE(console.execute("exec huge.cfg"));
+    EXPECT_NE(last().find("larger than"), std::string::npos);
+}
+
+TEST_F(ConsoleTest, ExecStopsAScriptThatRunsItself) {
+    const ScriptDir dir;
+    dir.write("loop.cfg", "exec loop.cfg");
+    console.setScriptRoot(dir.path());
+    EXPECT_FALSE(console.execute("exec loop.cfg"));
+    EXPECT_TRUE(printed("Scripts nested too deep"));
+}
+
+TEST_F(ConsoleTest, ScriptRunnersNeedAnExtensionAndAFunction) {
+    EXPECT_THROW(console.addScriptRunner("lua", [](CommandContext&, std::string_view, std::string_view) {}),
+                 std::invalid_argument);
+    EXPECT_THROW(console.addScriptRunner(".lua", {}), std::invalid_argument);
 }
 
 }  // namespace

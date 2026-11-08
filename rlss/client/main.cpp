@@ -48,7 +48,9 @@
 #include "settings/SettingsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
 #include "tools/console/ConsolePlugin.hpp"
+#include "tools/console/ConsoleTypes.hpp"
 #include "tools/devconsole/DevConsolePlugin.hpp"
+#include "tools/scripting/ConsoleScriptingPlugin.hpp"
 #include "ui/UiPlugin.hpp"
 
 namespace {
@@ -125,7 +127,9 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::PlayerInputPlugin>()
             .addPlugin<rlss::client::MenuScenesPlugin>(link)
             // Developer console (~ / ²): drawn last, over the HUD and the menus.
-            .addPlugin<tools::ConsolePlugin>()
+            // Cheats only reach this client: the server stays authoritative and runs its own rules.
+            .addPlugin<tools::ConsolePlugin>(tools::ConsoleConfig{.allowCheats = true})
+            .addPlugin<tools::ConsoleScriptingPlugin>()
             .addPlugin<tools::DevConsolePlugin>()
             .addPlugin<rlss::client::VolumeCVarsPlugin>();
         engine.run();
