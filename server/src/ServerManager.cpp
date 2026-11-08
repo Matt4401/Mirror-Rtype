@@ -9,9 +9,9 @@
 
 #include "Lobby.hpp"
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "Room.hpp"
 #include "level/Level.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "protocol/Messages.hpp"
@@ -36,8 +36,8 @@ bool ServerManager::run(const std::uint16_t port) {
         return false;
     }
     _port = port;
-    log::info(LOG_TAG, "listening on port ", port);
-    log::debug(LOG_TAG, "debug logs enabled");
+    engine::log::info(LOG_TAG, "listening on port ", port);
+    engine::log::debug(LOG_TAG, "debug logs enabled");
     _running = true;
 
     while (_running.load()) {
@@ -50,7 +50,7 @@ bool ServerManager::run(const std::uint16_t port) {
     // Rooms running in the background send through the network: they stop first.
     _lobby.clear();
     _network->stop();
-    log::info(LOG_TAG, "stopped");
+    engine::log::info(LOG_TAG, "stopped");
     return true;
 }
 
@@ -74,14 +74,14 @@ void ServerManager::handleEvents() {
 
 void ServerManager::onConnected(const ClientId client) {
     _pendingHandshakes[client] = std::chrono::steady_clock::now();
-    log::info(LOG_TAG, "client ", client, " connected");
+    engine::log::info(LOG_TAG, "client ", client, " connected");
 }
 
 void ServerManager::onDisconnected(const ClientId client) {
     _pendingHandshakes.erase(client);
     // Can arrive without onConnected (connection lost before being ready): the lobby then does nothing.
     _lobby.removeClient(client);
-    log::info(LOG_TAG, "client ", client, " disconnected");
+    engine::log::info(LOG_TAG, "client ", client, " disconnected");
 }
 
 void ServerManager::onData(const ClientId client, const ecs::net::Channel channel, const ecs::net::Bytes& data) {
@@ -91,7 +91,7 @@ void ServerManager::onData(const ClientId client, const ecs::net::Channel channe
     }
     const auto message = protocol::decode(data);
     if (!message) {
-        log::debug(LOG_TAG, "client ", client, " sent an invalid payload of ", data.size(), " bytes: dropped");
+        engine::log::debug(LOG_TAG, "client ", client, " sent an invalid payload of ", data.size(), " bytes: dropped");
         return;
     }
     onReliableMessage(client, *message);
@@ -100,12 +100,12 @@ void ServerManager::onData(const ClientId client, const ecs::net::Channel channe
 void ServerManager::onReliableMessage(const ClientId client, const protocol::Message& message) {
     if (const auto* hello = std::get_if<protocol::Hello>(&message)) {
         if (_lobby.hasClient(client)) {
-            log::debug(LOG_TAG, "client ", client, " sent a second Hello: dropped");
+            engine::log::debug(LOG_TAG, "client ", client, " sent a second Hello: dropped");
             return;
         }
         if (hello->version != protocol::PROTOCOL_VERSION) {
-            log::info(LOG_TAG, "client ", client, " uses protocol version ", hello->version, " (expected ",
-                      protocol::PROTOCOL_VERSION, "): refused");
+            engine::log::info(LOG_TAG, "client ", client, " uses protocol version ", hello->version, " (expected ",
+                              protocol::PROTOCOL_VERSION, "): refused");
             _pendingHandshakes.erase(client);
             _network->refuse(client, ecs::net::DisconnectReason::ProtocolMismatch);
             return;
@@ -116,7 +116,7 @@ void ServerManager::onReliableMessage(const ClientId client, const protocol::Mes
         return;
     }
     if (!_lobby.hasClient(client)) {
-        log::debug(LOG_TAG, "client ", client, " sent a message before Hello: dropped");
+        engine::log::debug(LOG_TAG, "client ", client, " sent a message before Hello: dropped");
         return;
     }
     if (std::holds_alternative<protocol::Leave>(message)) {
@@ -128,7 +128,7 @@ void ServerManager::onReliableMessage(const ClientId client, const protocol::Mes
 
 void ServerManager::onUnreliableData(const ClientId client, const ecs::net::Bytes& data) {
     if (!_lobby.hasClient(client)) {
-        log::debug(LOG_TAG, "client ", client, " sent UDP data before Hello: dropped");
+        engine::log::debug(LOG_TAG, "client ", client, " sent UDP data before Hello: dropped");
         return;
     }
     _lobby.onUnreliableData(client, data);
@@ -143,7 +143,8 @@ void ServerManager::expireHandshakes() {
         if (now - connectedAt < _handshakeTimeout) {
             return false;
         }
-        log::info(LOG_TAG, "client ", client, " sent no Hello within ", _handshakeTimeout.count(), " ms: kicked");
+        engine::log::info(LOG_TAG, "client ", client, " sent no Hello within ", _handshakeTimeout.count(),
+                          " ms: kicked");
         _network->kick(client);
         return true;
     });

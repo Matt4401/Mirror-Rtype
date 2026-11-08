@@ -10,9 +10,9 @@
 #include <thread>
 
 #include "CarSimulationPlugin.hpp"
-#include "Logger.hpp"
 #include "RosterPlugin.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkPlugin.hpp"
@@ -98,7 +98,7 @@ void MatchRoom::runInBackground() {
                 std::this_thread::sleep_for(FRAME_SLEEP);
             }
         } catch (const std::exception& error) {
-            rtype::log::error(LOG_TAG, "match ", _id, " stopped by an error in its simulation: ", error.what());
+            engine::log::error(LOG_TAG, "match ", _id, " stopped by an error in its simulation: ", error.what());
             fail();
         }
     });

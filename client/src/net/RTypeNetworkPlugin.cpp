@@ -5,11 +5,11 @@
 #include <utility>
 #include <variant>
 
-#include "Logger.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
+#include "log/Logger.hpp"
 #include "net/ClientConnection.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -23,7 +23,7 @@
 
 namespace client {
 
-namespace log = rtype::log;
+namespace log = engine::log;
 namespace protocol = rtype::protocol;
 
 namespace {

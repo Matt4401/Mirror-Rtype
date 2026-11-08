@@ -18,13 +18,13 @@
 #include <vector>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "ServerManager.hpp"
 #include "core/ContentRoot.hpp"
 #include "ecs/time/PreciseSleep.hpp"
 #include "gameplay/LevelDirectorPlugin.hpp"
 #include "level/Level.hpp"
 #include "level/LevelLoader.hpp"
+#include "log/Logger.hpp"
 #include "net/NetworkFactory.hpp"
 #include "parsing/Parsing.hpp"
 #include "protocol/Messages.hpp"
@@ -65,15 +65,15 @@ std::shared_ptr<const rtype::server::level::Level> loadLevelFile(const std::file
     auto level =
         rtype::server::level::loadLevel(path, rtype::server::gameplay::LevelDirectorPlugin::levelPrefab, warnings);
     for (const std::string& warning : warnings) {
-        rtype::log::warning(rtype::server::LOG_TAG, "level: ", warning);
+        engine::log::warning(rtype::server::LOG_TAG, "level: ", warning);
     }
     if (!level) {
-        rtype::log::warning(rtype::server::LOG_TAG, "cannot load the level: ", level.error());
+        engine::log::warning(rtype::server::LOG_TAG, "cannot load the level: ", level.error());
         return nullptr;
     }
     level->dataRoot = root;
-    rtype::log::info(rtype::server::LOG_TAG, "level '", level->name, "' loaded: ", level->timeline.events().size(),
-                     " events");
+    engine::log::info(rtype::server::LOG_TAG, "level '", level->name, "' loaded: ", level->timeline.events().size(),
+                      " events");
     return std::make_shared<const rtype::server::level::Level>(std::move(*level));
 }
 
@@ -89,7 +89,7 @@ std::shared_ptr<const rtype::server::level::Level> loadLevelFile(const std::file
 std::shared_ptr<const rtype::server::level::Level> loadDefaultLevel(const std::filesystem::path& root) {
     auto level = loadLevelFile(root / LEVEL_PATH, root);
     if (level == nullptr) {
-        rtype::log::warning(rtype::server::LOG_TAG, "the rooms play without a level");
+        engine::log::warning(rtype::server::LOG_TAG, "the rooms play without a level");
     }
     return level;
 }
@@ -108,8 +108,8 @@ int main(int ac, char** av) {
         std::cerr << rtype::server::usage(args.front()) << '\n';
         return EXIT_ERROR;
     }
-    rtype::log::setVerbose(options->logs);
-    rtype::log::setColored(options->colors);
+    engine::log::setVerbose(options->logs);
+    engine::log::setColored(options->colors);
 
     // The server and room loops sleep 1 ms between two passes: without this, Windows makes it about 15.6 ms.
     const ecs::time::PreciseSleepScope preciseSleep;
@@ -119,8 +119,8 @@ int main(int ac, char** av) {
     const std::shared_ptr<const rtype::server::level::Level> level =
         options->level ? loadLevelFile(*options->level, root) : loadDefaultLevel(root);
     if (options->level && level == nullptr) {
-        rtype::log::error(rtype::server::LOG_TAG, "the level given with ", rtype::server::LEVEL_OPTION,
-                          " cannot be played");
+        engine::log::error(rtype::server::LOG_TAG, "the level given with ", rtype::server::LEVEL_OPTION,
+                           " cannot be played");
         return EXIT_ERROR;
     }
     rtype::server::ServerManager server(ecs::net::createServer({.protocolId = rtype::protocol::TRANSPORT_PROTOCOL_ID}),

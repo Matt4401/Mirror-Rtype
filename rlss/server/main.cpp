@@ -16,9 +16,9 @@
 #include <thread>
 
 #include "CommandLine.hpp"
-#include "Logger.hpp"
 #include "MatchServer.hpp"
 #include "core/ContentRoot.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkFactory.hpp"
 #include "protocol/Protocol.hpp"
@@ -56,12 +56,12 @@ int main(int ac, char** av) {
         const std::shared_ptr<ecs::net::INetworkServer> transport =
             ecs::net::createServer({.protocolId = rlss::protocol::PROTOCOL_ID});
         if (!transport->start(*port)) {
-            rtype::log::error(LOG_TAG, "cannot listen on port ", *port);
+            engine::log::error(LOG_TAG, "cannot listen on port ", *port);
             return EXIT_ERROR;
         }
         std::signal(SIGINT, onSignal);
         std::signal(SIGTERM, onSignal);
-        rtype::log::info(LOG_TAG, rlss::protocol::GAME_TITLE, " server listening on port ", *port);
+        engine::log::info(LOG_TAG, rlss::protocol::GAME_TITLE, " server listening on port ", *port);
 
         {
             // The menu runs here; each match runs on its own thread, with its own engine.
@@ -71,7 +71,7 @@ int main(int ac, char** av) {
                 server.update();
                 std::this_thread::sleep_for(FRAME_SLEEP);
             }
-            rtype::log::info(LOG_TAG, "shutting down");
+            engine::log::info(LOG_TAG, "shutting down");
         }
         transport->stop();
     } catch (const std::exception& error) {

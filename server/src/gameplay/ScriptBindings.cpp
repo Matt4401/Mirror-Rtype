@@ -1,8 +1,8 @@
 #include "gameplay/ScriptBindings.hpp"
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "components/Transform.hpp"
+#include "log/Logger.hpp"
 #include "scripting/ComponentBinder.hpp"
 #include "scripting/WrenVM.hpp"
 #include "systems/script/ScriptSystem.hpp"
@@ -21,7 +21,7 @@ bool bindPosition(scripting::WrenVM& vm) {
     binder.property<&ecs::Transform::x>("x").property<&ecs::Transform::y>("y");
     const auto result = vm.interpret(POSITION_MODULE, binder.generateWrenClass());
     if (!result) {
-        log::error(LOG_TAG, "cannot bind ", POSITION_MODULE, " for the scripts: ", result.error());
+        engine::log::error(LOG_TAG, "cannot bind ", POSITION_MODULE, " for the scripts: ", result.error());
         return false;
     }
     return true;

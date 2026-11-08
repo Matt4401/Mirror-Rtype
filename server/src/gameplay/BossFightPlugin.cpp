@@ -6,7 +6,6 @@
 #include <utility>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/ScriptComponent.hpp"
 #include "components/Transform.hpp"
@@ -18,6 +17,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/GameplayEvents.hpp"
 #include "level/Level.hpp"
+#include "log/Logger.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabParams.hpp"
@@ -62,7 +62,7 @@ void BossFightPlugin::startFight(ecs::Registry& registry, const ::prefabs::Prefa
                                     });
     }
     ecs::net::replicate(registry, boss, game::KIND_BOSS_CORE);
-    log::info(LOG_TAG, "boss fight: the scroll stops until the boss is destroyed");
+    engine::log::info(LOG_TAG, "boss fight: the scroll stops until the boss is destroyed");
 }
 
 void BossFightPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& /*time*/) {
@@ -78,7 +78,7 @@ void BossFightPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time&
         });
     if (_fighting && !bossLeft) {
         _fighting = false;
-        log::info(LOG_TAG, "boss destroyed");
+        engine::log::info(LOG_TAG, "boss destroyed");
         _bus->publish(BossFightEnded{});
     }
 }

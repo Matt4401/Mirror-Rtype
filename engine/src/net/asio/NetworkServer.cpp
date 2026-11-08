@@ -20,7 +20,7 @@
 #include <tuple>
 #include <utility>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/NetworkConfig.hpp"
 #include "net/asio/LogTag.hpp"
@@ -56,7 +56,7 @@ bool NetworkServer::start(const std::uint16_t port) {
         _acceptor = asio::ip::tcp::acceptor(_io, {asio::ip::tcp::v4(), port});
         _udpSocket = asio::ip::udp::socket(_io, {asio::ip::udp::v4(), port});
     } catch (const asio::system_error& e) {
-        rtype::log::error(LOG_TAG, "cannot start server on port ", port, ": ", e.what());
+        engine::log::error(LOG_TAG, "cannot start server on port ", port, ": ", e.what());
         std::error_code ignored;
         std::ignore = _acceptor.close(ignored);
         std::ignore = _udpSocket.close(ignored);
@@ -104,14 +104,14 @@ void NetworkServer::accept() {
             return;
         }
         if (!ec && _peers.size() >= _config.maxPeers) {
-            rtype::log::warning(LOG_TAG, "server full (", _config.maxPeers, " peers): connection refused");
+            engine::log::warning(LOG_TAG, "server full (", _config.maxPeers, " peers): connection refused");
             refuseConnection(std::move(socket));
         } else if (!ec) {
             const PeerId id = _nextId++;
             std::error_code endpointError;
             const auto remote = socket.remote_endpoint(endpointError);
             if (!endpointError) {
-                rtype::log::debug(LOG_TAG, "TCP connection from ", remote, " accepted as peer ", id);
+                engine::log::debug(LOG_TAG, "TCP connection from ", remote, " accepted as peer ", id);
             }
             const auto tcp = std::make_shared<TcpSession>(
                 std::move(socket), id,
@@ -159,7 +159,7 @@ void NetworkServer::onTcpMessage(const PeerId peer, const MessageKind kind, Byte
         if (kind == MessageKind::Handshake) {
             onHandshake(info, payload);
         } else {
-            rtype::log::warning(LOG_TAG, "peer ", peer, " sent a frame before its handshake: disconnected");
+            engine::log::warning(LOG_TAG, "peer ", peer, " sent a frame before its handshake: disconnected");
             info.tcp->close();
         }
         return;
@@ -171,19 +171,19 @@ void NetworkServer::onTcpMessage(const PeerId peer, const MessageKind kind, Byte
                 {.type = EventType::Data, .peer = peer, .data = std::move(payload), .channel = Channel::Reliable});
             break;
         case MessageKind::UdpOpen:
-            rtype::log::debug(LOG_TAG, "peer ", peer, " opens UDP");
+            engine::log::debug(LOG_TAG, "peer ", peer, " opens UDP");
             info.udpOpen = true;
             info.udp.reset();
             info.lastSeen = std::chrono::steady_clock::now();
             break;
         case MessageKind::UdpClose:
-            rtype::log::debug(LOG_TAG, "peer ", peer, " closes UDP");
+            engine::log::debug(LOG_TAG, "peer ", peer, " closes UDP");
             info.udpOpen = false;
             info.udp.reset();
             break;
         default:
-            rtype::log::warning(LOG_TAG, "peer ", peer, " sent an unexpected message kind (", static_cast<int>(kind),
-                                "): disconnected");
+            engine::log::warning(LOG_TAG, "peer ", peer, " sent an unexpected message kind (", static_cast<int>(kind),
+                                 "): disconnected");
             info.tcp->close();
             break;
     }
@@ -191,14 +191,14 @@ void NetworkServer::onTcpMessage(const PeerId peer, const MessageKind kind, Byte
 
 void NetworkServer::onHandshake(PeerInfo& info, const Bytes& payload) {
     if (payload.size() != wire::HANDSHAKE_SIZE) {
-        rtype::log::warning(LOG_TAG, "peer ", info.id, " sent a malformed handshake: disconnected");
+        engine::log::warning(LOG_TAG, "peer ", info.id, " sent a malformed handshake: disconnected");
         info.tcp->close();
         return;
     }
     const std::uint32_t protocolId = wire::readU32(std::span(payload).first<4>());
     if (protocolId != _config.protocolId) {
-        rtype::log::warning(LOG_TAG, "peer ", info.id, " speaks protocol ", protocolId, " instead of ",
-                            _config.protocolId, ": disconnected");
+        engine::log::warning(LOG_TAG, "peer ", info.id, " speaks protocol ", protocolId, " instead of ",
+                             _config.protocolId, ": disconnected");
         closeWithReason(*info.tcp, DisconnectReason::ProtocolMismatch);
         return;
     }
@@ -253,7 +253,7 @@ void NetworkServer::receiveUdp() {
                 handleDatagram(size);
             } else if (ec != asio::error::connection_reset && ec != asio::error::connection_refused &&
                        ec != asio::error::message_size) {
-                rtype::log::warning(LOG_TAG, "udp receive error: ", ec.message());
+                engine::log::warning(LOG_TAG, "udp receive error: ", ec.message());
             }
             receiveUdp();
         });
@@ -261,7 +261,7 @@ void NetworkServer::receiveUdp() {
 
 void NetworkServer::handleDatagram(const std::size_t size) {
     if (size < DATAGRAM_HEADER_SIZE || size > MAX_DATAGRAM) {
-        rtype::log::debug(LOG_TAG, "datagram of ", size, " bytes from ", _udpFrom, " dropped: invalid size");
+        engine::log::debug(LOG_TAG, "datagram of ", size, " bytes from ", _udpFrom, " dropped: invalid size");
         return;
     }
     const std::span<const std::uint8_t> datagram(_udpBuffer.data(), size);
@@ -271,8 +271,8 @@ void NetworkServer::handleDatagram(const std::size_t size) {
     // `udpOpen` is only set after the handshake, so a handshaking peer cannot use UDP.
     const auto it = _peers.find(id);
     if (it == _peers.end() || it->second.token != token || !it->second.udpOpen) {
-        rtype::log::debug(LOG_TAG, "datagram from ", _udpFrom, " dropped: unknown peer ", id,
-                          ", bad token or UDP not open");
+        engine::log::debug(LOG_TAG, "datagram from ", _udpFrom, " dropped: unknown peer ", id,
+                           ", bad token or UDP not open");
         return;
     }
     PeerInfo& info = it->second;
@@ -280,7 +280,7 @@ void NetworkServer::handleDatagram(const std::size_t size) {
     info.udp = _udpFrom;
     info.lastSeen = std::chrono::steady_clock::now();
     if (firstBinding) {
-        rtype::log::debug(LOG_TAG, "peer ", id, " UDP bound to ", _udpFrom);
+        engine::log::debug(LOG_TAG, "peer ", id, " UDP bound to ", _udpFrom);
         sendDatagram(info, {});
     }
 
@@ -326,7 +326,7 @@ void NetworkServer::onUdpTick() {
     for (auto& info : _peers | std::views::values) {
         if (!info.handshaken) {
             if (now - info.acceptedAt > _config.handshakeTimeout) {
-                rtype::log::warning(LOG_TAG, "peer ", info.id, " did not complete its handshake: disconnected");
+                engine::log::warning(LOG_TAG, "peer ", info.id, " did not complete its handshake: disconnected");
                 info.tcp->close();
             }
             continue;
@@ -335,7 +335,7 @@ void NetworkServer::onUdpTick() {
             continue;
         }
         if (now - info.lastSeen > _config.udpTimeout) {
-            rtype::log::warning(LOG_TAG, "peer ", info.id, " timed out on UDP: disconnected");
+            engine::log::warning(LOG_TAG, "peer ", info.id, " timed out on UDP: disconnected");
             info.tcp->close();
         } else if (info.udp && now - info.lastSent >= _config.keepaliveInterval) {
             sendDatagram(info, {});

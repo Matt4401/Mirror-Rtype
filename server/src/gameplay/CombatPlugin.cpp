@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "collision/CollisionRouter.hpp"
 #include "collision/GameCollisionEvents.hpp"
 #include "components/Transform.hpp"
@@ -23,6 +22,7 @@
 #include "game/ShipMovement.hpp"
 #include "gameplay/GameplayComponents.hpp"
 #include "gameplay/GameplayEvents.hpp"
+#include "log/Logger.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/CollisionCategories.hpp"
@@ -99,7 +99,7 @@ void CombatPlugin::onLevelFinished(const LevelFinished& finished) {
     const std::uint32_t total = std::accumulate(scores.begin(), scores.end(), std::uint32_t{0});
     _bus->publish(protocol::LevelComplete{.levelIndex = finished.levelIndex, .score = total, .playerScores = scores});
     if (finished.lastLevel) {
-        log::info(LOG_TAG, "game won, score ", total);
+        engine::log::info(LOG_TAG, "game won, score ", total);
         _bus->publish(
             protocol::GameOver{.reason = protocol::GameOverReason::Victory, .score = total, .playerScores = scores});
     }
@@ -135,7 +135,7 @@ void CombatPlugin::onShotHit(const collision::ShotHitEvent& hit) {
             if (!isVulnerable(hit.target)) {
                 return;
             }
-            log::info(LOG_TAG, "a ship was shot down");
+            engine::log::info(LOG_TAG, "a ship was shot down");
             _bus->publish(ShipDestroyed{.ship = hit.target});
         }
         registry.killEntity(hit.shot);
@@ -160,7 +160,7 @@ void CombatPlugin::onShipContact(const collision::ShipContactEvent& contact) {
         return;
     }
     const bool terrain = (contact.otherCategory & ::prefabs::collision::OBSTACLE) != 0;
-    log::info(LOG_TAG, terrain ? "a ship crashed into the terrain" : "a ship crashed into an enemy");
+    engine::log::info(LOG_TAG, terrain ? "a ship crashed into the terrain" : "a ship crashed into an enemy");
     _bus->publish(ShipDestroyed{.ship = contact.ship});
 }
 
@@ -176,7 +176,7 @@ void CombatPlugin::onPowerUpTouched(const collision::PowerUpTouchedEvent& touch)
     const std::uint8_t index = registry.getComponents<game::EntityNetState>().get(touch.ship).subtype;
     if (index < _rapidFire.size()) {
         _rapidFire.at(index) = RAPID_FIRE_DURATION;
-        log::info(LOG_TAG, "player ", static_cast<int>(index) + 1, " picked up a power-up: rapid fire");
+        engine::log::info(LOG_TAG, "player ", static_cast<int>(index) + 1, " picked up a power-up: rapid fire");
     }
 }
 
@@ -232,7 +232,7 @@ void CombatPlugin::logScores() const {
     for (std::size_t index = 0; index < _playerCount; ++index) {
         line << " P" << (index + 1) << '=' << _scores.at(index);
     }
-    log::info(LOG_TAG, line.str());
+    engine::log::info(LOG_TAG, line.str());
 }
 
 }  // namespace rtype::server::gameplay

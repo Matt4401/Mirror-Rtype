@@ -31,7 +31,6 @@ end
 
 includes("xmake/common.lua")
 
-includes("log/*/xmake.lua")
 includes("common/xmake.lua")
 includes("engine/*/xmake.lua")
 includes("game/*/xmake.lua")

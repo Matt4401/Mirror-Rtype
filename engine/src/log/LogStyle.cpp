@@ -1,12 +1,12 @@
-#include "LogStyle.hpp"
+#include "log/LogStyle.hpp"
 
 #include <array>
 #include <cstdint>
 #include <string_view>
 
-#include "LogLevel.hpp"
+#include "log/LogLevel.hpp"
 
-namespace rtype::log::style {
+namespace engine::log::style {
 
 namespace {
 
@@ -60,4 +60,4 @@ std::string_view tag(const std::string_view tag) noexcept {
     return TAG_PALETTE.at(hash % TAG_PALETTE.size());
 }
 
-}  // namespace rtype::log::style
+}  // namespace engine::log::style

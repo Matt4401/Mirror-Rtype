@@ -13,6 +13,12 @@ target("engine_core")
     add_includedirs(".", {public = true})
     add_deps("engine_time")
 
+-- Thread-safe logger shared by the engine modules and the games.
+target("engine_log")
+    set_kind("static")
+    add_files("log/*.cpp")
+    add_includedirs(".", {public = true})
+
 target("engine_events")
     set_kind("headeronly")
     add_includedirs(".", {public = true})
@@ -95,7 +101,7 @@ target("engine_network_asio")
     set_kind("static")
     add_files("net/asio/*.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_network", "log")
+    add_deps("engine_network", "engine_log")
     add_packages("asio")
     if is_plat("windows", "mingw") then
         add_syslinks("ws2_32", "mswsock", {public = true})
