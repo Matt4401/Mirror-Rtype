@@ -7,7 +7,7 @@
 
 #include <string>
 
-#include "prefabs/PrefabParams.hpp"
+#include "ecs/ParamBag.hpp"
 
 namespace timeline {
 
@@ -26,7 +26,7 @@ struct TimelineEvent {
     std::string type;
 
     /** @brief Event data, e.g. the prefab name and its parameters. */
-    prefabs::PrefabParams params;
+    ecs::ParamBag params;
 };
 
 }  // namespace timeline
