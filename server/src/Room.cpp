@@ -42,7 +42,10 @@ namespace {
 constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
 
 /**
- * @brief Sends a message to every player of a room on the reliable channel.
+ * @brief Sends a message to every player of a room on the reliable channel (TCP).
+ *
+ * Only for session events: level start and end, game over. They come a few times per game and must not be lost, like
+ * `GameStart`. Nothing of the game loop goes there: snapshots and inputs stay on UDP.
  * @param connection Peers of the room.
  * @param message Message to send.
  */
