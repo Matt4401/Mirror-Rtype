@@ -37,6 +37,22 @@ struct Flattened {
 };
 
 /**
+ * @brief Stores a scalar value, reporting a key that two values flatten to.
+ *
+ * A quoted key containing dots can produce the dotted name of another value (`"keys.0" = 2` next to `keys = [1]`):
+ * only one of them can be kept, so the clash is reported instead of silently dropping a value.
+ *
+ * @param out Destination.
+ * @param name Dotted key.
+ * @param value Value.
+ */
+void store(const Flattened& out, std::string name, const ConfigFile::Value& value) {
+    if (const auto [it, inserted] = out.values->try_emplace(std::move(name), value); !inserted) {
+        out.warnings->push_back(std::format("{}: defined twice, only one value is kept", it->first));
+    }
+}
+
+/**
  * @brief Copies the scalar values of `root`, of its sub-tables and of its arrays into `out`, under dotted keys.
  *
  * Array elements are keyed by their index (`events.0.at`, `keys.1`), and the size of each array is recorded.
@@ -60,13 +76,13 @@ void flatten(const toml::table& root, const Flattened& out) {
             }
             out.arraySizes->emplace(std::move(name), array->size());
         } else if (const auto* boolean = node->as_boolean()) {
-            out.values->emplace(std::move(name), boolean->get());
+            store(out, std::move(name), boolean->get());
         } else if (const auto* integer = node->as_integer()) {
-            out.values->emplace(std::move(name), integer->get());
+            store(out, std::move(name), integer->get());
         } else if (const auto* floating = node->as_floating_point()) {
-            out.values->emplace(std::move(name), floating->get());
+            store(out, std::move(name), floating->get());
         } else if (const auto* string = node->as_string()) {
-            out.values->emplace(std::move(name), string->get());
+            store(out, std::move(name), string->get());
         } else {
             out.warnings->push_back(std::format("{}: unsupported value type (dates and times are ignored)", name));
         }
