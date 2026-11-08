@@ -5,8 +5,6 @@
 #include <string_view>
 #include <variant>
 
-#include "AssetsPlugin.hpp"
-#include "CameraPlugin.hpp"
 #include "ClientEvents.hpp"
 #include "audio/types/AudioTypes.hpp"
 #include "config/Settings.hpp"
@@ -86,8 +84,6 @@ void MenuScenesPlugin::build(engine::PluginBuilder& builder) {
     builder.require<scene::ScenePlugin>();
     builder.require<settings::SettingsPlugin>();
     builder.require<ui::UiPlugin>();
-    builder.require<CameraPlugin>();
-    builder.require<AssetsPlugin>();
 }
 
 void MenuScenesPlugin::init(engine::Engine& engine) {

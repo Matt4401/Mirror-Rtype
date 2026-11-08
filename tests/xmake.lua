@@ -337,6 +337,15 @@ target("test_rlss_codec")
     add_files("rlss/CodecTests.cpp")
     add_tests("test_rlss_codec")
 
+target("test_rlss_menu")
+    set_kind("binary")
+    add_deps("rlss_shared", "rlss_game", "log", "engine_core", "engine_time", "engine_events", "engine_network",
+             "engine_input", "engine_hierarchy", "engine_ui", "engine_scene", "engine_config", "engine_settings")
+    add_packages("gtest")
+    add_files("rlss/MenuScenesTests.cpp", "../rlss/client/menu/*.cpp", "../rlss/client/ServerLink.cpp")
+    add_includedirs("../rlss/client")
+    add_tests("test_rlss_menu")
+
 target("test_rlss_server")
     set_kind("binary")
     add_deps("rlss_game", "log", "engine_core", "engine_time", "engine_events", "engine_network", "engine_scripting")
