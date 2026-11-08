@@ -70,46 +70,54 @@ Suggested event:
 
 ```toml
 [[events]]
-at = 10800.0
+at = 6300.0
 type = "boss"
 prefab = "boss_core"
 variant = 2
 health = 45
-width = 180.0
-height = 220.0
+width = 280.0
+height = 90.0
 script = "scripts/bosses/Bastion.wren"
 
 [[events.parts]]
 role = "weak_point"
-width = 40.0
-height = 40.0
+x = -30.0
+width = 36.0
+height = 36.0
 
 [[events.parts]]
 role = "armor"
-x = -80.0
-y = -40.0
-width = 30.0
-height = 60.0
+x = -75.0
+y = -24.0
+width = 22.0
+height = 32.0
 
 [[events.parts]]
 role = "armor"
-x = -80.0
-y = 40.0
-width = 30.0
-height = 60.0
+x = -75.0
+y = 24.0
+width = 22.0
+height = 32.0
 
 [[events.parts]]
 role = "turret"
-y = -120.0
+x = -110.0
+y = -36.0
+width = 32.0
+height = 32.0
 health = 8
 look = 2
 
 [[events.parts]]
 role = "turret"
-y = 120.0
+x = 100.0
+y = -36.0
+width = 32.0
+height = 32.0
 health = 8
 look = 2
 ```
 
-The armor plates sit in front of the weak point: shots have to come from above or below them, which the slide of the
-siege phase and the charges of the assault phase make harder.
+The hitbox is a long, flat warship (280 x 90). The armor plates sit in front of the weak point and leave a narrow
+slit between them: shots go through it, or come from above or below, which the slide of the siege phase and the
+charges of the assault phase make harder. The turrets sit on top of the hull, at the bow and at the stern.
