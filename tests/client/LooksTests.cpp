@@ -164,8 +164,17 @@ TEST(Looks, ReadsTheEntityLooksByPrefab) {
         [[entity]]
         prefab = "player_ship"
         width = 10.0
+
+        [[entity]]
+        prefab = "missile"
+        subtype = 2
+        width = 12.0
     )",
                                      warnings);
+
+    ASSERT_EQ(result.entitySubtypes.size(), 1U);
+    EXPECT_FLOAT_EQ(result.entitySubtypes.at({"missile", 2}).width, 12.0F);
+    EXPECT_FALSE(result.entities.contains("missile")) << "a subtype entry only restyles that subtype";
 
     ASSERT_EQ(result.entities.size(), 1U);
     ASSERT_TRUE(result.entities.at("alien_gunner").sprite.has_value());

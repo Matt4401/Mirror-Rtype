@@ -123,9 +123,9 @@ void readEntries(const config::ConfigFile& file, config::ConfigReader& reader, c
  * @brief Reads the `[[entity]]` entries, by prefab name; a prefab whose look cannot be set is reported and ignored.
  * @param file Looks file.
  * @param reader Reader reporting corrections.
- * @param out Receives the looks by prefab name.
+ * @param out Receives the looks by prefab name, and by prefab name and `subtype` for the entries that set one.
  */
-void readEntities(const config::ConfigFile& file, config::ConfigReader& reader, std::map<std::string, Look>& out) {
+void readEntities(const config::ConfigFile& file, config::ConfigReader& reader, Looks& out) {
     std::size_t count = file.arraySize("entity");
     if (count > MAX_LOOKS) {
         reader.warn(std::format("entity: {} entries, only the first {} are kept", count, MAX_LOOKS));
@@ -139,7 +139,13 @@ void readEntities(const config::ConfigFile& file, config::ConfigReader& reader, 
                 std::format("{}: 'prefab' must be one of the enemies, missile or power_up, entry ignored", entry));
             continue;
         }
-        out[prefab] = readLook(file, reader, entry);
+        const std::string subtype = entry + ".subtype";
+        if (file.contains(subtype)) {
+            const auto value = static_cast<std::uint8_t>(reader.count(subtype, 0, 0, MAX_LOOK_ID));
+            out.entitySubtypes[{prefab, value}] = readLook(file, reader, entry);
+        } else {
+            out.entities[prefab] = readLook(file, reader, entry);
+        }
     }
 }
 
@@ -150,7 +156,7 @@ Looks readLooks(const config::ConfigFile& file, std::vector<std::string>& warnin
     Looks looks;
     readEntries(file, reader, "boss", "variant", looks.bosses);
     readEntries(file, reader, "part", "look", looks.parts);
-    readEntities(file, reader, looks.entities);
+    readEntities(file, reader, looks);
     looks.explosion = readSprite(file, reader, "explosion");
     reader.reportUnknownKeys("explosion");
     return looks;

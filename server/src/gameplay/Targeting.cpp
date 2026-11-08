@@ -1,6 +1,7 @@
 #include "gameplay/Targeting.hpp"
 
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <optional>
 
@@ -49,10 +50,11 @@ Velocity aimAt(const float x, const float y, const AimPoint target, const float 
     return {.x = dx / length * speed, .y = dy / length * speed};
 }
 
-void spawnEnemyMissile(ecs::Registry& registry, const float x, const float y, const Velocity velocity) {
+void spawnEnemyMissile(ecs::Registry& registry, const float x, const float y, const Velocity velocity,
+                       const std::uint8_t look) {
     const ecs::Entity missile = registry.spawnEntity();
     ::prefabs::buildMissile(missile, registry, {{"x", x}, {"y", y}, {"speed", velocity.x}, {"speed_y", velocity.y}});
-    registry.addComponent(missile, game::EntityNetState{});
+    registry.addComponent(missile, game::EntityNetState{.subtype = look});
     ecs::net::replicate(registry, missile, game::KIND_MISSILE);
 }
 

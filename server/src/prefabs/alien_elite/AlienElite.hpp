@@ -35,6 +35,9 @@ inline constexpr float DEFAULT_ALIEN_ELITE_FIRE_INTERVAL = 2.4F;
 /** @brief Default speed of the shots of an alien elite, in pixels per second. */
 inline constexpr float DEFAULT_ALIEN_ELITE_SHOT_SPEED = 260.0F;
 
+/** @brief Look of the shots of an alien elite (`EnemyGun::shotLook`). */
+inline constexpr std::uint8_t ALIEN_ELITE_SHOT_LOOK = 2;
+
 /** @brief Half-side of the alien elite hitbox, in pixels. */
 inline constexpr float ALIEN_ELITE_HALF_SIZE = 28.0F;
 

@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 #include <vector>
 
@@ -44,6 +45,8 @@ class EnemyFirePlugin final : public engine::IPlugin {
         AimPoint from;
         /** @brief Its velocity. */
         Velocity velocity;
+        /** @brief Its look, from the gun. */
+        std::uint8_t look = 0;
     };
 
     /** @brief Shots of the current step; capacity kept between steps. */

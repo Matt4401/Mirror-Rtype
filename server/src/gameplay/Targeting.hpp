@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <optional>
 
 #include "ecs/Registry.hpp"
@@ -52,7 +53,8 @@ struct Velocity {
  * @param x Horizontal position.
  * @param y Vertical position.
  * @param velocity Velocity of the missile.
+ * @param look Look of the missile, sent as its `subtype`; 0 for the default look.
  */
-void spawnEnemyMissile(ecs::Registry& registry, float x, float y, Velocity velocity);
+void spawnEnemyMissile(ecs::Registry& registry, float x, float y, Velocity velocity, std::uint8_t look = 0);
 
 }  // namespace rtype::server::gameplay

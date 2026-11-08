@@ -278,9 +278,12 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
 
 void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const {
     ecs::Registry& registry = engine.registry();
+    const std::uint8_t subtype = registry.hasComponent<rtype::game::EntityNetState>(event.entity)
+                                     ? registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype
+                                     : 0;
     if (event.kind == rtype::game::KIND_PLAYER_SHIP) {
         // Each row of the spritesheet is one ship color, so that players can tell their ships apart.
-        const int row = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
+        const int row = subtype;
         applySprite(registry, event.entity,
                     {
                         .texture = _shipTexId,
@@ -290,7 +293,7 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = row * SHIP_FRAME_HEIGHT,
                         .layer = 3,
                     });
-    } else if (const looks::Look* custom = entityLook(event.kind);
+    } else if (const looks::Look* custom = entityLook(event.kind, subtype);
                custom != nullptr && event.kind != rtype::game::KIND_ALIEN_ELITE) {
         // A look from looks.toml replaces the built-in one; the box keeps the built-in size without a sprite.
         const auto [width, height, color] = defaultBox(event.kind);
@@ -308,8 +311,8 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
     } else if (event.kind == rtype::game::KIND_ALIEN_GUNNER) {
         applyBox(registry, event.entity, GUNNER_PLACEHOLDER_SIZE, GUNNER_PLACEHOLDER_SIZE, COLOR_GUNNER, 2);
     } else if (event.kind == rtype::game::KIND_ALIEN_ELITE) {
-        applyLook(registry, event.entity, entityLook(event.kind), {ELITE_PLACEHOLDER_SIZE, ELITE_PLACEHOLDER_SIZE},
-                  COLOR_ELITE, 2);
+        applyLook(registry, event.entity, entityLook(event.kind, subtype),
+                  {ELITE_PLACEHOLDER_SIZE, ELITE_PLACEHOLDER_SIZE}, COLOR_ELITE, 2);
         // Tough enough to need several shots: it flashes on each hit, like a boss.
         const std::uint8_t health = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).health;
         registry.addComponent(
@@ -454,9 +457,16 @@ void RTypeGamePlugin::loadLooks(render::TextureStore& textures) {
         loadTexture(look);
         _entityLooks.emplace(rtype::protocol::makeEntityKind(prefab), &look);
     }
+    for (const auto& [key, look] : _looks.entitySubtypes) {
+        loadTexture(look);
+        _entitySubtypeLooks.emplace(std::pair{rtype::protocol::makeEntityKind(key.first), key.second}, &look);
+    }
 }
 
-const looks::Look* RTypeGamePlugin::entityLook(const std::uint32_t kind) const {
+const looks::Look* RTypeGamePlugin::entityLook(const std::uint32_t kind, const std::uint8_t subtype) const {
+    if (const auto exact = _entitySubtypeLooks.find({kind, subtype}); exact != _entitySubtypeLooks.end()) {
+        return exact->second;
+    }
     const auto found = _entityLooks.find(kind);
     return found != _entityLooks.end() ? found->second : nullptr;
 }

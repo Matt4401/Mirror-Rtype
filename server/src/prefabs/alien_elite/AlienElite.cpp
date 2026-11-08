@@ -72,6 +72,7 @@ void buildAlienElite(ecs::Entity e, ecs::Registry& registry, PrefabParams const&
                                            .shotSpeed = static_cast<float>(clampedParam(
                                                params, "shot_speed", DEFAULT_ALIEN_ELITE_SHOT_SPEED, 50.0, 900.0)),
                                            .pattern = GunPattern::Spread,
+                                           .shotLook = ALIEN_ELITE_SHOT_LOOK,
                                        });
     registry.addComponent<DropsPowerUp>(e, DropsPowerUp{});
 }

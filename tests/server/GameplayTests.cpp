@@ -552,6 +552,9 @@ TEST_F(GameplayWithoutLevelTest, GunnerFiresAtTheNearestShip) {
     EXPECT_LT(body.velocityX, 0.0F);
     EXPECT_GT(body.velocityY, 0.0F) << "down towards the ship";
     EXPECT_NEAR(std::hypot(body.velocityX, body.velocityY), ::prefabs::DEFAULT_ALIEN_GUNNER_SHOT_SPEED, 1.0);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(missiles.front()).subtype,
+              ::prefabs::ALIEN_GUNNER_SHOT_LOOK)
+        << "the clients draw the gunner shots their own way";
 
     run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL);
     EXPECT_EQ(entitiesOf(game::KIND_MISSILE).size(), 2U) << "one shot per interval";
@@ -621,6 +624,8 @@ TEST_F(GameplayWithoutLevelTest, EliteFiresAFanOfThreeShots) {
     for (const ecs::Entity missile : missiles) {
         const auto& body = registry().getComponents<ecs::RigidBody2D>().get(missile);
         EXPECT_LT(body.velocityX, 0.0F);
+        EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(missile).subtype,
+                  ::prefabs::ALIEN_ELITE_SHOT_LOOK);
         slopes.push_back(body.velocityY);
     }
     std::ranges::sort(slopes);

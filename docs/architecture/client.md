@@ -159,6 +159,13 @@ prefab = "alien_gunner"
 texture = "sprites/my_gunner.png"
 frame_width = 40
 frame_height = 40
+
+[[entity]]                     # with `subtype`: only the entities of that subtype, such as the shots of one shooter
+prefab = "missile"
+subtype = 1                    # 1: alien gunner shots, 2: alien elite shots
+texture = "sprites/red_shot.png"
+frame_width = 16
+frame_height = 16
 ```
 
 | Key | Default | Range | Description |
@@ -166,6 +173,7 @@ frame_height = 40
 | `variant` / `look` / `prefab` | required | 0–255 / prefab name | Which boss variant, part look or entity the entry is for. A later entry with the same id wins. |
 | `width`, `height` | default box | 0–2048 px | Box drawn without a sprite; 0 keeps the default size (128×160 for a boss, 48×48 for a part, the hitbox for an entity). |
 | `texture` | none | relative path, no `..` | Spritesheet; without it, the entry is a box. |
+| `subtype` | any | 0–255 | `[[entity]]` only: restyles only the entities of that `subtype`; an entry without it is the fallback. |
 | `frame_x`, `frame_y` | `0` | 0–4096 | Origin of the first frame. |
 | `frame_width`, `frame_height` | required with `texture` | 1–4096 | Size of a frame. |
 | `frames` | `1` | 1–64 | Frames of the strip. |

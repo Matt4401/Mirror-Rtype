@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 
 #include "ecs/Entity.hpp"
@@ -24,6 +25,9 @@ inline constexpr float DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL = 1.8F;
 
 /** @brief Default speed of the shots of an alien gunner, in pixels per second. */
 inline constexpr float DEFAULT_ALIEN_GUNNER_SHOT_SPEED = 300.0F;
+
+/** @brief Look of the shots of an alien gunner (`EnemyGun::shotLook`). */
+inline constexpr std::uint8_t ALIEN_GUNNER_SHOT_LOOK = 1;
 
 /** @brief Half-side of the alien gunner hitbox, in pixels. */
 inline constexpr float ALIEN_GUNNER_HALF_SIZE = 20.0F;

@@ -34,4 +34,6 @@ Every transform key read by `makeTransform` plus:
 
 ## Replication
 
+Its missiles carry the shot look 1 as their `subtype` (`EnemyGun::shotLook`), so the clients can draw them their own way.
+
 Kind `alien_gunner` (`rtype::game::KIND_ALIEN_GUNNER`).

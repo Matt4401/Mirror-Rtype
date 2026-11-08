@@ -44,5 +44,7 @@ Every transform key read by `makeTransform` plus:
 
 ## Replication
 
+Its missiles carry the shot look 2 as their `subtype` (`EnemyGun::shotLook`), so the clients can draw them their own way.
+
 Kind `alien_elite` (`rtype::game::KIND_ALIEN_ELITE`): `health` is its hit points left. The clients flash it on each hit
 and show a burst when it is killed.

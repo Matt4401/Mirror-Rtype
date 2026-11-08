@@ -34,6 +34,8 @@ struct EnemyGun {
     float shotSpeed = 300.0F;
     /** @brief How the shots aim. */
     GunPattern pattern = GunPattern::Aimed;
+    /** @brief Look of the missiles, sent as their `subtype`: the clients draw each shooter's shots their own way. */
+    std::uint8_t shotLook = 0;
 };
 
 }  // namespace prefabs

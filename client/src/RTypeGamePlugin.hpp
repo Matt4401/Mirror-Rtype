@@ -131,14 +131,17 @@ class RTypeGamePlugin final : public engine::IPlugin {
     /** @brief Looks of the boss variants and of the boss parts. */
     looks::Looks _looks;
     /**
-     * @brief Finds the `[[entity]]` look of a kind.
+     * @brief Finds the `[[entity]]` look of a kind: the entry for its subtype if any, else the entry for the kind.
      * @param kind Replicated kind.
+     * @param subtype Replicated subtype.
      * @return The look, or null if `looks.toml` does not restyle that kind.
      */
-    [[nodiscard]] const looks::Look* entityLook(std::uint32_t kind) const;
+    [[nodiscard]] const looks::Look* entityLook(std::uint32_t kind, std::uint8_t subtype) const;
 
     /** @brief `[[entity]]` looks by replicated kind, pointing into `_looks`. */
     std::map<std::uint32_t, const looks::Look*> _entityLooks;
+    /** @brief `[[entity]]` looks by replicated kind and subtype, pointing into `_looks`. */
+    std::map<std::pair<std::uint32_t, std::uint8_t>, const looks::Look*> _entitySubtypeLooks;
     /** @brief Textures of the looks, by path. */
     std::map<std::string, ecs::TextureId, std::less<>> _lookTextures;
 

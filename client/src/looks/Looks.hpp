@@ -12,6 +12,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "config/ConfigFile.hpp"
@@ -77,8 +78,10 @@ struct Looks {
     std::map<std::uint8_t, Look> bosses;
     /** @brief Looks of the boss parts. */
     std::map<std::uint8_t, Look> parts;
-    /** @brief Looks of the other entities (`ENTITY_PREFABS`), by prefab name. */
+    /** @brief Looks of the other entities (`ENTITY_PREFABS`), by prefab name, whatever their `subtype`. */
     std::map<std::string, Look> entities;
+    /** @brief Looks of the other entities with a given `subtype` (such as the missiles of one shooter). */
+    std::map<std::pair<std::string, std::uint8_t>, Look> entitySubtypes;
     /** @brief Sprite of one explosion burst (`[explosion]`), played once; without it, bursts are growing boxes. */
     std::optional<SpriteLook> explosion;
 };
@@ -87,7 +90,7 @@ struct Looks {
  * @brief Reads the looks of a configuration file.
  *
  * Reads the `[[boss]]` entries (key `variant`), the `[[part]]` entries (key `look`) and the `[[entity]]` entries (key
- * `prefab`, one of `ENTITY_PREFABS`). Each entry sets `width` and
+ * `prefab`, one of `ENTITY_PREFABS`, and optionally `subtype`, 0–255). Each entry sets `width` and
  * `height` (box drawn without a sprite) and, optionally, a sprite: `texture`, `frame_x`, `frame_y`, `frame_width`,
  * `frame_height`, `frames`, `frame_duration`, `loop` and `scale`. Out-of-range values are clamped; an entry without its
  * id, a sprite without its frame size, an unsafe texture path (absolute, with `..` or `\`) and unknown keys are

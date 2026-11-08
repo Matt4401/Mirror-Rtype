@@ -54,6 +54,7 @@ void buildAlienGunner(ecs::Entity e, ecs::Registry& registry, PrefabParams const
                .interval = interval,
                .cooldown = interval / 2.0F,
                .shotSpeed = clampedParam(params, "shot_speed", DEFAULT_ALIEN_GUNNER_SHOT_SPEED, 50.0F, 900.0F),
+               .shotLook = ALIEN_GUNNER_SHOT_LOOK,
            });
 }
 
