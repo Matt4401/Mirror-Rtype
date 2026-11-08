@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstddef>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -19,6 +20,9 @@ namespace timeline {
  * The cursor only moves forward: `advanceTo` returns every event whose position was reached since the previous call,
  * in position order (events at the same position keep their insertion order). However large the step, no event is
  * skipped and none fires twice. A pure data structure: no clock, no engine, no game knowledge.
+ *
+ * Copies share their events: copying a loaded level into every game is cheap, and each copy keeps its own cursor. A
+ * copy that changes its events (`add`, `addAll`, `rewind` after late additions) gets its own list first.
  *
  * @code
  * timeline::Timeline level;
@@ -43,6 +47,16 @@ class Timeline {
     void add(TimelineEvent event);
 
     /**
+     * @brief Adds several events at once: they are appended, then sorted once.
+     *
+     * Same result as calling `add` for each event in order, without its cost of one insertion per event, which makes
+     * building a large timeline quadratic.
+     *
+     * @param events Events to add; events at the same position keep this order.
+     */
+    void addAll(std::vector<TimelineEvent> events);
+
+    /**
      * @brief Moves the cursor forward to a position and returns the events reached.
      *
      * A position behind the cursor leaves it where it is.
@@ -62,7 +76,7 @@ class Timeline {
     /**
      * @brief Puts the cursor back to 0, so every event can fire again, in position order.
      */
-    void rewind() noexcept;
+    void rewind();
 
     /**
      * @brief Removes every event and puts the cursor back to 0.
@@ -82,23 +96,29 @@ class Timeline {
      *
      * @return The events.
      */
-    [[nodiscard]] std::span<const TimelineEvent> events() const noexcept { return _events; }
+    [[nodiscard]] std::span<const TimelineEvent> events() const noexcept;
 
     /**
      * @brief Counts the events that have not fired yet.
      * @return Number of pending events.
      */
-    [[nodiscard]] std::size_t pending() const noexcept { return _events.size() - _next; }
+    [[nodiscard]] std::size_t pending() const noexcept { return events().size() - _next; }
 
     /**
      * @brief Tells whether every event has fired.
      * @return True if no event is pending (also true for an empty timeline).
      */
-    [[nodiscard]] bool finished() const noexcept { return _next == _events.size(); }
+    [[nodiscard]] bool finished() const noexcept { return _next == events().size(); }
 
   private:
-    /** @brief Events in firing order. */
-    std::vector<TimelineEvent> _events;
+    /**
+     * @brief Gets the events to change them, copying them first if another timeline shares them.
+     * @return Events owned by this timeline only.
+     */
+    std::vector<TimelineEvent>& ownEvents();
+
+    /** @brief Events in firing order, shared between copies until one changes them; null when empty. */
+    std::shared_ptr<std::vector<TimelineEvent>> _events;
     /** @brief Index of the first event that has not fired. */
     std::size_t _next = 0;
     /** @brief Cursor position. */

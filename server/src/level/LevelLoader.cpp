@@ -238,11 +238,12 @@ bool isValidScriptPath(std::string_view path) {
  * @param reader Reader reporting corrections.
  * @param event The boss event.
  * @param prefabs Prefabs the game can spawn per event type.
- * @param out Level receiving the event.
+ * @param out Receives the event.
  * @param warnings Receives a message if the event is skipped or its script ignored.
  */
 void addBoss(const config::ConfigFile& file, config::ConfigReader& reader, const RawEvent& event,
-             const PrefabCatalog& prefabs, Level& out, std::vector<std::string>& warnings) {
+             const PrefabCatalog& prefabs, std::vector<timeline::TimelineEvent>& out,
+             std::vector<std::string>& warnings) {
     const std::size_t i = event.index;
     const std::optional<EventPrefab> prefab = readPrefab(file, event, prefabs, warnings);
     if (!prefab.has_value()) {
@@ -266,7 +267,7 @@ void addBoss(const config::ConfigFile& file, config::ConfigReader& reader, const
                 "events.{}: 'script' must be a relative path to a {} file without '..', ignored", i, SCRIPT_EXTENSION));
         }
     }
-    out.timeline.add(timeline::TimelineEvent{
+    out.push_back(timeline::TimelineEvent{
         .position = event.at,
         .type = std::string(EVENT_BOSS),
         .params = std::move(params),
@@ -280,11 +281,12 @@ void addBoss(const config::ConfigFile& file, config::ConfigReader& reader, const
  * @param event The wave.
  * @param scrollSpeed Scroll speed where the wave starts, used to space its enemies.
  * @param prefabs Prefabs the game can spawn per event type.
- * @param out Level receiving the events.
+ * @param out Receives the events.
  * @param warnings Receives a message if the wave is skipped.
  */
 void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const RawEvent& event, float scrollSpeed,
-             const PrefabCatalog& prefabs, Level& out, std::vector<std::string>& warnings) {
+             const PrefabCatalog& prefabs, std::vector<timeline::TimelineEvent>& out,
+             std::vector<std::string>& warnings) {
     const std::size_t i = event.index;
     const std::optional<EventPrefab> prefab = readPrefab(file, event, prefabs, warnings);
     if (!prefab.has_value()) {
@@ -305,7 +307,7 @@ void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const
         params.set("x", static_cast<double>(x));
         params.set("y",
                    static_cast<double>(std::clamp(y + (rank * spacingY), -MAX_SPAWN_COORDINATE, MAX_SPAWN_COORDINATE)));
-        out.timeline.add(timeline::TimelineEvent{
+        out.push_back(timeline::TimelineEvent{
             .position = std::min(event.at + (rank * step), MAX_LEVEL_DISTANCE),
             .type = std::string(EVENT_SPAWN),
             .params = std::move(params),
@@ -366,10 +368,10 @@ bool fitTerrain(TerrainSpan& section, std::span<const TerrainSpan> accepted, std
  * @brief Adds the `terrain` events of the `[[terrain]]` sections.
  * @param file Level file.
  * @param reader Reader reporting corrections.
- * @param out Level receiving the events.
+ * @param out Receives the events.
  * @param warnings Receives a message per skipped section.
  */
-void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Level& out,
+void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, std::vector<timeline::TimelineEvent>& out,
                 std::vector<std::string>& warnings) {
     std::size_t count = file.arraySize("terrain");
     if (count > MAX_TERRAIN_SECTIONS) {
@@ -409,7 +411,7 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Le
             continue;
         }
         accepted.push_back(section);
-        out.timeline.add(timeline::TimelineEvent{
+        out.push_back(timeline::TimelineEvent{
             .position = from,
             .type = std::string(EVENT_TERRAIN),
             .params = {{"side", side},
@@ -424,6 +426,7 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Le
 Level buildLevel(const config::ConfigFile& file, const PrefabCatalog& prefabs, std::vector<std::string>& warnings) {
     config::ConfigReader reader(file, warnings);
     Level level;
+    std::vector<timeline::TimelineEvent> events;
     level.name = reader.text("level.name", "Unnamed level");
     level.scrollSpeed = reader.number("level.scroll_speed", DEFAULT_SCROLL_SPEED, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED);
     reader.reportUnknownKeys("level");
@@ -431,7 +434,7 @@ Level buildLevel(const config::ConfigFile& file, const PrefabCatalog& prefabs, s
     float scrollSpeed = level.scrollSpeed;
     for (const RawEvent& event : readEvents(file, reader, warnings)) {
         if (event.type == EVENT_SPAWN) {
-            addWave(file, reader, event, scrollSpeed, prefabs, level, warnings);
+            addWave(file, reader, event, scrollSpeed, prefabs, events, warnings);
         } else if (event.type == EVENT_SCROLL) {
             reportUnknownEventKeys(file, event.index, SCROLL_KEYS, warnings);
             if (!file.getNumber(eventKey(event.index, "speed")).has_value()) {
@@ -440,22 +443,24 @@ Level buildLevel(const config::ConfigFile& file, const PrefabCatalog& prefabs, s
             }
             scrollSpeed =
                 reader.number(eventKey(event.index, "speed"), scrollSpeed, MIN_SCROLL_SPEED, MAX_SCROLL_SPEED);
-            level.timeline.add(timeline::TimelineEvent{
+            events.push_back(timeline::TimelineEvent{
                 .position = event.at,
                 .type = std::string(EVENT_SCROLL),
                 .params = {{"speed", static_cast<double>(scrollSpeed)}},
             });
         } else if (event.type == EVENT_BOSS) {
-            addBoss(file, reader, event, prefabs, level, warnings);
+            addBoss(file, reader, event, prefabs, events, warnings);
         } else if (event.type == EVENT_END) {
             reportUnknownEventKeys(file, event.index, END_KEYS, warnings);
-            level.timeline.add(
+            events.push_back(
                 timeline::TimelineEvent{.position = event.at, .type = std::string(EVENT_END), .params = {}});
         } else {
             warnings.push_back(std::format("events.{}: unknown type '{}', event skipped", event.index, event.type));
         }
     }
-    addTerrain(file, reader, level, warnings);
+    addTerrain(file, reader, events, warnings);
+    // One sort for the whole level: adding the events one by one would be quadratic.
+    level.timeline.addAll(std::move(events));
     return level;
 }
 
