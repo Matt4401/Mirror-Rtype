@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <vector>
+
 namespace ecs {
 
 /**
@@ -33,6 +35,13 @@ struct AnimationComponent {
      * touch). Larger than `frameWidth` for spritesheets with empty space between their frames.
      */
     int frameStride = 0;
+
+    /**
+     * @brief Widths of the frames of a strip whose frames differ, side by side from `startX`; empty when every frame
+     * is `frameWidth` wide. When set, it gives the number of frames instead of `frameCount`, and `frameStride` is not
+     * used.
+     */
+    std::vector<int> frameWidths;
 
     /** @brief Y pixel offset of the first frame in the spritesheet. */
     int startY = 0;

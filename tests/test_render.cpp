@@ -236,6 +236,27 @@ TEST(AnimationSystem, FrameStrideSkipsTheSpaceBetweenFrames) {
     EXPECT_EQ(source.width, 48);
 }
 
+TEST(AnimationSystem, FramesOfDifferentWidthsPlayOnceThenHold) {
+    ecs::Registry registry;
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent(entity, ecs::Renderable{});
+    registry.addComponent(
+        entity,
+        ecs::AnimationComponent{
+            .frameHeight = 16, .startX = 151, .frameWidths = {63, 66, 16}, .frameDuration = 1.0F, .loop = false});
+    const auto& source = registry.getComponents<ecs::Renderable>().get(entity).sourceRect;
+    systems::AnimationSystem::update(registry, 0.5F);
+    EXPECT_EQ(source.x, 151);
+    EXPECT_EQ(source.width, 63);
+    systems::AnimationSystem::update(registry, 1.0F);
+    EXPECT_EQ(source.x, 214);
+    EXPECT_EQ(source.width, 66);
+    systems::AnimationSystem::update(registry, 1.0F);
+    systems::AnimationSystem::update(registry, 1.0F);
+    EXPECT_EQ(source.x, 280) << "holds the last frame";
+    EXPECT_EQ(source.width, 16);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
