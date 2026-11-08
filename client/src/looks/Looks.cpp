@@ -68,6 +68,7 @@ std::optional<SpriteLook> readSprite(const config::ConfigFile& file, config::Con
     sprite.directional = reader.flag(key("directional"), false);
     sprite.firstAngle = reader.number(key("first_angle"), 0.0F, -FULL_TURN, FULL_TURN);
     sprite.flipX = reader.flag(key("flip_x"), false);
+    sprite.faceMotion = reader.flag(key("face_motion"), false);
     // Frames of different widths: they give the number of frames, and the first one stands for `frame_width`.
     const std::size_t widths = std::min<std::size_t>(file.arraySize(key("frame_widths")), MAX_FRAMES);
     for (std::size_t i = 0; i < widths; ++i) {

@@ -79,6 +79,13 @@ class RTypeGamePlugin final : public engine::IPlugin {
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
+     * @brief Turns the sprites that face their motion, once the interpolation has moved them.
+     * @param engine Reference to host Engine.
+     * @param time Frame time.
+     */
+    void lateUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
+
+    /**
      * @brief Unsubscribes from the replication events.
      * @param engine Reference to host Engine.
      */

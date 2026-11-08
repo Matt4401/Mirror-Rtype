@@ -65,6 +65,8 @@ struct SpriteLook {
     float firstAngle = 0.0F;
     /** @brief True to draw the sprite mirrored left to right, for a sheet facing the other way. */
     bool flipX = false;
+    /** @brief True to turn the sprite towards where it moves; the sheet faces right (left when mirrored). */
+    bool faceMotion = false;
     /** @brief Widths of frames that differ, side by side from `x`; empty when every frame is `frameWidth` wide. */
     std::vector<int> frameWidths;
 };
@@ -103,7 +105,7 @@ struct Looks {
  * `prefab`, one of `ENTITY_PREFABS`, and optionally `subtype`, 0–255). Each entry sets `width` and
  * `height` (box drawn without a sprite) and, optionally, a sprite: `texture`, `frame_x`, `frame_y`, `frame_width`,
  * `frame_height`, `frame_stride`, `frame_widths`, `frames`, `frame_duration`, `loop`, `scale`, `directional`,
- * `first_angle` and `flip_x`.
+ * `first_angle`, `flip_x` and `face_motion`.
  * Out-of-range values are clamped; an entry without its id, a sprite without its frame size, an unsafe texture path
  * (absolute, with `..` or `\`) and unknown keys are reported in `warnings` and ignored. A later entry with the same id
  * replaces the earlier one. The `[explosion]` table takes the same sprite keys, for the bursts of a boss explosion.

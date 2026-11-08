@@ -183,6 +183,7 @@ frame_height = 16
 | `frame_stride` | `frame_width` | 0–4096 | Pixels from one frame to the next, for strips with empty space between their frames. |
 | `frame_widths` | none | 1–4096 each, 64 frames | Widths of frames that differ, side by side from `frame_x`: they give the number of frames and replace `frame_width`. With `loop = false`, the animation holds its last frame. |
 | `flip_x` | `false` | | Draws the sprite mirrored left to right, for a sheet facing the other way. |
+| `face_motion` | `false` | | Turns the sprite towards where it moves (`gameplay::FaceMotion`), such as shots flying in any direction. The sheet is taken as facing right, or left with `flip_x`. The direction comes from the move between two frames: the server only sends positions. |
 | `directional` | `false` | | The frames are directions around the full turn, not an animation: the client shows the one facing the nearest player ship (`gameplay::AimedSprite`). |
 | `first_angle` | `0` | -360–360 | Direction of the first frame of a directional sprite, in degrees: 0 is right, 90 down, the next frames turning clockwise. |
 

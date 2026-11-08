@@ -216,6 +216,7 @@ TEST(Looks, ReadsMirroredSpritesAndFramesOfDifferentWidths) {
         frame_widths = [63, 66, 16]
         loop = false
         flip_x = true
+        face_motion = true
     )",
                                      warnings);
 
@@ -225,6 +226,7 @@ TEST(Looks, ReadsMirroredSpritesAndFramesOfDifferentWidths) {
     EXPECT_EQ(sprite->frameWidths, (std::vector<int>{63, 66, 16}));
     EXPECT_EQ(sprite->frames, 3);
     EXPECT_TRUE(sprite->flipX);
+    EXPECT_TRUE(sprite->faceMotion);
     EXPECT_FALSE(sprite->loop);
 }
 

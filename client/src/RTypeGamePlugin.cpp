@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <numbers>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -32,6 +33,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/AimedSprite.hpp"
 #include "gameplay/BossEffects.hpp"
+#include "gameplay/FaceMotion.hpp"
 #include "gameplay/ShipBlink.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
@@ -503,6 +505,11 @@ void RTypeGamePlugin::applyLook(ecs::Registry& registry, const ecs::Entity entit
                             .frameDuration = sprite.frameDuration,
                             .loop = sprite.loop,
                         });
+            if (sprite.faceMotion) {
+                // A mirrored sheet faces left: that side is the one to turn towards the move.
+                registry.addComponent(entity,
+                                      gameplay::FaceMotion{.forward = sprite.flipX ? std::numbers::pi_v<float> : 0.0F});
+            }
             if (sprite.directional) {
                 // Its frames are directions, not an animation: the one facing the ships is picked every frame.
                 registry.removeComponent<ecs::AnimationComponent>(entity);
@@ -528,6 +535,11 @@ void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& time
     gameplay::updateHitFlashes(engine.registry(), time.deltaTime);
     gameplay::updateExplosions(engine.registry(), time.deltaTime);
     gameplay::aimSprites(engine.registry());
+}
+
+void RTypeGamePlugin::lateUpdate(engine::Engine& engine, const ecs::time::Time& /*time*/) {
+    // After the interpolation of the update stage, which writes the positions and the rotations.
+    gameplay::faceMotion(engine.registry());
 }
 
 void RTypeGamePlugin::shutdown(engine::Engine& engine) {

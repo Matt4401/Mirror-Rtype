@@ -322,7 +322,8 @@ target("test_client_blink")
     add_packages("gtest")
     add_files("client/ShipBlinkTests.cpp", "../client/src/gameplay/ShipBlink.cpp", "client/BossEffectsTests.cpp",
               "../client/src/gameplay/BossEffects.cpp", "client/AimedSpriteTests.cpp",
-              "../client/src/gameplay/AimedSprite.cpp")
+              "../client/src/gameplay/AimedSprite.cpp", "client/FaceMotionTests.cpp",
+              "../client/src/gameplay/FaceMotion.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_blink")
 
