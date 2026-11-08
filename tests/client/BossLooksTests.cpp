@@ -135,6 +135,23 @@ TEST(BossLooks, ValuesAreClamped) {
     EXPECT_FLOAT_EQ(look.sprite->scale, looks::MIN_SCALE);
 }
 
+TEST(BossLooks, ReadsTheExplosionSprite) {
+    std::vector<std::string> warnings;
+    const looks::BossLooks result = read(R"(
+        [explosion]
+        texture = "sprites/boom.png"
+        frame_width = 32
+        frame_height = 32
+        frames = 6
+        colour = 1
+    )",
+                                         warnings);
+
+    ASSERT_TRUE(result.explosion.has_value());
+    EXPECT_EQ(result.explosion->frames, 6);
+    EXPECT_TRUE(anyWarningMentions(warnings, "explosion.colour: unknown setting"));
+}
+
 TEST(BossLooks, ShippedFileReadsWithoutWarnings) {
     std::vector<std::string> warnings;
     const looks::BossLooks shipped =

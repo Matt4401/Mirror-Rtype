@@ -11,6 +11,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
@@ -19,6 +20,7 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
+#include "gameplay/BossEffects.hpp"
 #include "looks/BossLooks.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "render/texture/TextureStore.hpp"
@@ -90,6 +92,20 @@ class RTypeGamePlugin final : public engine::IPlugin {
     void onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const;
 
     /**
+     * @brief Blows up a boss killed by the players when it leaves the snapshots; a turret gets a single burst.
+     * @param engine Reference to host Engine.
+     * @param event The entity about to be removed.
+     */
+    void onEntityDespawned(engine::Engine& engine, const ecs::net::ReplicatedEntityDespawned& event) const;
+
+    /**
+     * @brief Spawns the bursts of an explosion, client-side only.
+     * @param registry Client registry.
+     * @param bursts Where and when each burst appears.
+     */
+    void spawnExplosion(ecs::Registry& registry, const std::vector<gameplay::BurstSpec>& bursts) const;
+
+    /**
      * @brief Reads `client/config/bosses.toml` and loads the textures it names.
      *
      * A missing file keeps every boss a box; a texture that does not load turns its look back into a box. Every problem
@@ -120,6 +136,8 @@ class RTypeGamePlugin final : public engine::IPlugin {
     float _elapsed = 0.0F;
     /** @brief Subscription to `ReplicatedEntitySpawned`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _spawned;
+    /** @brief Subscription to `ReplicatedEntityDespawned`, while initialized. */
+    std::optional<ecs::EventBus::EventToken> _despawned;
     /** @brief Texture identifier for the player ship spritesheet. */
     ecs::TextureId _shipTexId = ecs::NO_TEXTURE;
     /** @brief Texture identifier for the Bydos enemy spritesheet. */

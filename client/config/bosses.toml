@@ -31,6 +31,16 @@
 # frames = 2
 # scale = 2.0
 
+# Optional sprite of one burst of a boss explosion, played once; without it, the bursts are growing boxes:
+#
+# [explosion]
+# texture = "sprites/my_explosion.png"
+# frame_width = 32
+# frame_height = 32
+# frames = 6
+# frame_duration = 0.07
+# scale = 2.0
+
 # Boxes until the sprites are set: their sizes match the hitboxes of the shipped levels.
 
 [[boss]]

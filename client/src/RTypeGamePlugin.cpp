@@ -29,6 +29,7 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "gameplay/BossEffects.hpp"
 #include "gameplay/ShipBlink.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
@@ -71,6 +72,10 @@ constexpr float DEFAULT_OBSTACLE_HEIGHT = 64.0F;
 constexpr ecs::Rgba COLOR_BOSS = {.r = 170, .g = 60, .b = 200, .a = 255};
 /** @brief Side of the box drawn for a boss part until boss looks are configured, in pixels. */
 constexpr float BOSS_PART_PLACEHOLDER_SIZE = 48.0F;
+/** @brief Color of an explosion burst drawn as a box. */
+constexpr ecs::Rgba COLOR_EXPLOSION = {.r = 255, .g = 190, .b = 70, .a = 255};
+/** @brief Draw layer of the explosions, in front of the bosses. */
+constexpr int EXPLOSION_LAYER = 4;
 constexpr ecs::Rgba COLOR_BOSS_PART = {.r = 230, .g = 120, .b = 240, .a = 255};
 constexpr ecs::Rgba COLOR_MISSILE = {.r = 255, .g = 90, .b = 60, .a = 255};
 constexpr ecs::Rgba COLOR_POWER_UP = {.r = 80, .g = 220, .b = 120, .a = 255};
@@ -228,6 +233,8 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
 
     _spawned = engine.eventBus().subscribe<ecs::net::ReplicatedEntitySpawned>(
         [this, &engine](const ecs::net::ReplicatedEntitySpawned& event) { onEntitySpawned(engine, event); });
+    _despawned = engine.eventBus().subscribe<ecs::net::ReplicatedEntityDespawned>(
+        [this, &engine](const ecs::net::ReplicatedEntityDespawned& event) { onEntityDespawned(engine, event); });
 }
 
 void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const {
@@ -268,6 +275,15 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
             applyLook(registry, event.entity, look, {rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT},
                       COLOR_BOSS, 2);
         }
+        // Whatever can be worn down (a boss, a turret) flashes on each hit.
+        const std::uint8_t health = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).health;
+        if (!part || health > 1) {
+            registry.addComponent(
+                event.entity,
+                gameplay::HitFlash{.spawnHealth = health,
+                                   .lastHealth = health,
+                                   .baseTint = registry.getComponents<ecs::Renderable>().get(event.entity).tint});
+        }
     } else if (event.kind == rtype::game::KIND_OBSTACLE) {
         // A terrain column carries its height in its subtype; the columns touch, so the terrain looks continuous.
         const std::uint8_t units = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
@@ -291,6 +307,65 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .frameDuration = BULLET_FRAME_DURATION,
                         .loop = false,
                     });
+    }
+}
+
+void RTypeGamePlugin::onEntityDespawned(engine::Engine& engine,
+                                        const ecs::net::ReplicatedEntityDespawned& event) const {
+    ecs::Registry& registry = engine.registry();
+    if (!registry.hasComponent<gameplay::HitFlash>(event.entity) ||
+        !gameplay::diedInCombat(registry.getComponents<gameplay::HitFlash>().get(event.entity)) ||
+        !registry.hasComponent<ecs::Transform>(event.entity) || !registry.hasComponent<ecs::Renderable>(event.entity)) {
+        return;
+    }
+    const auto& transform = registry.getComponents<ecs::Transform>().get(event.entity);
+    const auto& source = registry.getComponents<ecs::Renderable>().get(event.entity).sourceRect;
+    // A box is the placeholder texture scaled up; a sprite is its frame scaled up.
+    const float width = (source.width > 0 ? static_cast<float>(source.width) : PLACEHOLDER_PIXELS) * transform.scaleX;
+    const float height =
+        (source.height > 0 ? static_cast<float>(source.height) : PLACEHOLDER_PIXELS) * transform.scaleY;
+    if (event.kind == rtype::game::KIND_BOSS_CORE) {
+        spawnExplosion(registry, gameplay::explosionBursts(transform.x, transform.y, width, height));
+    } else {
+        spawnExplosion(registry, {gameplay::BurstSpec{.x = transform.x, .y = transform.y, .delay = 0.0F}});
+    }
+}
+
+void RTypeGamePlugin::spawnExplosion(ecs::Registry& registry, const std::vector<gameplay::BurstSpec>& bursts) const {
+    const looks::SpriteLook* look = _bossLooks.explosion.has_value() ? &*_bossLooks.explosion : nullptr;
+    const auto texture = look != nullptr ? _lookTextures.find(look->texture) : _lookTextures.end();
+    if (texture == _lookTextures.end() || texture->second == ecs::NO_TEXTURE) {
+        look = nullptr;
+    }
+    for (const gameplay::BurstSpec& spec : bursts) {
+        const ecs::Entity burst = registry.spawnEntity();
+        registry.addComponent(burst, ecs::Transform{.x = spec.x, .y = spec.y});
+        gameplay::ExplosionBurst state{.delay = spec.delay};
+        if (look != nullptr) {
+            applySprite(registry, burst,
+                        {
+                            .texture = texture->second,
+                            .frameWidth = look->frameWidth,
+                            .frameHeight = look->frameHeight,
+                            .frameCount = look->frames,
+                            .startY = look->y,
+                            .startX = look->x,
+                            .layer = EXPLOSION_LAYER,
+                            .scale = look->scale,
+                            .frameDuration = look->frameDuration,
+                            .loop = false,
+                        });
+            state.startScale = look->scale;
+            state.growth = 1.0F;
+            state.duration = look->frameDuration * static_cast<float>(look->frames);
+            state.tint = COLOR_WHITE;
+        } else {
+            applyBox(registry, burst, gameplay::EXPLOSION_BURST_SIZE, gameplay::EXPLOSION_BURST_SIZE, COLOR_EXPLOSION,
+                     EXPLOSION_LAYER);
+            state.startScale = gameplay::EXPLOSION_BURST_SIZE / PLACEHOLDER_PIXELS;
+            state.tint = COLOR_EXPLOSION;
+        }
+        registry.addComponent<gameplay::ExplosionBurst>(burst, state);
     }
 }
 
@@ -348,12 +423,18 @@ void RTypeGamePlugin::applyLook(ecs::Registry& registry, const ecs::Entity entit
 void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& time) {
     _elapsed += time.deltaTime;
     gameplay::blinkInvulnerableShips(engine.registry(), _elapsed);
+    gameplay::updateHitFlashes(engine.registry(), time.deltaTime);
+    gameplay::updateExplosions(engine.registry(), time.deltaTime);
 }
 
 void RTypeGamePlugin::shutdown(engine::Engine& engine) {
     if (_spawned) {
         engine.eventBus().unsubscribe<ecs::net::ReplicatedEntitySpawned>(*_spawned);
         _spawned.reset();
+    }
+    if (_despawned) {
+        engine.eventBus().unsubscribe<ecs::net::ReplicatedEntityDespawned>(*_despawned);
+        _despawned.reset();
     }
 }
 

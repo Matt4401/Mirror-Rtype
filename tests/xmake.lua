@@ -318,7 +318,8 @@ target("test_client_blink")
     set_kind("binary")
     add_deps("engine_core", "rtype_game")
     add_packages("gtest")
-    add_files("client/ShipBlinkTests.cpp", "../client/src/gameplay/ShipBlink.cpp")
+    add_files("client/ShipBlinkTests.cpp", "../client/src/gameplay/ShipBlink.cpp", "client/BossEffectsTests.cpp",
+              "../client/src/gameplay/BossEffects.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_blink")
 

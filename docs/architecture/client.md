@@ -123,6 +123,10 @@ ship. See [In-Game Metrics](metrics.md).
   snapshots like any other entity, interpolated: a shot appears one round trip after the key press.
 - **Boss looks:** a `boss_core` and a `boss_part` are drawn from `client/config/bosses.toml` (see below), by their
   `subtype`: the variant of a boss, the look of a part. Without an entry, they are colored boxes.
+- **Boss effects (`client/src/gameplay/BossEffects`):** a boss or a turret flashes red for `HIT_FLASH_DURATION` when its
+  replicated `health` goes down. A boss that leaves the snapshots nearly dead (at most 1 hit point, or a tenth of its hit
+  points at spawn) explodes: `EXPLOSION_BURSTS` bursts spread over its box for `EXPLOSION_SPREAD` seconds; a turret gets
+  one burst. A boss removed with its game (game over, leaving) does not explode. The bursts are client-only entities.
 
 #### Boss looks file (`client/config/bosses.toml`)
 
@@ -159,6 +163,9 @@ height = 40.0
 | `frame_duration` | `0.1` | 0.01–10 s | Seconds per frame. |
 | `loop` | `true` | | `false` stops on the last frame. |
 | `scale` | `1` | 0.1–16 | Drawing scale. |
+
+An `[explosion]` table takes the same sprite keys (`texture`, `frame_*`, `frames`, `frame_duration`, `scale`): each
+burst plays it once. Without it, the bursts are orange boxes that grow and fade.
 
 The hitbox stays the server's (`width` and `height` of the level event): size the sprite to match it.
 

@@ -115,6 +115,8 @@ BossLooks readBossLooks(const config::ConfigFile& file, std::vector<std::string>
     BossLooks looks;
     readEntries(file, reader, "boss", "variant", looks.bosses);
     readEntries(file, reader, "part", "look", looks.parts);
+    looks.explosion = readSprite(file, reader, "explosion");
+    reader.reportUnknownKeys("explosion");
     return looks;
 }
 

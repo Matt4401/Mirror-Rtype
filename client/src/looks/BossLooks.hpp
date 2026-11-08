@@ -69,6 +69,8 @@ struct BossLooks {
     std::map<std::uint8_t, Look> bosses;
     /** @brief Looks of the boss parts. */
     std::map<std::uint8_t, Look> parts;
+    /** @brief Sprite of one explosion burst (`[explosion]`), played once; without it, bursts are growing boxes. */
+    std::optional<SpriteLook> explosion;
 };
 
 /**
@@ -78,7 +80,8 @@ struct BossLooks {
  * `height` (box drawn without a sprite) and, optionally, a sprite: `texture`, `frame_x`, `frame_y`, `frame_width`,
  * `frame_height`, `frames`, `frame_duration`, `loop` and `scale`. Out-of-range values are clamped; an entry without its
  * id, a sprite without its frame size, an unsafe texture path (absolute, with `..` or `\`) and unknown keys are
- * reported in `warnings` and ignored. A later entry with the same id replaces the earlier one.
+ * reported in `warnings` and ignored. A later entry with the same id replaces the earlier one. The `[explosion]` table
+ * takes the same sprite keys, for the bursts of a boss explosion.
  *
  * @param file Parsed `bosses.toml`.
  * @param warnings Receives one message per ignored or corrected value.
