@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include "components/AnimationComponent.hpp"
 #include "components/CameraComponent.hpp"
 #include "components/Hidden.hpp"
 #include "components/Renderable.hpp"
@@ -11,6 +12,7 @@
 #include "ecs/Registry.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "render/window/Window.hpp"
+#include "systems/render/AnimationSystem.hpp"
 #include "systems/render/RenderSystem.hpp"
 
 TEST(CameraComponent, DefaultValues) {
@@ -204,6 +206,34 @@ TEST(Window, RejectsNonPositiveDimensions) {
 TEST(Window, RejectsNonPositiveTargetFps) {
     EXPECT_THROW(render::Window(render::WindowConfig{.targetFps = 0}), std::invalid_argument);
     EXPECT_THROW(render::Window(render::WindowConfig{.targetFps = -1}), std::invalid_argument);
+}
+
+TEST(AnimationSystem, FramesThatTouchFollowEachOther) {
+    ecs::Registry registry;
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent(entity, ecs::Renderable{});
+    registry.addComponent(entity,
+                          ecs::AnimationComponent{
+                              .frameWidth = 10, .frameHeight = 8, .frameCount = 3, .startX = 4, .frameDuration = 1.0F});
+    systems::AnimationSystem::update(registry, 1.0F);
+    EXPECT_EQ(registry.getComponents<ecs::Renderable>().get(entity).sourceRect.x, 14);
+}
+
+TEST(AnimationSystem, FrameStrideSkipsTheSpaceBetweenFrames) {
+    ecs::Registry registry;
+    const ecs::Entity entity = registry.spawnEntity();
+    registry.addComponent(entity, ecs::Renderable{});
+    registry.addComponent(entity, ecs::AnimationComponent{.frameWidth = 48,
+                                                          .frameHeight = 48,
+                                                          .frameCount = 5,
+                                                          .startX = 0,
+                                                          .frameStride = 65,
+                                                          .frameDuration = 1.0F});
+    systems::AnimationSystem::update(registry, 1.0F);
+    systems::AnimationSystem::update(registry, 1.0F);
+    const auto& source = registry.getComponents<ecs::Renderable>().get(entity).sourceRect;
+    EXPECT_EQ(source.x, 130);
+    EXPECT_EQ(source.width, 48);
 }
 
 int main(int argc, char** argv) {

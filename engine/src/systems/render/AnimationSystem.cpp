@@ -30,7 +30,7 @@ void AnimationSystem::update(ecs::Registry& registry, float deltaTime) {
                 }
             }
             renderable.sourceRect = {
-                .x = anim.startX + (anim.currentFrame * anim.frameWidth),
+                .x = anim.startX + (anim.currentFrame * (anim.frameStride > 0 ? anim.frameStride : anim.frameWidth)),
                 .y = anim.startY,
                 .width = anim.frameWidth,
                 .height = anim.frameHeight,

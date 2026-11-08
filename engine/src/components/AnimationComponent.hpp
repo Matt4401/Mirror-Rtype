@@ -28,6 +28,12 @@ struct AnimationComponent {
     /** @brief X pixel offset of the first frame in the spritesheet. */
     int startX = 0;
 
+    /**
+     * @brief Pixels from the left of a frame to the left of the next one; 0 or less means `frameWidth` (frames that
+     * touch). Larger than `frameWidth` for spritesheets with empty space between their frames.
+     */
+    int frameStride = 0;
+
     /** @brief Y pixel offset of the first frame in the spritesheet. */
     int startY = 0;
 
