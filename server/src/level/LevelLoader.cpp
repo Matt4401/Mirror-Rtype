@@ -313,6 +313,55 @@ void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const
     }
 }
 
+/** @brief A terrain section accepted so far, to check the next ones against it. */
+struct TerrainSpan {
+    /** @brief Scroll distance where it starts. */
+    float from = 0.0F;
+    /** @brief Scroll distance where it ends. */
+    float to = 0.0F;
+    /** @brief True along the top edge. */
+    bool top = false;
+    /** @brief Height in pixels. */
+    float height = 0.0F;
+};
+
+/**
+ * @brief Checks a section against the ones accepted before it.
+ *
+ * Two sections on the same side cannot overlap: their columns would stack. A top and a bottom section that overlap must
+ * leave `MIN_TERRAIN_CORRIDOR` between them, so the new one is lowered if needed.
+ *
+ * @param section Section to check; its height may be lowered.
+ * @param accepted Sections accepted so far.
+ * @param index Index of the section, for messages.
+ * @param warnings Receives a message if the section is lowered or skipped.
+ * @return False if the section must be skipped.
+ */
+bool fitTerrain(TerrainSpan& section, std::span<const TerrainSpan> accepted, std::size_t index,
+                std::vector<std::string>& warnings) {
+    for (const TerrainSpan& other : accepted) {
+        if (section.from >= other.to || other.from >= section.to) {
+            continue;
+        }
+        if (other.top == section.top) {
+            warnings.push_back(
+                std::format("terrain.{}: overlaps another section on the same side, section skipped", index));
+            return false;
+        }
+        const float room = TERRAIN_SCENE_HEIGHT - MIN_TERRAIN_CORRIDOR - other.height;
+        if (room < 1.0F) {
+            warnings.push_back(std::format("terrain.{}: no room left by the opposite section, section skipped", index));
+            return false;
+        }
+        if (section.height > room) {
+            warnings.push_back(std::format("terrain.{}: lowered to {} px to keep a {} px corridor", index, room,
+                                           MIN_TERRAIN_CORRIDOR));
+            section.height = room;
+        }
+    }
+    return true;
+}
+
 /**
  * @brief Adds the `terrain` events of the `[[terrain]]` sections.
  * @param file Level file.
@@ -328,6 +377,7 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Le
             std::format("terrain: {} sections declared, only the first {} are kept", count, MAX_TERRAIN_SECTIONS));
         count = MAX_TERRAIN_SECTIONS;
     }
+    std::vector<TerrainSpan> accepted;
     for (std::size_t i = 0; i < count; ++i) {
         const std::string fromKey = std::format("terrain.{}.from", i);
         const std::string toKey = std::format("terrain.{}.to", i);
@@ -347,14 +397,23 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Le
                                            TERRAIN_TOP, TERRAIN_BOTTOM));
             continue;
         }
-        const float height =
-            reader.number(std::format("terrain.{}.height", i), DEFAULT_TERRAIN_HEIGHT, 1.0F, MAX_TERRAIN_HEIGHT);
+        TerrainSpan section{
+            .from = from,
+            .to = to,
+            .top = side == TERRAIN_TOP,
+            .height =
+                reader.number(std::format("terrain.{}.height", i), DEFAULT_TERRAIN_HEIGHT, 1.0F, MAX_TERRAIN_HEIGHT),
+        };
         reader.reportUnknownKeys(std::format("terrain.{}", i));
+        if (!fitTerrain(section, accepted, i, warnings)) {
+            continue;
+        }
+        accepted.push_back(section);
         out.timeline.add(timeline::TimelineEvent{
             .position = from,
             .type = std::string(EVENT_TERRAIN),
             .params = {{"side", side},
-                       {"height", static_cast<double>(height)},
+                       {"height", static_cast<double>(section.height)},
                        {"length", static_cast<double>(to - from)}},
         });
     }

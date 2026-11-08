@@ -60,8 +60,17 @@ inline constexpr std::size_t MAX_TERRAIN_SECTIONS = 256;
 /** @brief Height of a terrain section when `height` is missing, in pixels. */
 inline constexpr float DEFAULT_TERRAIN_HEIGHT = 120.0F;
 
-/** @brief Highest terrain section accepted, in pixels: half of the 720 px scene, so a corridor always stays open. */
+/** @brief Highest terrain section accepted, in pixels: half of the 720 px scene. */
 inline constexpr float MAX_TERRAIN_HEIGHT = 360.0F;
+
+/** @brief Height of the scene the terrain is placed in, in pixels. */
+inline constexpr float TERRAIN_SCENE_HEIGHT = 720.0F;
+
+/**
+ * @brief Smallest gap left between a top and a bottom section that overlap, in pixels: the ships can always get
+ * through. A section that would leave less is lowered, or skipped if nothing is left.
+ */
+inline constexpr float MIN_TERRAIN_CORRIDOR = 120.0F;
 
 /** @brief Longest boss script path accepted, in characters. */
 inline constexpr std::size_t MAX_SCRIPT_PATH_LENGTH = 256;
@@ -96,7 +105,7 @@ using PrefabCatalog = std::function<std::optional<std::vector<std::string>>(std:
  * x = 1328.0                 # optional
  * y = 200.0                  # optional
  * spacing_y = 60.0           # optional, added to y for each next enemy
- * pattern = "sine"           # any other key is passed to the prefab
+ * speed = -200.0             # prefab parameter; a key the prefab does not read is reported
  *
  * [[events]]
  * at = 2400.0
@@ -112,7 +121,7 @@ using PrefabCatalog = std::function<std::optional<std::vector<std::string>>(std:
  * y = 360.0                  # optional
  *
  * [[events]]
- * at = 6000.0
+ * at = 6600.0                # after the boss: the scroll only reaches it once the boss is destroyed
  * type = "end"
  *
  * [[terrain]]
