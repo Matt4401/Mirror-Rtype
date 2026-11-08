@@ -117,6 +117,18 @@ class WrenVM {
     void setErrorHandler(ErrorHandler handler);
 
     /**
+     * @brief Gets the text output handler, to restore it after replacing it for a while.
+     * @return The handler; empty when output goes to the standard output.
+     */
+    [[nodiscard]] const WriteHandler& writeHandler() const noexcept { return _writeHandler; }
+
+    /**
+     * @brief Gets the error handler, to restore it after replacing it for a while.
+     * @return The handler; empty when errors go to the standard error output.
+     */
+    [[nodiscard]] const ErrorHandler& errorHandler() const noexcept { return _errorHandler; }
+
+    /**
      * @brief Registers a foreign method callback with Wren using a raw C function pointer.
      *
      * @param module Wren module name containing the class.

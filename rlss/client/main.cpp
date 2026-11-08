@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -28,6 +29,7 @@
 #include "ServerLink.hpp"
 #include "SessionPlugin.hpp"
 #include "SoundPlugin.hpp"
+#include "VolumeCVarsPlugin.hpp"
 #include "assets/AssetPlugin.hpp"
 #include "assets/audio/AudioAssetsPlugin.hpp"
 #include "assets/render/RenderAssetsPlugin.hpp"
@@ -35,6 +37,7 @@
 #include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "config/Settings.hpp"
+#include "core/ContentRoot.hpp"
 #include "core/Engine.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
@@ -51,6 +54,10 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
+#include "tools/console/ConsolePlugin.hpp"
+#include "tools/console/ConsoleTypes.hpp"
+#include "tools/devconsole/DevConsolePlugin.hpp"
+#include "tools/scripting/ConsoleScriptingPlugin.hpp"
 #include "ui/UiPlugin.hpp"
 
 namespace {
@@ -96,7 +103,9 @@ int main(int ac, char** av) {
         }
         const auto link = std::make_shared<rlss::client::ServerLink>(transport, std::move(*received));
 
-        // Connected: open the game window, on the menu.
+        // Connected: open the game window, on the menu. Scripts and assets are read next to the executable, so the
+        // client runs from any working directory.
+        const std::filesystem::path root = engine::contentRoot();
         engine::Engine engine;
         // Escape means "back" in the menus; on the main menu and in a match it still quits.
         engine
@@ -108,8 +117,8 @@ int main(int ac, char** av) {
             .addPlugin<ecs::net::NetworkPlugin>(link, link)
             .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
             // After the replication: the CarView scripts read the car transforms once interpolated.
-            .addPlugin<scripting::ScriptPlugin>()
-            .addPlugin<assets::AssetPlugin>()
+            .addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::EveryFrame, root)
+            .addPlugin<assets::AssetPlugin>(root)
             .addPlugin<assets::AssetScriptingPlugin>(std::string(rlss::client::ASSET_DECLARATIONS))
             .addPlugin<assets::RenderAssetsPlugin>()
             .addPlugin<assets::AudioAssetsPlugin>()
@@ -130,7 +139,13 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::GoalEffectPlugin>()
             .addPlugin<rlss::client::SoundPlugin>()
             .addPlugin<rlss::client::PlayerInputPlugin>()
-            .addPlugin<rlss::client::MenuScenesPlugin>(link);
+            .addPlugin<rlss::client::MenuScenesPlugin>(link)
+            // Developer console (~ / ²): drawn last, over the HUD and the menus.
+            // Cheats only reach this client: the server stays authoritative and runs its own rules.
+            .addPlugin<tools::ConsolePlugin>(tools::ConsoleConfig{.allowCheats = true})
+            .addPlugin<tools::ConsoleScriptingPlugin>()
+            .addPlugin<tools::DevConsolePlugin>()
+            .addPlugin<rlss::client::VolumeCVarsPlugin>();
         engine.run();
         return engine.getPlugin<rlss::client::SessionPlugin>().connectionLost() ? EXIT_ERROR : 0;
     } catch (const std::exception& error) {

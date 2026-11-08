@@ -140,7 +140,7 @@ class ScriptSystem {
      * A module name is a path relative to it, without `.wren` (`scripts/Boss` is `<root>/scripts/Boss.wren`), for
      * both `ScriptComponent::moduleName` and `import`. Absolute names and names climbing out of it (`..`) are
      * refused. Kept across hot reloads.
-     * @param root Script root; empty (the default) means the working directory.
+     * @param root Script root, usually `engine::contentRoot()`; empty (the default) means the working directory.
      */
     void setScriptRoot(std::filesystem::path root);
 

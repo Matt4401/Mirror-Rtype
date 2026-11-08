@@ -186,15 +186,15 @@ void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
 void RTypeGamePlugin::init(engine::Engine& engine) {
     auto& manager = engine.registry().getResource<assets::AssetManager>();
     manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
-    // Fail fast, as before the asset manager: a sprite missing from the start is a broken install or a client run
-    // from the wrong directory, not something to play through with checkerboards.
+    // Fail fast, as before the asset manager: a sprite missing from the start is a broken install, not something to
+    // play through with checkerboards.
     const auto texture = [&manager](const std::string_view alias) {
         switch (manager.status<assets::Texture>(alias)) {
             case assets::AssetStatus::Loaded:
                 return manager.get<assets::Texture>(alias);
             case assets::AssetStatus::Failed:
                 throw std::runtime_error("cannot load texture '" + std::string(alias) +
-                                         "' — run the client from the project root directory");
+                                         "' — is assets/ next to the executable?");
             case assets::AssetStatus::Declared:
             case assets::AssetStatus::Unknown:
                 break;

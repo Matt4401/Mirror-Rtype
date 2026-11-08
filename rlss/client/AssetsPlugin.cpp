@@ -44,7 +44,8 @@ void AssetsPlugin::init(engine::Engine& engine) {
     const auto texture = [&manager](const std::string_view alias) {
         const assets::AssetStatus status = manager.status<assets::Texture>(alias);
         if (status != assets::AssetStatus::Loaded) {
-            rtype::log::warning(LOG_TAG, "texture '", alias, "' not loaded (run the client from the repository root)");
+            rtype::log::warning(LOG_TAG, "texture '", alias,
+                                "' not loaded (are rlss/scripts/Assets.wren and assets/ next to the executable?)");
         }
         return status == assets::AssetStatus::Unknown ? manager.fallback<assets::Texture>()
                                                       : manager.get<assets::Texture>(alias);

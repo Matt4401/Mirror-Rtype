@@ -25,6 +25,8 @@
 #include "net/NetworkEvents.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "protocol/Protocol.hpp"
+#include "tools/console/ConsolePlugin.hpp"
+#include "tools/cvars/CVarManager.hpp"
 
 namespace rlss::client {
 
@@ -131,9 +133,14 @@ void HudPlugin::build(engine::PluginBuilder& builder) {
     builder.require<AssetsPlugin>();
     builder.require<CameraPlugin>();
     builder.require<ecs::net::NetworkPlugin>();
+    builder.optionally<tools::ConsolePlugin>();
 }
 
 void HudPlugin::init(engine::Engine& engine) {
+    if (auto cvars = engine.mediator().getService<tools::CVarManager>(); cvars) {
+        _visible =
+            cvars->get().add("cl_hud", true, "Shows the score, the clock, the boost gauge and the announcements");
+    }
     ecs::Registry& registry = engine.registry();
     const GameAssets& assets = registry.getResource<GameAssets>();
     _typeface = Typeface(engine.service<engine::IScreenDrawService>(), assets.font);
@@ -199,7 +206,7 @@ void HudPlugin::lateUpdate(engine::Engine& engine, const ecs::time::Time& time) 
     _countdownTime += dt;
     _goTime += dt;
     _goalTime += dt;
-    if (!_inMatch || _state.phase == game::NO_MATCH || _state.phase == PHASE_ENDED) {
+    if (!_inMatch || _state.phase == game::NO_MATCH || _state.phase == PHASE_ENDED || (_visible && !_visible.get())) {
         return;
     }
     const auto& window = engine.service<engine::IWindowService>();

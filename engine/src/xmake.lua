@@ -142,9 +142,31 @@ target("engine_scene_scripting")
     add_includedirs(".", {public = true})
     add_deps("engine_scene", "engine_scripting")
 
+-- Developer tools: CVar registry and console interpreter. Headless, so a server can use them too.
+target("engine_tools")
+    set_kind("static")
+    add_files("tools/common/*.cpp", "tools/cvars/*.cpp", "tools/console/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core", "engine_events")
+
+-- Bridge between the console and Wren: the `wren` command and `.wren` files for `exec`.
+target("engine_tools_scripting")
+    set_kind("static")
+    add_files("tools/scripting/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_tools", "engine_scripting")
+
+-- In-game developer console window. Talks to the window, input capture and screen draw services only (no graphics
+-- library), so it builds headless; drawn after the UI.
+target("engine_devconsole")
+    set_kind("static")
+    add_files("tools/devconsole/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_tools", "engine_ui")
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_assets", "engine_assets_scripting", "engine_assets_scene", "engine_timeline")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_assets", "engine_assets_scripting", "engine_assets_scene", "engine_timeline", "engine_tools", "engine_tools_scripting", "engine_devconsole")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio", "engine_assets_render", "engine_assets_audio")
     end

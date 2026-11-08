@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <optional>
@@ -46,8 +47,10 @@ class MatchServer {
      * @brief Creates a server with no match.
      * @param transport Started transport; must outlive the server.
      * @param threaded True to run each match on its own thread; false to run them in `update()`.
+     * @param scriptRoot Directory the matches read their Wren scripts from; empty for the working directory.
      */
-    explicit MatchServer(std::shared_ptr<ecs::net::INetworkServer> transport, bool threaded = true);
+    explicit MatchServer(std::shared_ptr<ecs::net::INetworkServer> transport, bool threaded = true,
+                         std::filesystem::path scriptRoot = {});
 
     /**
      * @brief Handles the events received since the last call, then sends the match list if it is due.
@@ -99,6 +102,8 @@ class MatchServer {
     std::shared_ptr<ecs::net::INetworkServer> _transport;
     /** @brief True if each match runs on its own thread. */
     bool _threaded;
+    /** @brief Directory the matches read their Wren scripts from. */
+    std::filesystem::path _scriptRoot;
     /** @brief Matches, by id: the list is sorted by id. */
     std::map<std::uint16_t, std::unique_ptr<MatchRoom>> _rooms;
     /** @brief Match of each peer in a match. */

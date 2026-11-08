@@ -68,8 +68,12 @@ class AssetManager {
     /** @brief Budget of `loadGroupStep` meaning "everything". */
     static constexpr std::size_t UNLIMITED = std::numeric_limits<std::size_t>::max();
 
-    /** @brief Creates a manager knowing the engine's four kinds, with no loader. */
-    AssetManager();
+    /**
+     * @brief Creates a manager knowing the engine's four kinds, with no loader.
+     * @param root Directory relative paths are loaded from, usually `engine::contentRoot()`; empty for the working
+     * directory.
+     */
+    explicit AssetManager(std::filesystem::path root = {});
 
     /**
      * @brief Destroys the manager without calling the loaders: the backends detach them (and release their assets)
@@ -85,6 +89,12 @@ class AssetManager {
     AssetManager(AssetManager&&) = delete;
     /** @brief Deleted move assignment operator. */
     AssetManager& operator=(AssetManager&&) = delete;
+
+    /**
+     * @brief Gets the directory relative paths are loaded from.
+     * @return Content root; empty for the working directory.
+     */
+    [[nodiscard]] const std::filesystem::path& root() const noexcept { return _context.root; }
 
     /**
      * @brief Registers a kind, so that scripts can name it before anything of it is declared from C++.
@@ -144,7 +154,8 @@ class AssetManager {
      *
      * @tparam Kind Kind of asset.
      * @param alias Name to find the asset by (no `/`, `\` or `.`); empty to only use the path.
-     * @param path File path, relative to the working directory.
+     * @param path File path, relative to the root (or absolute). Aliases and keys keep it as given, so the same
+     * declaration names the same asset wherever the game is installed.
      * @param group Group needing it.
      * @param options Load options; the same file with other options is another asset.
      * @return False for an invalid path, alias or group (warning).
@@ -245,7 +256,7 @@ class AssetManager {
      * valid alias (it holds a `.`) is skipped with a warning.
      *
      * @tparam Kind Kind of asset.
-     * @param directory Directory to scan.
+     * @param directory Directory to scan, relative to the root (or absolute).
      * @param group Group needing the files.
      * @param options Load options.
      * @return Number of files declared; 0 for a missing directory (warning).
@@ -395,7 +406,7 @@ class AssetManager {
     /** @brief Asserts, in debug builds, that the manager is used from the thread that created it. */
     void checkThread() const noexcept;
 
-    /** @brief Warnings, loaded groups and script window, shared with the caches; declared first, built first. */
+    /** @brief Warnings, loaded groups, script window and root, shared with the caches; declared first, built first. */
     detail::AssetContext _context;
     /** @brief One cache per registered kind, in registration order. */
     std::vector<std::unique_ptr<detail::IAssetCache>> _caches;

@@ -1,11 +1,13 @@
 /**
  * @file AssetContext.hpp
- * @brief State the asset manager shares with the cache of every kind: warnings, loaded groups, script window.
+ * @brief State the asset manager shares with the cache of every kind: warnings, loaded groups, script window,
+ * content root.
  */
 
 #pragma once
 
 #include <algorithm>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,6 +24,8 @@ struct AssetContext {
     std::vector<std::string> loadedGroups;
     /** @brief True while a declaration script runs: the declarations made then can be replaced by a hot reload. */
     bool scriptWindow = false;
+    /** @brief Directory relative paths are loaded from; empty for the working directory. */
+    std::filesystem::path root;
 
     /**
      * @brief Tells whether a group is loaded.

@@ -37,8 +37,10 @@ struct UiNavigation {
     /** @brief Increase a slider, else next widget. */
     UiNavBinding right{.keys = {engine::Key::Right}, .buttons = {engine::GamepadButton::LeftFaceRight}};
     /** @brief Activate the focused widget. */
-    UiNavBinding confirm{.keys = {engine::Key::Enter, engine::Key::Space},
-                         .buttons = {engine::GamepadButton::RightFaceDown}};
+    UiNavBinding confirm{
+        .keys = {engine::Key::Enter, engine::Key::Space},
+        .buttons = {engine::GamepadButton::RightFaceDown},
+    };
     /** @brief Publish `UiBackEvent`. */
     UiNavBinding back{.keys = {engine::Key::Escape}, .buttons = {engine::GamepadButton::RightFaceRight}};
     /** @brief Gamepad read for navigation. */

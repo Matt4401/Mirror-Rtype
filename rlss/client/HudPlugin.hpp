@@ -15,6 +15,7 @@
 #include "ecs/Entity.hpp"
 #include "events/EventBus.hpp"
 #include "game/Components.hpp"
+#include "tools/cvars/CVarRef.hpp"
 
 namespace ecs::time {
 struct Time;
@@ -101,6 +102,8 @@ class HudPlugin final : public engine::IPlugin {
     float _shownBoost = 0.0F;
     /** @brief Font and drawing service. */
     Typeface _typeface;
+    /** @brief `cl_hud`: whether the HUD is drawn; unset without a console. */
+    tools::CVarRef<bool> _visible;
     /** @brief Textures of the HUD. */
     ecs::TextureId _disc = ecs::NO_TEXTURE;
     /** @brief One tick of the boost ring. */

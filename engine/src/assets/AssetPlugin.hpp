@@ -5,7 +5,9 @@
 
 #pragma once
 
+#include <filesystem>
 #include <string_view>
+#include <utility>
 
 #include "core/IPlugin.hpp"
 
@@ -21,6 +23,13 @@ namespace assets {
  */
 class AssetPlugin final : public engine::IPlugin {
   public:
+    /**
+     * @brief Creates the plugin.
+     * @param root Directory the manager loads relative paths from, usually `engine::contentRoot()`; empty for the
+     * working directory.
+     */
+    explicit AssetPlugin(std::filesystem::path root = {}) : _root(std::move(root)) {}
+
     /**
      * @brief Gets plugin name.
      * @return String view "AssetPlugin".
@@ -38,6 +47,10 @@ class AssetPlugin final : public engine::IPlugin {
      * @param engine Host engine.
      */
     void shutdown(engine::Engine& engine) override;
+
+  private:
+    /** @brief Content root given to the manager. */
+    std::filesystem::path _root;
 };
 
 }  // namespace assets

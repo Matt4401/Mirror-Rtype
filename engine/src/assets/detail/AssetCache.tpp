@@ -13,6 +13,7 @@
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetPath.hpp"
 #include "assets/detail/AssetCache.hpp"
+#include "core/ContentRoot.hpp"
 
 namespace assets::detail {
 
@@ -173,18 +174,20 @@ template <AssetKind Kind>
 std::size_t AssetCache<Kind>::preloadAny(const std::filesystem::path& directory, const std::string_view group,
                                          const LoadOptions& options) {
     const std::string shown = toUtf8(directory);
+    const std::filesystem::path scanned = engine::resolveContentPath(_context->root, directory);
     std::error_code error;
-    if (!std::filesystem::is_directory(directory, error)) {
+    if (!std::filesystem::is_directory(scanned, error)) {
         _context->diagnostics.warn(std::string(Kind::NAME) + " directory " + quoteForLog(shown, MAX_PATH_LENGTH) +
                                    " not found");
         return 0;
     }
     std::vector<std::filesystem::path> files;
-    for (auto it = std::filesystem::directory_iterator(directory, error);
+    for (auto it = std::filesystem::directory_iterator(scanned, error);
          !error && it != std::filesystem::directory_iterator(); it.increment(error)) {
         std::error_code typeError;
         if (it->is_regular_file(typeError) && cache_detail::hasExtensionOf<Kind>(it->path())) {
-            files.push_back(it->path());
+            // Declared under the path as given, relative to the root like every other key.
+            files.push_back(directory / it->path().filename());
         }
     }
     if (error) {
@@ -538,7 +541,8 @@ void AssetCache<Kind>::ensureLoaded(Entry& entry) {
     if (entry.holders.empty() || entry.id != Kind::NONE || entry.failed || !_loader || !_loader->load) {
         return;
     }
-    entry.id = _loader->load(entry.path, entry.options, entry.lastId);
+    entry.id = _loader->load(toUtf8(engine::resolveContentPath(_context->root, fromUtf8(entry.path))), entry.options,
+                             entry.lastId);
     if (entry.id == Kind::NONE) {
         entry.failed = true;
         fallback();

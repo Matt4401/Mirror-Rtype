@@ -18,7 +18,8 @@ template <typename Plugin, typename... Args>
 Engine& Engine::addPlugin(Args&&... args) {
     auto plugin = std::make_unique<Plugin>(std::forward<Args>(args)...);
     const std::type_index typeId(typeid(Plugin));
-    _pluginGraph.addPlugin(std::move(plugin), typeId);
+    const int priority = plugin->priority();
+    _pluginGraph.addPlugin(std::move(plugin), typeId, priority);
     return *this;
 }
 

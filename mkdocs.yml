@@ -72,6 +72,7 @@ nav:
       - Assets: architecture/assets.md
       - User Interface: architecture/ui.md
       - User Settings: architecture/settings.md
+      - Console & CVars: architecture/console.md
       - Plugins & Mediator: architecture/plugins.md
       - Engine Clock: architecture/clock.md
       - Timeline: architecture/timeline.md

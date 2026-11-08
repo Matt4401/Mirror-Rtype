@@ -27,6 +27,8 @@
 #include "net/NetworkPlugin.hpp"
 #include "protocol/Protocol.hpp"
 #include "scripting/ScriptPlugin.hpp"
+#include "tools/console/ConsolePlugin.hpp"
+#include "tools/cvars/CVarManager.hpp"
 
 namespace rlss::client {
 
@@ -61,9 +63,13 @@ void NameTagPlugin::build(engine::PluginBuilder& builder) {
     builder.require<scripting::ScriptPlugin>();
     builder.require<CameraPlugin>();
     builder.require<AssetsPlugin>();
+    builder.optionally<tools::ConsolePlugin>();
 }
 
 void NameTagPlugin::init(engine::Engine& engine) {
+    if (auto cvars = engine.mediator().getService<tools::CVarManager>(); cvars) {
+        _visible = cvars->get().add("cl_nametags", true, "Shows the player names above the cars");
+    }
     _typeface =
         Typeface(engine.service<engine::IScreenDrawService>(), engine.registry().getResource<GameAssets>().font);
     auto& events = engine.eventBus();
@@ -130,6 +136,9 @@ void NameTagPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time
     }
 
     // Follow the cars: the labels are laid out in pixels, shifted to the point above each car on screen.
+    if (_visible && !_visible.get()) {
+        return;
+    }
     const ecs::Entity cameraEntity = engine.getPlugin<CameraPlugin>().camera();
     const auto& cameras = registry.getComponents<ecs::CameraComponent>();
     if (!cameras.contains(cameraEntity)) {

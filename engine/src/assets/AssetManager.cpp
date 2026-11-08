@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "assets/AssetKinds.hpp"
@@ -17,7 +18,8 @@
 
 namespace assets {
 
-AssetManager::AssetManager() : _owner(std::this_thread::get_id()) {
+AssetManager::AssetManager(std::filesystem::path root) : _owner(std::this_thread::get_id()) {
+    _context.root = std::move(root);
     registerKind<Texture>();
     registerKind<Font>();
     registerKind<Sound>();
