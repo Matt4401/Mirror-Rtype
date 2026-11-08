@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -10,16 +12,21 @@
 #include <variant>
 #include <vector>
 
+#include "Controls.hpp"
 #include "ServerLink.hpp"
+#include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "core/services/IInputService.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "core/services/IWindowService.hpp"
 #include "ecs/Registry.hpp"
 #include "events/UiEvents.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
+#include "input/ActionMapping.hpp"
+#include "input/InputPlugin.hpp"
 #include "menu/MenuScenesPlugin.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -43,14 +50,16 @@ using rlss::client::MenuState;
 constexpr float DT = 1.0F / 64.0F;
 constexpr std::uint16_t MATCH = 3;
 
-/** @brief Window with no input. */
+/** @brief Window with no input but the keys a test holds down. */
 struct QuietWindow final : engine::IWindowService {
     [[nodiscard]] bool shouldClose() const noexcept override { return false; }
     void beginFrame() override {}
     void endFrame() override {}
     [[nodiscard]] int width() const noexcept override { return 1280; }
     [[nodiscard]] int height() const noexcept override { return 720; }
-    [[nodiscard]] bool isKeyDown(engine::Key /*key*/) const noexcept override { return false; }
+    [[nodiscard]] bool isKeyDown(engine::Key key) const noexcept override {
+        return keys.at(static_cast<std::size_t>(key));
+    }
     [[nodiscard]] bool isGamepadAvailable(int /*gamepad*/) const noexcept override { return false; }
     [[nodiscard]] bool isGamepadButtonDown(int /*gamepad*/, engine::GamepadButton /*button*/) const noexcept override {
         return false;
@@ -64,6 +73,8 @@ struct QuietWindow final : engine::IWindowService {
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return {.x = -1.0F, .y = -1.0F}; }
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return 0.0F; }
     [[nodiscard]] char32_t nextTypedCharacter() noexcept override { return U'\0'; }
+
+    std::array<bool, 256> keys{};
 };
 
 /** @brief Draw service that draws nothing. */
@@ -134,6 +145,7 @@ class RlssMenuTest : public ::testing::Test {
         engine.addPlugin<FakeServicesPlugin>()
             .addPlugin<hierarchy::HierarchyPlugin>()
             .addPlugin<ui::UiPlugin>()
+            .addPlugin<input::InputPlugin>(rlss::client::makeControls())
             .addPlugin<scene::ScenePlugin>()
             .addPlugin<settings::SettingsPlugin>(std::filesystem::path{})
             .addPlugin<ecs::net::NetworkPlugin>(link, link)
@@ -170,6 +182,29 @@ class RlssMenuTest : public ::testing::Test {
     }
 
     [[nodiscard]] MenuState& state() { return engine.registry().getResource<MenuState>(); }
+
+    [[nodiscard]] config::Settings& settings() { return engine.getPlugin<settings::SettingsPlugin>().settings(); }
+
+    [[nodiscard]] const input::ActionMapping& mapping() { return engine.service<engine::IInputService>().mapping(); }
+
+    /** @brief Clicks and runs the two frames that deliver the click and apply a scene change. */
+    void press(std::string action) {
+        click(std::move(action));
+        frame();
+        frame();
+    }
+
+    void setKey(engine::Key key, bool down) {
+        auto& window = static_cast<QuietWindow&>(engine.service<engine::IWindowService>());
+        window.keys.at(static_cast<std::size_t>(key)) = down;
+        frame();
+    }
+
+    void openControls() {
+        press("menu.settings");
+        press("settings.controls");
+        ASSERT_EQ(top(), "Controls");
+    }
 
     [[nodiscard]] std::string focusedAction() {
         const ecs::Entity focused = engine.registry().getResource<ui::UiFocus>().focused;
@@ -273,6 +308,70 @@ TEST_F(RlssMenuTest, TheBrowserKeepsTheFocusOnTheSameMatch) {
     queue(protocol::MatchList{.online = 6, .matches = {match(MATCH), match(2, true)}});
     frame();
     EXPECT_EQ(focusedAction(), "browser.join.3");
+}
+
+TEST(RlssControls, AKeyTakenByAnotherControlIsSwapped) {
+    using rlss::client::Control;
+    rlss::client::ControlKeys keys = rlss::client::defaultControlKeys();
+    rlss::client::assignKey(keys, Control::Jump, engine::Key::LeftShift);
+    EXPECT_EQ(keys.at(static_cast<std::size_t>(Control::Jump)), engine::Key::LeftShift);
+    EXPECT_EQ(keys.at(static_cast<std::size_t>(Control::Boost)), engine::Key::Space);
+}
+
+TEST(RlssControls, ASecondKeyUsedAsAMainKeyIsNotBoundTwice) {
+    using rlss::client::Control;
+    rlss::client::ControlKeys keys = rlss::client::defaultControlKeys();
+    rlss::client::assignKey(keys, Control::Jump, engine::Key::Up);
+    input::ActionMapping mapping;
+    rlss::client::setupBindings(mapping, keys);
+    EXPECT_TRUE(mapping.hasKey("jump", engine::Key::Up));
+    EXPECT_FALSE(mapping.hasKey("pitch", engine::Key::Up));
+    EXPECT_TRUE(mapping.hasKey("pitch", engine::Key::W));
+    EXPECT_TRUE(mapping.hasKey("boost", engine::Key::RightShift));
+}
+
+TEST_F(RlssMenuTest, TheControlsOpenFromTheSettingsAndGoBack) {
+    openControls();
+    engine.eventBus().publish(ui::UiBackEvent{});
+    frame();
+    frame();
+    EXPECT_EQ(top(), "Settings");
+}
+
+TEST_F(RlssMenuTest, AKeyPressedAfterChoosingAControlIsSavedAndBound) {
+    openControls();
+    press("controls.key.jump");
+    setKey(engine::Key::F, true);
+    setKey(engine::Key::F, false);
+    frame();
+    EXPECT_EQ(settings().getString("controls.jump"), "F");
+    EXPECT_TRUE(mapping().hasKey("jump", engine::Key::F));
+    EXPECT_FALSE(mapping().hasKey("jump", engine::Key::Space));
+}
+
+TEST_F(RlssMenuTest, EscapeCancelsTheWaitForAKey) {
+    openControls();
+    press("controls.key.jump");
+    engine.eventBus().publish(ui::UiBackEvent{});
+    frame();
+    frame();
+    EXPECT_EQ(top(), "Controls");
+    setKey(engine::Key::F, true);
+    EXPECT_EQ(settings().getString("controls.jump"), "Space");
+}
+
+TEST_F(RlssMenuTest, ResetPutsTheDefaultKeysBack) {
+    (void)settings().set("controls.jump", std::string("F"));
+    openControls();
+    press("controls.reset");
+    EXPECT_EQ(settings().getString("controls.jump"), "Space");
+}
+
+TEST_F(RlssMenuTest, SavedKeysReplaceTheDefaultBindings) {
+    (void)settings().set("controls.boost", std::string("B"));
+    frame();
+    EXPECT_TRUE(mapping().hasKey("boost", engine::Key::B));
+    EXPECT_FALSE(mapping().hasKey("boost", engine::Key::LeftShift));
 }
 
 int main(int argc, char** argv) {

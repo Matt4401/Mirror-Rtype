@@ -1,6 +1,7 @@
-site_name: R-Type Engine
-site_description: Documentation for the R-Type Game Engine and Client/Server binaries
-site_author: R-Type Team
+site_name: Squacaron
+site_description: Documentation of the Squacaron engine and of the two games built on it (R-Type, RLSS)
+site_author: Squacaron Team
+site_url: https://matt4401.github.io/Mirror-Rtype/
 repo_name: Mirror-Rtype
 repo_url: https://github.com/Matt4401/Mirror-Rtype
 
@@ -38,7 +39,7 @@ plugins:
   - mkdoxy:
       projects:
         rtype:
-          src-dirs: "engine/src client/src server/src log/src common/src game/src rlss"
+          src-dirs: "engine/src client/src server/src common/src game/src rlss"
           full-doc: True
           doxy-cfg:
             FILE_PATTERNS: "*.cpp *.hpp *.h"
@@ -69,8 +70,10 @@ nav:
       - Engine: architecture/engine.md
       - Entity Hierarchy: architecture/hierarchy.md
       - Scenes: architecture/scene.md
+      - Assets: architecture/assets.md
       - User Interface: architecture/ui.md
       - User Settings: architecture/settings.md
+      - Console & CVars: architecture/console.md
       - Plugins & Mediator: architecture/plugins.md
       - Engine Clock: architecture/clock.md
       - Timeline: architecture/timeline.md
@@ -84,13 +87,17 @@ nav:
   - RLSS: rlss/index.md
   - Gameplay:
       - Level Files: gameplay/levels.md
+      - Bosses: gameplay/bosses.md
   - Prefabs:
       - Overview: prefabs/index.md
       - Collision Categories: prefabs/collision-categories.md
       - Missile: prefabs/missile.md
       - Player Bullet: prefabs/player-bullet.md
       - Alien Scout: prefabs/alien-scout.md
+      - Alien Gunner: prefabs/alien-gunner.md
+      - Alien Elite: prefabs/alien-elite.md
       - Boss Core: prefabs/boss-core.md
+      - Boss Part: prefabs/boss-part.md
       - Obstacle: prefabs/obstacle.md
       - Power-Up: prefabs/power-up.md
   - Protocol:
@@ -99,6 +106,7 @@ nav:
   - Comparative Study:
       - Libraries: comparative-study/libraries.md
       - Algorithms: comparative-study/algorithms.md
+      - ECS Benchmark: comparative-study/ecs-benchmark.md
       - Storage: comparative-study/storage.md
       - Security: comparative-study/security.md
       - Scripting & Events: comparative-study/scripting-events.md
@@ -106,10 +114,12 @@ nav:
   - Development:
       - Coding Style: development/coding-style.md
       - Workflow: development/workflow.md
+      - Test Audit: development/test-audit.md
   - Getting Started:
       - Index: getting-started/index.md
       - Building: getting-started/building.md
       - Running: getting-started/running.md
+      - Use the Engine in Your Own Game: getting-started/use-the-engine.md
       - Add the Network to a Game: getting-started/networked-game.md
       - Scripting Guide: getting-started/scripting-guide.md
   - Accessibility: accessibility/index.md

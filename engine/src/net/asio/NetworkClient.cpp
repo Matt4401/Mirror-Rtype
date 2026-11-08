@@ -23,7 +23,7 @@
 #include <tuple>
 #include <utility>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/NetworkConfig.hpp"
 #include "net/asio/LogTag.hpp"
@@ -87,7 +87,7 @@ void NetworkClient::onConnectFailed(const std::error_code ec) {
     if (ec == asio::error::operation_aborted) {
         return;
     }
-    rtype::log::error(LOG_TAG, "cannot connect to the server: ", ec.message());
+    engine::log::error(LOG_TAG, "cannot connect to the server: ", ec.message());
     _disconnectReason = DisconnectReason::Unreachable;
     _state = State::Stopped;
     _events.push({.type = EventType::Disconnected, .peer = 0, .data = {}, .channel = Channel::Reliable});
@@ -130,7 +130,7 @@ void NetworkClient::onTcpMessage(const MessageKind kind, Bytes payload) {
             break;
         case MessageKind::Refused:
             _disconnectReason = wire::readRefusal(payload);
-            rtype::log::warning(LOG_TAG, "refused by the server");
+            engine::log::warning(LOG_TAG, "refused by the server");
             _tcp->close();
             break;
         default:
@@ -145,14 +145,14 @@ bool NetworkClient::openUdp(const std::uint16_t port) {
     }
     auto open = [this, port] {
         if (!_welcomed) {
-            rtype::log::error(LOG_TAG, "cannot open UDP: no Welcome received from the server yet");
+            engine::log::error(LOG_TAG, "cannot open UDP: no Welcome received from the server yet");
             return false;
         }
         try {
             _serverUdp = {_serverAddress, port};
             _udpSocket = asio::ip::udp::socket(_io, {_serverUdp.protocol(), 0});
         } catch (const asio::system_error& e) {
-            rtype::log::error(LOG_TAG, "cannot open UDP to port ", port, ": ", e.what());
+            engine::log::error(LOG_TAG, "cannot open UDP to port ", port, ": ", e.what());
             return false;
         }
         _tcp->send(MessageKind::UdpOpen);

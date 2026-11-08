@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <span>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/NetworkConfig.hpp"
 #include "net/asio/LogTag.hpp"
@@ -77,15 +77,15 @@ inline bool isSendable(const Bytes& data, const Channel channel, const std::uint
         if (data.size() <= maxReliablePayload) {
             return true;
         }
-        rtype::log::error(LOG_TAG, "reliable payload of ", data.size(), " bytes refused (max ", maxReliablePayload,
-                          ')');
+        engine::log::error(LOG_TAG, "reliable payload of ", data.size(), " bytes refused (max ", maxReliablePayload,
+                           ')');
         return false;
     }
     if (!data.empty() && data.size() <= MAX_UNRELIABLE_PAYLOAD) {
         return true;
     }
-    rtype::log::error(LOG_TAG, "unreliable payload of ", data.size(), " bytes refused (1-", MAX_UNRELIABLE_PAYLOAD,
-                      ')');
+    engine::log::error(LOG_TAG, "unreliable payload of ", data.size(), " bytes refused (1-", MAX_UNRELIABLE_PAYLOAD,
+                       ')');
     return false;
 }
 

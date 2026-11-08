@@ -5,7 +5,6 @@
 
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -13,14 +12,20 @@
 #include <utility>
 #include <vector>
 
+#include "log/Logger.hpp"
+#include "assets/AssetPath.hpp"
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "scripting/CoreModules.hpp"
 #include "scripting/WrenVM.hpp"
+#include "scripting/detail/LogTag.hpp"
 #include "systems/script/ScriptSystem.hpp"
+#include "systems/script/detail/ScriptSupport.hpp"
 
 namespace systems {
+
+using scripting::detail::LOG_TAG;
 
 bool ScriptSystem::validateScriptSource(std::string_view moduleName, std::string_view source) {
     scripting::WrenVM stagingVm;
@@ -35,8 +40,8 @@ bool ScriptSystem::validateScriptSource(std::string_view moduleName, std::string
 
     auto res = stagingVm.interpret(moduleName, source);
     if (!res) {
-        std::cerr << "[ScriptSystem] Hot-reload error in module '" << moduleName << "': " << res.error()
-                  << " -> Ignoring modified file to preserve stability.\n";
+        engine::log::warning(LOG_TAG, "hot reload: script module ", assets::quoteForLog(moduleName),
+                            " ignored, the previous version keeps running: ", detail::formatScriptError(res.error()));
         return false;
     }
     return true;
@@ -114,20 +119,24 @@ void ScriptSystem::recreateVmAndModules(const std::vector<std::pair<std::string,
 
     auto const dispRes = _vm.interpret("_internal", scripting::INTERNAL_DISPATCHER_SOURCE);
     if (!dispRes) {
-        std::cerr << "[ScriptSystem] Failed to interpret _internal: " << dispRes.error() << "\n";
+        engine::log::error(
+            LOG_TAG, "hot reload: cannot run the internal dispatcher: ", detail::formatScriptError(dispRes.error()));
     }
 
     for (auto const& binderFn : _binderReplayList) {
         binderFn(_vm);
     }
 
+    _lastReplaySucceeded = true;
     for (auto const& [modName, watch] : _watchedScripts) {
         if (watch.lastGoodSource.empty()) {
             continue;
         }
         auto const scriptRes = _vm.interpret(modName, watch.lastGoodSource);
         if (!scriptRes) {
-            std::cerr << "[ScriptSystem] Failed to reload " << modName << ": " << scriptRes.error() << "\n";
+            _lastReplaySucceeded = false;
+            engine::log::warning(LOG_TAG, "hot reload: script module ", assets::quoteForLog(modName),
+                                " failed: ", detail::formatScriptError(scriptRes.error()));
         }
     }
 }
@@ -150,10 +159,7 @@ void ScriptSystem::reinstantiateActiveScripts() {
             _vm.ensureSlots(2);
             _vm.getVariable("_internal", "Dispatcher", 0);
             _vm.setSlot(1, it->second.get());
-            auto const res = _vm.call(tryReloadHandle.get());
-            if (res != WREN_RESULT_SUCCESS) {
-                std::cerr << "[ScriptSystem] Warning: tryCallReload failed for entity " << e << "\n";
-            }
+            recordScriptResult(e, _vm.call(tryReloadHandle.get()), "onReload()");
         }
     }
     _entitiesToReinstantiate.clear();
@@ -170,6 +176,9 @@ bool ScriptSystem::reloadModifiedScripts() {
     }
 
     notifyVmReset(VmResetPhase::Before);
+    // Every script gets a new chance with the new code.
+    _failures.clear();
+    _reportedModuleProblems.clear();
     releaseActiveHandles();
     recreateVmAndModules(modifiedModules);
     reinstantiateActiveScripts();

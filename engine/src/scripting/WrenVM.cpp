@@ -8,11 +8,12 @@
 #include <cstddef>
 #include <exception>
 #include <expected>
-#include <iostream>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "log/Logger.hpp"
+#include "scripting/detail/LogTag.hpp"
 #include "scripting/detail/WrenApi.hpp"
 #include "scripting/detail/WrenTypes.hpp"
 
@@ -32,6 +33,30 @@ std::string makeMethodSignature(std::string_view name, std::size_t arity) {
     sig += ")";
     return sig;
 }
+
+namespace {
+
+/**
+ * @brief Appends one error line to `error`, unless it would go past `WrenVM::MAX_ERROR_LENGTH`.
+ * @param error Error text being built.
+ * @param line Line to add, without its newline.
+ */
+void appendErrorLine(std::string& error, std::string_view line) {
+    constexpr std::string_view CUT_MARK = "...";
+    if (error.ends_with(CUT_MARK)) {
+        return;
+    }
+    if (error.size() + line.size() + 1 > WrenVM::MAX_ERROR_LENGTH) {
+        error += CUT_MARK;
+        return;
+    }
+    if (!error.empty()) {
+        error += '\n';
+    }
+    error += line;
+}
+
+}  // namespace
 
 }  // namespace detail
 
@@ -64,6 +89,7 @@ WrenVM::WrenVM(WrenVM&& other) noexcept
       _writeHandler(std::move(other._writeHandler)),
       _errorHandler(std::move(other._errorHandler)),
       _lastError(std::move(other._lastError)),
+      _pendingOutput(std::move(other._pendingOutput)),
       _loadedSources(std::move(other._loadedSources)),
       _foreignMethods(std::move(other._foreignMethods)),
       _foreignClasses(std::move(other._foreignClasses)) {
@@ -87,6 +113,7 @@ WrenVM& WrenVM::operator=(WrenVM&& other) noexcept {
         _writeHandler = std::move(other._writeHandler);
         _errorHandler = std::move(other._errorHandler);
         _lastError = std::move(other._lastError);
+        _pendingOutput = std::move(other._pendingOutput);
         _loadedSources = std::move(other._loadedSources);
         _foreignMethods = std::move(other._foreignMethods);
         _foreignClasses = std::move(other._foreignClasses);
@@ -111,6 +138,7 @@ void WrenVM::reset() {
     }
     _loadedSources.clear();
     _lastError.clear();
+    _pendingOutput.clear();
 
     WrenConfiguration config;
     wrenInitConfiguration(&config);
@@ -165,7 +193,10 @@ void WrenVM::releaseHandle(WrenHandle* handle) {
     }
 }
 
-WrenInterpretResult WrenVM::call(WrenHandle* method) { return wrenCall(_vm, method); }
+WrenInterpretResult WrenVM::call(WrenHandle* method) {
+    _lastError.clear();
+    return wrenCall(_vm, method);
+}
 
 WrenInterpretResult WrenVM::call(const detail::UniqueWrenHandle& method) { return call(method.get()); }
 
@@ -281,15 +312,32 @@ WrenLoadModuleResult WrenVM::onLoadModule(::WrenVM* vm, const char* name) noexce
 void WrenVM::onWrite(::WrenVM* vm, const char* text) noexcept {
     try {
         auto* self = static_cast<WrenVM*>(wrenGetUserData(vm));
+        std::string_view const chunk(text != nullptr ? text : "");
         if (self != nullptr && self->_writeHandler) {
-            self->_writeHandler(text);
-        } else {
-            std::cout << text;
+            self->_writeHandler(chunk);
+            return;
+        }
+        if (self == nullptr) {
+            engine::log::info(detail::LOG_TAG, chunk);
+            return;
+        }
+        // `System.print` writes the text, then "\n" on its own: one log line per complete line.
+        self->_pendingOutput += chunk;
+        if (self->_pendingOutput.size() > MAX_ERROR_LENGTH) {
+            engine::log::info(detail::LOG_TAG, self->_pendingOutput);
+            self->_pendingOutput.clear();
+            return;
+        }
+        std::size_t newline = self->_pendingOutput.find('\n');
+        while (newline != std::string::npos) {
+            engine::log::info(detail::LOG_TAG, std::string_view(self->_pendingOutput).substr(0, newline));
+            self->_pendingOutput.erase(0, newline + 1);
+            newline = self->_pendingOutput.find('\n');
         }
     } catch (const std::exception& e) {
-        std::cerr << "[WrenVM] Exception in onWrite: " << e.what() << "\n";
+        engine::log::error(detail::LOG_TAG, "exception in the Wren write callback: ", e.what());
     } catch (...) {
-        std::cerr << "[WrenVM] Unknown exception in onWrite\n";
+        engine::log::error(detail::LOG_TAG, "unknown exception in the Wren write callback");
     }
 }
 
@@ -303,29 +351,26 @@ void WrenVM::onError(::WrenVM* vm, WrenErrorType type, const char* module, int l
         std::string const modStr = (module != nullptr ? module : "?");
         std::string const msgStr = (message != nullptr ? message : "");
 
+        std::string text;
         if (type == WREN_ERROR_COMPILE) {
-            self->_lastError += "[" + modStr + " line " + std::to_string(line) + "] " + msgStr + "\n";
+            text = "[" + modStr + " line " + std::to_string(line) + "] " + msgStr;
         } else if (type == WREN_ERROR_RUNTIME) {
-            self->_lastError += "Runtime Error: " + msgStr + "\n";
+            text = "Runtime Error: " + msgStr;
         } else if (type == WREN_ERROR_STACK_TRACE) {
-            self->_lastError += "  in " + modStr + " line " + std::to_string(line) + " in " + msgStr + "\n";
+            text = "in " + modStr + " line " + std::to_string(line) + " in " + msgStr;
         }
+        detail::appendErrorLine(self->_lastError, text);
 
         if (self->_errorHandler) {
             self->_errorHandler(type, modStr, line, msgStr);
         } else {
-            if (type == WREN_ERROR_COMPILE) {
-                std::cerr << "[" << modStr << " line " << line << "] " << msgStr << "\n";
-            } else if (type == WREN_ERROR_RUNTIME) {
-                std::cerr << "Runtime Error: " << msgStr << "\n";
-            } else if (type == WREN_ERROR_STACK_TRACE) {
-                std::cerr << "  in " << modStr << " line " << line << " in " << msgStr << "\n";
-            }
+            // The caller logs `lastError()` once; the pieces are only shown in verbose mode.
+            engine::log::debug(detail::LOG_TAG, text);
         }
     } catch (const std::exception& e) {
-        std::cerr << "[WrenVM] Exception in onError: " << e.what() << "\n";
+        engine::log::error(detail::LOG_TAG, "exception in the Wren error callback: ", e.what());
     } catch (...) {
-        std::cerr << "[WrenVM] Unknown exception in onError\n";
+        engine::log::error(detail::LOG_TAG, "unknown exception in the Wren error callback");
     }
 }
 

@@ -44,6 +44,15 @@ class IPlugin {
     IPlugin& operator=(IPlugin&&) = delete;
 
     /**
+     * @brief Priority among plugins that do not depend on each other: higher values run earlier, in every phase.
+     *
+     * Dependencies always come first; the priority only orders independent plugins (then the order they were added).
+     * A plugin that must draw on top of everything (a developer console...) returns a negative value.
+     * @return Priority weight, 0 by default.
+     */
+    [[nodiscard]] virtual int priority() const noexcept { return 0; }
+
+    /**
      * @brief Unique human-readable name of the plugin for debugging and diagnostics.
      * @return String view of the plugin name.
      */

@@ -37,6 +37,35 @@ inline constexpr float BUTTON_WIDTH = 280.0F;
 /** @brief Default button height in pixels. */
 inline constexpr float BUTTON_HEIGHT = 40.0F;
 
+/** @brief Smallest menu scale factor. */
+inline constexpr float MIN_SCALE = 0.85F;
+/** @brief Largest menu scale factor. */
+inline constexpr float MAX_SCALE = 1.3F;
+
+/**
+ * @brief Registry resource: factor applied to the sizes, fonts and offsets of every widget built by this kit.
+ *
+ * Read when a widget is spawned, so a change shows up the next time a scene is entered.
+ */
+struct MenuScale {
+    /** @brief Scale factor, 1 for the default size. */
+    float factor = 1.0F;
+};
+
+/**
+ * @brief Sets the scale of the menus built from now on (accessibility: larger text and widgets).
+ * @param registry Registry holding the UI.
+ * @param factor Scale factor, clamped to [`MIN_SCALE`, `MAX_SCALE`].
+ */
+void setScale(ecs::Registry& registry, float factor);
+
+/**
+ * @brief Reads the menu scale.
+ * @param registry Registry holding the UI.
+ * @return The factor given to `setScale`, or 1 if it was never called.
+ */
+[[nodiscard]] float scale(const ecs::Registry& registry);
+
 /**
  * @brief Spawns a centred panel owned by the scene.
  * @param context Scene owning the panel.

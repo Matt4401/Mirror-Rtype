@@ -5,11 +5,11 @@
 #include <utility>
 #include <variant>
 
-#include "Logger.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
+#include "log/Logger.hpp"
 #include "net/ClientConnection.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -23,7 +23,7 @@
 
 namespace client {
 
-namespace log = rtype::log;
+namespace log = engine::log;
 namespace protocol = rtype::protocol;
 
 namespace {
@@ -211,6 +211,10 @@ void RTypeNetworkPlugin::onMessage(engine::Engine& engine, const protocol::Messa
     } else if (const auto* complete = std::get_if<protocol::LevelComplete>(&message)) {
         if (_state == SessionState::InGame) {
             bus.publish(LevelCompleted{.result = *complete});
+        }
+    } else if (const auto* scores = std::get_if<protocol::ScoreUpdate>(&message)) {
+        if (_state == SessionState::InGame) {
+            bus.publish(ScoresUpdated{.scores = *scores});
         }
     } else if (const auto* over = std::get_if<protocol::GameOver>(&message)) {
         if (_state != SessionState::InGame) {

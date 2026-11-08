@@ -1,5 +1,6 @@
 #include "scenes/ClientScenesPlugin.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -10,12 +11,15 @@
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/services/IAudioService.hpp"
+#include "core/services/IInputService.hpp"
 #include "core/services/IWindowService.hpp"
 #include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "hierarchy/Hierarchy.hpp"
+#include "input/KeyNames.hpp"
+#include "input/RTypeBindings.hpp"
 #include "metrics/overlay/MetricsOverlayPlugin.hpp"
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
@@ -44,7 +48,7 @@ namespace client {
 
 namespace {
 
-/** @brief Module of the scripted level transition, relative to the working directory (the project root). */
+/** @brief Module of the scripted level transition, relative to the content root (the project root). */
 constexpr const char* LEVEL_TRANSITION_MODULE = "scripts/scenes/LevelTransition";
 
 /**
@@ -99,6 +103,50 @@ void applyMetrics(engine::Engine& engine, const config::Settings& settings) {
     }
 }
 
+/**
+ * @brief Reads the main key of each control from the settings; an unknown id keeps the default key.
+ * @param settings Settings.
+ * @return The keys.
+ */
+input::ControlKeys readControlKeys(const config::Settings& settings) {
+    input::ControlKeys keys = input::defaultControlKeys();
+    for (const input::Control control : input::CONTROLS) {
+        if (const auto key = ::input::keyFromId(settings.getString(settings_keys::controlKey(control)))) {
+            keys.at(static_cast<std::size_t>(control)) = *key;
+        }
+    }
+    return keys;
+}
+
+/**
+ * @brief Rebuilds the key bindings from the settings, if the program reads input.
+ * @param engine Host engine.
+ * @param settings Settings.
+ */
+void applyBindings(engine::Engine& engine, const config::Settings& settings) {
+    if (auto inputService = engine.mediator().getService<engine::IInputService>()) {
+        input::setupBindings(inputService->get().mapping(), readControlKeys(settings));
+    }
+}
+
+/**
+ * @brief Gives the UI scale setting to the menu kit; menus entered from now on use it.
+ * @param engine Host engine.
+ * @param settings Settings.
+ */
+void applyUiScale(engine::Engine& engine, const config::Settings& settings) {
+    menu::setScale(engine.registry(), static_cast<float>(settings.getNumber(settings_keys::UI_SCALE)));
+}
+
+/**
+ * @brief Gives the auto-fire setting to the player controls.
+ * @param engine Host engine.
+ * @param settings Settings.
+ */
+void applyAutoFire(engine::Engine& engine, const config::Settings& settings) {
+    engine.getPlugin<PlayerControlPlugin>().setAutoFire(settings.getBool(settings_keys::AUTO_FIRE));
+}
+
 }  // namespace
 
 ClientScenesPlugin::ClientScenesPlugin(std::string host, std::uint16_t port, bool fromCommandLine)
@@ -121,15 +169,31 @@ void ClientScenesPlugin::init(engine::Engine& engine) {
     settings.define(std::string(settings_keys::MUSIC_VOLUME), 0.8);
     settings.define(std::string(settings_keys::SFX_VOLUME), 1.0);
     settings.define(std::string(settings_keys::SHOW_METRICS), false);
+    settings.define(std::string(settings_keys::AUTO_FIRE), false);
+    settings.define(std::string(settings_keys::UI_SCALE), 1.0);
+    const input::ControlKeys defaults = input::defaultControlKeys();
+    for (const input::Control control : input::CONTROLS) {
+        settings.define(settings_keys::controlKey(control),
+                        std::string(::input::keyId(defaults.at(static_cast<std::size_t>(control)))));
+    }
     settings.define(std::string(settings_keys::LAST_HOST), std::string{});
     settings.define(std::string(settings_keys::LAST_PORT), std::int64_t{_port});
     applyVolumes(engine, settings);
     applyMetrics(engine, settings);
+    applyAutoFire(engine, settings);
+    applyUiScale(engine, settings);
+    applyBindings(engine, settings);
     engine.eventBus().subscribe<settings::SettingChanged>([&engine, &settings](const settings::SettingChanged& event) {
         if (event.key.starts_with("audio.")) {
             applyVolumes(engine, settings);
         } else if (event.key == settings_keys::SHOW_METRICS) {
             applyMetrics(engine, settings);
+        } else if (event.key == settings_keys::AUTO_FIRE) {
+            applyAutoFire(engine, settings);
+        } else if (event.key == settings_keys::UI_SCALE) {
+            applyUiScale(engine, settings);
+        } else if (event.key.starts_with(settings_keys::CONTROLS_PREFIX)) {
+            applyBindings(engine, settings);
         }
     });
 
@@ -141,6 +205,7 @@ void ClientScenesPlugin::init(engine::Engine& engine) {
     scenes.registerScene<TitleScene>();
     scenes.registerScene<ConnectScene>(_host, _port, _fromCommandLine);
     scenes.registerScene<SettingsScene>();
+    scenes.registerScene<ControlsScene>();
     scenes.registerScene<LobbyScene>();
     scenes.registerScene<RoomScene>();
     scenes.registerScene<GameScene>();

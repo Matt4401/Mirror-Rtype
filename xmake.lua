@@ -1,4 +1,4 @@
-set_project("R-type")
+set_project("mirror-rtype")
 set_version("0.1.0")
 set_languages("c++23")
 add_rules("mode.debug", "mode.release")
@@ -17,12 +17,31 @@ end
 
 option("graphics", {default = true, showmenu = true, description = "Build the rendering module"})
 option("tests", {default = false, showmenu = true, description = "Build tests"})
+option("benchmarks", {default = false, showmenu = true, description = "Build the ECS benchmarks (Google Benchmark)"})
+if has_config("benchmarks") then
+    add_requires("benchmark")
+end
+-- Set in the project, not with `xmake f --policies`, so that only our targets are instrumented: a policy given on
+-- the command line also rebuilds every package with the sanitizers.
+option("sanitizers", {default = false, showmenu = true, description = "Build with AddressSanitizer and UBSan"})
+if has_config("sanitizers") then
+    set_policy("build.sanitizer.address", true)
+    set_policy("build.sanitizer.undefined", true)
+end
+option("engine_package", {default = false, showmenu = true, description = "Use the squacaron package instead of engine/"})
 
 includes("xmake/common.lua")
 
-includes("log/*/xmake.lua")
 includes("common/xmake.lua")
-includes("engine/*/xmake.lua")
+-- The engine: built in-tree by default, so an engine change is always picked up. With --engine_package=y the games
+-- consume the installed `squacaron` package instead (xmake-repo/), as a game outside this repository would.
+if has_config("engine_package") then
+    add_repositories("local-repo xmake-repo")
+    add_requires("squacaron", {configs = {graphics = has_config("graphics") and true or false}})
+    includes("xmake/engine_package.lua")
+else
+    includes("engine/xmake.lua")
+end
 includes("game/*/xmake.lua")
 includes("server/*/xmake.lua")
 includes("rlss/xmake.lua")

@@ -12,20 +12,12 @@
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
 #include "events/EventBus.hpp"
-#include "input/ActionMapping.hpp"
 
 namespace ecs::time {
 struct Time;
 }
 
 namespace rlss::client {
-
-/**
- * @brief Default controls: steer with A/D, Q/D or the arrows (or the left stick), jump with Space, W, Z or Up (or the
- * bottom face button), boost with Shift, S or Down (or the right face button / right trigger).
- * @return The mapping, for `input::InputPlugin`.
- */
-[[nodiscard]] input::ActionMapping makeControls();
 
 /**
  * @brief Creates the local player's `input::InputState` (sampled by `input::InputPlugin`) and publishes it as an

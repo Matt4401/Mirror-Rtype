@@ -71,3 +71,103 @@ jobs:
 
       - name: Run tests
         run: xmake test "test_*/*"
+
+  # ECS core under AddressSanitizer, UndefinedBehaviorSanitizer and Valgrind, plus a short benchmark run (issue #40).
+  # Only runs on pushes to main (like the mirror push), not on every pull request.
+  ecs-memory:
+    name: ECS sanitizers, Valgrind and benchmark
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    env:
+      ECS_TESTS: test_ecs test_ecs_stress
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Valgrind
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends valgrind
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Restore xmake packages cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.xmake/packages
+          key: xmake-pkgs-ecs-v1-${{ runner.os }}-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-pkgs-ecs-v1-${{ runner.os }}-
+
+      - name: Run the ECS tests under ASan and UBSan
+        run: |
+          xmake f -m debug --graphics=n --sanitizers=y -y
+          for test in $ECS_TESTS; do
+            xmake build -y $test
+            xmake run $test
+          done
+
+      - name: Run the ECS tests under Valgrind
+        run: |
+          xmake f -m debug --graphics=n --sanitizers=n -y
+          for test in $ECS_TESTS; do
+            xmake build -y $test
+            valgrind --leak-check=full --errors-for-leak-kinds=definite,indirect --error-exitcode=1 \
+              "build/linux/x86_64/debug/$test"
+          done
+
+      - name: Run the ECS benchmark once
+        run: |
+          xmake f -m release --graphics=n --benchmarks=y -y
+          xmake build -y bench_ecs
+          xmake run bench_ecs --benchmark_min_time=0.01s
+
+  engine-package:
+    name: Standalone engine + games on the package (ubuntu-latest)
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev libgl1-mesa-dev
+
+      - name: Setup xmake
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+
+      - name: Restore xmake packages cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.xmake/packages
+          key: xmake-pkgs-v2-${{ runner.os }}-${{ hashFiles('xmake.lua', 'engine/xmake.lua') }}
+          restore-keys: |
+            xmake-pkgs-v2-${{ runner.os }}-
+
+      # The engine on its own, as its own project: proves it needs nothing from the games.
+      - name: Build and test the engine alone
+        working-directory: engine
+        run: |
+          xmake f -P . -m release --tests=y -y
+          xmake build -P . -y
+          xmake test -P .
+
+      # The games on the installed squacaron package instead of the in-tree engine.
+      - name: Build the games on the squacaron package
+        run: |
+          xmake f -m release --engine_package=y -y
+          xmake require --force -y squacaron
+          xmake build -y
+
+      - name: Run the game tests
+        run: xmake test "test_*/*"

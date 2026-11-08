@@ -6,12 +6,14 @@
 #include "systems/script/ScriptSystem.hpp"
 
 #include <cstddef>
+#include <filesystem>
 #include <functional>
-#include <iostream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
+#include "log/Logger.hpp"
 #include "components/ScriptComponent.hpp"
 #include "ecs/CommandBuffer.hpp"
 #include "ecs/Entity.hpp"
@@ -19,9 +21,37 @@
 #include "events/EventBus.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "scripting/WrenVM.hpp"
+#include "scripting/detail/LogTag.hpp"
 #include "scripting/detail/WrenTypes.hpp"
+#include "systems/script/detail/ScriptSupport.hpp"
 
 namespace systems {
+
+namespace detail {
+
+std::string formatScriptError(std::string_view error) {
+    std::string text;
+    while (!error.empty()) {
+        std::size_t const end = error.find('\n');
+        std::string_view line = error.substr(0, end);
+        error = end == std::string_view::npos ? std::string_view{} : error.substr(end + 1);
+        while (!line.empty() && (line.front() == ' ' || line.front() == '\t')) {
+            line.remove_prefix(1);
+        }
+        if (line.empty()) {
+            continue;
+        }
+        if (!text.empty()) {
+            text += " | ";
+        }
+        text += line;
+    }
+    return text.empty() ? std::string("unknown error") : text;
+}
+
+}  // namespace detail
+
+using scripting::detail::LOG_TAG;
 
 ScriptSystem::ScriptSystem() = default;
 
@@ -55,8 +85,14 @@ ScriptSystem::ScriptSystem(ScriptSystem&& other) noexcept
       _binderReplayList(std::move(other._binderReplayList)),
       _reloadCheckTimer(other._reloadCheckTimer),
       _hotReloadEnabled(other._hotReloadEnabled),
+      _lastReplaySucceeded(other._lastReplaySucceeded),
       _extensions(std::move(other._extensions)),
-      _extraModules(std::move(other._extraModules)) {
+      _extraModules(std::move(other._extraModules)),
+      _failures(std::move(other._failures)),
+      _reportedModuleProblems(std::move(other._reportedModuleProblems)),
+      _elapsed(other._elapsed),
+      // Copied, not moved: a moved-from system keeps a valid root to answer `scriptRoot()`.
+      _scriptRoot(other._scriptRoot) {  // NOLINT(performance-move-constructor-init)
     other.detachDestroyListener();
     _vm.setUserContext(this);
     attachDestroyListener();
@@ -96,8 +132,13 @@ ScriptSystem& ScriptSystem::operator=(ScriptSystem&& other) noexcept {
         _binderReplayList = std::move(other._binderReplayList);
         _reloadCheckTimer = other._reloadCheckTimer;
         _hotReloadEnabled = other._hotReloadEnabled;
+        _lastReplaySucceeded = other._lastReplaySucceeded;
         _extensions = std::move(other._extensions);
         _extraModules = std::move(other._extraModules);
+        _failures = std::move(other._failures);
+        _reportedModuleProblems = std::move(other._reportedModuleProblems);
+        _elapsed = other._elapsed;
+        _scriptRoot = other._scriptRoot;
         _vm.setUserContext(this);
         attachDestroyListener();
         std::swap(_collisionBus, other._collisionBus);
@@ -158,11 +199,13 @@ void ScriptSystem::updateSleepingFibers(float dt) {
     }
 
     for (auto& sleeping : readyFibers) {
+        // A fiber of a script disabled meanwhile (e.g. by a failure of another fiber this frame) is dropped.
+        if (isScriptDisabled(sleeping.owner)) {
+            continue;
+        }
         const OwnerScope scope(*this, sleeping.owner);
         auto const res = _vm.call(_fiberCallHandle, sleeping.fiber.get());
-        if (res != WREN_RESULT_SUCCESS) {
-            std::cerr << "[ScriptSystem] Warning: Resuming sleeping fiber failed\n";
-        }
+        recordScriptResult(sleeping.owner, res, "a fiber resumed after Engine.wait");
     }
     readyFibers.clear();
 }
@@ -170,15 +213,13 @@ void ScriptSystem::updateSleepingFibers(float dt) {
 void ScriptSystem::updateScriptEntities(float dt) {
     for (ecs::Entity const e : _updatingEntities) {
         auto it = _instanceHandles.find(e);
-        if (it == _instanceHandles.end()) {
+        if (it == _instanceHandles.end() || isScriptDisabled(e)) {
             continue;
         }
 
         const OwnerScope scope(*this, e);
         auto const res = _vm.call(_updateHandle, it->second.get(), static_cast<double>(dt));
-        if (res != WREN_RESULT_SUCCESS) {
-            std::cerr << "[ScriptSystem] Warning: Script update loop failed for entity " << e << "\n";
-        }
+        recordScriptResult(e, res, "update(_)");
     }
 
     std::erase_if(_updatingEntities, [this](ecs::Entity e) { return !_instanceHandles.contains(e); });
@@ -195,6 +236,7 @@ void ScriptSystem::update(float dt) {
     if (_registry == nullptr) {
         return;
     }
+    _elapsed += dt;
 
     if (_hotReloadEnabled) {
         _reloadCheckTimer += dt;
@@ -217,6 +259,64 @@ void ScriptSystem::update(float dt) {
     updateScriptEntities(dt);
     flushPendingDestructions();
     _commandBuffer.flush(*_registry);
+}
+
+bool ScriptSystem::isScriptDisabled(ecs::Entity e) const noexcept {
+    auto const it = _failures.find(e);
+    return it != _failures.end() && it->second.disabled;
+}
+
+void ScriptSystem::setScriptRoot(std::filesystem::path root) { *_scriptRoot = std::move(root); }
+
+void ScriptSystem::recordScriptResult(ScriptOwner owner, WrenInterpretResult result, std::string_view hook) {
+    if (result == WREN_RESULT_SUCCESS) {
+        recordScriptSuccess(owner);
+    } else {
+        recordScriptFailure(owner, hook);
+    }
+}
+
+void ScriptSystem::recordScriptSuccess(ScriptOwner owner) {
+    auto const it = _failures.find(owner);
+    if (it == _failures.end() || it->second.disabled) {
+        return;
+    }
+    // Kept while errors are suppressed, so the rate limit still holds for a script failing every other frame.
+    it->second.consecutive = 0;
+    if (it->second.suppressed == 0 && _elapsed - it->second.lastLogTime >= SCRIPT_ERROR_LOG_INTERVAL) {
+        _failures.erase(it);
+    }
+}
+
+void ScriptSystem::recordScriptFailure(ScriptOwner owner, std::string_view hook) {
+    ScriptFailureState& state = _failures[owner];
+    if (state.disabled) {
+        return;
+    }
+    ++state.consecutive;
+    bool const isEntity = (owner & EXTENSION_OWNER_BIT) == 0 && owner != NO_SCRIPT_OWNER;
+
+    if (!state.logged || _elapsed - state.lastLogTime >= SCRIPT_ERROR_LOG_INTERVAL) {
+        std::string const who = isEntity ? "entity " + std::to_string(owner) : "script owner " + std::to_string(owner);
+        if (state.suppressed > 0) {
+            engine::log::warning(LOG_TAG, who, ": ", hook, " failed: ", detail::formatScriptError(_vm.lastError()), " (",
+                                state.suppressed, " similar errors not shown)");
+        } else {
+            engine::log::warning(LOG_TAG, who, ": ", hook, " failed: ", detail::formatScriptError(_vm.lastError()));
+        }
+        state.logged = true;
+        state.lastLogTime = _elapsed;
+        state.suppressed = 0;
+    } else {
+        ++state.suppressed;
+    }
+
+    if (isEntity && state.consecutive >= MAX_CONSECUTIVE_SCRIPT_FAILURES) {
+        state.disabled = true;
+        cancelFibers(owner);
+        engine::log::error(LOG_TAG, "script of entity ", owner, " disabled after ", state.consecutive,
+                          " consecutive failures (enabled again by the next hot reload)");
+    }
 }
 
 void ScriptSystem::enableHotReload(bool enabled) noexcept { _hotReloadEnabled = enabled; }

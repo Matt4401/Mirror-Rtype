@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
@@ -14,6 +13,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/GameplayComponents.hpp"
 #include "gameplay/GameplayEvents.hpp"
+#include "log/Logger.hpp"
 #include "prefabs/player_ship/PlayerShip.hpp"
 
 namespace rtype::server::gameplay {
@@ -47,10 +47,51 @@ void RespawnPlugin::init(engine::Engine& engine) {
     _bus = &engine.eventBus();
     _destroyedToken = _bus->subscribe<ShipDestroyed>([this, &engine](const ShipDestroyed& destroyed) {
         ecs::Registry& registry = engine.registry();
-        if (registry.isAlive(destroyed.ship) && !registry.hasComponent<Respawning>(destroyed.ship)) {
-            respawn(registry, destroyed.ship);
+        if (!registry.isAlive(destroyed.ship) || registry.hasComponent<Respawning>(destroyed.ship) ||
+            registry.hasComponent<Eliminated>(destroyed.ship)) {
+            return;
         }
+        if (registry.hasComponent<Lives>(destroyed.ship)) {
+            auto& lives = registry.getComponents<Lives>().get(destroyed.ship);
+            lives.left = lives.left > 0 ? static_cast<std::uint8_t>(lives.left - 1) : 0;
+            if (registry.hasComponent<game::EntityNetState>(destroyed.ship)) {
+                registry.getComponents<game::EntityNetState>().get(destroyed.ship).health = lives.left;
+            }
+            if (lives.left == 0) {
+                eliminate(registry, destroyed.ship);
+                return;
+            }
+        }
+        respawn(registry, destroyed.ship);
     });
+}
+
+void giveLives(ecs::Registry& registry, const ecs::Entity ship, const std::uint8_t lives) {
+    registry.addComponent(ship, Lives{.left = lives});
+    if (registry.hasComponent<game::EntityNetState>(ship)) {
+        registry.getComponents<game::EntityNetState>().get(ship).health = lives;
+    }
+}
+
+void RespawnPlugin::eliminate(ecs::Registry& registry, const ecs::Entity ship) {
+    registry.addComponent(ship, Eliminated{});
+    if (registry.hasComponent<game::EntityNetState>(ship)) {
+        auto& flags = registry.getComponents<game::EntityNetState>().get(ship).flags;
+        flags = static_cast<std::uint8_t>((flags | game::FLAG_ELIMINATED) & ~game::FLAG_INVULNERABLE);
+    }
+    if (registry.hasComponent<ecs::Transform>(ship)) {
+        registry.getComponents<ecs::Transform>().get(ship).x = ELIMINATED_SHIP_X;
+    }
+    engine::log::info(LOG_TAG, "a ship lost its last life");
+    _bus->publish(ShipEliminated{.ship = ship});
+    bool anyLeft = false;
+    registry.runSystem<Lives>([&registry, &anyLeft](const ecs::Entity other, const Lives& /*lives*/) {
+        anyLeft = anyLeft || !registry.hasComponent<Eliminated>(other);
+    });
+    if (!anyLeft) {
+        engine::log::info(LOG_TAG, "every ship is out: the game is lost");
+        _bus->publish(AllShipsEliminated{});
+    }
 }
 
 void RespawnPlugin::respawn(ecs::Registry& registry, const ecs::Entity ship) {
@@ -86,7 +127,7 @@ void RespawnPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& t
     for (const ecs::Entity ship : over) {
         registry.removeComponent<Respawning>(ship);
         if (isInTerrain(registry, ship)) {
-            log::info(LOG_TAG, "a ship was still in the terrain at the end of its respawn");
+            engine::log::info(LOG_TAG, "a ship was still in the terrain at the end of its respawn");
             respawn(registry, ship);
             stillRespawning = true;
             continue;

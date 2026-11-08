@@ -3,13 +3,17 @@
  * @brief Foreign method bindings and built-in core module loader for ScriptSystem.
  */
 
+#include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
 
+#include "log/Logger.hpp"
+#include "assets/AssetPath.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/SpatialQueries.hpp"
@@ -18,7 +22,9 @@
 #include "scripting/CoreModules.hpp"
 #include "scripting/ForeignCall.hpp"
 #include "scripting/WrenVM.hpp"
+#include "scripting/detail/LogTag.hpp"
 #include "systems/script/ScriptSystem.hpp"
+#include "systems/script/detail/ScriptSupport.hpp"
 
 namespace systems {
 
@@ -59,7 +65,8 @@ void engineSpawnPrefab(scripting::ForeignCall& call) {
 
     auto const* manager = scriptSystem->getPrefabManager();
     if (manager == nullptr) {
-        std::cerr << "[ScriptSystem] Engine.spawnPrefab(\"" << *prefabName << "\"): no PrefabManager set\n";
+        engine::log::warning(scripting::detail::LOG_TAG, "Engine.spawnPrefab(", assets::quoteForLog(*prefabName),
+                            "): no PrefabManager set");
         return;
     }
     ScriptSystem::SpawnDecorator const decorator = scriptSystem->spawnDecorator();
@@ -305,7 +312,7 @@ void ScriptSystem::registerCoreBindings(scripting::WrenVM& vm) {
 }
 
 void ScriptSystem::loadCoreModules() {
-    _vm.setModuleLoader([extraModules = _extraModules](std::string_view moduleName) -> std::string {
+    _vm.setModuleLoader([extraModules = _extraModules, root = _scriptRoot](std::string_view moduleName) -> std::string {
         std::string_view const coreSource = scripting::getCoreModuleSource(moduleName);
         if (!coreSource.empty()) {
             return std::string(coreSource);
@@ -314,8 +321,12 @@ void ScriptSystem::loadCoreModules() {
             return it->second;
         }
 
-        std::string const filename = std::string(moduleName) + ".wren";
-        std::ifstream file(filename);
+        std::optional<std::filesystem::path> const filename = detail::resolveScriptFile(*root, moduleName);
+        if (!filename) {
+            detail::logRefusedScriptModule(moduleName);
+            return "";
+        }
+        std::ifstream file(*filename);
         if (file.is_open()) {
             std::stringstream buffer;
             buffer << file.rdbuf();
@@ -325,7 +336,10 @@ void ScriptSystem::loadCoreModules() {
     });
 
     auto const res = _vm.interpret("_internal", scripting::INTERNAL_DISPATCHER_SOURCE);
-    (void)res;
+    if (!res) {
+        engine::log::error(scripting::detail::LOG_TAG,
+                          "cannot run the internal dispatcher: ", detail::formatScriptError(res.error()));
+    }
 }
 
 }  // namespace systems

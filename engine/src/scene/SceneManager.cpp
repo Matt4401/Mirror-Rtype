@@ -163,11 +163,17 @@ void SceneManager::enter(SceneId id) {
     // The scenes below learn they are paused or hidden before the new scene spawns anything.
     refreshStates(true);
     try {
+        // Before `onEnter`, so that what the scene needs (its asset group...) is ready when it spawns.
+        _engine->eventBus().publish(SceneEntering{.id = id});
         slot.scene->onEnter(slot.context);
     } catch (...) {
         // Roll back: what the scene created goes, and the scenes below run and show again. No `onExit`, no
-        // `SceneExited`: the scene never entered.
+        // `SceneExited`: the scene never entered; `SceneEnterAborted` lets `SceneEntering` listeners undo.
         const std::exception_ptr error = std::current_exception();
+        try {
+            _engine->eventBus().publish(SceneEnterAborted{.id = id});
+        } catch (...) {  // NOLINT(bugprone-empty-catch): the error of `onEnter` is the one to report.
+        }
         std::exception_ptr ignored;
         removeTop(ignored);
         try {

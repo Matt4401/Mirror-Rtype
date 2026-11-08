@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cmath>
+#include <cstddef>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -9,15 +12,22 @@
 #include <variant>
 #include <vector>
 
+#include "components/Hidden.hpp"
+#include "components/Replicated.hpp"
+#include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "core/services/IInputService.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "core/services/IWindowService.hpp"
 #include "ecs/Registry.hpp"
 #include "events/UiEvents.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "gameplay/BossEffects.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
+#include "input/InputPlugin.hpp"
+#include "input/RTypeBindings.hpp"
 #include "net/ClientConnection.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -30,10 +40,15 @@
 #include "scene/ScenePlugin.hpp"
 #include "scene/scripting/SceneScriptingPlugin.hpp"
 #include "scenes/ClientScenesPlugin.hpp"
+#include "scenes/ClientSettings.hpp"
 #include "scenes/GameScenes.hpp"
+#include "scenes/MenuKit.hpp"
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "ui/UiPlugin.hpp"
+#include "ui/components/UiImage.hpp"
+#include "ui/components/UiProgressBar.hpp"
+#include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
 
 // The client's menus, without a window: fake window, draw service and transport, the real scenes and session.
@@ -54,7 +69,9 @@ struct QuietWindow final : engine::IWindowService {
     void endFrame() override {}
     [[nodiscard]] int width() const noexcept override { return 1280; }
     [[nodiscard]] int height() const noexcept override { return 720; }
-    [[nodiscard]] bool isKeyDown(engine::Key /*key*/) const noexcept override { return false; }
+    [[nodiscard]] bool isKeyDown(engine::Key key) const noexcept override {
+        return keys.at(static_cast<std::size_t>(key));
+    }
     [[nodiscard]] bool isGamepadAvailable(int /*gamepad*/) const noexcept override { return false; }
     [[nodiscard]] bool isGamepadButtonDown(int /*gamepad*/, engine::GamepadButton /*button*/) const noexcept override {
         return false;
@@ -68,6 +85,8 @@ struct QuietWindow final : engine::IWindowService {
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return {.x = -1.0F, .y = -1.0F}; }
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return 0.0F; }
     [[nodiscard]] char32_t nextTypedCharacter() noexcept override { return U'\0'; }
+
+    std::array<bool, 256> keys{};
 };
 
 /** @brief Draw service that draws nothing. */
@@ -144,6 +163,7 @@ class ClientScenesTest : public ::testing::Test {
         engine.setFixedDeltaTime(DT);
         const auto connection = std::make_shared<ecs::net::ClientConnection>(nullptr);
         engine.addPlugin<FakeServicesPlugin>()
+            .addPlugin<input::InputPlugin>()
             .addPlugin<hierarchy::HierarchyPlugin>()
             .addPlugin<ui::UiPlugin>()
             .addPlugin<scene::ScenePlugin>()
@@ -196,6 +216,14 @@ class ClientScenesTest : public ::testing::Test {
         receive(protocol::LobbyUpdate{.roomId = ROOM, .slots = {{.clientId = 1, .ready = false}}});
     }
 
+    [[nodiscard]] config::Settings& settings() { return engine.getPlugin<settings::SettingsPlugin>().settings(); }
+
+    void setKey(engine::Key key, bool down) {
+        auto& window = static_cast<QuietWindow&>(engine.service<engine::IWindowService>());
+        window.keys.at(static_cast<std::size_t>(key)) = down;
+        frame();
+    }
+
     [[nodiscard]] bool showsText(std::string_view text) {
         bool found = false;
         engine.registry().runSystem<ui::UiText>(
@@ -218,6 +246,66 @@ TEST_F(ClientScenesTest, SettingsOpenOverTheTitleAndGoBack) {
     engine.eventBus().publish(ui::UiBackEvent{});
     frame();
     EXPECT_EQ(top(), "Title");
+}
+
+TEST_F(ClientScenesTest, TheControlsOpenFromTheSettingsAndGoBack) {
+    click("title.settings");
+    click("settings.controls");
+    EXPECT_EQ(top(), "Controls");
+    engine.eventBus().publish(ui::UiBackEvent{});
+    frame();
+    EXPECT_EQ(top(), "Settings");
+}
+
+TEST_F(ClientScenesTest, AKeyPressedAfterChoosingAControlIsSaved) {
+    click("title.settings");
+    click("settings.controls");
+    click("controls.key.shoot");
+    setKey(engine::Key::F, true);
+    setKey(engine::Key::F, false);
+    EXPECT_EQ(settings().getString(client::settings_keys::controlKey(client::input::Control::Shoot)), "F");
+    EXPECT_TRUE(engine.service<engine::IInputService>().mapping().hasKey("shoot", engine::Key::F));
+    EXPECT_FALSE(engine.service<engine::IInputService>().mapping().hasKey("shoot", engine::Key::Space));
+}
+
+TEST_F(ClientScenesTest, EscapeCancelsTheWaitForAKey) {
+    click("title.settings");
+    click("settings.controls");
+    click("controls.key.shoot");
+    engine.eventBus().publish(ui::UiBackEvent{});
+    frame();
+    EXPECT_EQ(top(), "Controls");
+    setKey(engine::Key::F, true);
+    EXPECT_EQ(settings().getString(client::settings_keys::controlKey(client::input::Control::Shoot)), "Space");
+}
+
+TEST_F(ClientScenesTest, ResetPutsTheDefaultKeysBack) {
+    settings().set(client::settings_keys::controlKey(client::input::Control::Shoot), std::string("F"));
+    click("title.settings");
+    click("settings.controls");
+    click("controls.reset");
+    EXPECT_EQ(settings().getString(client::settings_keys::controlKey(client::input::Control::Shoot)), "Space");
+}
+
+TEST_F(ClientScenesTest, TheTextSizeButtonScalesTheMenus) {
+    click("title.settings");
+    click("settings.scale");
+    EXPECT_EQ(top(), "Settings");
+    EXPECT_FLOAT_EQ(static_cast<float>(settings().getNumber(client::settings_keys::UI_SCALE)), 1.15F);
+    EXPECT_FLOAT_EQ(client::menu::scale(engine.registry()), 1.15F);
+    bool scaledPanel = false;
+    engine.registry().runSystem<ui::UiRect>([&scaledPanel](ecs::Entity /*entity*/, const ui::UiRect& rect) {
+        scaledPanel = scaledPanel || std::abs(rect.width - (500.0F * 1.15F)) < 0.01F;
+    });
+    EXPECT_TRUE(scaledPanel);
+    EXPECT_TRUE(showsText("SETTINGS"));
+}
+
+TEST_F(ClientScenesTest, TheAutoFireToggleReachesThePlayerControls) {
+    click("title.settings");
+    engine.eventBus().publish(ui::UiToggleChangedEvent{.entity = 0, .action = "settings.autofire", .on = true});
+    frame();
+    EXPECT_TRUE(engine.getPlugin<client::PlayerControlPlugin>().autoFire());
 }
 
 TEST_F(ClientScenesTest, FromTheTitleToARoom) {
@@ -281,6 +369,86 @@ TEST_F(ClientScenesTest, PauseIsLocalAndLeavingGoesBackToTheLobby) {
     EXPECT_EQ(top(), "Lobby");
     EXPECT_EQ(transport->sentOf<protocol::Leave>().size(), 1U);
     EXPECT_FALSE(engine.getPlugin<client::PlayerControlPlugin>().paused());
+}
+
+TEST_F(ClientScenesTest, TheBossHealthBarShowsWhileABossIsOnScreen) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    const auto bar = [this]() -> std::optional<std::pair<ecs::Entity, ui::UiProgressBar>> {
+        std::optional<std::pair<ecs::Entity, ui::UiProgressBar>> found;
+        engine.registry().runSystem<ui::UiProgressBar>(
+            [&found](const ecs::Entity entity, const ui::UiProgressBar& progress) { found = {entity, progress}; });
+        return found;
+    };
+    ASSERT_TRUE(bar().has_value());
+    EXPECT_TRUE(ecs::isHidden(engine.registry(), bar()->first)) << "no boss yet";
+
+    // A boss as the replication and RTypeGamePlugin leave it: replicated, with its hit points and its flash.
+    ecs::Registry& registry = engine.registry();
+    const ecs::Entity boss = registry.spawnEntity();
+    registry.emplaceComponent<ecs::Replicated>(boss, rtype::game::KIND_BOSS_CORE);
+    registry.addComponent(boss, rtype::game::EntityNetState{.health = 30});
+    registry.addComponent(boss, client::gameplay::HitFlash{.spawnHealth = 40, .lastHealth = 30});
+    frame();
+    ASSERT_FALSE(ecs::isHidden(registry, bar()->first));
+    EXPECT_FLOAT_EQ(bar()->second.value, 30.0F);
+    EXPECT_FLOAT_EQ(bar()->second.max, 40.0F);
+    EXPECT_TRUE(showsText("BOSS"));
+
+    registry.killEntity(boss);
+    frame();
+    EXPECT_TRUE(ecs::isHidden(registry, bar()->first)) << "the boss is gone";
+}
+
+TEST_F(ClientScenesTest, TheHudShowsTheTotalAndTheOwnScoreLive) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 1, .playerCount = 2});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    EXPECT_TRUE(showsText("SCORE 0"));
+    EXPECT_TRUE(showsText("YOU 0"));
+
+    receive(protocol::ScoreUpdate{.score = 12, .playerScores = {7, 5}});
+    EXPECT_TRUE(showsText("SCORE 12"));
+    EXPECT_TRUE(showsText("YOU 5")) << "player 2 sees their own score";
+}
+
+TEST_F(ClientScenesTest, TheHudShowsOneShipPerLifeThenOut) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    const auto visibleLives = [this] {
+        int count = 0;
+        engine.registry().runSystem<ui::UiImage>(
+            [this, &count](const ecs::Entity entity, const ui::UiImage& /*image*/) {
+                count += ecs::isHidden(engine.registry(), entity) ? 0 : 1;
+            });
+        return count;
+    };
+    EXPECT_EQ(visibleLives(), 3) << "three lives at the start";
+
+    // The own ship, as the replication leaves it: its lives are its health.
+    ecs::Registry& registry = engine.registry();
+    const ecs::Entity ship = registry.spawnEntity();
+    registry.emplaceComponent<ecs::Replicated>(ship, rtype::game::KIND_PLAYER_SHIP);
+    registry.addComponent(ship, rtype::game::EntityNetState{.subtype = 0, .health = 2});
+    frame();
+    EXPECT_EQ(visibleLives(), 2);
+
+    auto& state = registry.getComponents<rtype::game::EntityNetState>().get(ship);
+    state.health = 0;
+    state.flags |= rtype::game::FLAG_ELIMINATED;
+    frame();
+    EXPECT_EQ(visibleLives(), 0);
+    bool out = false;
+    registry.runSystem<ui::UiText>([&](const ecs::Entity entity, const ui::UiText& text) {
+        out = out || (text.text == "OUT" && !ecs::isHidden(registry, entity));
+    });
+    EXPECT_TRUE(out) << "OUT shows, then the client closes (Engine::stop, not observable without Engine::run)";
+    frame(2.1);
 }
 
 TEST_F(ClientScenesTest, GameOverShowsTheResult) {

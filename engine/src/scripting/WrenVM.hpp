@@ -117,6 +117,18 @@ class WrenVM {
     void setErrorHandler(ErrorHandler handler);
 
     /**
+     * @brief Gets the text output handler, to restore it after replacing it for a while.
+     * @return The handler; empty when output goes to the standard output.
+     */
+    [[nodiscard]] const WriteHandler& writeHandler() const noexcept { return _writeHandler; }
+
+    /**
+     * @brief Gets the error handler, to restore it after replacing it for a while.
+     * @return The handler; empty when errors go to the standard error output.
+     */
+    [[nodiscard]] const ErrorHandler& errorHandler() const noexcept { return _errorHandler; }
+
+    /**
      * @brief Registers a foreign method callback with Wren using a raw C function pointer.
      *
      * @param module Wren module name containing the class.
@@ -189,6 +201,18 @@ class WrenVM {
      * @return Result status.
      */
     WrenInterpretResult call(const detail::UniqueWrenHandle& method);
+
+    /**
+     * @brief Gets the error of the last failed `interpret()` or `call()`.
+     *
+     * Cleared at the start of each of them, so it only ever holds one error: the message followed by its stack trace,
+     * one line each, separated by `\n`. At most `MAX_ERROR_LENGTH` bytes.
+     * @return The error text, empty after a success.
+     */
+    [[nodiscard]] const std::string& lastError() const noexcept { return _lastError; }
+
+    /** @brief Longest error text kept by `lastError()`, in bytes: a deep stack trace is cut there. */
+    static constexpr std::size_t MAX_ERROR_LENGTH = 4096;
 
     /**
      * @brief High-level call API invoking a method on a receiver with variadic arguments.
@@ -363,8 +387,10 @@ class WrenVM {
     WriteHandler _writeHandler;
     /** @brief Registered error diagnostic callback. */
     ErrorHandler _errorHandler;
-    /** @brief Diagnostic error message from the last interpretation error. */
+    /** @brief Error of the last failed `interpret()` or `call()`. */
     std::string _lastError;
+    /** @brief Text printed by `System.print` without its newline yet, logged once the line is complete. */
+    std::string _pendingOutput;
 
     /** @brief Cache of loaded module source strings for inspection. */
     std::unordered_map<std::string, std::string> _loadedSources;

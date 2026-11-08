@@ -44,6 +44,22 @@ const double volume = prefs.getNumber("audio.master");
 - **Atomic writes.** `ConfigFile::save` writes `<file>.tmp` then renames it over the file, creating missing
   directories. A crash during a save never leaves a truncated settings file.
 
+```mermaid
+sequenceDiagram
+    participant G as Game / menu
+    participant S as config::Settings
+    participant P as SettingsPlugin
+    participant B as EventBus
+    participant F as settings.toml
+    P->>F: init: load
+    G->>S: set("audio.master", 0.4)
+    Note over S: marked dirty
+    P->>B: next update: SettingChanged{"audio.master"}
+    B->>G: listeners apply the value (volume, overlay, ...)
+    Note over P: no change for saveDelay (1 s)
+    P->>F: save: write .tmp, then rename
+```
+
 ## Where the file lives
 
 `config::userConfigDirectory(app)` returns:
@@ -56,5 +72,4 @@ const double volume = prefs.getNumber("audio.master");
 
 If no home is known, it falls back to `<current directory>/<app>`.
 
-This is the storage layer a future developer console and CVars can build on: a CVar is a declared setting plus a
-console binding.
+This is the storage layer archived CVars can build on (see [Console and CVars](console.md)).

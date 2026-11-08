@@ -213,6 +213,7 @@ Table of Contents
      |-- [UDP open] -----------------------> | (transport)
      |-- PlayerInput (1) [UDP] ----------> | In-game
      |<-- WorldState (2) [UDP] ----------- |
+     |<-- ScoreUpdate (53) [TCP] --------- | when a score changes
      |<-- LevelComplete (52) [TCP] ------- | level cleared
      |<-- LevelStart (51) [level n] ------ | after the intermission
      |        ...                              |
@@ -226,9 +227,11 @@ Table of Contents
    A game is a sequence of levels.  The server sends LevelStart for
    each level (the first one right after GameStart), LevelComplete
    when a level is cleared, then the next LevelStart after an
-   intermission.  After the last level, or when every ship is
-   destroyed, it sends GameOver and destroys the room: its players are
-   back in the lobby and receive the list of rooms again.
+   intermission.  ScoreUpdate carries the total score and the score
+   of each player whenever they change, at most every 0.25 s.  After
+   the last level, or when every ship is destroyed, it sends GameOver
+   and destroys the room: its players are back in the lobby and
+   receive the list of rooms again.
 
    Leave removes the client from its room, waiting or in game, and the
    client stays connected: it is used to go back to the lobby, and is
@@ -253,6 +256,7 @@ Table of Contents
    50    PlayerLeft        S->C   Reliable    Lobby + In-game
    51    LevelStart        S->C   Reliable    In-game
    52    LevelComplete     S->C   Reliable    In-game
+   53    ScoreUpdate       S->C   Reliable    In-game
    64    Leave             C->S   Reliable    Any
    65    Chat              Both   Reliable    Lobby + In-game
 

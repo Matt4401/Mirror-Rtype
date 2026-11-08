@@ -22,8 +22,8 @@ inline constexpr float DEFAULT_MISSILE_SPEED = -600.0F;
 /**
  * @brief Attaches the missile components (`Transform`, `Renderable`, `RigidBody2D`, `Collider2D`) to an entity.
  *
- * Parameters: the transform keys (see `makeTransform`) and `speed` (horizontal velocity in pixels per second,
- * `DEFAULT_MISSILE_SPEED` by default).
+ * Parameters: the transform keys (see `makeTransform`), `speed` (horizontal velocity in pixels per second,
+ * `DEFAULT_MISSILE_SPEED` by default) and `speed_y` (vertical velocity, 0 by default).
  *
  * @param e Freshly spawned entity.
  * @param registry Registry owning the entity.

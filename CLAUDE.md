@@ -1,4 +1,4 @@
-# Mirror-Rtype
+# Squacaron (Mirror-Rtype repository)
 
 A highly decoupled, data-oriented C++23 game engine, built from scratch to power a networked multiplayer R-Type clone
 (Epitech Advanced C++ project). Binaries: `r-type_server`, `r-type_client`.
@@ -32,13 +32,21 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
   `engine_metrics` (metrics/), `engine_metrics_overlay` (metrics/overlay/), `engine_network_metrics` (net/metrics/),
   `engine_render` (render/, systems/render/), `engine_input` (input/), `engine_scene` (scene/: scene stack,
   headless), `engine_scene_scripting` (scene/scripting/: Wren bridge),
-  `engine_settings` (settings/: persisted user settings). `engine_all` is a phony aggregate.
+  `engine_assets` (assets/: asset manager, aliases and groups, open set of kinds, headless),
+  `engine_assets_scripting` (assets/scripting/: Wren `core/Assets`), `engine_assets_scene` (assets/scene/: a scene's
+  asset group follows the scene), `engine_assets_render` / `engine_assets_audio` (assets/render/, assets/audio/:
+  bridges plugging the render and audio loaders in; graphics only),
+  `engine_settings` (settings/: persisted user settings),
+  `engine_tools` (tools/cvars/: CVar registry, tools/console/: interpreter and `ConsolePlugin`; headless),
+  `engine_tools_scripting` (tools/scripting/: `wren` console command, `.wren` files for `exec`),
+  `engine_devconsole` (tools/devconsole/: in-game console window, drawn through engine services).
+  `engine_all` is a phony aggregate.
 - `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`src/protocol/`), protobuf types stay
   private
 - `game/src/` — `rtype_game`: R-Type code shared by server and client (replication codec, ship movement)
 - `server/src/`, `client/src/` — the R-Type game executables
 - `rlss/` — second sample game (2D car football): `shared/` (protocol, arena), `game/` (codec, Wren bindings),
-  `server/`, `client/`, `scripts/` (Wren car physics, loaded from the repo root); see `docs/rlss/index.md`
+  `server/`, `client/`, `scripts/` (Wren car physics, read from the content root: the executable's directory); see `docs/rlss/index.md`
 - `scripts/` — Wren scripts (`scripts/core/*.wren`) + tooling scripts
 - `tests/` — GoogleTest binaries, one `target` per suite in `tests/xmake.lua`
 - `docs/` — architecture, protocol, comparative study, accessibility, dev guides

@@ -39,10 +39,11 @@ xmake run r-type_server --level /tmp/test.toml   # plays another level file
 
 Usage: `r-type_server [port] [--logs | --logs-colorful] [--level <path>]`, arguments in any order.
 
-Every room plays `server/levels/level_01.toml` (see [Level Files](../gameplay/levels.md)). The server looks up this file
-and the boss scripts (`scripts/`) from the directory of its executable, the project root, so it can be started from any
-directory. If the default level cannot be loaded, the server logs a warning and the rooms play without a level. A level
-given with `--level` must load: otherwise the server stops with code 84. Its warnings are printed at start-up, which
+Every room plays the campaign: the `server/levels/level_*.toml` files, in the order of their names (see
+[Level Files](../gameplay/levels.md)). The server looks up these files and the boss scripts (`scripts/`) from the
+directory of its executable, the project root, so it can be started from any directory. A level file that cannot be
+loaded is skipped with a warning; without any, the rooms play without a level. A level given with `--level` is played
+alone and must load: otherwise the server stops with code 84. Its warnings are printed at start-up, which
 makes `--level` handy to try a level file without touching the shipped one.
 
 Each line starts with the time since startup in seconds, the level and the subsystem:
@@ -62,12 +63,12 @@ With `--logs-colorful`, the timestamp is dim, the level is colored by severity (
 bold yellow `WARN`, bold white on red `ERROR`), the tag is bold in a color picked from its name (`server` and `network`
 always get the same one), and the text of warnings and errors is yellow and red.
 
-In code, log through `rtype::log` (`log/src/Logger.hpp`, xmake target `log`), never `std::cout`:
+In code, log through `engine::log` (`engine/src/log/Logger.hpp`, xmake target `engine_log`), never `std::cout`:
 
 ```cpp
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 
-rtype::log::debug("server", "client ", client, " joined room ", roomId);
+engine::log::debug("server", "client ", client, " joined room ", roomId);
 ```
 
 ## Running the Client

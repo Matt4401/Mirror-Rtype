@@ -1,13 +1,12 @@
 # Getting Started
 
-Welcome to the R-Type engine project! This guide will help you set up your development environment.
+This guide sets up a development environment for Squacaron and the two games built on it.
 
 ## Prerequisites
 
-Our project utilizes modern tools to guarantee cross-platform compatibility without polluting your OS system paths.
-
-- **C++23 Compiler**: `gcc` 13+ or `clang` 16+ on Linux, or MSVC on Windows.
-- **xmake**: We use xmake as both our build system and package manager. It automatically fetches all dependencies in an isolated environment.
+- A C++23 compiler: `gcc` 13+ or `clang` 16+ on Linux, or MSVC on Windows.
+- xmake, which is both the build system and the package manager. It downloads the dependencies into its own cache,
+  so nothing is installed system-wide.
 
 ### Installing xmake
 

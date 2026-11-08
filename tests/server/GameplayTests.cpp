@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -12,6 +13,7 @@
 #include <utility>
 #include <vector>
 
+#include "collision/GameCollisionEvents.hpp"
 #include "components/Replicated.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/ScriptComponent.hpp"
@@ -24,19 +26,27 @@
 #include "gameplay/BossFightPlugin.hpp"
 #include "gameplay/CombatPlugin.hpp"
 #include "gameplay/Gameplay.hpp"
+#include "gameplay/GameplayComponents.hpp"
 #include "gameplay/GameplayEvents.hpp"
 #include "gameplay/LevelDirectorPlugin.hpp"
 #include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
+#include "hierarchy/Hierarchy.hpp"
+#include "hierarchy/HierarchyPlugin.hpp"
 #include "level/Level.hpp"
+#include "level/LevelLoader.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
+#include "prefabs/CollisionCategories.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabPlugin.hpp"
+#include "prefabs/alien_elite/AlienElite.hpp"
+#include "prefabs/alien_gunner/AlienGunner.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
+#include "prefabs/boss_part/BossPart.hpp"
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/player_ship/PlayerShip.hpp"
 #include "prefabs/power_up/PowerUp.hpp"
@@ -96,6 +106,7 @@ class GameplayTest : public ::testing::Test {
     explicit GameplayTest(std::shared_ptr<const level::Level> played = testLevel()) : engine([this] { return now; }) {
         engine.setFixedDeltaTime(FIXED_DT);
         engine.addPlugin<systems::PhysicsPlugin>();
+        engine.addPlugin<hierarchy::HierarchyPlugin>();
         engine.addPlugin<timeline::TimelinePlugin>();
         rtype::server::gameplay::addGameplayPlugins(engine, played);
         engine.init();
@@ -164,6 +175,8 @@ class GameplayWithoutLevelTest : public GameplayTest {
 
 /** @brief Health of the test boss: a few shots. */
 constexpr std::int64_t BOSS_HEALTH = 3;
+/** @brief Variant of the test boss, sent as its subtype. */
+constexpr std::int64_t BOSS_VARIANT = 2;
 /** @brief Height of the test boss, and of the ship fighting it. */
 constexpr float BOSS_Y = 360.0F;
 
@@ -177,6 +190,7 @@ std::shared_ptr<const level::Level> bossLevel() {
                                     {"x", 1328.0},
                                     {"y", static_cast<double>(BOSS_Y)},
                                     {"health", BOSS_HEALTH},
+                                    {"variant", BOSS_VARIANT},
                                     {"script", std::string("scripts/Boss.wren")}}});
     built->timeline.add({.position = 6000.0F, .type = std::string(level::EVENT_END), .params = {}});
     return built;
@@ -189,6 +203,67 @@ class BossFightTest : public GameplayTest {
 
     /** @brief The boss, if alive. */
     [[nodiscard]] std::vector<ecs::Entity> bosses() { return entitiesOf(game::KIND_BOSS_CORE); }
+};
+
+/** @brief Offset of the weak point of `partsLevel()` from the boss center. */
+constexpr double WEAK_POINT_X = -40.0;
+
+/** @brief Boss at 1 s with a weak point, an armor plate and a turret of 2 hit points. */
+std::shared_ptr<const level::Level> partsLevel() {
+    auto built = std::make_shared<level::Level>();
+    built->scrollSpeed = LEVEL_SPEED;
+    built->timeline.add({.position = 60.0F,
+                         .type = std::string(level::EVENT_BOSS),
+                         .params = {{"prefab", std::string("boss_core")},
+                                    {"x", 1328.0},
+                                    {"y", static_cast<double>(BOSS_Y)},
+                                    {"health", BOSS_HEALTH},
+                                    {"parts.count", std::int64_t{4}},
+                                    {"parts.0.role", std::string("weak_point")},
+                                    {"parts.0.x", WEAK_POINT_X},
+                                    {"parts.1.role", std::string("armor")},
+                                    {"parts.1.y", -60.0},
+                                    {"parts.2.role", std::string("turret")},
+                                    {"parts.2.y", 60.0},
+                                    {"parts.2.health", 2.0},
+                                    {"parts.2.look", 5.0},
+                                    {"parts.3.role", std::string("dragon")}}});
+    built->timeline.add({.position = 6000.0F, .type = std::string(level::EVENT_END), .params = {}});
+    return built;
+}
+
+/** @brief Room playing `partsLevel()`. */
+class BossPartsTest : public GameplayTest {
+  protected:
+    BossPartsTest() : GameplayTest(partsLevel()) {}
+
+    /** @brief The boss, once spawned. */
+    [[nodiscard]] ecs::Entity boss() {
+        const auto found = entitiesOf(game::KIND_BOSS_CORE);
+        return found.empty() ? ecs::NULL_ENTITY : found.front();
+    }
+
+    /** @brief The part of a role. */
+    [[nodiscard]] ecs::Entity part(const prefabs::BossPartRole role) {
+        for (const ecs::Entity entity : entitiesOf(game::KIND_BOSS_PART)) {
+            if (registry().getComponents<prefabs::BossPart>().get(entity).role == role) {
+                return entity;
+            }
+        }
+        return ecs::NULL_ENTITY;
+    }
+
+    /** @brief Hits an entity with a player 1 shot, as the collision router reports it. */
+    void hit(const ecs::Entity target) {
+        const ecs::Entity shot = registry().spawnEntity();
+        registry().addComponent(shot, game::EntityNetState{.subtype = 0});
+        engine.eventBus().publish(rtype::server::collision::ShotHitEvent{
+            .shot = shot, .target = target, .targetCategory = prefabs::collision::ENEMY, .byPlayer = true});
+    }
+
+    [[nodiscard]] std::uint8_t health(const ecs::Entity entity) {
+        return registry().getComponents<prefabs::Health>().get(entity).points;
+    }
 };
 
 /** @brief Height of the test terrain. */
@@ -327,7 +402,7 @@ TEST_F(GameplayTest, EndOfLevelRestartsItBeforeTheGameStarts) {
 /** @brief Gameplay engine recording the session messages the room would send. */
 class GameFlowTest : public GameplayTest {
   protected:
-    GameFlowTest() {
+    explicit GameFlowTest(std::shared_ptr<const level::Level> played = testLevel()) : GameplayTest(std::move(played)) {
         ecs::EventBus& bus = engine.eventBus();
         bus.subscribe<protocol::LevelStart>([this](const protocol::LevelStart& message) {
             log.push_back("start " + std::to_string(message.levelIndex) + "/" + std::to_string(message.levelCount) +
@@ -347,6 +422,85 @@ class GameFlowTest : public GameplayTest {
     std::optional<protocol::LevelComplete> complete;
     std::optional<protocol::GameOver> over;
 };
+
+/**
+ * @brief Two levels chained: "First" spawns an enemy at 0.5 s and ends at 1 s, "Second" ends at 2 s.
+ * @return The first level.
+ */
+std::shared_ptr<const level::Level> campaign() {
+    auto second = std::make_shared<level::Level>();
+    second->name = "Second";
+    second->scrollSpeed = LEVEL_SPEED;
+    second->timeline.add({.position = 120.0F, .type = std::string(level::EVENT_END), .params = {}});
+    auto first = std::make_shared<level::Level>();
+    first->name = "First";
+    first->scrollSpeed = LEVEL_SPEED;
+    first->timeline.add(spawnAt(30.0F, LANE_Y + 300.0F));
+    first->timeline.add({.position = 60.0F, .type = std::string(level::EVENT_END), .params = {}});
+    first->next = second;
+    return first;
+}
+
+/** @brief Room playing `campaign()`. */
+class CampaignTest : public GameFlowTest {
+  protected:
+    CampaignTest() : GameFlowTest(campaign()) {}
+};
+
+TEST_F(CampaignTest, LevelsArePlayedInOrderThenTheGameIsWon) {
+    spawnShip(0, 200.0F, LANE_Y);
+    engine.getPlugin<LevelDirectorPlugin>().startGame();
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/2 First"}));
+
+    run(1.1F);
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/2 First", "complete 0"})) << "no victory after the first level";
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F) << "the scroll waits during the intermission";
+    EXPECT_FALSE(entitiesOf(game::KIND_ALIEN_SCOUT).empty());
+
+    run(rtype::server::gameplay::INTERMISSION_DURATION);
+    EXPECT_EQ(log.back(), "start 1/2 Second");
+    EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty()) << "the field is cleared for the new level";
+    EXPECT_EQ(entitiesOf(game::KIND_PLAYER_SHIP).size(), 1U) << "the ships stay";
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
+
+    run(2.1F);
+    EXPECT_EQ(log,
+              (std::vector<std::string>{"start 0/2 First", "complete 0", "start 1/2 Second", "complete 1", "victory"}));
+}
+
+TEST_F(CampaignTest, BeforeTheGameStartsTheFirstLevelLoops) {
+    run(1.1F);
+    EXPECT_TRUE(log.empty());
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED) << "restarted, not waiting for the next level";
+}
+
+TEST_F(GameFlowTest, LosingEveryLifeEndsTheGame) {
+    const ecs::Entity ship = spawnShip(1, 200.0F, LANE_Y);
+    rtype::server::gameplay::giveLives(registry(), ship, 1);
+    engine.getPlugin<LevelDirectorPlugin>().startGame();
+    engine.eventBus().publish(rtype::server::gameplay::ShipDestroyed{.ship = ship});
+    ASSERT_TRUE(over.has_value());
+    EXPECT_EQ(over->reason, protocol::GameOverReason::AllDead);
+    EXPECT_EQ(log.back(), "other");
+}
+
+TEST_F(GameFlowTest, AnEliminatedShipNeitherShootsNorMoves) {
+    const ecs::Entity ship = spawnShip(0, 200.0F, LANE_Y);
+    const ecs::Entity other = spawnShip(1, 200.0F, LANE_Y + 300.0F);
+    rtype::server::gameplay::giveLives(registry(), ship, 1);
+    rtype::server::gameplay::giveLives(registry(), other, 3);
+    engine.eventBus().publish(rtype::server::gameplay::ShipDestroyed{.ship = ship});
+    EXPECT_FALSE(over.has_value()) << "another player is still in";
+    shoot(ship);
+    run(0.2F);
+    EXPECT_TRUE(entitiesOf(game::KIND_PLAYER_BULLET).empty());
+}
+
+TEST(Campaign, LengthFollowsTheChain) {
+    EXPECT_EQ(level::campaignLength(nullptr), 0U);
+    EXPECT_EQ(level::campaignLength(campaign().get()), 2U);
+    EXPECT_EQ(level::campaignLength(testLevel().get()), 1U);
+}
 
 TEST_F(GameFlowTest, StartGameAnnouncesTheLevel) {
     engine.getPlugin<LevelDirectorPlugin>().startGame();
@@ -376,6 +530,183 @@ TEST_F(GameFlowTest, NothingIsPlayedAfterTheGameIsWon) {
     run(3.0F);
     EXPECT_LE(entitiesOf(game::KIND_ALIEN_SCOUT).size(), enemies) << "the level must not restart";
     EXPECT_EQ(log.size(), 3U);
+}
+
+TEST_F(GameplayTest, AimedMissilesLeavingByAnyEdgeAreDestroyed) {
+    const auto missile = [this](const float speedX, const float speedY) {
+        const ecs::Entity entity = registry().spawnEntity();
+        ::prefabs::buildMissile(entity, registry(),
+                                {{"x", 640.0F}, {"y", 360.0F}, {"speed", speedX}, {"speed_y", speedY}});
+        ecs::net::replicate(registry(), entity, game::KIND_MISSILE);
+        return entity;
+    };
+    const ecs::Entity up = missile(0.0F, -900.0F);
+    const ecs::Entity down = missile(0.0F, 900.0F);
+    const ecs::Entity right = missile(900.0F, 0.0F);
+    run(2.0F);
+    EXPECT_FALSE(registry().isAlive(up));
+    EXPECT_FALSE(registry().isAlive(down));
+    EXPECT_FALSE(registry().isAlive(right));
+}
+
+namespace {
+
+/** @brief Spawns a motionless alien gunner, as the level director does. */
+ecs::Entity spawnGunner(ecs::Registry& registry, const float x, const float y) {
+    const ecs::Entity gunner = registry.spawnEntity();
+    ::prefabs::buildAlienGunner(gunner, registry, {{"x", x}, {"y", y}, {"speed", 0.0F}});
+    registry.addComponent(gunner, game::EntityNetState{});
+    ecs::net::replicate(registry, gunner, game::KIND_ALIEN_GUNNER);
+    return gunner;
+}
+
+}  // namespace
+
+TEST_F(GameplayWithoutLevelTest, GunnerFiresAtTheNearestShip) {
+    spawnShip(0, 200.0F, 600.0F);
+    spawnGunner(registry(), 900.0F, 360.0F);
+    run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL / 2.0F - 0.1F);
+    EXPECT_TRUE(entitiesOf(game::KIND_MISSILE).empty()) << "the first shot comes half an interval after it appears";
+
+    run(0.2F);
+    const auto missiles = entitiesOf(game::KIND_MISSILE);
+    ASSERT_EQ(missiles.size(), 1U);
+    const auto& body = registry().getComponents<ecs::RigidBody2D>().get(missiles.front());
+    EXPECT_LT(body.velocityX, 0.0F);
+    EXPECT_GT(body.velocityY, 0.0F) << "down towards the ship";
+    EXPECT_NEAR(std::hypot(body.velocityX, body.velocityY), ::prefabs::DEFAULT_ALIEN_GUNNER_SHOT_SPEED, 1.0);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(missiles.front()).subtype,
+              ::prefabs::ALIEN_GUNNER_SHOT_LOOK)
+        << "the clients draw the gunner shots their own way";
+
+    run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL);
+    EXPECT_EQ(entitiesOf(game::KIND_MISSILE).size(), 2U) << "one shot per interval";
+}
+
+TEST_F(GameplayWithoutLevelTest, GunnerFiresStraightAheadWithoutATarget) {
+    spawnGunner(registry(), 900.0F, 360.0F);
+    run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL);
+    const auto missiles = entitiesOf(game::KIND_MISSILE);
+    ASSERT_EQ(missiles.size(), 1U);
+    const auto& body = registry().getComponents<ecs::RigidBody2D>().get(missiles.front());
+    EXPECT_LT(body.velocityX, 0.0F);
+    EXPECT_FLOAT_EQ(body.velocityY, 0.0F);
+}
+
+TEST_F(GameplayWithoutLevelTest, GunnerHoldsItsFireOffScreen) {
+    spawnShip(0, 200.0F, 360.0F);
+    spawnGunner(registry(), 1400.0F, 360.0F);
+    run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL * 3.0F);
+    EXPECT_TRUE(entitiesOf(game::KIND_MISSILE).empty());
+}
+
+TEST_F(GameplayWithoutLevelTest, GunnerDiesOnTheFirstHitAndScores) {
+    const ecs::Entity ship = spawnShip(1, 200.0F, LANE_Y);
+    const ecs::Entity gunner = spawnGunner(registry(), 500.0F, LANE_Y);
+    shoot(ship);
+    run(0.5F);
+    EXPECT_FALSE(registry().isAlive(gunner));
+    EXPECT_EQ(combat().score(1), POINTS_PER_KILL);
+}
+
+namespace {
+
+/** @brief Spawns an alien elite, as the level director does; motionless unless a speed is given. */
+ecs::Entity spawnElite(ecs::Registry& registry, const float x, const float y, const float speed = 0.0F) {
+    const ecs::Entity elite = registry.spawnEntity();
+    ::prefabs::buildAlienElite(elite, registry, {{"x", x}, {"y", y}, {"speed", speed}});
+    registry.addComponent(elite, game::EntityNetState{.health = ::prefabs::DEFAULT_ALIEN_ELITE_HEALTH});
+    ecs::net::replicate(registry, elite, game::KIND_ALIEN_ELITE);
+    return elite;
+}
+
+}  // namespace
+
+TEST_F(GameplayWithoutLevelTest, EliteWeavesAroundItsHeight) {
+    const ecs::Entity elite = spawnElite(registry(), 900.0F, 360.0F, -70.0F);
+    float lowest = 360.0F;
+    float highest = 360.0F;
+    for (int i = 0; i < 30; ++i) {
+        run(0.1F);
+        const float y = registry().getComponents<ecs::Transform>().get(elite).y;
+        lowest = std::min(lowest, y);
+        highest = std::max(highest, y);
+    }
+    EXPECT_LT(lowest, 360.0F - (::prefabs::DEFAULT_ALIEN_ELITE_AMPLITUDE * 0.8F));
+    EXPECT_GT(highest, 360.0F + (::prefabs::DEFAULT_ALIEN_ELITE_AMPLITUDE * 0.8F));
+    EXPECT_LT(registry().getComponents<ecs::Transform>().get(elite).x, 900.0F) << "and still flies to the left";
+}
+
+TEST_F(GameplayWithoutLevelTest, EliteFiresAFanOfThreeShots) {
+    spawnShip(0, 200.0F, 360.0F);
+    spawnElite(registry(), 900.0F, 360.0F);
+    run(::prefabs::DEFAULT_ALIEN_ELITE_FIRE_INTERVAL / 2.0F + 0.05F);
+    const auto missiles = entitiesOf(game::KIND_MISSILE);
+    ASSERT_EQ(missiles.size(), 3U);
+    std::vector<float> slopes;
+    for (const ecs::Entity missile : missiles) {
+        const auto& body = registry().getComponents<ecs::RigidBody2D>().get(missile);
+        EXPECT_LT(body.velocityX, 0.0F);
+        EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(missile).subtype,
+                  ::prefabs::ALIEN_ELITE_SHOT_LOOK);
+        slopes.push_back(body.velocityY);
+    }
+    std::ranges::sort(slopes);
+    EXPECT_LT(slopes[0], -1.0F);
+    EXPECT_GT(slopes[2], 1.0F) << "one shot on each side of the aimed one";
+}
+
+TEST_F(GameplayWithoutLevelTest, EliteTakesSeveralHitsThenDropsAPowerUp) {
+    const ecs::Entity elite = spawnElite(registry(), 600.0F, 360.0F);
+    const auto hit = [this, elite] {
+        const ecs::Entity shot = registry().spawnEntity();
+        registry().addComponent(shot, game::EntityNetState{.subtype = 0});
+        engine.eventBus().publish(rtype::server::collision::ShotHitEvent{
+            .shot = shot, .target = elite, .targetCategory = prefabs::collision::ENEMY, .byPlayer = true});
+    };
+    for (int i = 1; i < ::prefabs::DEFAULT_ALIEN_ELITE_HEALTH; ++i) {
+        hit();
+    }
+    ASSERT_TRUE(registry().isAlive(elite));
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(elite).health, 1);
+    hit();
+    EXPECT_FALSE(registry().isAlive(elite));
+    EXPECT_EQ(combat().score(0), POINTS_PER_KILL);
+
+    run(FIXED_DT * 2);
+    const auto drops = entitiesOf(game::KIND_POWER_UP);
+    ASSERT_EQ(drops.size(), 1U);
+    EXPECT_NEAR(registry().getComponents<ecs::Transform>().get(drops.front()).x, 600.0F, 5.0F);
+}
+
+TEST_F(GameplayWithoutLevelTest, ScoresAreSentWhenTheyChangeAtMostFourTimesASecond) {
+    std::vector<protocol::ScoreUpdate> updates;
+    engine.eventBus().subscribe<protocol::ScoreUpdate>(
+        [&updates](const protocol::ScoreUpdate& update) { updates.push_back(update); });
+    const auto kill = [this](const std::uint8_t player) {
+        const ecs::Entity enemy = spawnEnemy(900.0F, 600.0F);
+        const ecs::Entity shot = registry().spawnEntity();
+        registry().addComponent(shot, game::EntityNetState{.subtype = player});
+        engine.eventBus().publish(rtype::server::collision::ShotHitEvent{
+            .shot = shot, .target = enemy, .targetCategory = prefabs::collision::ENEMY, .byPlayer = true});
+    };
+
+    run(1.0F);
+    EXPECT_TRUE(updates.empty()) << "nothing changed";
+
+    kill(1);
+    kill(1);
+    run(FIXED_DT * 2);
+    ASSERT_EQ(updates.size(), 1U) << "two kills in the same moment: one update";
+    EXPECT_EQ(updates.back().score, 2 * POINTS_PER_KILL);
+    EXPECT_EQ(updates.back().playerScores, (std::vector<std::uint32_t>{0, 2 * POINTS_PER_KILL}));
+
+    kill(0);
+    run(FIXED_DT * 2);
+    EXPECT_EQ(updates.size(), 1U) << "too soon after the previous one";
+    run(rtype::server::gameplay::SCORE_UPDATE_INTERVAL);
+    ASSERT_EQ(updates.size(), 2U);
+    EXPECT_EQ(updates.back().playerScores, (std::vector<std::uint32_t>{POINTS_PER_KILL, 2 * POINTS_PER_KILL}));
 }
 
 TEST_F(GameplayTest, EnemiesThatLeaveTheScreenAreDestroyed) {
@@ -469,6 +800,7 @@ TEST_F(BossFightTest, BossEventStopsTheScrollAndSpawnsTheBoss) {
     const auto spawned = bosses();
     ASSERT_EQ(spawned.size(), 1U);
     EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(spawned.front()).health, BOSS_HEALTH);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(spawned.front()).subtype, BOSS_VARIANT);
     EXPECT_EQ(registry().getComponents<prefabs::Health>().get(spawned.front()).points, BOSS_HEALTH);
 }
 
@@ -516,6 +848,66 @@ TEST_F(BossFightTest, ShotsWearTheBossDownThenTheScrollResumes) {
 
     EXPECT_FALSE(registry().isAlive(boss));
     EXPECT_LT(lowestHealth, BOSS_HEALTH);
+    EXPECT_EQ(combat().score(0), POINTS_PER_KILL);
+    run(FIXED_DT * 2);
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
+}
+
+TEST_F(BossPartsTest, PartsSpawnAsChildrenOfTheBossAndMoveWithIt) {
+    run(1.1F);
+    const ecs::Entity core = boss();
+    ASSERT_NE(core, ecs::NULL_ENTITY);
+    EXPECT_EQ(entitiesOf(game::KIND_BOSS_PART).size(), 3U) << "the part with an unknown role is skipped";
+    const ecs::Entity weak = part(prefabs::BossPartRole::WeakPoint);
+    ASSERT_NE(weak, ecs::NULL_ENTITY);
+    EXPECT_EQ(hierarchy::parentOf(registry(), weak), core);
+    const ecs::Entity turret = part(prefabs::BossPartRole::Turret);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(turret).subtype, 5);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(turret).health, 2);
+
+    run(1.0F);
+    const ecs::Transform center = registry().getComponents<ecs::Transform>().get(core);
+    EXPECT_LT(center.x, 1300.0F) << "the boss flies in";
+    EXPECT_NEAR(registry().getComponents<ecs::Transform>().get(weak).x, center.x + WEAK_POINT_X, 3.0);
+    // Every part keeps its offset, not only the first one spawned.
+    const ecs::Transform armor = registry().getComponents<ecs::Transform>().get(part(prefabs::BossPartRole::Armor));
+    EXPECT_NEAR(armor.x, center.x, 3.0);
+    EXPECT_NEAR(armor.y, center.y - 60.0F, 3.0);
+    const ecs::Transform gun = registry().getComponents<ecs::Transform>().get(turret);
+    EXPECT_NEAR(gun.x, center.x, 3.0);
+    EXPECT_NEAR(gun.y, center.y + 60.0F, 3.0);
+}
+
+TEST_F(BossPartsTest, OnlyTheWeakPointHurtsTheBoss) {
+    run(1.1F);
+    const ecs::Entity core = boss();
+    hit(core);
+    hit(part(prefabs::BossPartRole::Armor));
+    EXPECT_EQ(health(core), BOSS_HEALTH) << "the body and the armor stop the shots";
+
+    hit(part(prefabs::BossPartRole::WeakPoint));
+    EXPECT_EQ(health(core), BOSS_HEALTH - 1);
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(core).health, BOSS_HEALTH - 1);
+}
+
+TEST_F(BossPartsTest, TurretIsDestroyedAloneAndScores) {
+    run(1.1F);
+    const ecs::Entity turret = part(prefabs::BossPartRole::Turret);
+    hit(turret);
+    EXPECT_TRUE(registry().isAlive(turret));
+    hit(turret);
+    EXPECT_FALSE(registry().isAlive(turret));
+    EXPECT_EQ(health(boss()), BOSS_HEALTH);
+    EXPECT_EQ(combat().score(0), POINTS_PER_KILL);
+}
+
+TEST_F(BossPartsTest, KillingTheBossThroughItsWeakPointDestroysEveryPart) {
+    run(1.1F);
+    for (std::int64_t i = 0; i < BOSS_HEALTH; ++i) {
+        hit(part(prefabs::BossPartRole::WeakPoint));
+    }
+    EXPECT_EQ(boss(), ecs::NULL_ENTITY);
+    EXPECT_TRUE(entitiesOf(game::KIND_BOSS_PART).empty());
     EXPECT_EQ(combat().score(0), POINTS_PER_KILL);
     run(FIXED_DT * 2);
     EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
@@ -703,29 +1095,33 @@ class TestBoss {
 class ScriptedBossTest : public ::testing::Test {
   protected:
     /**
-     * @param shipped Script of the game to play; none writes `TEST_BOSS_SCRIPT` to a temporary file instead.
+     * @param shipped Script of the game to play; none writes `source` to a temporary file instead.
+     * @param source Script written when no shipped script is given.
+     * @param extra Parameters added to the boss event, such as its parts.
      */
-    explicit ScriptedBossTest(const std::optional<std::filesystem::path>& shipped = std::nullopt)
+    explicit ScriptedBossTest(const std::optional<std::filesystem::path>& shipped = std::nullopt,
+                              const std::string_view source = TEST_BOSS_SCRIPT, const prefabs::PrefabParams& extra = {})
         : tempDir(std::filesystem::temp_directory_path() /
                   ("rtype_test_boss_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()))),
           scriptPath(shipped.value_or(tempDir / "TestBoss.wren")),
           engine([this] { return now; }) {
         if (!shipped) {
             std::filesystem::create_directories(tempDir);
-            std::ofstream(scriptPath) << TEST_BOSS_SCRIPT;
+            std::ofstream(scriptPath) << source;
         }
 
+        // As in a real level: the script is relative to the data root, which `Room` makes the script root.
         auto built = std::make_shared<level::Level>();
+        built->dataRoot = scriptPath.parent_path();
         built->scrollSpeed = LEVEL_SPEED;
-        built->timeline.add({.position = 0.0F,
-                             .type = std::string(level::EVENT_BOSS),
-                             .params = {{"prefab", std::string("boss_core")},
-                                        {"x", 900.0},
-                                        {"y", 360.0},
-                                        {"script", scriptPath.generic_string()}}});
+        prefabs::PrefabParams params{
+            {"prefab", std::string("boss_core")}, {"x", 900.0}, {"y", 360.0}, {"script", scriptPath.filename().generic_string()}};
+        params.merge(extra);
+        built->timeline.add({.position = 0.0F, .type = std::string(level::EVENT_BOSS), .params = std::move(params)});
 
         engine.setFixedDeltaTime(FIXED_DT);
         engine.addPlugin<systems::PhysicsPlugin>();
+        engine.addPlugin<hierarchy::HierarchyPlugin>();
         engine.addPlugin<timeline::TimelinePlugin>();
         rtype::server::gameplay::addGameplayPlugins(engine, built);
         engine.addPlugin<prefabs::PrefabPlugin>();
@@ -735,6 +1131,7 @@ class ScriptedBossTest : public ::testing::Test {
         rtype::server::gameplay::registerScriptPrefabs(manager);
         systems::ScriptSystem& scripts = engine.getPlugin<scripting::ScriptPlugin>().scriptSystem();
         scripts.setPrefabManager(&manager);
+        scripts.setScriptRoot(built->dataRoot);
         bound = rtype::server::gameplay::bindScriptComponents(scripts);
     }
 
@@ -821,6 +1218,91 @@ TEST_F(ScriptedBossTest, ScriptOfADeadBossDoesNotCrashTheRoom) {
     EXPECT_TRUE(entitiesOf(game::KIND_BOSS_CORE).empty());
 }
 
+/**
+ * @brief Script reading its boss through `game/Combat` (class `TestBoss`, as its file): on its first update, it turns
+ * what it sees into alien scouts at known heights, then fires one aimed missile at the nearest ship.
+ */
+constexpr std::string_view COMBAT_PROBE_SCRIPT = R"(
+import "core/Engine" for Engine
+import "core/Position" for Position
+import "game/Combat" for Combat
+
+class TestBoss {
+    construct new(entity) {
+        _id = (entity is Num) ? entity : entity.id
+        _pos = Position.new(_id)
+        _fired = false
+    }
+
+    onSpawn() {}
+
+    update(dt) {
+        if (_fired) return
+        _fired = true
+        var health = Combat.health(_id)
+        var parts = Combat.parts(_id)
+        var turrets = parts.where {|part| Combat.partRole(part) == "turret" }.count
+        // Each fact the test checks becomes an alien scout at a known height.
+        if (health != null && health[0] == 5 && health[1] == 5) Engine.spawnPrefab("alien_scout", 100, 10)
+        if (parts.count == 2 && turrets == 1) Engine.spawnPrefab("alien_scout", 100, 20)
+        if (Combat.partRole(_id) == null && Combat.health(999999) == null) Engine.spawnPrefab("alien_scout", 100, 30)
+        var ship = Combat.nearestShip(_pos.x, _pos.y)
+        if (ship != null) Combat.fireAt(_pos.x, _pos.y, ship[0], ship[1], 99999)
+    }
+}
+)";
+
+/** @brief Room whose boss runs `COMBAT_PROBE_SCRIPT`, with 5 hit points, a weak point and a turret. */
+class CombatBindingTest : public ScriptedBossTest {
+  protected:
+    CombatBindingTest()
+        : ScriptedBossTest(std::nullopt, COMBAT_PROBE_SCRIPT,
+                           {{"health", std::int64_t{5}},
+                            {"parts.count", std::int64_t{2}},
+                            {"parts.0.role", std::string("weak_point")},
+                            {"parts.1.role", std::string("turret")}}) {}
+
+    /** @brief Heights of the probes the script spawned. */
+    [[nodiscard]] std::vector<float> probes() {
+        std::vector<float> heights;
+        for (const ecs::Entity scout : entitiesOf(game::KIND_ALIEN_SCOUT)) {
+            heights.push_back(engine.registry().getComponents<ecs::Transform>().get(scout).y);
+        }
+        std::ranges::sort(heights);
+        return heights;
+    }
+};
+
+TEST_F(CombatBindingTest, ScriptsReadTheHitPointsAndThePartsOfTheirBoss) {
+    ASSERT_TRUE(bound);
+    run(0.2F);
+    EXPECT_EQ(probes(), (std::vector<float>{10.0F, 20.0F, 30.0F}));
+}
+
+TEST_F(CombatBindingTest, AimedShotFliesTowardsTheNearestShipAtAClampedSpeed) {
+    ASSERT_TRUE(bound);
+    // Below and to the left of the boss (900, 360).
+    const ecs::Entity ship = engine.registry().spawnEntity();
+    engine.registry().addComponent(ship, ecs::Transform{.x = 300.0F, .y = 600.0F});
+    ecs::net::replicate(engine.registry(), ship, game::KIND_PLAYER_SHIP);
+    run(0.2F);
+
+    const auto missiles = entitiesOf(game::KIND_MISSILE);
+    ASSERT_EQ(missiles.size(), 1U);
+    const auto& body = engine.registry().getComponents<ecs::RigidBody2D>().get(missiles.front());
+    EXPECT_LT(body.velocityX, 0.0F);
+    EXPECT_GT(body.velocityY, 0.0F);
+    EXPECT_NEAR(std::hypot(body.velocityX, body.velocityY), rtype::server::gameplay::MAX_AIMED_SHOT_SPEED, 1.0);
+    EXPECT_NEAR(body.velocityY / body.velocityX, 240.0 / -600.0, 1e-3);
+    EXPECT_EQ(engine.registry().getComponents<game::EntityNetState>().get(missiles.front()).subtype, 0)
+        << "fireAt without a look: the default one";
+}
+
+TEST_F(CombatBindingTest, NoShipMeansNoAimedShot) {
+    run(0.2F);
+    EXPECT_TRUE(entitiesOf(game::KIND_MISSILE).empty());
+}
+
 /** @brief Same room, playing the boss script shipped with the game. */
 class ShippedBossScriptTest : public ScriptedBossTest {
   protected:
@@ -849,6 +1331,8 @@ TEST_F(ShippedBossScriptTest, BossScriptAttacksAndDropsAPowerUpWhenKilled) {
 TEST(LevelDirectorPluginTest, EachEventTypeHasItsPrefabs) {
     EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_scout").has_value());
     EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("boss", "boss_core").has_value());
+    EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_gunner").has_value());
+    EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_elite").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "boss_core").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("boss", "alien_scout").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "dragon").has_value());
@@ -941,6 +1425,7 @@ class GameplayPluginAloneTest : public ::testing::Test {
 
 TEST_F(GameplayPluginAloneTest, BossFightPluginReportsTheStartAndTheEndOfAFight) {
     engine.addPlugin<systems::PhysicsPlugin>();
+    engine.addPlugin<hierarchy::HierarchyPlugin>();
     engine.addPlugin<rtype::server::gameplay::BossFightPlugin>();
     engine.init();
     int started = 0;
@@ -982,6 +1467,55 @@ TEST_F(GameplayPluginAloneTest, LevelDirectorHoldsTheScrollUntilEveryHoldIsOver)
     EXPECT_FLOAT_EQ(player.speed(), LEVEL_SPEED);
 }
 
+TEST_F(GameplayPluginAloneTest, AShipLosesALifeEachTimeThenIsEliminated) {
+    engine.addPlugin<rtype::server::gameplay::RespawnPlugin>();
+    engine.init();
+    int eliminated = 0;
+    int lost = 0;
+    engine.eventBus().subscribe<rtype::server::gameplay::ShipEliminated>(
+        [&eliminated](const rtype::server::gameplay::ShipEliminated& /*event*/) { ++eliminated; });
+    engine.eventBus().subscribe<rtype::server::gameplay::AllShipsEliminated>(
+        [&lost](const rtype::server::gameplay::AllShipsEliminated& /*event*/) { ++lost; });
+    ecs::Registry& registry = engine.registry();
+    const auto ship = [&registry](const std::uint8_t player) {
+        const ecs::Entity entity = registry.spawnEntity();
+        registry.addComponent(entity, ecs::Transform{.x = 500.0F, .y = 300.0F});
+        registry.addComponent(entity, game::EntityNetState{.subtype = player});
+        rtype::server::gameplay::giveLives(registry, entity);
+        return entity;
+    };
+    const ecs::Entity first = ship(0);
+    const ecs::Entity second = ship(1);
+    EXPECT_EQ(registry.getComponents<game::EntityNetState>().get(first).health, rtype::server::gameplay::STARTING_LIVES)
+        << "the lives are replicated as the health of the ship";
+
+    const auto destroy = [this](const ecs::Entity entity) {
+        engine.eventBus().publish(rtype::server::gameplay::ShipDestroyed{.ship = entity});
+        run(RESPAWN_DURATION + 0.1F);
+    };
+    destroy(first);
+    destroy(first);
+    EXPECT_EQ(registry.getComponents<game::EntityNetState>().get(first).health, 1);
+    EXPECT_EQ(eliminated, 0);
+
+    destroy(first);
+    EXPECT_EQ(eliminated, 1);
+    EXPECT_EQ(lost, 0) << "the other player still plays";
+    const auto& state = registry.getComponents<game::EntityNetState>().get(first);
+    EXPECT_EQ(state.health, 0);
+    EXPECT_NE(state.flags & game::FLAG_ELIMINATED, 0);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Transform>().get(first).x, rtype::server::gameplay::ELIMINATED_SHIP_X);
+    EXPECT_FALSE(registry.hasComponent<rtype::server::gameplay::Respawning>(first)) << "no respawn";
+
+    destroy(first);
+    EXPECT_EQ(eliminated, 1) << "an eliminated ship cannot be destroyed again";
+
+    for (std::uint8_t life = 0; life < rtype::server::gameplay::STARTING_LIVES; ++life) {
+        destroy(second);
+    }
+    EXPECT_EQ(lost, 1) << "the last ship is out: the game is lost";
+}
+
 TEST_F(GameplayPluginAloneTest, RespawnPluginBringsADestroyedShipBack) {
     engine.addPlugin<rtype::server::gameplay::RespawnPlugin>();
     engine.init();
@@ -1000,6 +1534,268 @@ TEST_F(GameplayPluginAloneTest, RespawnPluginBringsADestroyedShipBack) {
     run(RESPAWN_DURATION + 0.1F);
     EXPECT_EQ(over, 1);
     EXPECT_EQ(registry.getComponents<game::EntityNetState>().get(ship).flags & game::FLAG_INVULNERABLE, 0);
+}
+
+/** @brief Room playing the Hive Warden: a weak point and two turrets, as in the shipped levels. */
+class WardenTest : public ScriptedBossTest {
+  protected:
+    WardenTest()
+        : ScriptedBossTest(std::filesystem::path(RTYPE_SCRIPTS_DIR) / "bosses" / "Warden.wren", TEST_BOSS_SCRIPT,
+                           {{"health", std::int64_t{20}},
+                            {"parts.count", std::int64_t{3}},
+                            {"parts.0.role", std::string("weak_point")},
+                            {"parts.0.x", -40.0},
+                            {"parts.1.role", std::string("turret")},
+                            {"parts.1.y", -70.0},
+                            {"parts.2.role", std::string("turret")},
+                            {"parts.2.y", 70.0}}) {}
+
+    /** @brief A ship far to the left, that the aimed shots go for. */
+    void spawnTarget() {
+        const ecs::Entity ship = engine.registry().spawnEntity();
+        engine.registry().addComponent(ship, ecs::Transform{.x = 200.0F, .y = 600.0F});
+        ecs::net::replicate(engine.registry(), ship, game::KIND_PLAYER_SHIP);
+    }
+
+    /** @brief Whether a missile flies downwards, as only an aimed shot at the target does. */
+    [[nodiscard]] bool anAimedShotFlies() {
+        return std::ranges::any_of(entitiesOf(game::KIND_MISSILE), [this](const ecs::Entity missile) {
+            return engine.registry().getComponents<ecs::RigidBody2D>().get(missile).velocityY > 1.0F;
+        });
+    }
+
+    [[nodiscard]] std::vector<ecs::Entity> turrets() {
+        std::vector<ecs::Entity> found;
+        for (const ecs::Entity part : entitiesOf(game::KIND_BOSS_PART)) {
+            if (engine.registry().getComponents<prefabs::BossPart>().get(part).role == prefabs::BossPartRole::Turret) {
+                found.push_back(part);
+            }
+        }
+        return found;
+    }
+};
+
+TEST_F(WardenTest, ReleasesDronesThenItsTurretsFireAtTheShips) {
+    ASSERT_TRUE(bound);
+    spawnTarget();
+    run(2.5F);
+    EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty()) << "nothing during the flight in";
+
+    run(1.0F);
+    EXPECT_EQ(entitiesOf(game::KIND_ALIEN_SCOUT).size(), 4U) << "a fan of drones";
+    run(2.0F);
+    EXPECT_TRUE(anAimedShotFlies());
+}
+
+TEST_F(WardenTest, DriftsOnceInPlace) {
+    run(3.2F);
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    const ecs::Transform before = engine.registry().getComponents<ecs::Transform>().get(bosses.front());
+    run(1.0F);
+    const ecs::Transform after = engine.registry().getComponents<ecs::Transform>().get(bosses.front());
+    EXPECT_GT(std::abs(after.y - before.y), 10.0F);
+}
+
+TEST_F(WardenTest, WithoutTurretsTheCoreFiresItself) {
+    ASSERT_TRUE(bound);
+    spawnTarget();
+    run(0.5F);
+    for (const ecs::Entity turret : turrets()) {
+        engine.registry().killEntity(turret);
+    }
+    run(5.0F);
+    EXPECT_TRUE(anAimedShotFlies()) << "the frenzy spread";
+}
+
+TEST_F(WardenTest, DropsAPowerUpWhenKilled) {
+    run(1.0F);
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    engine.registry().killEntity(bosses.front());
+    run(0.1F);
+    EXPECT_EQ(entitiesOf(game::KIND_POWER_UP).size(), 1U);
+    EXPECT_TRUE(entitiesOf(game::KIND_BOSS_PART).empty());
+}
+
+/** @brief Room playing the Bastion with 30 hit points: a weak point behind two armor plates, and two turrets. */
+class BastionTest : public ScriptedBossTest {
+  protected:
+    BastionTest()
+        : ScriptedBossTest(std::filesystem::path(RTYPE_SCRIPTS_DIR) / "bosses" / "Bastion.wren", TEST_BOSS_SCRIPT,
+                           {{"health", std::int64_t{30}},
+                            {"parts.count", std::int64_t{5}},
+                            {"parts.0.role", std::string("weak_point")},
+                            {"parts.1.role", std::string("armor")},
+                            {"parts.1.x", -80.0},
+                            {"parts.1.y", -40.0},
+                            {"parts.2.role", std::string("armor")},
+                            {"parts.2.x", -80.0},
+                            {"parts.2.y", 40.0},
+                            {"parts.3.role", std::string("turret")},
+                            {"parts.3.y", -110.0},
+                            {"parts.4.role", std::string("turret")},
+                            {"parts.4.y", 110.0}}) {}
+
+    [[nodiscard]] ecs::Entity boss() {
+        const auto found = entitiesOf(game::KIND_BOSS_CORE);
+        return found.empty() ? ecs::NULL_ENTITY : found.front();
+    }
+
+    /** @brief Sets the hit points of the boss, as the shots on its weak point would. */
+    void setHealth(const std::uint8_t points) {
+        engine.registry().getComponents<prefabs::Health>().get(boss()).points = points;
+    }
+
+    /** @brief Missiles flying in a direction: (sx, sy) are the signs of the velocity to look for, 0 for any. */
+    [[nodiscard]] std::size_t missilesFlying(const int sx, const int sy) {
+        return static_cast<std::size_t>(std::ranges::count_if(entitiesOf(game::KIND_MISSILE), [&](const ecs::Entity m) {
+            const auto& body = engine.registry().getComponents<ecs::RigidBody2D>().get(m);
+            const bool xOk = sx == 0 || (sx > 0 ? body.velocityX > 1.0F : body.velocityX < -1.0F);
+            const bool yOk = sy == 0 || (sy > 0 ? body.velocityY > 1.0F : body.velocityY < -1.0F);
+            return xOk && yOk;
+        }));
+    }
+};
+
+TEST_F(BastionTest, SiegeFiresStraightLinesFromTheTurrets) {
+    ASSERT_TRUE(bound);
+    run(3.5F);
+    EXPECT_GE(missilesFlying(-1, 0), 2U);
+    EXPECT_EQ(missilesFlying(1, 0), 0U) << "nothing flies backwards yet";
+    for (const ecs::Entity missile : entitiesOf(game::KIND_MISSILE)) {
+        EXPECT_EQ(engine.registry().getComponents<game::EntityNetState>().get(missile).subtype,
+                  ::prefabs::ALIEN_GUNNER_SHOT_LOOK)
+            << "red shots, like the turrets";
+    }
+}
+
+TEST_F(BastionTest, AssaultChargesTowardsTheShipsAndComesBack) {
+    ASSERT_TRUE(bound);
+    run(3.2F);
+    const float home = engine.registry().getComponents<ecs::Transform>().get(boss()).x;
+    setHealth(15);
+    // The siege round in progress ends at 4.8 s; the charge goes out for 0.8 s, then comes back.
+    run(2.5F);
+    const float charged = engine.registry().getComponents<ecs::Transform>().get(boss()).x;
+    EXPECT_LT(charged, home - 200.0F);
+    run(1.3F);
+    EXPECT_NEAR(engine.registry().getComponents<ecs::Transform>().get(boss()).x, home, 60.0F);
+}
+
+TEST_F(BastionTest, LastStandFiresAllAround) {
+    ASSERT_TRUE(bound);
+    run(3.2F);
+    setHealth(5);
+    // The spiral starts once the siege round in progress is over, at 4.8 s.
+    run(2.5F);
+    EXPECT_GT(missilesFlying(1, 0), 0U) << "some shots fly to the right";
+    EXPECT_GT(missilesFlying(0, -1), 0U) << "some fly up";
+    EXPECT_GT(missilesFlying(0, 1), 0U) << "some fly down";
+}
+
+/** @brief Room playing the Bastion alone, without parts, as in the shipped level 3. */
+class BastionAloneTest : public ScriptedBossTest {
+  protected:
+    BastionAloneTest()
+        : ScriptedBossTest(std::filesystem::path(RTYPE_SCRIPTS_DIR) / "bosses" / "Bastion.wren", TEST_BOSS_SCRIPT,
+                           {{"health", std::int64_t{30}}, {"width", 280.0}, {"height", 90.0}}) {}
+};
+
+TEST_F(BastionAloneTest, WithoutTurretsItsLinesComeFromTheHullAndShotsHurtIt) {
+    ASSERT_TRUE(bound);
+    run(3.5F);
+    std::size_t lines = 0;
+    for (const ecs::Entity missile : entitiesOf(game::KIND_MISSILE)) {
+        const auto& body = engine.registry().getComponents<ecs::RigidBody2D>().get(missile);
+        lines += body.velocityX < -1.0F && std::abs(body.velocityY) < 1.0F ? 1 : 0;
+    }
+    EXPECT_GE(lines, 2U);
+
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    const ecs::Entity shot = engine.registry().spawnEntity();
+    engine.registry().addComponent(shot, game::EntityNetState{.subtype = 0});
+    engine.eventBus().publish(rtype::server::collision::ShotHitEvent{
+        .shot = shot, .target = bosses.front(), .targetCategory = prefabs::collision::ENEMY, .byPlayer = true});
+    EXPECT_EQ(engine.registry().getComponents<game::EntityNetState>().get(bosses.front()).health, 29)
+        << "no weak point: its hull takes the hits, and its health bar moves";
+}
+
+TEST_F(BastionTest, DropsTwoPowerUpsWhenKilled) {
+    run(1.0F);
+    engine.registry().killEntity(boss());
+    run(0.1F);
+    EXPECT_EQ(entitiesOf(game::KIND_POWER_UP).size(), 2U);
+}
+
+namespace {
+
+/** @brief What a shipped level is made of. */
+struct LevelContent {
+    std::vector<std::string> prefabs;
+    std::vector<std::string> bossScripts;
+    std::size_t terrain = 0;
+    std::size_t elites = 0;
+};
+
+/**
+ * @brief Loads a shipped level with the catalog of the game, expecting no warning, and lists what it spawns.
+ * @param file File name in `server/levels/`.
+ * @return Its content.
+ */
+LevelContent shippedLevel(const std::string& file) {
+    std::vector<std::string> warnings;
+    const auto loaded =
+        level::loadLevel(std::filesystem::path(RTYPE_LEVELS_DIR) / file, LevelDirectorPlugin::levelPrefab, warnings);
+    EXPECT_TRUE(loaded.has_value()) << file;
+    EXPECT_TRUE(warnings.empty()) << file << ": " << (warnings.empty() ? "" : warnings.front());
+    LevelContent content;
+    if (!loaded) {
+        return content;
+    }
+    EXPECT_EQ(loaded->timeline.events().back().type, level::EVENT_END) << file;
+    for (const timeline::TimelineEvent& event : loaded->timeline.events()) {
+        if (event.type == level::EVENT_SPAWN) {
+            const auto prefab = event.params.get<std::string>("prefab", "");
+            if (!std::ranges::contains(content.prefabs, prefab)) {
+                content.prefabs.push_back(prefab);
+            }
+            content.elites += prefab == "alien_elite" ? 1 : 0;
+        } else if (event.type == level::EVENT_BOSS) {
+            content.bossScripts.push_back(event.params.get<std::string>("script", ""));
+        } else if (event.type == level::EVENT_TERRAIN) {
+            ++content.terrain;
+        }
+    }
+    std::ranges::sort(content.prefabs);
+    return content;
+}
+
+}  // namespace
+
+TEST(ShippedLevels, LevelOneIsBasicScoutsOnly) {
+    const LevelContent content = shippedLevel("level_01.toml");
+    EXPECT_EQ(content.prefabs, (std::vector<std::string>{"alien_scout"}));
+    EXPECT_TRUE(content.bossScripts.empty());
+    EXPECT_EQ(content.terrain, 0U);
+}
+
+TEST(ShippedLevels, LevelTwoAddsTheGunners) {
+    const LevelContent content = shippedLevel("level_02.toml");
+    EXPECT_EQ(content.prefabs, (std::vector<std::string>{"alien_gunner", "alien_scout"}));
+    EXPECT_TRUE(content.bossScripts.empty());
+    EXPECT_EQ(content.terrain, 0U);
+}
+
+TEST(ShippedLevels, LevelThreeAddsRareElitesAndEndsWithTheBastion) {
+    const LevelContent content = shippedLevel("level_03.toml");
+    EXPECT_EQ(content.prefabs, (std::vector<std::string>{"alien_elite", "alien_gunner", "alien_scout"}));
+    EXPECT_GE(content.elites, 1U);
+    EXPECT_LE(content.elites, 4U) << "elites stay rare";
+    ASSERT_EQ(content.bossScripts.size(), 1U);
+    EXPECT_EQ(content.bossScripts.front(), "scripts/bosses/Bastion.wren");
+    EXPECT_TRUE(std::filesystem::exists(std::filesystem::path(RTYPE_DATA_DIR) / content.bossScripts.front()));
 }
 
 int main(int argc, char** argv) {

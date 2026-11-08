@@ -100,6 +100,16 @@ Each successful `update(fixedDt)` performs these operations in order:
 4. Copies each body's position, angle, and linear velocity back to its ECS components.
 5. Publishes the contact events recorded during the step (see below).
 
+```mermaid
+flowchart LR
+    A["sync bodies<br/>Transform + RigidBody2D"] --> B["create fixtures<br/>new Collider2D"]
+    B --> C["Box2D Step<br/>8 velocity / 3 position iterations"]
+    C --> D["write back<br/>position, angle, velocity"]
+    D --> E["publish buffered contacts"]
+    C -. "contacts recorded<br/>while the world is locked" .-> E
+    E -->|"CollisionBeginEvent / CollisionEndEvent"| S["subscribers<br/>(gameplay, ScriptPlugin)"]
+```
+
 ## Contact Events
 
 The system publishes two events, declared in `events/PhysicsEvents.hpp`, on the `ecs::EventBus` given to its constructor (`Engine::eventBus()` when it runs through `PhysicsPlugin`):

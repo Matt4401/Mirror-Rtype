@@ -68,11 +68,14 @@ Every built-in prefab exposes a single `buildXxx(entity, registry, params)` func
 | `missile` | Enemy projectile | Dynamic, bullet | Box 16×6, sensor | `ENEMY_SHOT` | [Missile](missile.md) |
 | `player_bullet` | Player projectile | Dynamic, bullet | Box 12×4, sensor | `PLAYER_SHOT` | [Player Bullet](player-bullet.md) |
 | `alien_scout` | Basic enemy | Kinematic | Box 32×32, sensor | `ENEMY` | [Alien Scout](alien-scout.md) |
+| `alien_gunner` | Enemy firing at the ships | Kinematic | Box 40×40, sensor | `ENEMY` | [Alien Gunner](alien-gunner.md) |
+| `alien_elite` | Rare, tough, weaving enemy that drops a power-up | Kinematic | Box 56×56, sensor | `ENEMY` | [Alien Elite](alien-elite.md) |
 | `boss_core` | Boss ending a level, several hit points | Kinematic | Box 128×160, sensor | `ENEMY` | [Boss Core](boss-core.md) |
+| `boss_part` | Weak point, turret or armor of a boss | Kinematic | Box 48×48, sensor | `ENEMY` | [Boss Part](boss-part.md) |
 | `obstacle` | Level geometry | Static | Box 64×64, solid | `OBSTACLE` | [Obstacle](obstacle.md) |
 | `power_up` | Collectible bonus | Kinematic | Circle r=12, sensor | `POWER_UP` | [Power-Up](power-up.md) |
 
-Every prefab attaches `ecs::Transform`, `ecs::Renderable`, `ecs::RigidBody2D` and `ecs::Collider2D` (`boss_core` adds `prefabs::Health` and `prefabs::BossCore`). Who can touch whom is described in [Collision Categories](collision-categories.md).
+Every prefab attaches `ecs::Transform`, `ecs::Renderable`, `ecs::RigidBody2D` and `ecs::Collider2D` (`boss_core` adds `prefabs::Health` and `prefabs::BossCore`, `boss_part` adds `prefabs::BossPart` and, for a turret, `prefabs::Health`). Who can touch whom is described in [Collision Categories](collision-categories.md).
 
 ## Scripting
 

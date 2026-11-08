@@ -19,6 +19,10 @@
 namespace client::gameplay {
 
 std::uint8_t blinkAlpha(const std::uint8_t flags, const float seconds) noexcept {
+    // An eliminated ship is out of the game: it is not drawn any more.
+    if ((flags & rtype::game::FLAG_ELIMINATED) != 0) {
+        return 0;
+    }
     if ((flags & rtype::game::FLAG_INVULNERABLE) == 0) {
         return OPAQUE_ALPHA;
     }

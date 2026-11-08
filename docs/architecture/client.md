@@ -121,6 +121,81 @@ ship. See [In-Game Metrics](metrics.md).
   the ship spritesheet, so that players can tell their ships apart. A kind the client does not know stays invisible.
 - **Shots:** the client spawns nothing. The `shoot` action travels in the player's input, and the bullets arrive in the
   snapshots like any other entity, interpolated: a shot appears one round trip after the key press.
+- **Boss looks:** a `boss_core` and a `boss_part` are drawn from `client/config/looks.toml` (see [the looks file](#looks-file-clientconfiglookstoml)), by their
+  `subtype`: the variant of a boss, the look of a part. Without an entry, they are colored boxes.
+- **Boss effects (`client/src/gameplay/BossEffects`):** a boss or a turret flashes red for `HIT_FLASH_DURATION` when its
+  replicated `health` goes down. A boss that leaves the snapshots nearly dead (at most 1 hit point, or a tenth of its hit
+  points at spawn) explodes: `EXPLOSION_BURSTS` bursts spread over its box for `EXPLOSION_SPREAD` seconds; a turret gets
+  one burst. A boss removed with its game (game over, leaving) does not explode. The bursts are client-only entities.
+- **Lives (`GameScene`, `gameplay/PlayerLives`):** a column of the player's ship at rest (its color row of
+  `r-typesheet42`, the `ShipIconSheet` resource set by `RTypeGamePlugin`) next to its label, one icon per life left,
+  read from the `health` of its replicated ship. Once its ship is eliminated, `OUT` replaces them for two seconds,
+  then the client closes (`Engine::stop`); the server goes on with the other players.
+- **Boss health bar (`GameScene`):** while a boss is on screen, a red bar under the HUD line shows its hit points left
+  over its hit points at spawn (summed when there are several bosses), with a `BOSS` caption. It hides once no boss is
+  left. The values come from `gameplay::bossHealth`, which reads the replicated `health` of the bosses.
+
+#### Looks file (`client/config/looks.toml`)
+
+Read at start-up from the content root (the directory of the executable, as the assets) by `looks::readLooks` (`client/src/looks/`). A missing file, a bad value or a texture that does
+not load is logged and never stops the client: the look falls back to a box.
+
+```toml
+[[boss]]                       # one entry per boss variant (level `boss` event, key `variant`)
+variant = 1
+texture = "sprites/my_boss.png"
+frame_x = 0                    # left of the first frame, in texture pixels
+frame_y = 0                    # top of the strip
+frame_width = 160
+frame_height = 200
+frames = 4                     # frames side by side, played in a loop
+frame_duration = 0.12
+loop = true
+scale = 2.0
+
+[[part]]                       # one entry per part look (level `[[events.parts]]`, key `look`)
+look = 1
+width = 40.0                   # without `texture`: a box of this size
+height = 40.0
+
+[[entity]]                     # one entry per prefab: alien_scout, alien_gunner, alien_elite, missile, power_up
+prefab = "alien_gunner"
+texture = "sprites/my_gunner.png"
+frame_width = 40
+frame_height = 40
+
+[[entity]]                     # with `subtype`: only the entities of that subtype, such as the shots of one shooter
+prefab = "missile"
+subtype = 1                    # 1: alien gunner shots, 2: alien elite shots
+texture = "sprites/red_shot.png"
+frame_width = 16
+frame_height = 16
+```
+
+| Key | Default | Range | Description |
+|-----|---------|-------|-------------|
+| `below_health` | none | 0.01–1 | `[[boss]]` and `[[part]]` only: a damaged look of the same `variant` / `look`, shown once the hit points fall to that part of their value at spawn. Several stages can follow each other (0.66, then 0.33). The entry without it is the look at full health. |
+| `variant` / `look` / `prefab` | required | 0–255 / prefab name | Which boss variant, part look or entity the entry is for. A later entry with the same id wins. |
+| `width`, `height` | default box | 0–2048 px | Box drawn without a sprite; 0 keeps the default size (128×160 for a boss, 48×48 for a part, the hitbox for an entity). |
+| `texture` | none | relative path, no `..` | Spritesheet; without it, the entry is a box. |
+| `subtype` | any | 0–255 | `[[entity]]` only: restyles only the entities of that `subtype`; an entry without it is the fallback. |
+| `frame_x`, `frame_y` | `0` | 0–4096 | Origin of the first frame. |
+| `frame_width`, `frame_height` | required with `texture` | 1–4096 | Size of a frame. |
+| `frames` | `1` | 1–64 | Frames of the strip. |
+| `frame_duration` | `0.1` | 0.01–10 s | Seconds per frame. |
+| `loop` | `true` | | `false` stops on the last frame. |
+| `scale` | `1` | 0.1–16 | Drawing scale. |
+| `frame_stride` | `frame_width` | 0–4096 | Pixels from one frame to the next, for strips with empty space between their frames. |
+| `frame_widths` | none | 1–4096 each, 64 frames | Widths of frames that differ, side by side from `frame_x`: they give the number of frames and replace `frame_width`. With `loop = false`, the animation holds its last frame. |
+| `flip_x` | `false` | | Draws the sprite mirrored left to right, for a sheet facing the other way. |
+| `face_motion` | `false` | | Turns the sprite towards where it moves (`gameplay::FaceMotion`), such as shots flying in any direction. The sheet is taken as facing right, or left with `flip_x`. The direction comes from the move between two frames: the server only sends positions. |
+| `directional` | `false` | | The frames are directions around the full turn, not an animation: the client shows the one facing the nearest player ship (`gameplay::AimedSprite`). |
+| `first_angle` | `0` | -360–360 | Direction of the first frame of a directional sprite, in degrees: 0 is right, 90 down, the next frames turning clockwise. |
+
+An `[explosion]` table takes the same sprite keys (`texture`, `frame_*`, `frames`, `frame_duration`, `scale`): each
+burst plays it once. Without it, the bursts are orange boxes that grow and fade.
+
+The hitbox stays the server's (`width` and `height` of the level event): size the sprite to match it.
 
 ### Scenes: the menus (`client/src/scenes/`)
 
@@ -153,7 +228,7 @@ stateDiagram-v2
 | `Settings`        | exclusive      | master, music and effects volumes, metrics panel; saved by `SettingsPlugin`     |
 | `Lobby`           | exclusive      | scrollable list of rooms (only open ones are focusable), create, refresh, back  |
 | `Room`            | exclusive      | players and their ready state, ready toggle, leave                              |
-| `Game`            | exclusive      | HUD (player, level, score); back opens the pause menu                           |
+| `Game`            | exclusive      | HUD (player and its lives, level, total score and own score, live from `ScoreUpdate`); back opens the pause menu |
 | `LevelTransition` | overlay        | written in Wren (`scripts/scenes/LevelTransition.wren`): spawns the C++ `level_banner` prefab, waits 2.5 s, pops itself |
 | `Pause`           | overlay        | local only: the game goes on below and for the others, the ship gets no input   |
 | `GameOver`        | exclusive      | victory or defeat, scores, back to the lobby                                    |

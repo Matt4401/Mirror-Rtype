@@ -124,6 +124,20 @@ Hook order on a push: the scenes below get `onPause` (and `SceneVisibilityChange
 `onEnter`. On a pop, the exiting scene gets `onExit`, its entities are destroyed, then the scenes below get `onResume`.
 `switchTo` exits the whole stack without resuming anyone.
 
+```mermaid
+sequenceDiagram
+    participant M as SceneManager
+    participant G as Game (Exclusive)
+    participant P as Dialog (Overlay, pausesBelow)
+    Note over M: push(Dialog), applied at preUpdate
+    M->>G: onPause, SceneVisibilityChanged
+    M->>P: onEnter
+    Note over M: pop(), applied at the next preUpdate
+    M->>P: onExit
+    Note over M: Dialog entities destroyed
+    M->>G: onResume
+```
+
 Entities of a hidden scene carry `ecs::Hidden` with the `Scene` reason, so the UI and the world renderer skip them
 without knowing about scenes. An entity spawned while its scene is hidden starts hidden. Hiding done by the game
 itself (`HiddenReason::Manual`) is kept when the scene shows again. See [User Interface](ui.md#hiding).

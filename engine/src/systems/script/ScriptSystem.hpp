@@ -15,6 +15,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -30,9 +31,6 @@
 namespace systems {
 
 /**
- * @brief Represents a suspended Wren Fiber waiting for a timed delay (Engine.wait).
- */
-/**
  * @brief Opaque identifier of what is running Wren code: a script entity, or anything an extension defines.
  *
  * Entity scripts use their entity handle (52 bits). Extensions use values with the top bit set (see
@@ -42,6 +40,12 @@ using ScriptOwner = std::uint64_t;
 
 /** @brief `ScriptOwner` meaning "nobody": code run outside any script or extension call. */
 inline constexpr ScriptOwner NO_SCRIPT_OWNER = std::numeric_limits<ScriptOwner>::max();
+
+/** @brief Consecutive failed calls after which the script of an entity is disabled until the next hot reload. */
+inline constexpr std::uint32_t MAX_CONSECUTIVE_SCRIPT_FAILURES = 30;
+
+/** @brief Shortest time between two error messages about the same script, in seconds; the others are counted. */
+inline constexpr float SCRIPT_ERROR_LOG_INTERVAL = 1.0F;
 
 /** @brief Moment of a hot-reload VM swap reported to `ScriptSystem::addVmResetListener` listeners. */
 enum class VmResetPhase : std::uint8_t {
@@ -119,6 +123,32 @@ class ScriptSystem {
      * @param dt Delta time in seconds since previous frame.
      */
     void update(float dt);
+
+    /**
+     * @brief Tells whether the script of an entity was disabled after `MAX_CONSECUTIVE_SCRIPT_FAILURES` failed calls.
+     *
+     * A disabled script gets no more `update(dt)`, `onCollision(other)` or fiber resumes; its `onDestroy()` still
+     * runs. Every script is enabled again by the next hot reload.
+     * @param e Entity to check.
+     * @return True if its script is disabled.
+     */
+    [[nodiscard]] bool isScriptDisabled(ecs::Entity e) const noexcept;
+
+    /**
+     * @brief Sets the directory script modules are read from.
+     *
+     * A module name is a path relative to it, without `.wren` (`scripts/Boss` is `<root>/scripts/Boss.wren`), for
+     * both `ScriptComponent::moduleName` and `import`. Absolute names and names climbing out of it (`..`) are
+     * refused. Kept across hot reloads.
+     * @param root Script root, usually `engine::contentRoot()`; empty (the default) means the working directory.
+     */
+    void setScriptRoot(std::filesystem::path root);
+
+    /**
+     * @brief Gets the directory script modules are read from.
+     * @return The root given to `setScriptRoot`, empty for the working directory.
+     */
+    [[nodiscard]] const std::filesystem::path& scriptRoot() const noexcept { return *_scriptRoot; }
 
     /**
      * @brief Instantiates a script instance for an entity and invokes `onSpawn()` if implemented.
@@ -338,6 +368,15 @@ class ScriptSystem {
     std::size_t addVmResetListener(std::function<void(VmResetPhase)> listener);
 
     /**
+     * @brief Tells whether every watched module ran again without error in the last hot reload.
+     *
+     * Read by `VmResetPhase::After` listeners: when false, some module stopped before its end, so what it would
+     * have redone (declarations, registrations) may be missing.
+     * @return True when the last replay succeeded, or before any hot reload.
+     */
+    [[nodiscard]] bool lastReplaySucceeded() const noexcept { return _lastReplaySucceeded; }
+
+    /**
      * @brief Removes a VM reset listener.
      * @param id Id returned by `addVmResetListener`; unknown ids are ignored.
      */
@@ -460,6 +499,50 @@ class ScriptSystem {
     /** @brief Unregisters the destroy listener registered by `attachDestroyListener`, if any. */
     void detachDestroyListener() noexcept;
 
+    /** @brief Error state of the scripts of one owner, for the rate limit and the disabling. */
+    struct ScriptFailureState {
+        /** @brief Failed calls in a row. */
+        std::uint32_t consecutive = 0;
+        /** @brief Errors not logged since the last message. */
+        std::uint32_t suppressed = 0;
+        /** @brief Script clock (`_elapsed`) at the last message. */
+        float lastLogTime = 0.0F;
+        /** @brief Whether a message was logged yet. */
+        bool logged = false;
+        /** @brief Whether the script is disabled. */
+        bool disabled = false;
+    };
+
+    /**
+     * @brief Records a failed call into Wren: logs it with its stack trace (rate-limited per owner) and disables the
+     * script of an entity after `MAX_CONSECUTIVE_SCRIPT_FAILURES` failures in a row.
+     * @param owner Owner of the failed code (an entity, or an extension owner, which is never disabled).
+     * @param hook What was called, for the message (e.g. "update(_)").
+     */
+    void recordScriptFailure(ScriptOwner owner, std::string_view hook);
+
+    /**
+     * @brief Records a successful call into Wren: resets the failure count of the owner.
+     * @param owner Owner of the code.
+     */
+    void recordScriptSuccess(ScriptOwner owner);
+
+    /**
+     * @brief Records the result of a call into Wren made for `owner`.
+     * @param owner Owner of the code.
+     * @param result Result of the call.
+     * @param hook What was called, for the message.
+     */
+    void recordScriptResult(ScriptOwner owner, WrenInterpretResult result, std::string_view hook);
+
+    /**
+     * @brief Tells whether a module problem should be logged: true the first time `key` is seen since the last hot
+     * reload. Scripts that cannot start are retried every frame, and must not log every frame.
+     * @param key What went wrong, e.g. the module name.
+     * @return True if it was not reported yet.
+     */
+    bool reportModuleProblemOnce(std::string key);
+
     /**
      * @brief Ensures a script module is compiled and imported into the VM, tracking it for changes.
      * @param moduleName Script module path/name.
@@ -568,6 +651,8 @@ class ScriptSystem {
     float _reloadCheckTimer = 0.0F;
     /** @brief Configuration flag enabling or disabling hot-reloading. */
     bool _hotReloadEnabled = true;
+    /** @brief Whether every module of the last hot reload ran again without error. */
+    bool _lastReplaySucceeded = true;
     /** @brief State used by engine extensions. */
     Extensions _extensions;
     /**
@@ -576,6 +661,17 @@ class ScriptSystem {
      */
     std::shared_ptr<std::unordered_map<std::string, std::string>> _extraModules =
         std::make_shared<std::unordered_map<std::string, std::string>>();
+    /** @brief Error state of the owners whose last calls failed (or disabled), by owner. */
+    std::unordered_map<ScriptOwner, ScriptFailureState> _failures;
+    /** @brief Module problems already logged (see `reportModuleProblemOnce`), cleared by a hot reload. */
+    std::unordered_set<std::string> _reportedModuleProblems;
+    /** @brief Script clock: sum of the `update(dt)` times, used by the error rate limit. */
+    float _elapsed = 0.0F;
+    /**
+     * @brief Directory script modules are read from (empty: the working directory).
+     * Shared with the module loader, like `_extraModules`.
+     */
+    std::shared_ptr<std::filesystem::path> _scriptRoot = std::make_shared<std::filesystem::path>();
 };
 
 }  // namespace systems

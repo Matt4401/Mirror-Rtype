@@ -1,7 +1,12 @@
 #include <gtest/gtest.h>
 
+#include <string>
+
+#include "assets/AssetKinds.hpp"
+#include "assets/AssetManager.hpp"
 #include "collision/CollisionRouter.hpp"
 #include "collision/GameCollisionEvents.hpp"
+#include "components/Renderable.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
@@ -104,6 +109,26 @@ TEST_F(ShotHitRuleTest, ObstacleOnlyDestroysTheShot) {
     EXPECT_FALSE(registry.isAlive(shot));
     EXPECT_TRUE(registry.isAlive(wall));
     EXPECT_EQ(rule.destroyedEnemies(), 0U);
+}
+
+TEST(ClientPrefabTexture, ATextureAliasIsResolvedByTheAssetManager) {
+    ecs::Registry registry;
+    auto& manager = registry.emplaceResource<assets::AssetManager>();
+    manager.setLoader<assets::Texture>(assets::AssetLoader<assets::Texture>{
+        .load = [](const std::string& /*path*/, const assets::LoadOptions& /*options*/,
+                   ecs::TextureId /*preferred*/) { return ecs::TextureId{7}; },
+        .unload = [](ecs::TextureId /*id*/) {},
+    });
+    manager.declare<assets::Texture>("bydos", "sprites/spritesheet5.png");
+    manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
+
+    const ecs::Entity byAlias = registry.spawnEntity();
+    client::prefabs::buildClientEnemy(byAlias, registry, ::prefabs::PrefabParams{{"texture", std::string("bydos")}});
+    EXPECT_EQ(registry.getComponents<ecs::Renderable>().get(byAlias).textureId, 7U);
+
+    const ecs::Entity unknown = registry.spawnEntity();
+    client::prefabs::buildClientBullet(unknown, registry, ::prefabs::PrefabParams{{"texture", std::string("nope")}});
+    EXPECT_EQ(registry.getComponents<ecs::Renderable>().get(unknown).textureId, ecs::NO_TEXTURE);
 }
 
 }  // namespace

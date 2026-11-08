@@ -87,6 +87,14 @@ void fill(pb::Envelope& envelope, const LevelComplete& message) {
     }
 }
 
+void fill(pb::Envelope& envelope, const ScoreUpdate& message) {
+    auto* out = envelope.mutable_score_update();
+    out->set_score(message.score);
+    for (const std::uint32_t score : message.playerScores) {
+        out->add_player_scores(score);
+    }
+}
+
 void fill(pb::Envelope& envelope, const PlayerLeft& message) {
     envelope.mutable_player_left()->set_client_id(message.clientId);
 }
@@ -231,6 +239,13 @@ std::optional<Message> read(const pb::LevelComplete& in) {
     };
 }
 
+std::optional<Message> read(const pb::ScoreUpdate& in) {
+    if (std::cmp_greater(in.player_scores_size(), MAX_PLAYERS)) {
+        return std::nullopt;
+    }
+    return ScoreUpdate{.score = in.score(), .playerScores = {in.player_scores().begin(), in.player_scores().end()}};
+}
+
 std::optional<Message> read(const pb::Chat& in) {
     if (in.text().empty() || in.text().size() > MAX_CHAT_LENGTH) {
         return std::nullopt;
@@ -330,6 +345,8 @@ std::optional<Message> decode(const std::span<const std::uint8_t> bytes) {
             return read(envelope.level_start());
         case pb::Envelope::kLevelComplete:
             return read(envelope.level_complete());
+        case pb::Envelope::kScoreUpdate:
+            return read(envelope.score_update());
         case pb::Envelope::kPlayerLeft:
             return PlayerLeft{.clientId = envelope.player_left().client_id()};
         case pb::Envelope::kLeave:

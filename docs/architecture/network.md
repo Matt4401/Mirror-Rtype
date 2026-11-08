@@ -45,17 +45,12 @@ pages:
 
 ## 2. Overview
 
-```
-+------------------------+                        +------------------------+
-|      Game client       |                        |      Game server       |
-+-----------+------------+                        +-----------+------------+
-            | INetworkClient                                  | INetworkServer
-+-----------v------------+                        +-----------v------------+
-|     NetworkClient      |   TCP  — Reliable      |     NetworkServer      |
-|                        | <====================> |                        |
-|                        |   UDP  — Unreliable    |                        |
-|                        | <--------------------> |                        |
-+------------------------+                        +------------------------+
+```mermaid
+flowchart LR
+    GC["Game client"] -->|INetworkClient| NC["NetworkClient"]
+    GS["Game server"] -->|INetworkServer| NS["NetworkServer"]
+    NC <==>|"TCP: Reliable"| NS
+    NC <-.->|"UDP: Unreliable"| NS
 ```
 
 Three ideas drive the design:
@@ -161,16 +156,12 @@ either: it is passed to `start()` / `connect()`, and its default value belongs t
 
 ### Layers
 
-```
-Game code (server / client)
-        │  game messages
-Protocol layer      header, serialization, message types (see RFC)
-        │  Bytes
-Network library     TCP / UDP, sessions, client identification, events
-        │
-Asio
-        │
-OS sockets (epoll / IOCP / kqueue)
+```mermaid
+flowchart TB
+    G["Game code (server / client)"] -->|game messages| P["Protocol layer<br/>header, serialization, message types (see RFC)"]
+    P -->|Bytes| L["Network library<br/>TCP / UDP, sessions, client identification, events"]
+    L --> A["Asio"]
+    A --> O["OS sockets (epoll / IOCP / kqueue)"]
 ```
 
 The network library transports **bytes only**. It knows nothing about game messages. The protocol layer sits on top of
@@ -392,13 +383,19 @@ only once, so client and server cannot drift apart. The client's events always c
 
 ## 6. Threading model
 
-```
-Network thread (Asio)                     Game thread (fixed tick)
-  io_context.run()                          each tick:
-  async receive TCP / UDP                     1. events = network.poll()
-  → push NetworkEvent ───── EventQueue ──►    2. handle events
-                                              3. update simulation
-  perform send            ◄── asio::post ──   4. send / broadcast
+```mermaid
+sequenceDiagram
+    participant N as Network thread (Asio)
+    participant Q as EventQueue
+    participant G as Game thread (fixed tick)
+    Note over N: io_context.run()
+    N->>Q: async receive TCP / UDP, push NetworkEvent
+    loop each tick
+        G->>Q: 1. events = network.poll()
+        Note over G: 2. handle events<br/>3. update simulation
+        G->>N: 4. send / broadcast (asio::post)
+        Note over N: perform send
+    end
 ```
 
 | Rule                                        | Reason                                                        |

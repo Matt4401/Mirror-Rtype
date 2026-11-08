@@ -1,5 +1,0 @@
-target("log")
-    set_kind("static")
-    add_files("*.cpp")
-    add_headerfiles("*.hpp", "*.tpp")
-    add_includedirs(".", {public = true})

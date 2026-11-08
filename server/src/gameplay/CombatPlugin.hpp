@@ -32,6 +32,8 @@ namespace rtype::server::gameplay {
 inline constexpr float SHOT_COOLDOWN = 0.2F;
 /** @brief Seconds of game time between two score logs. */
 inline constexpr float SCORE_LOG_INTERVAL = 5.0F;
+/** @brief Shortest time between two `protocol::ScoreUpdate`, in seconds: a burst of kills is sent once. */
+inline constexpr float SCORE_UPDATE_INTERVAL = 0.25F;
 /** @brief Points given to a player for each enemy their shots destroy. */
 inline constexpr std::uint32_t POINTS_PER_KILL = 1;
 /** @brief Seconds of rapid fire given by a power-up. */
@@ -47,11 +49,15 @@ inline constexpr float RAPID_FIRE_COOLDOWN = 0.08F;
  *   `EntityNetState::subtype` is the index of the player who fired it.
  * - Turns physics contacts into R-Type events with a `collision::CollisionRouter`. A player shot touching an enemy
  *   hurts it: an enemy with a `prefabs::Health` loses one point (its `EntityNetState::health` follows) and dies at 0,
- *   the others die on the first hit, and the kill gives `POINTS_PER_KILL` to the shooter.
+ *   the others die on the first hit, and the kill gives `POINTS_PER_KILL` to the shooter. A boss weak point passes
+ *   the hit to its boss; armor parts, and a boss that has weak points, stop the shot without damage. An enemy with
+ *   `prefabs::DropsPowerUp` killed by a player leaves a `power_up` where it died.
  * - An enemy shot, an enemy or an obstacle touching a ship that is not `Respawning` publishes `ShipDestroyed`.
- * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time.
+ * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time, and publishes a
+ *   `protocol::ScoreUpdate` when a score changed, at most every `SCORE_UPDATE_INTERVAL` seconds.
  * - On `LevelFinished`, publishes the `protocol::LevelComplete` with the scores, then `protocol::GameOver{Victory}`
- *   after the last level. The room sends them to its players: the plugin itself knows nothing about the network.
+ *   after the last level, and `protocol::GameOver{AllDead}` on `AllShipsEliminated`. The room sends them to its
+ *   players: the plugin itself knows nothing about the network. An eliminated ship cannot shoot nor be hit.
  */
 class CombatPlugin final : public engine::IPlugin {
   public:
@@ -107,6 +113,14 @@ class CombatPlugin final : public engine::IPlugin {
         float y = 0.0F;
     };
 
+    /** @brief A power-up to drop where an enemy carrying one died, spawned at the next fixed step. */
+    struct PendingDrop {
+        /** @brief Where the enemy died. */
+        float x = 0.0F;
+        /** @brief Where the enemy died. */
+        float y = 0.0F;
+    };
+
     /** @brief Queues a shot if the input holds the shoot action and the player's cooldown is over. */
     void onInput(const ecs::net::InputApplied& event);
     /** @brief Applies a shot: a player shot hurts the enemy it hit, an enemy shot destroys the ship it hit. */
@@ -121,6 +135,16 @@ class CombatPlugin final : public engine::IPlugin {
      * @return True if a hit destroys it.
      */
     [[nodiscard]] bool isVulnerable(ecs::Entity ship) const;
+    /**
+     * @brief Finds what a player shot on an enemy damages.
+     *
+     * A boss weak point passes the hit to its boss, an armor part or a boss with weak points absorbs it, and any other
+     * enemy (a turret included) takes it.
+     *
+     * @param target Enemy hit.
+     * @return The entity that takes the hit, or nothing if the shot is absorbed.
+     */
+    [[nodiscard]] std::optional<ecs::Entity> damagedBy(ecs::Entity target) const;
     /**
      * @brief Applies a player shot to an enemy.
      * @param target Enemy hit.
@@ -152,8 +176,12 @@ class CombatPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _powerUpToken;
     /** @brief Subscription to the finished levels. */
     std::optional<ecs::EventBus::EventToken> _levelToken;
+    /** @brief Subscription to the end of the last ship with lives. */
+    std::optional<ecs::EventBus::EventToken> _lostToken;
     /** @brief Shots requested since the last fixed step. */
     std::vector<PendingShot> _pendingShots;
+    /** @brief Power-ups to drop at the next fixed step. */
+    std::vector<PendingDrop> _pendingDrops;
     /** @brief Seconds before each player can fire again. */
     std::array<float, protocol::MAX_PLAYERS> _shotCooldowns{};
     /** @brief Seconds of rapid fire left for each player. */
@@ -164,6 +192,10 @@ class CombatPlugin final : public engine::IPlugin {
     std::size_t _playerCount = 0;
     /** @brief Seconds left before the next score log. */
     float _scoreLogTimer = SCORE_LOG_INTERVAL;
+    /** @brief True when a score changed since the last `protocol::ScoreUpdate`. */
+    bool _scoresChanged = false;
+    /** @brief Seconds left before a `protocol::ScoreUpdate` can be published again. */
+    float _scoreUpdateCooldown = 0.0F;
 };
 
 }  // namespace rtype::server::gameplay

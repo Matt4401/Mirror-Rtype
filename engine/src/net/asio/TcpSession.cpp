@@ -15,7 +15,7 @@
 #include <tuple>
 #include <utility>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/asio/LogTag.hpp"
 #include "net/asio/TransportCounters.hpp"
@@ -97,8 +97,8 @@ void TcpSession::send(const wire::MessageKind kind, const Bytes& payload) {
         return;
     }
     if (payload.size() > _limits.maxPayload) {
-        rtype::log::error(LOG_TAG, "reliable payload of ", payload.size(), " bytes refused (max ", _limits.maxPayload,
-                          ')');
+        engine::log::error(LOG_TAG, "reliable payload of ", payload.size(), " bytes refused (max ", _limits.maxPayload,
+                           ')');
         return;
     }
 
@@ -108,7 +108,7 @@ void TcpSession::send(const wire::MessageKind kind, const Bytes& payload) {
     std::ranges::copy(payload, frame.begin() + wire::TCP_HEADER_SIZE);
 
     if (_queuedBytes + frame.size() > _limits.maxQueueBytes) {
-        rtype::log::warning(LOG_TAG, "peer ", _id, " does not read its TCP socket anymore: disconnected");
+        engine::log::warning(LOG_TAG, "peer ", _id, " does not read its TCP socket anymore: disconnected");
         close();
         return;
     }

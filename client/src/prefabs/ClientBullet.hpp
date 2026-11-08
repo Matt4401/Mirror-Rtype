@@ -29,8 +29,8 @@ struct ClientBullet {};
  *
  * Sets up Transform, Renderable, AnimationComponent, RigidBody2D, a `PLAYER_SHOT` sensor Collider2D and the
  * ClientBullet tag.
- * Accepted parameters: transform keys (x, y, scaleX, scaleY), `speed` (horizontal pixels/sec),
- * and `textureId` (integer texture identifier set as a registration default).
+ * Accepted parameters: transform keys (x, y, scaleX, scaleY), `speed` (horizontal pixels/sec), and `texture` (asset
+ * alias resolved by the `assets::AssetManager`) or `textureId` (raw texture identifier).
  *
  * @param e Freshly spawned entity.
  * @param registry Registry owning the entity.

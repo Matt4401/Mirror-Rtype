@@ -2,7 +2,7 @@
 
 ## 1. Overview & Motivation
 
-The R-Type engine is designed according to **Track #1 (Advanced Architecture)**: it must remain a generic, standalone,
+Squacaron is designed according to **Track #1 (Advanced Architecture)**: it must remain a generic, standalone,
 and decoupled game engine library that can power multiple distinct games.
 
 To achieve true modularity, the engine introduces three interconnected architectural patterns:
@@ -144,6 +144,7 @@ if (windowService && !windowService->get().shouldClose()) {
 | Interface         | Header                              | Purpose                                             | Provided By     |
 |-------------------|-------------------------------------|-----------------------------------------------------|-----------------|
 | `IWindowService`  | `core/services/IWindowService.hpp`  | Window state, frame bracketing, close queries      , keyboard, gamepad and mouse sampling through engine input codes | `RenderPlugin`  |
+| `IInputCaptureService` | `core/services/IInputCaptureService.hpp` | Hides the input from `IWindowService` for one owner (developer console), which reads the real state | `RenderPlugin` |
 | `IRenderService`  | `core/services/IRenderService.hpp`  | 2D entity draw collection and presentation          | `RenderPlugin`  |
 | `IInputService`   | `core/services/IInputService.hpp`   | Action mapping configuration and controller indices | `InputPlugin`   |
 | `IPhysicsService` | `core/services/IPhysicsService.hpp` | Physics simulation stepping and body stats          | `PhysicsPlugin` |

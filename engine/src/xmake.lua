@@ -13,6 +13,12 @@ target("engine_core")
     add_includedirs(".", {public = true})
     add_deps("engine_time")
 
+-- Thread-safe logger shared by the engine modules and the games.
+target("engine_log")
+    set_kind("static")
+    add_files("log/*.cpp")
+    add_includedirs(".", {public = true})
+
 target("engine_events")
     set_kind("headeronly")
     add_includedirs(".", {public = true})
@@ -29,6 +35,28 @@ target("engine_settings")
     add_files("settings/*.cpp")
     add_includedirs(".", {public = true})
     add_deps("engine_core", "engine_events", "engine_config")
+
+-- Assets: textures, fonts, sounds and musics named by alias, loaded once, held by groups. Headless: the render and
+-- audio modules plug in their loaders.
+target("engine_assets")
+    set_kind("static")
+    add_files("assets/*.cpp", "assets/detail/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core")
+
+-- Bridge between the assets and Wren: the core/Assets module and the game's asset declaration script.
+target("engine_assets_scripting")
+    set_kind("static")
+    add_files("assets/scripting/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_assets", "engine_scripting")
+
+-- Bridge between the assets and the scenes: a scene's asset group is loaded while the scene is on the stack.
+target("engine_assets_scene")
+    set_kind("static")
+    add_files("assets/scene/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_assets", "engine_scene")
 
 target("engine_prefabs")
     set_kind("static")
@@ -50,7 +78,7 @@ target("engine_scripting")
     set_kind("static")
     add_files("scripting/**.cpp", "systems/script/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core", "engine_events", "engine_input", "engine_prefabs")
+    add_deps("engine_core", "engine_events", "engine_input", "engine_prefabs", "engine_assets", "engine_log")
     add_packages("wren", {public = true})
 
 -- Network interfaces (transport, config) and replication building blocks (input queue, network id map).
@@ -73,7 +101,7 @@ target("engine_network_asio")
     set_kind("static")
     add_files("net/asio/*.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_network", "log")
+    add_deps("engine_network", "engine_log")
     add_packages("asio")
     if is_plat("windows", "mingw") then
         add_syslinks("ws2_32", "mswsock", {public = true})
@@ -120,16 +148,57 @@ target("engine_scene_scripting")
     add_includedirs(".", {public = true})
     add_deps("engine_scene", "engine_scripting")
 
+-- Developer tools: CVar registry and console interpreter. Headless, so a server can use them too.
+target("engine_tools")
+    set_kind("static")
+    add_files("tools/common/*.cpp", "tools/cvars/*.cpp", "tools/console/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core", "engine_events")
+
+-- Bridge between the console and Wren: the `wren` command and `.wren` files for `exec`.
+target("engine_tools_scripting")
+    set_kind("static")
+    add_files("tools/scripting/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_tools", "engine_scripting")
+
+-- In-game developer console window. Talks to the window, input capture and screen draw services only (no graphics
+-- library), so it builds headless; drawn after the UI.
+target("engine_devconsole")
+    set_kind("static")
+    add_files("tools/devconsole/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_tools", "engine_ui")
+
+-- Public headers, installed under include/squacaron/ by `xmake install` (and so by the squacaron package).
+target("engine_headers")
+    set_kind("headeronly")
+    add_includedirs(".", {public = true})
+    add_headerfiles("(**.hpp)", "(**.tpp)", {prefixdir = "squacaron"})
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_timeline")
+    add_deps("engine_headers", "engine_log", "engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_assets", "engine_assets_scripting", "engine_assets_scene", "engine_timeline", "engine_tools", "engine_tools_scripting", "engine_devconsole")
     if has_config("graphics") then
-        add_deps("engine_render", "engine_audio")
+        add_deps("engine_render", "engine_audio", "engine_assets_render", "engine_assets_audio")
     end
 
 if has_config("graphics") then
     includes("render")
     includes("audio")
+
+    -- Bridges plugging the render and audio loaders into the asset manager; neither side knows the other.
+    target("engine_assets_render")
+        set_kind("static")
+        add_files("assets/render/*.cpp")
+        add_includedirs(".", {public = true})
+        add_deps("engine_assets", "engine_render")
+
+    target("engine_assets_audio")
+        set_kind("static")
+        add_files("assets/audio/*.cpp")
+        add_includedirs(".", {public = true})
+        add_deps("engine_assets", "engine_audio")
 end
 includes("ui")
 includes("input")

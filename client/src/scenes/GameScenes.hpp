@@ -5,10 +5,14 @@
 
 #pragma once
 
+#include <array>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
 #include "ecs/Entity.hpp"
+#include "gameplay/PlayerLives.hpp"
 #include "scene/IScene.hpp"
 #include "scene/SceneTypes.hpp"
 
@@ -26,9 +30,13 @@ struct LevelBanner {
 };
 
 /**
- * @brief The game: HUD (level, score, player), level banners, and the way to the pause menu.
+ * @brief The game: HUD (level, total and own score, player, boss health), level banners, and the way to the pause
+ * menu.
  *
  * The world itself (ships, enemies, shots) comes from the replication and is drawn by `RTypeGamePlugin`.
+ * The lives of the player are a column of ships next to its label, from the `health` of its ship. Once it is
+ * eliminated, `OUT` shows for two seconds, then the client closes: the game goes on for the other players.
+ * The boss health bar shows while a boss is on screen (`gameplay::bossHealth`), hidden otherwise.
  * Each `LevelStart` and `LevelComplete` shows a banner in the scripted `LevelTransition` overlay. The game ends on
  * `GameEnded` (game over screen), on leaving (lobby), or when the connection is lost (connect screen).
  */
@@ -55,10 +63,36 @@ class GameScene final : public scene::IScene {
      */
     static void showBanner(scene::SceneContext& context, std::string title, std::string subtitle);
 
+    /**
+     * @brief Spawns the boss health bar, hidden, and the system that shows and fills it while a boss is on screen.
+     * @param context Scene context.
+     */
+    void spawnBossBar(scene::SceneContext& context);
+
+    /**
+     * @brief Spawns the life icons of the player and the system that shows one per life left; once it is eliminated,
+     * `OUT`, then the client closes.
+     * @param context Scene context.
+     * @param playerIndex Index of the local player.
+     */
+    void spawnLives(scene::SceneContext& context, std::uint8_t playerIndex);
+
     /** @brief Level line of the HUD. */
     ecs::Entity _level = ecs::NULL_ENTITY;
-    /** @brief Score line of the HUD. */
+    /** @brief Total score line of the HUD. */
     ecs::Entity _score = ecs::NULL_ENTITY;
+    /** @brief Score line of this player, under the total. */
+    ecs::Entity _personal = ecs::NULL_ENTITY;
+    /** @brief Boss health bar of the HUD, hidden without a boss. */
+    ecs::Entity _bossBar = ecs::NULL_ENTITY;
+    /** @brief Caption of the boss health bar. */
+    ecs::Entity _bossCaption = ecs::NULL_ENTITY;
+    /** @brief Life icons of the HUD, one per life left. */
+    std::array<ecs::Entity, gameplay::STARTING_LIVES> _lives{};
+    /** @brief Shown instead of the lives once the player is out. */
+    ecs::Entity _out = ecs::NULL_ENTITY;
+    /** @brief Seconds before the client closes, once the player is out. */
+    std::optional<float> _closeIn;
 };
 
 /**

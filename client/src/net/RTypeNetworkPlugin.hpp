@@ -42,8 +42,8 @@ enum class SessionState : std::uint8_t {
  *
  * The game drives it with the request events of `SessionEvents.hpp` (`ConnectRequest`, `JoinRoomRequest`...), and it
  * reports what happens with the result events (`SessionConnected`, `RoomUpdated`, `GameStarted`, `LevelStarted`,
- * `GameEnded`, `SessionClosed`...). A request that makes no sense in the current state is ignored. The last state
- * received (list of rooms, room, level, result) is also kept, for a screen opened after the event.
+ * `ScoresUpdated`, `GameEnded`, `SessionClosed`...). A request that makes no sense in the current state is ignored. The
+ * last state received (list of rooms, room, level, result) is also kept, for a screen opened after the event.
  *
  * - **Connecting:** each `ConnectRequest` uses a fresh transport from the factory (a transport connects once), put in
  *   the shared `ClientConnection`, then `Hello` and `Welcome`.

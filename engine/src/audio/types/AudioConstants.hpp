@@ -2,18 +2,10 @@
 
 #include <cstddef>
 
-#include "audio/types/AudioTypes.hpp"
+#include "audio/types/AudioTypes.hpp"  // IWYU pragma: export
+#include "core/AudioHandles.hpp"       // IWYU pragma: export
 
 namespace audio {
-
-/** @brief Value returned when a sound could not be loaded; playing it does nothing. */
-inline constexpr SoundId NO_SOUND = 0;
-
-/** @brief Value returned when a music stream could not be loaded; playing it does nothing. */
-inline constexpr MusicId NO_MUSIC = 0;
-
-/** @brief Value returned when a sound could not be started; updating or stopping it does nothing. */
-inline constexpr VoiceId NO_VOICE = 0;
 
 /** @brief Silent gain. */
 inline constexpr float MIN_VOLUME = 0.0F;

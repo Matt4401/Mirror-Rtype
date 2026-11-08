@@ -195,6 +195,15 @@ struct LevelComplete {
     bool operator==(const LevelComplete&) const = default;
 };
 
+/** @brief S -> C: the scores of the room changed; sent at most a few times per second. */
+struct ScoreUpdate {
+    /** @brief Total score of the room. */
+    std::uint32_t score = 0;
+    /** @brief Score per player slot, at most `MAX_PLAYERS`. */
+    std::vector<std::uint32_t> playerScores;
+    bool operator==(const ScoreUpdate&) const = default;
+};
+
 /** @brief S -> C: a player left the room. */
 struct PlayerLeft {
     /** @brief Network id of the player who left. */
@@ -302,8 +311,8 @@ struct WorldState {
 };
 
 /** @brief Any message of the game protocol: one `Envelope` on the wire. */
-using Message =
-    std::variant<Hello, Welcome, LobbyListRequest, LobbyList, LobbyCreate, LobbyJoin, LobbyReady, LobbyUpdate,
-                 GameStart, GameOver, PlayerLeft, Leave, Chat, PlayerInput, WorldState, LevelStart, LevelComplete>;
+using Message = std::variant<Hello, Welcome, LobbyListRequest, LobbyList, LobbyCreate, LobbyJoin, LobbyReady,
+                             LobbyUpdate, GameStart, GameOver, PlayerLeft, Leave, Chat, PlayerInput, WorldState,
+                             LevelStart, LevelComplete, ScoreUpdate>;
 
 }  // namespace rtype::protocol

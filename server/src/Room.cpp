@@ -5,13 +5,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <thread>
 #include <utility>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "components/InputBuffer.hpp"
 #include "components/NetworkOwner.hpp"
 #include "components/Transform.hpp"
@@ -23,11 +23,14 @@
 #include "game/ShipMovement.hpp"
 #include "gameplay/CombatPlugin.hpp"
 #include "gameplay/Gameplay.hpp"
+#include "gameplay/GameplayComponents.hpp"
 #include "gameplay/LevelDirectorPlugin.hpp"
 #include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
+#include "hierarchy/HierarchyPlugin.hpp"
 #include "level/Level.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkPlugin.hpp"
@@ -76,6 +79,8 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
     _engine.addPlugin<systems::PhysicsPlugin>();
+    // Moves the parts of the bosses with them.
+    _engine.addPlugin<hierarchy::HierarchyPlugin>();
     _engine.addPlugin<timeline::TimelinePlugin>();
     gameplay::addGameplayPlugins(_engine, level);
     _engine.addPlugin<prefabs::PrefabPlugin>();
@@ -86,13 +91,17 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
         [this](const protocol::LevelStart& message) { broadcastReliable(*_connection, message); });
     bus.subscribe<protocol::LevelComplete>(
         [this](const protocol::LevelComplete& message) { broadcastReliable(*_connection, message); });
+    bus.subscribe<protocol::ScoreUpdate>(
+        [this](const protocol::ScoreUpdate& message) { broadcastReliable(*_connection, message); });
     bus.subscribe<protocol::GameOver>([this](const protocol::GameOver& message) {
         broadcastReliable(*_connection, message);
         _ended = true;
     });
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
-        if (registry.hasComponent<ecs::Transform>(event.entity)) {
+        // An eliminated ship stays parked out of the screen: its player only watches the others.
+        if (registry.hasComponent<ecs::Transform>(event.entity) &&
+            !registry.hasComponent<gameplay::Eliminated>(event.entity)) {
             game::applyShipInput(registry.getComponents<ecs::Transform>().get(event.entity), event.input,
                                  event.deltaTime);
         }
@@ -103,6 +112,8 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     gameplay::registerScriptPrefabs(scriptPrefabs);
     systems::ScriptSystem& scripts = _engine.getPlugin<scripting::ScriptPlugin>().scriptSystem();
     scripts.setPrefabManager(&scriptPrefabs);
+    // Boss scripts are named relative to the data directory, which they cannot leave.
+    scripts.setScriptRoot(level != nullptr ? level->dataRoot : std::filesystem::path{});
     // Hot reload is a development tool: on the game server, editing a script mid-match would rebuild the VM of every
     // room and restart the boss attacks.
     scripts.enableHotReload(false);
@@ -175,6 +186,9 @@ void Room::start() {
         transform.y = spawn.y;
         ++index;
     }
+    for (const RoomPlayer& player : _players) {
+        gameplay::giveLives(registry, player.entity);
+    }
     _engine.getPlugin<gameplay::CombatPlugin>().setPlayerCount(_players.size());
     _engine.getPlugin<gameplay::LevelDirectorPlugin>().startGame();
     _playing = true;
@@ -197,7 +211,7 @@ void Room::runInBackground() {
                 std::this_thread::sleep_for(IDLE_SLEEP);
             }
         } catch (const std::exception& error) {
-            log::error(LOG_TAG, "room stopped by an error in its simulation: ", error.what());
+            engine::log::error(LOG_TAG, "room stopped by an error in its simulation: ", error.what());
             broadcastReliable(*_connection, protocol::GameOver{.reason = protocol::GameOverReason::ServerShutdown});
             _ended = true;
         }

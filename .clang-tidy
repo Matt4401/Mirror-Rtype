@@ -15,6 +15,7 @@ Checks: >
   -cppcoreguidelines-avoid-magic-numbers,
   -readability-magic-numbers,
   -readability-identifier-length,
+  -readability-qualified-auto,
   -performance-avoid-endl,
   -llvmlibc-*,
   -fuchsia-*,
