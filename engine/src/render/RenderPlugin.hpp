@@ -88,6 +88,7 @@ class RenderPlugin final : public engine::IPlugin {
 
   private:
     class WindowServiceImpl;
+    class InputCaptureImpl;
     class RenderServiceImpl;
 
     /** @brief Active window configuration settings. */
@@ -100,6 +101,8 @@ class RenderPlugin final : public engine::IPlugin {
     std::unique_ptr<RenderSystem> _renderSystem = nullptr;
     /** @brief Shared pointer to abstract window service adapter. */
     std::shared_ptr<WindowServiceImpl> _windowService = nullptr;
+    /** @brief Input capture, sharing the state of the window service. */
+    std::shared_ptr<InputCaptureImpl> _inputCapture = nullptr;
     /** @brief Shared pointer to abstract render service adapter. */
     std::shared_ptr<RenderServiceImpl> _renderService = nullptr;
     /** @brief Screen-space overlay drawing, flushed on top of the world each frame. */
