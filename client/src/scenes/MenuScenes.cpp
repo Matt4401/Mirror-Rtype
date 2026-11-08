@@ -1,8 +1,12 @@
 #include "scenes/MenuScenes.hpp"
 
+#include <array>
 #include <charconv>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -10,13 +14,20 @@
 
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
+#include "core/services/IWindowService.hpp"
+#include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "ecs/time/Time.hpp"
 #include "events/UiEvents.hpp"
+#include "input/KeyNames.hpp"
+#include "input/KeyboardLayout.hpp"
+#include "input/RTypeBindings.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
 #include "net/SessionEvents.hpp"
 #include "scene/SceneContext.hpp"
 #include "scene/SceneManager.hpp"
+#include "scene/SceneTypes.hpp"
 #include "scenes/ClientSettings.hpp"
 #include "scenes/LobbyScenes.hpp"
 #include "scenes/MenuKit.hpp"
@@ -28,6 +39,56 @@ namespace {
 
 /** @brief Characters of a host name or an IP address. */
 constexpr std::string_view HOST_CHARACTERS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:";
+
+/** @brief Width of the buttons of the settings and controls screens. */
+constexpr float SETTINGS_BUTTON_WIDTH = 360.0F;
+/** @brief Width of the buttons of the controls screen. */
+constexpr float CONTROLS_BUTTON_WIDTH = 400.0F;
+/** @brief Vertical distance between two controls. */
+constexpr float CONTROLS_ROW_HEIGHT = 46.0F;
+/** @brief Prefix of the action of a control's button, followed by its id. */
+constexpr std::string_view CONTROL_ACTION_PREFIX = "controls.key.";
+/** @brief Text sizes the settings cycle through, from the default. */
+constexpr std::array<float, 4> SCALE_STEPS = {1.0F, 1.15F, 1.3F, 0.85F};
+
+/**
+ * @brief Gets the text size that follows `current` in `SCALE_STEPS`.
+ * @param current Current scale.
+ * @return The next step, or the first one if `current` is not a step.
+ */
+float nextScale(float current) noexcept {
+    for (std::size_t i = 0; i < SCALE_STEPS.size(); ++i) {
+        if (std::abs(SCALE_STEPS.at(i) - current) < 0.01F) {
+            return SCALE_STEPS.at((i + 1) % SCALE_STEPS.size());
+        }
+    }
+    return SCALE_STEPS.front();
+}
+
+/**
+ * @brief Gets the label of the text size button.
+ * @param scale Current scale.
+ * @return E.g. "TEXT SIZE: 115%".
+ */
+std::string scaleLabel(float scale) {
+    return "TEXT SIZE: " + std::to_string(static_cast<int>(std::lround(scale * 100.0F))) + "%";
+}
+
+/**
+ * @brief Tells whether a key can be given to a control: Escape goes back and F3 shows the metrics.
+ * @param key Key.
+ * @return `false` for the keys the menus already use.
+ */
+bool isBindable(engine::Key key) noexcept { return key != engine::Key::Escape && key != engine::Key::F3; }
+
+/**
+ * @brief Gets the layout of the player's keyboard, detected once.
+ * @return The layout.
+ */
+::input::KeyboardLayout layout() {
+    static const ::input::KeyboardLayout detected = ::input::detectKeyboardLayout();
+    return detected;
+}
 
 /**
  * @brief Gets the settings of the client, if the settings plugin is there.
@@ -167,22 +228,34 @@ void SettingsScene::onEnter(scene::SceneContext& context) {
     const auto number = [settings](std::string_view key) {
         return settings != nullptr ? static_cast<float>(settings->getNumber(key)) : 1.0F;
     };
-    const ecs::Entity box = menu::panel(context, 500.0F, 400.0F);
+    const auto flag = [settings](std::string_view key) { return settings != nullptr && settings->getBool(key); };
+    const float scale = menu::scale(context.registry());
+    const ecs::Entity box = menu::panel(context, 500.0F, 500.0F);
     (void)menu::label(context, box, "SETTINGS", 28.0F, 34.0F, menu::GOLD);
     const ecs::Entity first =
-        menu::slider(context, box, "MASTER", number(settings_keys::MASTER_VOLUME), "settings.master", 110.0F, 0);
-    (void)menu::slider(context, box, "MUSIC", number(settings_keys::MUSIC_VOLUME), "settings.music", 160.0F, 1);
-    (void)menu::slider(context, box, "EFFECTS", number(settings_keys::SFX_VOLUME), "settings.sfx", 210.0F, 2);
-    (void)menu::toggle(context, box, "METRICS (F3)",
-                       settings != nullptr && settings->getBool(settings_keys::SHOW_METRICS), "settings.metrics",
-                       256.0F, 3);
-    (void)menu::button(context, box, "BACK", "settings.back", 325.0F, 4);
-    menu::focus(context.registry(), first);
+        menu::slider(context, box, "MASTER", number(settings_keys::MASTER_VOLUME), "settings.master", 95.0F, 0);
+    (void)menu::slider(context, box, "MUSIC", number(settings_keys::MUSIC_VOLUME), "settings.music", 140.0F, 1);
+    (void)menu::slider(context, box, "EFFECTS", number(settings_keys::SFX_VOLUME), "settings.sfx", 185.0F, 2);
+    (void)menu::toggle(context, box, "METRICS (F3)", flag(settings_keys::SHOW_METRICS), "settings.metrics", 228.0F, 3);
+    (void)menu::toggle(context, box, "AUTO-FIRE", flag(settings_keys::AUTO_FIRE), "settings.autofire", 270.0F, 4);
+    const ecs::Entity scaleButton =
+        menu::button(context, box, scaleLabel(scale), "settings.scale", 322.0F, 5, SETTINGS_BUTTON_WIDTH);
+    (void)menu::button(context, box, "CONTROLS", "settings.controls", 377.0F, 6, SETTINGS_BUTTON_WIDTH);
+    (void)menu::button(context, box, "BACK", "settings.back", 432.0F, 7, SETTINGS_BUTTON_WIDTH);
+    menu::focus(context.registry(), _focusScale ? scaleButton : first);
+    _focusScale = false;
 
     menu::onBack(context, [&context] { context.manager().pop(); });
-    menu::onClick(context, [&context](std::string_view action) {
+    menu::onClick(context, [this, &context, settings, scale](std::string_view action) {
         if (action == "settings.back") {
             context.manager().pop();
+        } else if (action == "settings.controls") {
+            context.manager().push<ControlsScene>();
+        } else if (action == "settings.scale" && settings != nullptr) {
+            // The kit reads the scale when it spawns a widget: rebuild the scene to show the new size at once.
+            settings->set(settings_keys::UI_SCALE, static_cast<double>(nextScale(scale)));
+            _focusScale = true;
+            context.manager().replace<SettingsScene>();
         }
     });
     context.subscribe<ui::UiValueChangedEvent>([settings](const ui::UiValueChangedEvent& event) {
@@ -199,10 +272,132 @@ void SettingsScene::onEnter(scene::SceneContext& context) {
         }
     });
     context.subscribe<ui::UiToggleChangedEvent>([settings](const ui::UiToggleChangedEvent& event) {
-        if (settings != nullptr && event.action == "settings.metrics") {
+        if (settings == nullptr) {
+            return;
+        }
+        if (event.action == "settings.metrics") {
             settings->set(settings_keys::SHOW_METRICS, event.on);
+        } else if (event.action == "settings.autofire") {
+            settings->set(settings_keys::AUTO_FIRE, event.on);
         }
     });
+}
+
+// --- Controls --------------------------------------------------------------------------------------------------------
+
+void ControlsScene::onEnter(scene::SceneContext& context) {
+    _waiting.reset();
+    _wasDown.fill(true);  // A key held when the scene opens (Enter on "CONTROLS") is not a new press.
+    _justBound = engine::Key::Unknown;
+
+    const ecs::Entity box = menu::panel(context, 520.0F, 520.0F);
+    (void)menu::label(context, box, "CONTROLS", 28.0F, 34.0F, menu::GOLD);
+    int order = 0;
+    float y = 90.0F;
+    for (const input::Control control : input::CONTROLS) {
+        _buttons.at(static_cast<std::size_t>(control)) =
+            menu::button(context, box, "", std::string(CONTROL_ACTION_PREFIX).append(input::controlId(control)), y,
+                         order++, CONTROLS_BUTTON_WIDTH);
+        y += CONTROLS_ROW_HEIGHT;
+    }
+    (void)menu::button(context, box, "RESET", "controls.reset", y + 14.0F, order++, CONTROLS_BUTTON_WIDTH);
+    (void)menu::button(context, box, "BACK", "controls.back", y + 60.0F, order, CONTROLS_BUTTON_WIDTH);
+    (void)menu::label(context, box, "ESCAPE CANCELS - GAMEPAD BUTTONS ARE FIXED", y + 112.0F, 14.0F, menu::MUTED);
+    refreshLabels(context);
+    menu::focus(context.registry(), _buttons.front());
+
+    menu::onBack(context, [this, &context] {
+        if (_waiting) {
+            _waiting.reset();
+            refreshLabels(context);
+        } else {
+            context.manager().pop();
+        }
+    });
+    menu::onClick(context, [this, &context](std::string_view action) {
+        if (_waiting || _justBound != engine::Key::Unknown) {
+            return;
+        }
+        if (action == "controls.back") {
+            context.manager().pop();
+            return;
+        }
+        config::Settings* settings = settingsOf(context);
+        if (action == "controls.reset" && settings != nullptr) {
+            for (const input::Control control : input::CONTROLS) {
+                (void)settings->reset(settings_keys::controlKey(control));
+            }
+            refreshLabels(context);
+            return;
+        }
+        for (const input::Control control : input::CONTROLS) {
+            if (action.substr(CONTROL_ACTION_PREFIX.size()) == input::controlId(control) &&
+                action.starts_with(CONTROL_ACTION_PREFIX)) {
+                _waiting = control;
+                // The key that clicked (Enter, Space) may still be down: only a press after this one counts.
+                _wasDown.fill(true);
+                menu::setText(context.registry(), _buttons.at(static_cast<std::size_t>(control)),
+                              std::string(input::controlLabel(control)) + ": PRESS A KEY");
+            }
+        }
+    });
+    context.addSystem(scene::SceneStage::Update,
+                      [this, &context](engine::Engine& /*engine*/, const ecs::time::Time&) { pollKeys(context); });
+}
+
+void ControlsScene::refreshLabels(scene::SceneContext& context) const {
+    const config::Settings* settings = settingsOf(context);
+    const input::ControlKeys defaults = input::defaultControlKeys();
+    for (const input::Control control : input::CONTROLS) {
+        const auto index = static_cast<std::size_t>(control);
+        engine::Key key = defaults.at(index);
+        if (settings != nullptr) {
+            key = input::keyFromId(settings->getString(settings_keys::controlKey(control))).value_or(key);
+        }
+        menu::setText(context.registry(), _buttons.at(index),
+                      std::string(input::controlLabel(control)) + ": " + input::keyLabel(key, layout()));
+    }
+}
+
+void ControlsScene::pollKeys(scene::SceneContext& context) {
+    auto window = context.engine().mediator().getService<engine::IWindowService>();
+    if (!window) {
+        return;
+    }
+    std::optional<engine::Key> pressed;
+    for (const input::KeyName& name : input::keyNames()) {
+        const bool down = window->get().isKeyDown(name.key);
+        bool& wasDown = _wasDown.at(static_cast<std::size_t>(name.key));
+        if (down && !wasDown && !pressed && isBindable(name.key)) {
+            pressed = name.key;
+        }
+        wasDown = down;
+    }
+    if (_justBound != engine::Key::Unknown && !window->get().isKeyDown(_justBound)) {
+        _justBound = engine::Key::Unknown;
+    }
+    if (!_waiting || !pressed) {
+        return;
+    }
+    config::Settings* settings = settingsOf(context);
+    if (settings != nullptr) {
+        input::ControlKeys keys = input::defaultControlKeys();
+        for (const input::Control control : input::CONTROLS) {
+            const auto index = static_cast<std::size_t>(control);
+            keys.at(index) =
+                input::keyFromId(settings->getString(settings_keys::controlKey(control))).value_or(keys.at(index));
+        }
+        input::assignKey(keys, *_waiting, *pressed);
+        for (const input::Control control : input::CONTROLS) {
+            (void)settings->set(settings_keys::controlKey(control),
+                                std::string(input::keyId(keys.at(static_cast<std::size_t>(control)))));
+        }
+    }
+    // The arrows also move the focus: give it back to the control that was rebound.
+    menu::focus(context.registry(), _buttons.at(static_cast<std::size_t>(*_waiting)));
+    _waiting.reset();
+    _justBound = *pressed;
+    refreshLabels(context);
 }
 
 }  // namespace client

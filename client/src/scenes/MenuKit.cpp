@@ -1,5 +1,6 @@
 #include "scenes/MenuKit.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <string>
@@ -29,6 +30,8 @@ namespace {
 
 /** @brief Horizontal room for the caption of a slider or a toggle. */
 constexpr float CAPTION_WIDTH = 170.0F;
+/** @brief Font size of the caption of a slider or a toggle. */
+constexpr float CAPTION_SIZE = 20.0F;
 /** @brief Width of a settings row: caption and widget. */
 constexpr float ROW_WIDTH = 400.0F;
 /** @brief Button background when idle. */
@@ -62,13 +65,27 @@ ui::UiAnchor centredAt(float y) { return ui::UiAnchor{.anchorX = 0.5F, .offsetY 
 
 }  // namespace
 
+void setScale(ecs::Registry& registry, float factor) {
+    const float clamped = std::clamp(factor, MIN_SCALE, MAX_SCALE);
+    if (registry.hasResource<MenuScale>()) {
+        registry.getResource<MenuScale>().factor = clamped;
+    } else {
+        registry.emplaceResource<MenuScale>(MenuScale{.factor = clamped});
+    }
+}
+
+float scale(const ecs::Registry& registry) {
+    return registry.hasResource<MenuScale>() ? registry.getResource<MenuScale>().factor : 1.0F;
+}
+
 ecs::Entity panel(scene::SceneContext& context, float width, float height) {
     ecs::Registry& registry = context.registry();
+    const float k = scale(registry);
     const ecs::Entity entity = context.spawn();
     registry.addComponent(entity, ui::UiAnchor{.anchorX = 0.5F, .anchorY = 0.5F, .pivotX = 0.5F, .pivotY = 0.5F});
     registry.addComponent(entity, ui::UiRect{
-                                      .width = width,
-                                      .height = height,
+                                      .width = width * k,
+                                      .height = height * k,
                                       .fillColor = PANEL,
                                       .borderColor = ACCENT,
                                       .borderThickness = 2.0F,
@@ -78,24 +95,27 @@ ecs::Entity panel(scene::SceneContext& context, float width, float height) {
 
 ecs::Entity label(scene::SceneContext& context, ecs::Entity parent, std::string text, float y, float size,
                   ecs::Rgba color) {
-    const ecs::Entity entity = child(context, parent, centredAt(y));
-    context.registry().addComponent(entity, ui::UiText{.text = std::move(text), .fontSize = size, .color = color});
+    const float k = scale(context.registry());
+    const ecs::Entity entity = child(context, parent, centredAt(y * k));
+    context.registry().addComponent(entity, ui::UiText{.text = std::move(text), .fontSize = size * k, .color = color});
     return entity;
 }
 
 ecs::Entity button(scene::SceneContext& context, ecs::Entity parent, std::string text, std::string action, float y,
                    int order, float width) {
-    const ecs::Entity entity = child(context, parent, centredAt(y));
     ecs::Registry& registry = context.registry();
+    const float k = scale(registry);
+    const ecs::Entity entity = child(context, parent, centredAt(y * k));
     registry.addComponent(entity, ui::UiButton{
-                                      .width = width,
-                                      .height = BUTTON_HEIGHT,
+                                      .width = width * k,
+                                      .height = BUTTON_HEIGHT * k,
                                       .label = std::move(text),
                                       .action = std::move(action),
                                       .colorIdle = BUTTON_IDLE,
                                       .colorHovered = BUTTON_HOVERED,
                                       .colorPressed = BUTTON_PRESSED,
                                       .colorText = TEXT,
+                                      .fontSize = ui::UiButton::DEFAULT_FONT_SIZE * k,
                                   });
     registry.addComponent(entity, ui::UiFocusable{.order = order});
     return entity;
@@ -104,14 +124,17 @@ ecs::Entity button(scene::SceneContext& context, ecs::Entity parent, std::string
 ecs::Entity textInput(scene::SceneContext& context, ecs::Entity parent, std::string caption, std::string text,
                       std::string action, std::string allowed, std::size_t maxLength, float y, int order) {
     (void)label(context, parent, std::move(caption), y - 26.0F, 18.0F, MUTED);
-    const ecs::Entity entity = child(context, parent, centredAt(y));
     ecs::Registry& registry = context.registry();
+    const float k = scale(registry);
+    const ecs::Entity entity = child(context, parent, centredAt(y * k));
     registry.addComponent(entity, ui::UiTextInput{
                                       .text = std::move(text),
                                       .action = std::move(action),
                                       .allowed = std::move(allowed),
                                       .maxLength = maxLength,
-                                      .width = BUTTON_WIDTH,
+                                      .width = BUTTON_WIDTH * k,
+                                      .height = ui::UiTextInput::DEFAULT_HEIGHT * k,
+                                      .fontSize = ui::UiTextInput::DEFAULT_FONT_SIZE * k,
                                       .border = ACCENT,
                                   });
     registry.addComponent(entity, ui::UiFocusable{.order = order});
@@ -120,16 +143,18 @@ ecs::Entity textInput(scene::SceneContext& context, ecs::Entity parent, std::str
 
 ecs::Entity slider(scene::SceneContext& context, ecs::Entity parent, std::string caption, float value,
                    std::string action, float y, int order) {
-    const ecs::Entity row = child(context, parent, centredAt(y));
     ecs::Registry& registry = context.registry();
-    registry.addComponent(row, ui::UiRect{.width = ROW_WIDTH, .height = ui::UiSlider::DEFAULT_HEIGHT});
+    const float k = scale(registry);
+    const ecs::Entity row = child(context, parent, centredAt(y * k));
+    registry.addComponent(row, ui::UiRect{.width = ROW_WIDTH * k, .height = ui::UiSlider::DEFAULT_HEIGHT * k});
     const ecs::Entity text = child(context, row, ui::UiAnchor{.anchorY = 0.5F, .pivotY = 0.5F});
-    registry.addComponent(text, ui::UiText{.text = std::move(caption), .fontSize = 20.0F, .color = TEXT});
-    const ecs::Entity entity = child(context, row, ui::UiAnchor{.offsetX = CAPTION_WIDTH});
+    registry.addComponent(text, ui::UiText{.text = std::move(caption), .fontSize = CAPTION_SIZE * k, .color = TEXT});
+    const ecs::Entity entity = child(context, row, ui::UiAnchor{.offsetX = CAPTION_WIDTH * k});
     registry.addComponent(entity, ui::UiSlider{.value = value,
                                                .step = 0.1F,
                                                .action = std::move(action),
-                                               .width = ROW_WIDTH - CAPTION_WIDTH,
+                                               .width = (ROW_WIDTH - CAPTION_WIDTH) * k,
+                                               .height = ui::UiSlider::DEFAULT_HEIGHT * k,
                                                .fill = ACCENT});
     registry.addComponent(entity, ui::UiFocusable{.order = order});
     return entity;
@@ -137,13 +162,18 @@ ecs::Entity slider(scene::SceneContext& context, ecs::Entity parent, std::string
 
 ecs::Entity toggle(scene::SceneContext& context, ecs::Entity parent, std::string caption, bool on, std::string action,
                    float y, int order) {
-    const ecs::Entity row = child(context, parent, centredAt(y));
     ecs::Registry& registry = context.registry();
-    registry.addComponent(row, ui::UiRect{.width = ROW_WIDTH, .height = ui::UiToggle::DEFAULT_SIZE});
+    const float k = scale(registry);
+    const ecs::Entity row = child(context, parent, centredAt(y * k));
+    registry.addComponent(row, ui::UiRect{.width = ROW_WIDTH * k, .height = ui::UiToggle::DEFAULT_SIZE * k});
     const ecs::Entity text = child(context, row, ui::UiAnchor{.anchorY = 0.5F, .pivotY = 0.5F});
-    registry.addComponent(text, ui::UiText{.text = std::move(caption), .fontSize = 20.0F, .color = TEXT});
-    const ecs::Entity entity = child(context, row, ui::UiAnchor{.offsetX = CAPTION_WIDTH});
-    registry.addComponent(entity, ui::UiToggle{.on = on, .action = std::move(action), .mark = ACCENT});
+    registry.addComponent(text, ui::UiText{.text = std::move(caption), .fontSize = CAPTION_SIZE * k, .color = TEXT});
+    const ecs::Entity entity = child(context, row, ui::UiAnchor{.offsetX = CAPTION_WIDTH * k});
+    registry.addComponent(entity, ui::UiToggle{.on = on,
+                                               .action = std::move(action),
+                                               .width = ui::UiToggle::DEFAULT_SIZE * k,
+                                               .height = ui::UiToggle::DEFAULT_SIZE * k,
+                                               .mark = ACCENT});
     registry.addComponent(entity, ui::UiFocusable{.order = order});
     return entity;
 }

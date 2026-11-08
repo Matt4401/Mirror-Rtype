@@ -143,7 +143,7 @@ target("test_input")
     set_kind("binary")
     add_deps("engine_core", "engine_events", "engine_input")
     add_packages("gtest")
-    add_files("test_input.cpp", "../client/src/input/RTypeBindings.cpp")
+    add_files("test_input.cpp", "../client/src/input/RTypeBindings.cpp", "../client/src/input/KeyNames.cpp")
     add_includedirs("../client/src")
     add_tests("test_input")
 
@@ -310,6 +310,13 @@ target("test_client_blink")
     add_includedirs("../client/src")
     add_tests("test_client_blink")
 
+target("test_client_autofire")
+    set_kind("binary")
+    add_packages("gtest")
+    add_files("client/AutoFireTests.cpp")
+    add_includedirs("../client/src")
+    add_tests("test_client_autofire")
+
 target("test_replication")
     set_kind("binary")
     add_deps("engine_core", "engine_network")
@@ -357,7 +364,8 @@ target("test_client_scenes")
              "rtype_game")
     add_packages("gtest", "wren")
     add_files("client/ClientScenesTests.cpp", "../client/src/net/RTypeNetworkPlugin.cpp",
-              "../client/src/net/PlayerControlPlugin.cpp", "../client/src/scenes/*.cpp")
+              "../client/src/net/PlayerControlPlugin.cpp", "../client/src/scenes/*.cpp",
+              "../client/src/input/RTypeBindings.cpp", "../client/src/input/KeyNames.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_scenes")
 
