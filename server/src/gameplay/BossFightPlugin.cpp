@@ -35,8 +35,6 @@
 
 namespace rtype::server::gameplay {
 
-BossFightPlugin::BossFightPlugin(std::shared_ptr<const level::Level> level) : _level(std::move(level)) {}
-
 void BossFightPlugin::build(engine::PluginBuilder& builder) {
     builder.require<systems::PhysicsPlugin>();
     builder.require<hierarchy::HierarchyPlugin>();
@@ -67,9 +65,9 @@ void BossFightPlugin::startFight(ecs::Registry& registry, const ::prefabs::Prefa
                                     .health = registry.getComponents<::prefabs::Health>().get(boss).points,
                                 });
     if (const auto script = params.find<std::string>("script")) {
-        // `scripts/Boss.wren` is the module `<data root>/scripts/Boss`, whose class is `Boss` unless the event names
-        // another one.
-        const std::filesystem::path path = (_level != nullptr ? _level->dataRoot : std::filesystem::path{}) / *script;
+        // `scripts/Boss.wren` is the module `scripts/Boss`, read under the script root (the data root, set by the
+        // room), whose class is `Boss` unless the event names another one.
+        const std::filesystem::path path(*script);
         registry.addComponent(boss, ecs::ScriptComponent{
                                         .moduleName = (path.parent_path() / path.stem()).generic_string(),
                                         .className = params.get<std::string>("class", path.stem().string()),

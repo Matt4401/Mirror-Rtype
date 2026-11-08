@@ -146,6 +146,7 @@ ControlKeys defaultControlKeys() noexcept {
 
 void assignKey(ControlKeys& keys, Control control, engine::Key key) noexcept {
     engine::Key& target = keys.at(slot(control));
+    // NOLINTNEXTLINE(readability-qualified-auto): std::array iterator is not a pointer on MSVC.
     if (auto other = std::ranges::find(keys, key); other != keys.end()) {
         *other = target;
     }

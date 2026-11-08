@@ -14,6 +14,7 @@
 
 #include "components/Hidden.hpp"
 #include "components/Replicated.hpp"
+#include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
@@ -47,6 +48,7 @@
 #include "ui/UiPlugin.hpp"
 #include "ui/components/UiImage.hpp"
 #include "ui/components/UiProgressBar.hpp"
+#include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
 
 // The client's menus, without a window: fake window, draw service and transport, the real scenes and session.

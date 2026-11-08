@@ -1110,10 +1110,12 @@ class ScriptedBossTest : public ::testing::Test {
             std::ofstream(scriptPath) << source;
         }
 
+        // As in a real level: the script is relative to the data root, which `Room` makes the script root.
         auto built = std::make_shared<level::Level>();
+        built->dataRoot = scriptPath.parent_path();
         built->scrollSpeed = LEVEL_SPEED;
         prefabs::PrefabParams params{
-            {"prefab", std::string("boss_core")}, {"x", 900.0}, {"y", 360.0}, {"script", scriptPath.generic_string()}};
+            {"prefab", std::string("boss_core")}, {"x", 900.0}, {"y", 360.0}, {"script", scriptPath.filename().generic_string()}};
         params.merge(extra);
         built->timeline.add({.position = 0.0F, .type = std::string(level::EVENT_BOSS), .params = std::move(params)});
 
@@ -1129,6 +1131,7 @@ class ScriptedBossTest : public ::testing::Test {
         rtype::server::gameplay::registerScriptPrefabs(manager);
         systems::ScriptSystem& scripts = engine.getPlugin<scripting::ScriptPlugin>().scriptSystem();
         scripts.setPrefabManager(&manager);
+        scripts.setScriptRoot(built->dataRoot);
         bound = rtype::server::gameplay::bindScriptComponents(scripts);
     }
 

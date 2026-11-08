@@ -45,7 +45,7 @@ void AssetsPlugin::init(engine::Engine& engine) {
         const assets::AssetStatus status = manager.status<assets::Texture>(alias);
         if (status != assets::AssetStatus::Loaded) {
             engine::log::warning(LOG_TAG, "texture '", alias,
-                                 "' not loaded (are rlss/scripts/Assets.wren and assets/ next to the executable?)");
+                                "' not loaded (are rlss/scripts/Assets.wren and assets/ next to the executable?)");
         }
         return status == assets::AssetStatus::Unknown ? manager.fallback<assets::Texture>()
                                                       : manager.get<assets::Texture>(alias);
