@@ -58,3 +58,46 @@
 variant = 0
 width = 128.0
 height = 160.0
+
+# --- Enemies ---
+
+# Alien gunner: a turret turning towards the nearest ship. 16 directions of 33 x 32, the first one facing 22.5 degrees
+# (just below "right"), then clockwise. Scaled to its 40 px hitbox.
+[[entity]]
+prefab = "alien_gunner"
+texture = "sprites/r-typesheet19.png"
+frame_width = 33
+frame_height = 32
+frames = 16
+directional = true
+first_angle = 22.5
+scale = 1.2
+
+# Alien elite: 5 frames of 48 x 48, 65 px apart. Scaled to its 56 px hitbox.
+[[entity]]
+prefab = "alien_elite"
+texture = "sprites/r-typesheet24.png"
+frame_width = 48
+frame_height = 48
+frame_stride = 65
+frames = 5
+frame_duration = 0.12
+scale = 1.2
+
+# --- Enemy shots: the round shot at the start of each strip ---
+
+# Shots of the alien gunners (subtype 1): red.
+[[entity]]
+prefab = "missile"
+subtype = 1
+texture = "sprites/r-typesheet9_red.png"
+frame_width = 16
+frame_height = 16
+
+# Shots of the alien elites (subtype 2): blue.
+[[entity]]
+prefab = "missile"
+subtype = 2
+texture = "sprites/r-typesheet9_blue.png"
+frame_width = 16
+frame_height = 16
