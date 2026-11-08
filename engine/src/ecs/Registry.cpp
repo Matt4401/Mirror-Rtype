@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <span>
 #include <stdexcept>
 #include <utility>
 
@@ -42,41 +43,45 @@ Entity Registry::spawnEntity() {
     return makeEntity(idx, _generations[idx]);
 }
 
-void Registry::killEntity(Entity e) {
-    if (!isAlive(e)) {
-        return;
-    }
-    std::uint32_t const idx = entityIndex(e);
-    _isAlive[idx] = false;
+void Registry::killEntity(Entity e) { killEntities(std::span<const Entity>(&e, 1)); }
 
-    // A throwing listener must not leave the entity half-destroyed: the other listeners still run, the components are
-    // still removed and the slot still recycled, then the first exception is rethrown.
+void Registry::killEntities(std::span<const Entity> entities) {
+    // A throwing listener must not leave an entity half-destroyed: the other listeners still run, the components are
+    // still removed and the slots still recycled, then the first exception is rethrown.
     std::exception_ptr listenerError;
     ++_destroyDispatchDepth;
-    const std::size_t count = _destroyListeners.size();
-    for (std::size_t i = 0; i < count; ++i) {
-        if (_destroyListeners[i].active && _destroyListeners[i].callback) {
-            try {
-                _destroyListeners[i].callback(e);
-            } catch (...) {
-                if (!listenerError) {
-                    listenerError = std::current_exception();
+    for (const Entity e : entities) {
+        if (!isAlive(e)) {
+            continue;
+        }
+        std::uint32_t const idx = entityIndex(e);
+        _isAlive[idx] = false;
+
+        const std::size_t count = _destroyListeners.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            if (_destroyListeners[i].active && _destroyListeners[i].callback) {
+                try {
+                    _destroyListeners[i].callback(e);
+                } catch (...) {
+                    if (!listenerError) {
+                        listenerError = std::current_exception();
+                    }
                 }
             }
         }
+
+        for (auto const& array : _componentsArrays) {
+            if (array) {
+                array->erase(e);
+            }
+        }
+        _generations[idx] = (_generations[idx] + 1) & MAX_ENTITY_GENERATION;
+        _deadEntities.push(idx);
     }
     --_destroyDispatchDepth;
     if (_destroyDispatchDepth == 0) {
         std::erase_if(_destroyListeners, [](const auto& entry) { return !entry.active; });
     }
-
-    for (auto const& array : _componentsArrays) {
-        if (array) {
-            array->erase(e);
-        }
-    }
-    _generations[idx] = (_generations[idx] + 1) & MAX_ENTITY_GENERATION;
-    _deadEntities.push(idx);
 
     if (listenerError) {
         std::rethrow_exception(listenerError);

@@ -92,9 +92,16 @@ target("engine_metrics_overlay")
     add_includedirs(".", {public = true})
     add_deps("engine_metrics", "engine_ui", "engine_hierarchy")
 
+-- Scenes: stack of game states owning their entities, subscriptions and systems. Headless, no backend dependency.
+target("engine_scene")
+    set_kind("static")
+    add_files("scene/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core", "engine_events")
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end

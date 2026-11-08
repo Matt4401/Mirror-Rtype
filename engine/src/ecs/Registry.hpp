@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <queue>
+#include <span>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -127,6 +128,18 @@ class Registry {
      * @throws Whatever the first throwing destroy listener threw.
      */
     void killEntity(Entity e);
+
+    /**
+     * @brief Kills a batch of entities, with the same semantics as calling `killEntity` on each one in order.
+     *
+     * Dead and stale handles are skipped, including entities killed by the destroy listener of an earlier entity of
+     * the batch (a hierarchy cascade, for instance). Listener bookkeeping is done once for the whole batch. If a
+     * destroy listener throws, every entity of the batch is still fully destroyed before the first exception is
+     * rethrown.
+     * @param entities Entities to destroy; the span may refer to storage the listeners do not touch.
+     * @throws Whatever the first throwing destroy listener threw.
+     */
+    void killEntities(std::span<const Entity> entities);
 
     /**
      * @brief Registers a callback invoked before an entity is destroyed.

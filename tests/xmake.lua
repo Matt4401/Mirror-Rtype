@@ -218,6 +218,13 @@ target("test_server_manager")
     add_includedirs("../server/src")
     add_tests("test_server_manager")
 
+target("test_scene")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scene", "engine_hierarchy")
+    add_packages("gtest")
+    add_files("test_scene.cpp")
+    add_tests("test_scene")
+
 target("test_hierarchy")
     set_kind("binary")
     add_deps("engine_core", "engine_time", "engine_hierarchy")
