@@ -64,6 +64,8 @@ constexpr float PLACEHOLDER_PIXELS = 32.0F;
 /** @brief Height of an obstacle whose subtype carries none (spawned by a script): the default 64 px block. */
 constexpr float DEFAULT_OBSTACLE_HEIGHT = 64.0F;
 constexpr ecs::Rgba COLOR_BOSS = {.r = 170, .g = 60, .b = 200, .a = 255};
+constexpr ecs::Rgba COLOR_MISSILE = {.r = 255, .g = 90, .b = 60, .a = 255};
+constexpr ecs::Rgba COLOR_POWER_UP = {.r = 80, .g = 220, .b = 120, .a = 255};
 constexpr ecs::Rgba COLOR_TERRAIN = {.r = 110, .g = 90, .b = 70, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
@@ -294,6 +296,10 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
         const float height =
             units == 0 ? DEFAULT_OBSTACLE_HEIGHT : static_cast<float>(units) * rtype::game::TERRAIN_HEIGHT_UNIT;
         applyBox(registry, event.entity, rtype::game::TERRAIN_COLUMN_WIDTH, height, COLOR_TERRAIN, 1);
+    } else if (event.kind == rtype::game::KIND_MISSILE) {
+        applyBox(registry, event.entity, rtype::game::MISSILE_WIDTH, rtype::game::MISSILE_HEIGHT, COLOR_MISSILE, 2);
+    } else if (event.kind == rtype::game::KIND_POWER_UP) {
+        applyBox(registry, event.entity, rtype::game::POWER_UP_SIZE, rtype::game::POWER_UP_SIZE, COLOR_POWER_UP, 2);
     } else if (event.kind == rtype::game::KIND_PLAYER_BULLET) {
         applySprite(registry, event.entity,
                     {
