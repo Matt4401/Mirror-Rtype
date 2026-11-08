@@ -414,7 +414,7 @@ class ScriptedBossTest : public ::testing::Test {
         engine.addPlugin<timeline::TimelinePlugin>();
         engine.addPlugin<GameplayPlugin>(std::move(built));
         engine.addPlugin<prefabs::PrefabPlugin>();
-        engine.addPlugin<scripting::ScriptPlugin>();
+        engine.addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::FixedStep);
         engine.init();
         prefabs::PrefabManager& manager = engine.getPlugin<prefabs::PrefabPlugin>().manager();
         rtype::server::gameplay::registerScriptPrefabs(manager);
@@ -471,6 +471,23 @@ TEST_F(ScriptedBossTest, ScriptMovesItsBossAndItsSpawnsAreReplicated) {
     const auto missiles = entitiesOf(rtype::protocol::makeEntityKind("missile"));
     ASSERT_EQ(missiles.size(), 1U);
     EXPECT_TRUE(engine.registry().hasComponent<game::EntityNetState>(missiles.front()));
+}
+
+TEST_F(ScriptedBossTest, ScriptsOnlyRunOnFixedSteps) {
+    run(0.2F);
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    auto& transform = engine.registry().getComponents<ecs::Transform>().get(bosses.front());
+    transform.y = 360.0F;
+
+    // The room loop advances the engine far more often than the simulation rate: no fixed step, no script update.
+    for (int i = 0; i < 20; ++i) {
+        engine.advance();
+    }
+    EXPECT_FLOAT_EQ(transform.y, 360.0F);
+
+    run(FIXED_DT * 2);
+    EXPECT_FLOAT_EQ(transform.y, 200.0F);
 }
 
 TEST_F(ScriptedBossTest, ScriptOfADeadBossDoesNotCrashTheRoom) {
