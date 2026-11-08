@@ -9,6 +9,7 @@
 #include <typeindex>
 #include <utility>
 
+#include "components/Hidden.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
@@ -254,6 +255,27 @@ bool SceneManager::destroyMembers(SceneId id) {
     return true;
 }
 
+void SceneManager::setMembersHidden(SceneId id, bool hidden) {
+    ecs::Registry& registry = _engine->registry();
+    const auto* members = static_cast<const ecs::Registry&>(registry).findComponents<SceneMember>();
+    if (members == nullptr) {
+        return;
+    }
+    // Only the Hidden storage changes below, so the member arrays can be walked directly.
+    const auto& entities = members->getDenseEntities();
+    const auto& owners = members->getDense();
+    for (std::size_t i = 0; i < owners.size(); ++i) {
+        if (owners[i].id != id) {
+            continue;
+        }
+        if (hidden) {
+            ecs::hide(registry, entities[i], ecs::HiddenReason::Scene);
+        } else {
+            ecs::show(registry, entities[i], ecs::HiddenReason::Scene);
+        }
+    }
+}
+
 void SceneManager::refreshStates(bool silentTop) {
     bool running = true;
     bool visible = true;
@@ -269,6 +291,7 @@ void SceneManager::refreshStates(bool silentTop) {
         const bool silent = silentTop && i + 1 == _stack.size();
         if (!silent) {
             if (wasVisible != visible) {
+                setMembersHidden(id, !visible);
                 bus.publish(SceneVisibilityChanged{.id = id, .visible = visible});
             }
             if (wasRunning && !running) {

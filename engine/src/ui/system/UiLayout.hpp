@@ -78,10 +78,13 @@ using UiTextMeasure = std::function<UiSize(const UiText&)>;
  *   rectangle, so moving or resizing a panel moves its widgets.
  * - Any other element (no parent, or a parent that is not a HUD element) is anchored against the screen.
  * - Entities without a `UiAnchor` are not laid out; HUD elements below them start new screen-anchored trees.
+ * - An element carrying `ecs::Hidden` is skipped with its whole subtree.
+ * - The children of a `UiScrollList` are rows: only the rows in view are laid out, each anchored in its slot.
  *
  * Nodes are emitted depth-first: a parent always comes before its children, and siblings follow the order of the
  * parent's `hierarchy::Children`. This is the draw order (later nodes are drawn on top) and the order used for
- * hit-testing. The walk uses an explicit stack, so deep trees cannot overflow the call stack.
+ * hit-testing. The walk uses an explicit stack, so deep trees cannot overflow the call stack, and its scratch buffers
+ * keep their capacity between calls, so a steady UI lays out without allocating.
  *
  * @param registry Registry to read.
  * @param screen Screen rectangle, usually `{0, 0, windowWidth, windowHeight}`.

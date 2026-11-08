@@ -4,6 +4,7 @@
 #include <stdexcept>
 #include <utility>
 
+#include "components/Hidden.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -33,13 +34,22 @@ ecs::Entity SceneContext::spawn() {
     ecs::Registry& reg = registry();
     const ecs::Entity entity = reg.spawnEntity();
     reg.addComponent(entity, SceneMember{.id = _id});
+    if (_manager->isActive(_id) && !isVisible()) {
+        ecs::hide(reg, entity, ecs::HiddenReason::Scene);
+    }
     return entity;
 }
 
 void SceneContext::adopt(ecs::Entity entity) {
     ecs::Registry& reg = registry();
-    if (reg.isAlive(entity)) {
-        reg.addComponent(entity, SceneMember{.id = _id});
+    if (!reg.isAlive(entity)) {
+        return;
+    }
+    reg.addComponent(entity, SceneMember{.id = _id});
+    if (_manager->isActive(_id) && !isVisible()) {
+        ecs::hide(reg, entity, ecs::HiddenReason::Scene);
+    } else {
+        ecs::show(reg, entity, ecs::HiddenReason::Scene);
     }
 }
 

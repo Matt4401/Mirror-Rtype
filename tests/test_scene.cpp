@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "components/Hidden.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -271,6 +272,42 @@ TEST_F(SceneTest, ExitKeepsTheEntitiesOfOtherScenes) {
     manager().pop();
     frame();
     EXPECT_TRUE(engine.registry().isAlive(menuEntity));
+}
+
+TEST_F(SceneTest, ScenesCoveredByAnExclusiveSceneHideTheirEntities) {
+    ecs::Entity menuEntity = ecs::NULL_ENTITY;
+    manager().get<MenuScene>().onEnterHook = [&](SceneContext& context) { menuEntity = context.spawn(); };
+    manager().switchTo(menu);
+    frame();
+    EXPECT_FALSE(ecs::isHidden(engine.registry(), menuEntity));
+
+    manager().push(pause);
+    frame();
+    EXPECT_FALSE(ecs::isHidden(engine.registry(), menuEntity));
+
+    manager().replace(game);
+    frame();
+    EXPECT_TRUE(ecs::isHidden(engine.registry(), menuEntity));
+    const ecs::Entity spawnedWhileHidden = manager().context(menu).spawn();
+    EXPECT_TRUE(ecs::isHidden(engine.registry(), spawnedWhileHidden));
+
+    manager().pop();
+    frame();
+    EXPECT_FALSE(ecs::isHidden(engine.registry(), menuEntity));
+    EXPECT_FALSE(ecs::isHidden(engine.registry(), spawnedWhileHidden));
+}
+
+TEST_F(SceneTest, SceneVisibilityKeepsManualHiding) {
+    ecs::Entity menuEntity = ecs::NULL_ENTITY;
+    manager().get<MenuScene>().onEnterHook = [&](SceneContext& context) {
+        menuEntity = context.spawn();
+        ecs::hide(context.registry(), menuEntity);
+    };
+    manager().switchTo(menu);
+    manager().push(game);
+    manager().pop();
+    frame();
+    EXPECT_TRUE(ecs::isHidden(engine.registry(), menuEntity));
 }
 
 TEST_F(SceneTest, SubscriptionsAreCancelledOnExit) {

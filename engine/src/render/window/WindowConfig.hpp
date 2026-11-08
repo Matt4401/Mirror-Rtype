@@ -25,6 +25,13 @@ struct WindowConfig {
 
     /** @brief Open the window in fullscreen mode. */
     bool fullscreen = false;
+
+    /**
+     * @brief Whether Escape closes the window (the backend's default).
+     *
+     * Turn it off when Escape means "back" or "pause" in the game: it then quits through its own menu.
+     */
+    bool escapeClosesWindow = true;
 };
 
 }  // namespace render

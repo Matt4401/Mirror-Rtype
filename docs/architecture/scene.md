@@ -124,6 +124,10 @@ Hook order on a push: the scenes below get `onPause` (and `SceneVisibilityChange
 `onEnter`. On a pop, the exiting scene gets `onExit`, its entities are destroyed, then the scenes below get `onResume`.
 `switchTo` exits the whole stack without resuming anyone.
 
+Entities of a hidden scene carry `ecs::Hidden` with the `Scene` reason, so the UI and the world renderer skip them
+without knowing about scenes. An entity spawned while its scene is hidden starts hidden. Hiding done by the game
+itself (`HiddenReason::Manual`) is kept when the scene shows again. See [User Interface](ui.md#hiding).
+
 Plugins that are not scenes can gate themselves on the stack: `isActive(id)` (on the stack), `isRunning(id)`,
 `isVisible(id)` and `top()` are flag lookups, cheap enough for every frame. They can also listen to the scene events.
 

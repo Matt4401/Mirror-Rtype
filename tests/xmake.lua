@@ -233,6 +233,13 @@ target("test_scene_scripting")
     add_files("test_scene_scripting.cpp")
     add_tests("test_scene_scripting")
 
+target("test_ui_widgets")
+    set_kind("binary")
+    add_deps("engine_ui", "engine_hierarchy")
+    add_packages("gtest")
+    add_files("test_ui_widgets.cpp")
+    add_tests("test_ui_widgets")
+
 target("test_hierarchy")
     set_kind("binary")
     add_deps("engine_core", "engine_time", "engine_hierarchy")

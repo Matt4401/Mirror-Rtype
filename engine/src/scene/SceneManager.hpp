@@ -42,6 +42,8 @@ namespace scene {
  * - an exclusive scene hides and pauses everything under it;
  * - an overlay keeps what is under it visible, and running unless its `pausesBelow()` is `true`.
  *
+ * Entities of a hidden scene carry `ecs::Hidden` (reason `Scene`), so the UI and the world renderer skip them.
+ *
  * Queries (`top`, `isActive`, `isRunning`, `isVisible`) are flag lookups, cheap enough to be called by any plugin every
  * frame.
  */
@@ -342,6 +344,13 @@ class SceneManager {
      * @return `true` if at least one entity was destroyed.
      */
     bool destroyMembers(SceneId id);
+
+    /**
+     * @brief Hides or shows every entity owned by a scene (`ecs::HiddenReason::Scene`).
+     * @param id Scene whose entities change.
+     * @param hidden `true` to hide them, `false` to show them.
+     */
+    void setMembersHidden(SceneId id, bool hidden);
 
     /**
      * @brief Computes which scenes of the stack run and show, and calls the hooks of those that changed.
