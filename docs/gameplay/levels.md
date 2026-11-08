@@ -132,9 +132,11 @@ A solid ground or ceiling that scrolls with the level. Touching it destroys a sh
 | `side` | string | required | `"top"` or `"bottom"`. |
 | `height` | number | `120` | Height in pixels, from 1 to 360 (half of the screen, so a passage always stays open). |
 
-The server builds a section as **columns of 64 px** (`obstacle` entities) as they enter the screen, so a long section
-never floods the snapshots. A column carries its height in its `subtype` (2 px units, see the
-[protocol](../protocol/packets.md#appendix-a--r-type-entity-conventions)). The length is rounded up to whole columns.
+The server builds a section as **blocks of 256 px** (`obstacle` entities, `rtype::game::TERRAIN_BLOCK_WIDTH`) as they
+enter the screen, so a section on the screen is about 6 entities per side in the snapshots. A block carries its height
+in its `subtype` (2 px units, see the [protocol](../protocol/packets.md#appendix-a--r-type-entity-conventions)). The
+length is rounded up to whole blocks, and the overlap checks below use this rounded end: write `from` and `to` as
+multiples of 256 to get exactly what the file says.
 Terrain moves at the scroll speed: it stops during a boss fight too. A ship touching it is destroyed and respawns at
 its start position, blinking and invulnerable for 3 seconds, while the scroll waits; it can fly out of the terrain in
 the meantime.
