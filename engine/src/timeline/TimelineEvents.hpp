@@ -19,7 +19,12 @@ struct TimelineEventFired {
     TimelineEvent event;
 };
 
-/** @brief Published once, on the step the last pending event fires. */
+/**
+ * @brief Published once per play-through, on the step the last pending event fires.
+ *
+ * Only on the change from "events pending" to "finished": events added after that fire without a new
+ * `TimelineFinished`, until the timeline is rewound or replaced.
+ */
 struct TimelineFinished {};
 
 }  // namespace timeline

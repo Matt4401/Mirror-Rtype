@@ -27,13 +27,17 @@ A pure data structure: no clock, no engine.
 | Method | Description |
 |--------|-------------|
 | `add(event)` | Inserts an event, keeping the events sorted by position. Events at the same position keep their insertion order. An event added behind the cursor fires on the next move. |
+| `addAll(events)` | Same as `add` for each event, with a single sort: use it to build a large timeline. |
 | `advanceTo(position)` / `advance(delta)` | Moves the cursor forward and returns the events reached, in order. A position behind the cursor leaves it in place. |
 | `rewind()` | Puts the cursor back to 0: every event can fire again. |
 | `clear()` | Removes every event and puts the cursor back to 0. |
 | `cursor()`, `events()`, `pending()`, `finished()` | Inspection. |
 
 A large step fires every event it passes over, in order: nothing is skipped and nothing fires twice, whatever the frame
-rate.
+rate. The cursor is a `double`, so small steps still add up far along a long timeline.
+
+Copies share their events: copying a loaded level into every game costs a pointer, and each copy keeps its own cursor.
+A copy that changes its events gets its own list first (copy-on-write).
 
 ## `timeline::TimelinePlugin`
 
@@ -42,7 +46,7 @@ Plays a timeline: every fixed step, it moves the cursor by `speed * dt` and publ
 | Event | When |
 |-------|------|
 | `TimelineEventFired{event}` | Once per event reached, in firing order. It holds a copy, so a handler may change the timeline (add events, rewind, replace it). |
-| `TimelineFinished{}` | Once, on the step the last pending event fires. |
+| `TimelineFinished{}` | Once per play-through, on the step the last pending event fires. Events added after the timeline finished fire without a new `TimelineFinished`, until it is rewound or replaced. |
 
 | Method | Description |
 |--------|-------------|
