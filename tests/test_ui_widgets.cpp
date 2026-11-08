@@ -20,6 +20,7 @@
 #include "ui/components/UiAnchor.hpp"
 #include "ui/components/UiButton.hpp"
 #include "ui/components/UiFocusable.hpp"
+#include "ui/components/UiImage.hpp"
 #include "ui/components/UiNavigation.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiScrollList.hpp"
@@ -310,6 +311,28 @@ TEST_F(UiWidgetsTest, TextInputTypesFiltersAndSubmits) {
     tap(engine::Key::Space);  // types (filtered here), never submits
     tap(engine::Key::Enter);
     EXPECT_EQ(events, (std::vector<std::string>{"submit:host:127.0.0.1"}));
+}
+
+TEST_F(UiWidgetsTest, TextInputCanTurnLettersIntoCapitals) {
+    const ecs::Entity input = widget(0.0F);
+    registry.addComponent(input, ui::UiTextInput{.allowed = "ABC", .uppercase = true});
+    tap(engine::Key::Down);
+    window.typed = {U'a', U'B', U'c', U'd'};
+    frame();
+    EXPECT_EQ(registry.getComponents<ui::UiTextInput>().get(input).text, "ABC");
+}
+
+TEST_F(UiWidgetsTest, ImageIsLaidOutAndDrawnWithItsSize) {
+    const ecs::Entity image = registry.spawnEntity();
+    registry.addComponent(image, ui::UiAnchor{});
+    registry.addComponent(image, ui::UiImage{.texture = 3, .width = 40.0F, .height = 20.0F});
+    const auto nodes = layout();
+    ASSERT_EQ(nodes.size(), 1U);
+    EXPECT_FLOAT_EQ(nodes[0].rect.width, 40.0F);
+    RecordingDraw draw;
+    ui::UiRenderSystem renderer;
+    renderer.update(registry, ui::UiScreenRect{.width = 1000.0F, .height = 1000.0F}, draw);
+    EXPECT_EQ(draw.calls, (std::vector<std::string>{"texture"}));
 }
 
 TEST_F(UiWidgetsTest, TextInputAcceptsUtf8AndErasesWholeCharacters) {

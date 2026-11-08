@@ -37,6 +37,8 @@ struct UiTextInput {
     std::string action;
     /** @brief If not empty, the only ASCII characters accepted (e.g. "0123456789."); non-ASCII is then refused. */
     std::string allowed;
+    /** @brief Turn typed ASCII letters into capitals (before `allowed` is checked). */
+    bool uppercase = false;
     /** @brief Maximum number of characters (code points). */
     std::size_t maxLength = DEFAULT_MAX_LENGTH;
     /** @brief Width in pixels. */

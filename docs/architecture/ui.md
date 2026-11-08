@@ -18,11 +18,12 @@ An element is an entity with a `UiAnchor` (where it sits) and one or more drawab
 |------------------|-------------------------------------------|---------------------------------------------------|
 | `UiRect`         | filled rectangle with an optional border  |                                                   |
 | `UiText`         | text (font from `IScreenDrawService::loadFont`) |                                             |
+| `UiImage`        | texture stretched to its size, tinted     |                                                   |
 | `UiProgressBar`  | background and filled part                |                                                   |
 | `UiButton`       | background by state, centred label        | `UiButtonClickedEvent{entity, action}`            |
 | `UiToggle`       | box, mark while on                        | click or confirm: `UiToggleChangedEvent`          |
 | `UiSlider`       | track, filled part, knob                  | drag, or left/right by `step`: `UiValueChangedEvent` |
-| `UiTextInput`    | box, text or placeholder, blinking caret  | typing, Backspace (repeats), Enter: `UiTextSubmittedEvent` |
+| `UiTextInput`    | box, text or placeholder, blinking caret  | typing (optionally made capitals, filtered by `allowed`), Backspace (repeats), Enter: `UiTextSubmittedEvent` |
 | `UiScrollList`   | nothing itself                            | its children are rows, see below                  |
 
 Events are declared in `events/UiEvents.hpp`. Widgets are matched by their `action` string, so a listener does not

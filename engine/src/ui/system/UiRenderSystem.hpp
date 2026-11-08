@@ -26,7 +26,8 @@ namespace ui {
  *
  * Each frame, the HUD is laid out (`computeLayout`) and every node is drawn straight from its components, in layout
  * order (parents first). One entity may carry several drawables; they are stacked bottom to top in a fixed order:
- * `UiRect`, `UiProgressBar`, `UiButton`, `UiToggle`, `UiSlider`, `UiTextInput`, `UiText`, then the focus outline.
+ * `UiRect`, `UiImage`, `UiProgressBar`, `UiButton`, `UiToggle`, `UiSlider`, `UiTextInput`, `UiText`, then the focus
+ * outline.
  *
  * Nothing is copied from the components and the layout buffer keeps its capacity, so a steady HUD draws without
  * allocating.

@@ -9,6 +9,7 @@
 #include "ecs/Registry.hpp"
 #include "ui/components/FontId.hpp"
 #include "ui/components/UiButton.hpp"
+#include "ui/components/UiImage.hpp"
 #include "ui/components/UiNavigation.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
@@ -77,6 +78,11 @@ void UiRenderSystem::submit(const ecs::Registry& registry, engine::IScreenDrawSe
     for (const UiLayoutNode& node : _layout) {
         const UiScreenRect& area = node.rect;
         drawIf<UiRect>(registry, node, [&](const UiRect& rect) { drawRect(draw, area, rect); });
+        drawIf<UiImage>(registry, node, [&](const UiImage& image) {
+            draw.drawTexture(image.texture, image.source,
+                             engine::ScreenRect{.x = area.x, .y = area.y, .width = image.width, .height = image.height},
+                             0.0F, image.tint);
+        });
         drawIf<UiProgressBar>(registry, node, [&](const UiProgressBar& bar) { drawProgressBar(draw, area, bar); });
         drawIf<UiButton>(registry, node, [&](const UiButton& btn) { drawButton(draw, area, btn); });
         drawIf<UiToggle>(registry, node, [&](const UiToggle& toggle) { drawToggle(draw, area, toggle); });

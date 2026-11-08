@@ -124,10 +124,13 @@ void appendCodePoint(std::string& text, char32_t cp) {
 /**
  * @brief Tells whether a text input accepts a typed character.
  * @param input Text input.
- * @param cp Typed code point.
+ * @param cp Typed code point; made a capital letter if the input asks for it.
  * @return `true` if it is printable, allowed, and the text is not full.
  */
-bool accepts(const UiTextInput& input, char32_t cp) {
+bool accepts(const UiTextInput& input, char32_t& cp) {
+    if (input.uppercase && cp >= U'a' && cp <= U'z') {
+        cp = cp - U'a' + U'A';
+    }
     if (cp < FIRST_PRINTABLE || cp == DELETE_CHARACTER || cp > MAX_CODE_POINT) {
         return false;
     }

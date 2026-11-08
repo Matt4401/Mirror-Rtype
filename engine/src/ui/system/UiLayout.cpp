@@ -14,6 +14,7 @@
 #include "hierarchy/Hierarchy.hpp"
 #include "ui/components/UiAnchor.hpp"
 #include "ui/components/UiButton.hpp"
+#include "ui/components/UiImage.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiScrollList.hpp"
@@ -82,6 +83,10 @@ UiSize elementSize(const ecs::Registry& registry, ecs::Entity entity, const UiTe
     if (registry.hasComponent<UiButton>(entity)) {
         const auto& btn = registry.getComponents<UiButton>().get(entity);
         return {.width = btn.width, .height = btn.height};
+    }
+    if (registry.hasComponent<UiImage>(entity)) {
+        const auto& image = registry.getComponents<UiImage>().get(entity);
+        return {.width = image.width, .height = image.height};
     }
     if (registry.hasComponent<UiTextInput>(entity)) {
         const auto& input = registry.getComponents<UiTextInput>().get(entity);

@@ -115,8 +115,8 @@ flowchart LR
     - `PlayerInputPlugin` publishes the local controls as a `LocalInput` every fixed step, while in a match;
     - `NameTagPlugin` draws each player's name above their car, from the server's `PlayerNames` (see
       [Player names](#player-names));
-    - `MenuPlugin` runs the name entry, the menus and the end screen (see [Matches and menus](#matches-and-menus)) and publishes the
-      client events `MatchJoined` / `MatchLeft`, which the scoreboard, the camera and the inputs follow;
+    - `MenuScenesPlugin` runs the menus as engine scenes (see [Matches and menus](#matches-and-menus)) and publishes
+      the client events `MatchJoined` / `MatchLeft`, which the scoreboard, the camera and the inputs follow;
     - `SessionPlugin` closes the game when the connection is lost.
 
 ### What is scripted
@@ -183,7 +183,7 @@ player either in the menu or in one match, and routes what they send accordingly
 
 ```mermaid
 sequenceDiagram
-    participant C as Client (MenuPlugin)
+    participant C as Client (MenuScenesPlugin)
     participant S as MatchServer
     participant M as MatchRoom (own thread)
     S ->> C: MatchList (on connect, then every 0.5 s if it changed, to the players in the menu)
@@ -203,18 +203,41 @@ sequenceDiagram
   refreshes under a mutex after each frame. A match that throws is reported as ended, so its players get the end screen.
 - A match is listed until it ends; a full one is shown but cannot be joined. A match without players is destroyed, a
   player who disconnects leaves their match.
-- Client side, `MenuPlugin` draws the screens on screen with `UiCanvas` (rectangles, pictures and text in the game
-  font, rebuilt when the screen changes and drawn every frame through `IScreenDrawService`) and reads the mouse. On `JoinResult(Joined)` it publishes
-  `MatchJoined` and tells the `ServerLink` which match's snapshots to let through: snapshots are unreliable, so a few
-  of a match just left can still arrive, and must not bring back its cars nor a newer tick. Leaving removes the
-  replicated entities (each with its `ReplicatedEntityDespawned`), resets the engine's `SnapshotState` (the next match
-  counts its steps from 0) and publishes `MatchLeft`.
+- **Client side, the menus are engine scenes** (`rlss/client/menu/`, see [Scenes](../architecture/scene.md)), built
+  with the engine UI widgets (see [User Interface](../architecture/ui.md)) through a small RLSS `MenuKit`. The kit
+  keeps the game's look: Russo One sized by the height of its capitals, team-coloured accents, the glow band behind
+  the titles (`ui::UiImage`).
+
+  | Scene      | Mode      | Content                                                                         |
+  |------------|-----------|---------------------------------------------------------------------------------|
+  | `Name`     | exclusive | name field (capitals, name characters only), VALIDER; skipped if a name is saved |
+  | `Menu`     | exclusive | NOUVELLE PARTIE, REJOINDRE, PARAMETRES, name in the corner (rename), players online |
+  | `Browser`  | exclusive | scrollable list of matches (score in team colours, clock, players), RETOUR, NOUVELLE PARTIE |
+  | `Joining`  | exclusive | waiting for the `JoinResult`, 5 s at most; a refusal pops it with the reason    |
+  | `Match`    | exclusive | nothing: the arena, cars, HUD and name tags are drawn by their plugins          |
+  | `Ended`    | overlay   | victory or defeat over the arena, final score, RETOUR AU MENU                   |
+  | `Settings` | exclusive | volumes, saved at once                                                          |
+
+  - **Input.** Mouse, keyboard and gamepad all work through the UI focus. Escape (gamepad B) goes back, and still
+    quits from the main menu and in a match.
+  - **What spans the scenes.** The server messages (list of matches, `JoinResult`, team, end of match) and the shared
+    `MenuState` (name, matches, team, final score, notice) are handled by `MenuScenesPlugin`.
+  - **Joining a match.** On `JoinResult(Joined)` it publishes `MatchJoined` and tells the `ServerLink` which match's
+    snapshots to let through. Snapshots are unreliable, so a few from a match just left can still arrive, and must
+    not bring back its cars nor a newer tick.
+  - **Leaving a match.** It calls `ClientReplicationPlugin::reset()`, which removes the replicated entities (each with
+    its `ReplicatedEntityDespawned`) and forgets the last tick, so the next match counts its steps from 0. It then
+    publishes `MatchLeft`.
+  - **Settings.** The player name and the volumes are user settings (`settings::SettingsPlugin`, file
+    `rlss/settings.toml` in the user's configuration directory).
 
 ## Player names
 
-1. **Name entry.** `MenuPlugin` opens on the name entry. It reads the typed characters through the engine's
-   `IWindowService::nextTypedCharacter()` (layout-aware: an AZERTY keyboard types what its keys say), makes letters
-   upper-case and only keeps the characters names may hold (`protocol::isNameCharacter`). Enter sends `SetName`.
+1. **Name entry.** The `Name` scene is a `ui::UiTextInput`.
+   - It reads the typed characters through the engine's `IWindowService::nextTypedCharacter()`, which follows the
+     keyboard layout: an AZERTY keyboard types what its keys say.
+   - It makes letters capitals (`uppercase`) and only keeps the characters names may hold (`allowed`).
+   - Enter or VALIDER sends `SetName` and saves the name, so the next launch skips the screen.
 2. **Server.** The `MatchServer` keeps the name of each peer (a malformed one is dropped). When the peer joins a match,
    it hands the name to the match right after the player, as a `SetName` from that peer, and again if the player
    renames while playing.
