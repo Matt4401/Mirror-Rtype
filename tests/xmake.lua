@@ -15,6 +15,22 @@ target("test_ecs")
     add_files("test_ecs.cpp")
     add_tests("test_ecs")
 
+target("test_ecs_stress")
+    set_kind("binary")
+    add_deps("engine_core")
+    add_packages("gtest")
+    add_files("ecs/main.cpp", "ecs/CommandBufferStressTest.cpp", "ecs/EntityRecycleTest.cpp")
+    add_tests("test_ecs_stress")
+
+-- Not a test: it measures, and asserts nothing. Run it in release, see docs/comparative-study/ecs-benchmark.md.
+if has_config("benchmarks") then
+    target("bench_ecs")
+        set_kind("binary")
+        add_deps("engine_core")
+        add_packages("benchmark")
+        add_files("ecs/SparseArrayBenchmark.cpp")
+end
+
 target("test_mediator")
     set_kind("binary")
     add_deps("engine_core")

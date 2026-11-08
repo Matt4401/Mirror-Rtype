@@ -25,6 +25,8 @@ The engine requires a paradigm that can handle thousands of dynamic objects effi
 
 **Decision: Sparse Set ECS.** It perfectly balances extreme performance, modularity, and implementability for the scope of this project.
 
+The [ECS Benchmark](ecs-benchmark.md) measures these claims against `std::unordered_map` and an OOP design.
+
 ---
 
 ## 2. Benchmark: System Iteration & Filtering

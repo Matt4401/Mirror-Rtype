@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <vector>
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -23,22 +24,25 @@ void CommandBuffer::clear() noexcept {
 [[nodiscard]] bool CommandBuffer::empty() const noexcept { return _destroyQueue.empty() && _spawnQueue.empty(); }
 
 void CommandBuffer::flush(Registry& registry) {
-    for (auto& init : _spawnQueue) {
+    // Take the queues out first: an initializer or a destroy listener may queue into this buffer while it is
+    // flushed, which would reallocate the vectors being walked. What they queue waits for the next flush.
+    std::vector<MoveOnlyFunction<void(Entity, Registry&)>> spawns = std::exchange(_spawnQueue, {});
+    std::vector<Entity> destroys = std::exchange(_destroyQueue, {});
+
+    for (auto& init : spawns) {
         Entity const e = registry.spawnEntity();
         if (init) {
             init(e, registry);
         }
     }
-    _spawnQueue.clear();
 
-    std::ranges::sort(_destroyQueue);
-    auto const [first, last] = std::ranges::unique(_destroyQueue);
-    _destroyQueue.erase(first, last);
+    std::ranges::sort(destroys);
+    auto const [first, last] = std::ranges::unique(destroys);
+    destroys.erase(first, last);
 
-    for (Entity const e : _destroyQueue) {
+    for (Entity const e : destroys) {
         registry.killEntity(e);
     }
-    _destroyQueue.clear();
 }
 
 }  // namespace ecs
