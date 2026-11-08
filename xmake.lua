@@ -17,6 +17,10 @@ end
 
 option("graphics", {default = true, showmenu = true, description = "Build the rendering module"})
 option("tests", {default = false, showmenu = true, description = "Build tests"})
+option("benchmarks", {default = false, showmenu = true, description = "Build the ECS benchmarks (Google Benchmark)"})
+if has_config("benchmarks") then
+    add_requires("benchmark")
+end
 -- Set in the project, not with `xmake f --policies`, so that only our targets are instrumented: a policy given on
 -- the command line also rebuilds every package with the sanitizers.
 option("sanitizers", {default = false, showmenu = true, description = "Build with AddressSanitizer and UBSan"})
