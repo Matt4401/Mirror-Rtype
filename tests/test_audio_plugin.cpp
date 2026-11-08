@@ -2,13 +2,22 @@
 
 #include <cstddef>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "assets/AssetKinds.hpp"
+#include "assets/AssetManager.hpp"
+#include "assets/AssetPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "audio/NullAudioBackend.hpp"
 #include "audio/settings/AudioSettings.hpp"
+#include "audio/types/AudioConstants.hpp"
 #include "audio/types/AudioTypes.hpp"
+#include "audio/types/SoundParams.hpp"
 #include "core/Engine.hpp"
 #include "core/services/IAudioService.hpp"
+#include "ecs/Registry.hpp"
 
 namespace {
 
@@ -21,7 +30,79 @@ audio::AudioSettings customSettings() {
     return settings;
 }
 
+/** @brief Muted backend that hands out handles and records what it loads and releases. */
+class RecordingBackend final : public audio::IAudioBackend {
+  public:
+    /** @brief What the backend did, shared with the test after the plugin owns the backend. */
+    struct Log {
+        std::vector<std::string> loads;
+        std::vector<audio::SoundId> unloadedSounds;
+        std::vector<audio::MusicId> unloadedMusics;
+    };
+
+    explicit RecordingBackend(std::shared_ptr<Log> log) : _log(std::move(log)) {}
+
+    [[nodiscard]] bool isAvailable() const noexcept override { return false; }
+    [[nodiscard]] audio::SoundId loadSound(const std::string& path) override {
+        _log->loads.push_back(path);
+        return static_cast<audio::SoundId>(_log->loads.size());
+    }
+    [[nodiscard]] audio::MusicId loadMusic(const std::string& path) override {
+        _log->loads.push_back(path);
+        return static_cast<audio::MusicId>(_log->loads.size());
+    }
+    void unloadSound(audio::SoundId id) override { _log->unloadedSounds.push_back(id); }
+    void unloadMusic(audio::MusicId id) override { _log->unloadedMusics.push_back(id); }
+    audio::VoiceId playSound(audio::SoundId /*id*/, const audio::SoundParams& /*params*/) override {
+        return audio::NO_VOICE;
+    }
+    audio::VoiceId playSoundWithoutStealing(audio::SoundId /*id*/, const audio::SoundParams& /*params*/) override {
+        return audio::NO_VOICE;
+    }
+    audio::VoiceState updateVoice(audio::VoiceId /*voice*/, const audio::SoundParams& /*params*/) override {
+        return audio::VoiceState::Ended;
+    }
+    void stopVoice(audio::VoiceId /*voice*/) override {}
+    void stopAllSounds() override {}
+    void playMusic(audio::MusicId /*id*/, bool /*loop*/) override {}
+    void stopMusic() override {}
+    void setMusicVolume(float /*volume*/) override {}
+    void setMasterVolume(float /*volume*/) override {}
+    void update() override {}
+    [[nodiscard]] std::size_t activeVoiceCount() const override { return 0; }
+
+  private:
+    std::shared_ptr<Log> _log;
+};
+
 }  // namespace
+
+TEST(AudioPlugin, PlugsItsLoadersIntoTheAssetManagerAndReleasesThemAtShutdown) {
+    auto log = std::make_shared<RecordingBackend::Log>();
+    engine::Engine engine;
+    engine.addPlugin<audio::AudioPlugin>(std::make_unique<RecordingBackend>(log)).addPlugin<assets::AssetPlugin>();
+    engine.init();
+
+    auto& manager = engine.registry().getResource<assets::AssetManager>();
+    ASSERT_TRUE(manager.hasLoader<assets::Sound>());
+    ASSERT_TRUE(manager.hasLoader<assets::Music>());
+    const audio::SoundId jump = manager.load<assets::Sound>("sounds/jump.wav");
+    EXPECT_EQ(manager.load<assets::Sound>("sounds/jump.wav"), jump);
+    const audio::MusicId theme = manager.load<assets::Music>("music/theme.ogg");
+    EXPECT_EQ(log->loads, (std::vector<std::string>{"sounds/jump.wav", "music/theme.ogg"}));
+
+    engine.shutdown();
+    EXPECT_EQ(log->unloadedSounds, std::vector<audio::SoundId>{jump});
+    EXPECT_EQ(log->unloadedMusics, std::vector<audio::MusicId>{theme});
+}
+
+TEST(AudioPlugin, RunsWithoutAnAssetManager) {
+    engine::Engine engine;
+    engine.addPlugin<audio::AudioPlugin>(std::make_unique<audio::NullAudioBackend>());
+    engine.init();
+    EXPECT_FALSE(engine.registry().hasResource<assets::AssetManager>());
+    engine.shutdown();
+}
 
 TEST(AudioPlugin, RegistersTheAudioServiceAtInit) {
     engine::Engine engine;

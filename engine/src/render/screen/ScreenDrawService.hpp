@@ -42,6 +42,12 @@ class ScreenDrawService final : public engine::IScreenDrawService {
     engine::FontId loadFont(const std::string& path) override;
 
     /**
+     * @brief Releases a font loaded by `loadFont`; unknown identifiers are ignored.
+     * @param font Identifier of the font.
+     */
+    void unloadFont(engine::FontId font);
+
+    /**
      * @brief Measures text with the given font.
      * @param text Text to measure.
      * @param fontSize Font size in pixels.

@@ -10,6 +10,9 @@
 #include <string>
 #include <utility>
 
+#include "assets/AssetKinds.hpp"
+#include "assets/AssetManager.hpp"
+#include "assets/AssetPlugin.hpp"
 #include "audio/IAudioBackend.hpp"
 #include "audio/NullAudioBackend.hpp"
 #include "audio/factory/AudioBackendFactory.hpp"
@@ -139,6 +142,8 @@ AudioPlugin::~AudioPlugin() {
 
 void AudioPlugin::build(engine::PluginBuilder& builder) {
     builder.require<engine::CorePlugin>();
+    // Started after the asset manager when there is one, so the sound and music loaders can be plugged into it.
+    builder.optionally<assets::AssetPlugin>();
     builder.provides<engine::IAudioService>();
 }
 
@@ -155,6 +160,39 @@ void AudioPlugin::init(engine::Engine& engine) {
         _system.reset();
         throw engine::MediatorError(res.error());
     }
+    attachAssetLoaders(engine);
+}
+
+void AudioPlugin::attachAssetLoaders(engine::Engine& engine) {
+    if (!engine.registry().hasResource<assets::AssetManager>()) {
+        return;
+    }
+    auto& manager = engine.registry().getResource<assets::AssetManager>();
+    IAudioBackend* backend = _backend.get();
+    manager.setLoader<assets::Sound>(assets::AssetLoader<assets::Sound>{
+        .load = [backend](const std::string& path,
+                          const assets::LoadOptions& /*options*/) { return backend->loadSound(path); },
+        .unload = [backend](const SoundId id) { backend->unloadSound(id); },
+    });
+    manager.setLoader<assets::Music>(assets::AssetLoader<assets::Music>{
+        .load = [backend](const std::string& path,
+                          const assets::LoadOptions& /*options*/) { return backend->loadMusic(path); },
+        .unload = [backend](const MusicId id) { backend->unloadMusic(id); },
+    });
+    _assetLoadersAttached = true;
+}
+
+void AudioPlugin::detachAssetLoaders(engine::Engine& engine) {
+    if (!_assetLoadersAttached) {
+        return;
+    }
+    _assetLoadersAttached = false;
+    if (!engine.registry().hasResource<assets::AssetManager>()) {
+        return;
+    }
+    auto& manager = engine.registry().getResource<assets::AssetManager>();
+    manager.detachLoader<assets::Sound>();
+    manager.detachLoader<assets::Music>();
 }
 
 void AudioPlugin::render(engine::Engine& engine) {
@@ -164,6 +202,8 @@ void AudioPlugin::render(engine::Engine& engine) {
 }
 
 void AudioPlugin::shutdown(engine::Engine& engine) {
+    // While the backend still exists: the manager releases its sounds and musics through it.
+    detachAssetLoaders(engine);
     if (engine.mediator().hasService<engine::IAudioService>()) {
         engine.mediator().removeService<engine::IAudioService>();
     }

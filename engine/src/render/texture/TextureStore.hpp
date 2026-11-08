@@ -2,6 +2,7 @@
 
 #include <raylib.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -58,9 +59,39 @@ class TextureStore {
      */
     [[nodiscard]] const Texture2D* get(ecs::TextureId id) const;
 
+    /**
+     * @brief Releases a texture; its identifier is never given to another texture, and now resolves to nothing.
+     *
+     * Unknown identifiers, `ecs::NO_TEXTURE` and the placeholder are ignored.
+     * @param id Identifier returned by `load`.
+     */
+    void unload(ecs::TextureId id);
+
+    /**
+     * @brief Gets the texture drawn in place of a missing file: a magenta and black checkerboard, made on first use.
+     * @return Its identifier, or `ecs::NO_TEXTURE` if it cannot be created (no window).
+     */
+    ecs::TextureId placeholder();
+
+    /**
+     * @brief Counts the textures held, the placeholder included.
+     * @return Number of loaded textures.
+     */
+    [[nodiscard]] std::size_t loadedCount() const noexcept;
+
   private:
-    /** @brief Loaded textures; identifier `n` is stored at index `n - 1`. */
-    std::vector<Texture2D> _textures;
+    /** @brief One texture. */
+    struct Slot {
+        /** @brief GPU texture. */
+        Texture2D texture{};
+        /** @brief False once unloaded; the slot is kept so its identifier is never reused. */
+        bool loaded = false;
+    };
+
+    /** @brief Textures; identifier `n` is stored at index `n - 1`. */
+    std::vector<Slot> _textures;
+    /** @brief Identifier of the placeholder once made. */
+    ecs::TextureId _placeholder = ecs::NO_TEXTURE;
 };
 
 }  // namespace render

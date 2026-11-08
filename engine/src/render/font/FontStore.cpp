@@ -13,8 +13,10 @@ FontStore::~FontStore() {
     if (!IsWindowReady()) {
         return;
     }
-    for (const Font& font : _fonts) {
-        UnloadFont(font);
+    for (const Slot& slot : _fonts) {
+        if (slot.loaded) {
+            UnloadFont(slot.font);
+        }
     }
 }
 
@@ -36,7 +38,7 @@ engine::FontId FontStore::load(const std::string& path) {
     }
     GenTextureMipmaps(&font.texture);
     SetTextureFilter(font.texture, TEXTURE_FILTER_TRILINEAR);
-    _fonts.emplace_back(font);
+    _fonts.push_back(Slot{.font = font, .loaded = true});
     return static_cast<engine::FontId>(_fonts.size());
 }
 
@@ -44,7 +46,22 @@ const Font* FontStore::get(engine::FontId id) const {
     if (id == engine::NO_FONT || static_cast<std::size_t>(id) > _fonts.size()) {
         return nullptr;
     }
-    return &_fonts.at(id - 1);
+    const Slot& slot = _fonts.at(id - 1);
+    return slot.loaded ? &slot.font : nullptr;
+}
+
+void FontStore::unload(const engine::FontId id) {
+    if (id == engine::NO_FONT || static_cast<std::size_t>(id) > _fonts.size()) {
+        return;
+    }
+    Slot& slot = _fonts.at(id - 1);
+    if (!slot.loaded) {
+        return;
+    }
+    if (IsWindowReady()) {
+        UnloadFont(slot.font);
+    }
+    slot = Slot{};
 }
 
 }  // namespace render

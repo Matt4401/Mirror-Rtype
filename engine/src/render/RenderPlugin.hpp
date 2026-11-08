@@ -90,6 +90,18 @@ class RenderPlugin final : public engine::IPlugin {
     class WindowServiceImpl;
     class RenderServiceImpl;
 
+    /**
+     * @brief Plugs the texture and font loaders into the `assets::AssetManager`, if the registry has one.
+     * @param engine Host engine.
+     */
+    void attachAssetLoaders(engine::Engine& engine);
+
+    /**
+     * @brief Releases the textures and fonts of the asset manager and removes the loaders, if they were attached.
+     * @param engine Host engine.
+     */
+    void detachAssetLoaders(engine::Engine& engine);
+
     /** @brief Active window configuration settings. */
     WindowConfig _config = {};
     /** @brief Owned pointer to the Raylib Window instance. */
@@ -104,6 +116,8 @@ class RenderPlugin final : public engine::IPlugin {
     std::shared_ptr<RenderServiceImpl> _renderService = nullptr;
     /** @brief Screen-space overlay drawing, flushed on top of the world each frame. */
     std::shared_ptr<ScreenDrawService> _screenDrawService = nullptr;
+    /** @brief Whether the loaders are plugged into the asset manager. */
+    bool _assetLoadersAttached = false;
 };
 
 }  // namespace render

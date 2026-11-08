@@ -51,9 +51,25 @@ class FontStore {
      */
     [[nodiscard]] const Font* get(engine::FontId id) const;
 
+    /**
+     * @brief Releases a font; its identifier is never given to another font, and now resolves to nothing.
+     *
+     * Unknown identifiers and `engine::NO_FONT` are ignored.
+     * @param id Identifier returned by `load`.
+     */
+    void unload(engine::FontId id);
+
   private:
-    /** @brief Loaded fonts; identifier `n` is stored at index `n - 1`. */
-    std::vector<Font> _fonts;
+    /** @brief One font. */
+    struct Slot {
+        /** @brief raylib font. */
+        Font font{};
+        /** @brief False once unloaded; the slot is kept so its identifier is never reused. */
+        bool loaded = false;
+    };
+
+    /** @brief Fonts; identifier `n` is stored at index `n - 1`. */
+    std::vector<Slot> _fonts;
 };
 
 }  // namespace render

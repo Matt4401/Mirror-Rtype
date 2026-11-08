@@ -102,6 +102,18 @@ class AudioPlugin final : public engine::IPlugin {
   private:
     class AudioServiceImpl;
 
+    /**
+     * @brief Plugs the sound and music loaders into the `assets::AssetManager`, if the registry has one.
+     * @param engine Host engine.
+     */
+    void attachAssetLoaders(engine::Engine& engine);
+
+    /**
+     * @brief Releases the sounds and musics of the asset manager and removes the loaders, if they were attached.
+     * @param engine Host engine.
+     */
+    void detachAssetLoaders(engine::Engine& engine);
+
     /** @brief Settings applied at init. */
     AudioSettings _settings;
     /** @brief Audio output; declared before `_system`, which must be destroyed first. */
@@ -112,6 +124,8 @@ class AudioPlugin final : public engine::IPlugin {
     std::shared_ptr<AudioServiceImpl> _service = nullptr;
     /** @brief Whether `_backend` was given by the caller: it is then kept across shutdown and init. */
     bool _injectedBackend = false;
+    /** @brief Whether the loaders are plugged into the asset manager. */
+    bool _assetLoadersAttached = false;
 };
 
 }  // namespace audio
