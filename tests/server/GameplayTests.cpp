@@ -522,6 +522,13 @@ TEST_F(ScriptedBossTest, ScriptMovesItsBossAndItsSpawnsAreReplicated) {
     EXPECT_TRUE(engine.registry().hasComponent<game::EntityNetState>(missiles.front()));
 }
 
+TEST_F(ScriptedBossTest, ScriptsCannotSpawnABoss) {
+    const prefabs::PrefabManager& manager = engine.getPlugin<prefabs::PrefabPlugin>().manager();
+    EXPECT_TRUE(manager.has("missile"));
+    EXPECT_TRUE(manager.has("alien_scout"));
+    EXPECT_FALSE(manager.has("boss_core")) << "a boss fight only starts from a level boss event";
+}
+
 TEST_F(ScriptedBossTest, ScriptsOnlyRunOnFixedSteps) {
     run(0.2F);
     const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
