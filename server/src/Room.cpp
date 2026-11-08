@@ -77,6 +77,9 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     gameplay::registerScriptPrefabs(scriptPrefabs);
     systems::ScriptSystem& scripts = _engine.getPlugin<scripting::ScriptPlugin>().scriptSystem();
     scripts.setPrefabManager(&scriptPrefabs);
+    // Hot reload is a development tool: on the game server, editing a script mid-match would rebuild the VM of every
+    // room and restart the boss attacks.
+    scripts.enableHotReload(false);
     (void)gameplay::bindScriptComponents(scripts);
 }
 
