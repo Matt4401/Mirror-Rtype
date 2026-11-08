@@ -23,7 +23,7 @@ using Factory = std::function<void(ecs::Entity, ecs::Registry&, PrefabParams con
 
 ## `prefabs::PrefabParams`
 
-A key/value bag of spawn parameters (`engine/src/prefabs/PrefabParams.hpp`). A prefab reads the keys it understands and uses its own default for every missing key, so prefabs can take any number of parameters (position, rotation, speed, size...) without changing the `PrefabManager` API.
+A key/value bag of spawn parameters (`engine/src/prefabs/PrefabParams.hpp`). It is an alias of `ecs::ParamBag` (`engine/src/ecs/ParamBag.hpp`, in `engine_core`), the generic bag also used by other modules such as the timeline events. A prefab reads the keys it understands and uses its own default for every missing key, so prefabs can take any number of parameters (position, rotation, speed, size...) without changing the `PrefabManager` API.
 
 | Method | Description |
 |--------|-------------|

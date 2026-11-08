@@ -9,8 +9,8 @@ cursor measures (scroll distance, seconds, beats...) and what each event type do
 R-Type uses it for its levels: the cursor is the scroll distance, so events wait while the scroll is stopped during a
 boss fight. See [Level Files](../gameplay/levels.md) for the R-Type format built on it.
 
-The module is `engine_timeline` (`engine/src/timeline/`). It is headless and depends only on `engine_core`,
-`engine_events` and `engine_prefabs`.
+The module is `engine_timeline` (`engine/src/timeline/`). It is headless and depends only on `engine_core` and
+`engine_events`: it does not know about prefabs.
 
 ## `timeline::TimelineEvent`
 
@@ -18,7 +18,7 @@ The module is `engine_timeline` (`engine/src/timeline/`). It is headless and dep
 |-------|------|-------------|
 | `position` | `float` | Cursor position at which the event fires. |
 | `type` | `std::string` | Event type, e.g. `"spawn"`; interpreted by whoever handles the event. |
-| `params` | `prefabs::PrefabParams` | Event data. For a spawn, it can be handed to a prefab as is. |
+| `params` | `ecs::ParamBag` | Event data. `prefabs::PrefabParams` is the same type, so a spawn can hand it to a prefab as is. |
 
 ## `timeline::Timeline`
 
