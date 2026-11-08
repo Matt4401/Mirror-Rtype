@@ -39,7 +39,7 @@ plugins:
   - mkdoxy:
       projects:
         rtype:
-          src-dirs: "engine/src client/src server/src log/src common/src game/src rlss"
+          src-dirs: "engine/src client/src server/src common/src game/src rlss"
           full-doc: True
           doxy-cfg:
             FILE_PATTERNS: "*.cpp *.hpp *.h"

@@ -4,12 +4,12 @@
 #include <string>
 #include <utility>
 
-#include "Logger.hpp"
 #include "components/Renderable.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "ecs/Registry.hpp"
+#include "log/Logger.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
 
@@ -26,7 +26,7 @@ ecs::TextureId load(render::TextureStore& textures, const std::string& file) {
     const ecs::TextureId id =
         std::filesystem::exists(path) ? textures.load(path, render::TextureFilter::Smooth) : ecs::NO_TEXTURE;
     if (id == ecs::NO_TEXTURE) {
-        rtype::log::warning(LOG_TAG, "cannot load ", path, " (run the client from the repository root)");
+        engine::log::warning(LOG_TAG, "cannot load ", path, " (run the client from the repository root)");
     }
     return id;
 }
@@ -55,7 +55,7 @@ void AssetsPlugin::init(engine::Engine& engine) {
             }
         }
         if (assets.arena.empty()) {
-            rtype::log::warning(LOG_TAG, "no arena texture in ", TEXTURE_DIRECTORY);
+            engine::log::warning(LOG_TAG, "no arena texture in ", TEXTURE_DIRECTORY);
         }
         assets.carBody = load(store, "car_body.png");
         assets.carDetails = load(store, "car_details.png");
@@ -77,7 +77,7 @@ void AssetsPlugin::init(engine::Engine& engine) {
     }
     assets.font = engine.service<engine::IScreenDrawService>().loadFont(std::string(FONT_PATH));
     if (assets.font == engine::NO_FONT) {
-        rtype::log::warning(LOG_TAG, "cannot load ", FONT_PATH, ", using the default font");
+        engine::log::warning(LOG_TAG, "cannot load ", FONT_PATH, ", using the default font");
     }
     engine.registry().addResource(std::move(assets));
 }

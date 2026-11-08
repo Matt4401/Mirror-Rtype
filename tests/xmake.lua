@@ -52,7 +52,7 @@ target("test_spatial_queries")
 
 target("test_log")
     set_kind("binary")
-    add_deps("log")
+    add_deps("engine_log")
     add_packages("gtest")
     add_files("test_log.cpp")
     add_tests("test_log")
@@ -258,7 +258,7 @@ target("test_protocol")
 
 target("test_server_manager")
     set_kind("binary")
-    add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "rtype_game", "rtype_gameplay")
+    add_deps("engine_log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "rtype_game", "rtype_gameplay")
     add_packages("gtest")
     add_files("server/ServerManagerTests.cpp", "../server/src/ServerManager.cpp", "../server/src/Lobby.cpp", "../server/src/Room.cpp")
     add_includedirs("../server/src")
@@ -333,7 +333,7 @@ target("test_rtype_game")
 
 target("test_server_e2e")
     set_kind("binary")
-    add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_input", "rtype_game", "rtype_gameplay")
+    add_deps("engine_log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_input", "rtype_game", "rtype_gameplay")
     add_packages("gtest", "asio")
     add_files("server/EndToEndTests.cpp", "../server/src/ServerManager.cpp", "../server/src/Lobby.cpp", "../server/src/Room.cpp", "../client/src/net/RTypeNetworkPlugin.cpp", "../client/src/net/PlayerControlPlugin.cpp", "../client/src/metrics/ShipMetricsPlugin.cpp")
     add_includedirs("../server/src", "../client/src")
@@ -341,7 +341,7 @@ target("test_server_e2e")
 
 target("test_client_network")
     set_kind("binary")
-    add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_input", "rtype_game")
+    add_deps("engine_log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_input", "rtype_game")
     add_packages("gtest")
     add_files("client/NetworkPluginTests.cpp", "../client/src/ClientOptions.cpp", "../client/src/net/RTypeNetworkPlugin.cpp", "../client/src/net/PlayerControlPlugin.cpp")
     add_includedirs("../client/src")
@@ -358,7 +358,7 @@ target("test_client_metrics")
 target("test_client_scenes")
     set_kind("binary")
     add_rules("rlss.project_dir")
-    add_deps("log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_input",
+    add_deps("engine_log", "common", "engine_core", "engine_time", "engine_events", "engine_network", "engine_input",
              "engine_hierarchy", "engine_ui", "engine_scene", "engine_scripting", "engine_scene_scripting",
              "engine_prefabs", "engine_config", "engine_settings", "engine_metrics", "engine_metrics_overlay",
              "rtype_game")
@@ -394,7 +394,7 @@ target("test_rlss_codec")
 
 target("test_rlss_menu")
     set_kind("binary")
-    add_deps("rlss_shared", "rlss_game", "log", "engine_core", "engine_time", "engine_events", "engine_network",
+    add_deps("rlss_shared", "rlss_game", "engine_log", "engine_core", "engine_time", "engine_events", "engine_network",
              "engine_input", "engine_hierarchy", "engine_ui", "engine_scene", "engine_config", "engine_settings")
     add_packages("gtest")
     add_files("rlss/MenuScenesTests.cpp", "../rlss/client/menu/*.cpp", "../rlss/client/ServerLink.cpp",
@@ -404,7 +404,7 @@ target("test_rlss_menu")
 
 target("test_rlss_server")
     set_kind("binary")
-    add_deps("rlss_game", "log", "engine_core", "engine_time", "engine_events", "engine_network", "engine_scripting")
+    add_deps("rlss_game", "engine_log", "engine_core", "engine_time", "engine_events", "engine_network", "engine_scripting")
     add_packages("gtest", "wren")
     add_files("rlss/MatchServerTests.cpp", "../rlss/server/MatchServer.cpp", "../rlss/server/MatchRoom.cpp",
               "../rlss/server/RosterPlugin.cpp", "../rlss/server/CarSimulationPlugin.cpp")

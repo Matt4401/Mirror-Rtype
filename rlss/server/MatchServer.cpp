@@ -11,8 +11,8 @@
 #include <utility>
 #include <variant>
 
-#include "Logger.hpp"
 #include "MatchRoom.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "protocol/Protocol.hpp"
@@ -96,7 +96,7 @@ protocol::MatchList MatchServer::matchList() const {
 
 void MatchServer::onConnected(const ecs::net::PeerId peer) {
     _online.insert(peer);
-    rtype::log::info(LOG_TAG, "player ", peer, " connected (", _online.size(), " online)");
+    engine::log::info(LOG_TAG, "player ", peer, " connected (", _online.size(), " online)");
     sendList(peer);
 }
 
@@ -104,7 +104,7 @@ void MatchServer::onDisconnected(const ecs::net::PeerId peer) {
     leave(peer);
     _online.erase(peer);
     _names.erase(peer);
-    rtype::log::info(LOG_TAG, "player ", peer, " disconnected (", _online.size(), " online)");
+    engine::log::info(LOG_TAG, "player ", peer, " disconnected (", _online.size(), " online)");
 }
 
 void MatchServer::onData(const ecs::net::NetworkEvent& event) {
@@ -131,7 +131,7 @@ void MatchServer::onData(const ecs::net::NetworkEvent& event) {
         leave(event.peer);
         sendList(event.peer);
     } else if (const auto* name = std::get_if<protocol::SetName>(&*message)) {
-        rtype::log::info(LOG_TAG, "player ", event.peer, " is ", name->name);
+        engine::log::info(LOG_TAG, "player ", event.peer, " is ", name->name);
         _names.insert_or_assign(event.peer, name->name);
         forwardName(event.peer);
     }
@@ -150,7 +150,7 @@ void MatchServer::create(const ecs::net::PeerId peer) {
     try {
         room = std::make_unique<MatchRoom>(*_transport, id);
     } catch (const std::exception& error) {
-        rtype::log::error(LOG_TAG, "cannot start a match: ", error.what());
+        engine::log::error(LOG_TAG, "cannot start a match: ", error.what());
         sendResult(peer, protocol::JoinStatus::ServerFull);
         return;
     }
@@ -158,7 +158,7 @@ void MatchServer::create(const ecs::net::PeerId peer) {
         room->runInBackground();
     }
     _rooms.emplace(id, std::move(room));
-    rtype::log::info(LOG_TAG, "player ", peer, " created match ", id, " (", _rooms.size(), " matches)");
+    engine::log::info(LOG_TAG, "player ", peer, " created match ", id, " (", _rooms.size(), " matches)");
     join(peer, id);
 }
 
@@ -202,7 +202,7 @@ void MatchServer::leave(const ecs::net::PeerId peer) {
     it->second->removePlayer(peer);
     if (it->second->playerCount() == 0) {
         _rooms.erase(it);
-        rtype::log::info(LOG_TAG, "match ", *match, " closed (", _rooms.size(), " matches)");
+        engine::log::info(LOG_TAG, "match ", *match, " closed (", _rooms.size(), " matches)");
     }
 }
 

@@ -4,6 +4,6 @@ target("rlss_client")
     add_files("**.cpp")
     add_includedirs(".")
     add_rules("project.warnings")
-    add_deps("rlss_shared", "rlss_game", "log", "engine_core", "engine_time", "engine_events", "engine_render",
+    add_deps("rlss_shared", "rlss_game", "engine_log", "engine_core", "engine_time", "engine_events", "engine_render",
              "engine_audio", "engine_input", "engine_network", "engine_network_asio", "engine_scripting",
              "engine_hierarchy", "engine_ui", "engine_scene", "engine_config", "engine_settings")

@@ -7,11 +7,11 @@
 #include <utility>
 #include <variant>
 
-#include "Logger.hpp"
 #include "collision/GameCollisionEvents.hpp"
 #include "ecs/Entity.hpp"
 #include "events/EventBus.hpp"
 #include "events/PhysicsEvents.hpp"
+#include "log/Logger.hpp"
 #include "prefabs/CollisionCategories.hpp"
 
 namespace rtype::server::collision {
@@ -88,11 +88,12 @@ void CollisionRouter::onContact(const events::CollisionBeginEvent& contact) {
         [this](const auto& event) {
             using Event = std::decay_t<decltype(event)>;
             if constexpr (std::is_same_v<Event, ShotHitEvent>) {
-                log::debug(LOG_TAG, event.byPlayer ? "player" : "enemy", " shot ", event.shot, " hit ", event.target);
+                engine::log::debug(LOG_TAG, event.byPlayer ? "player" : "enemy", " shot ", event.shot, " hit ",
+                                   event.target);
             } else if constexpr (std::is_same_v<Event, ShipContactEvent>) {
-                log::debug(LOG_TAG, "ship ", event.ship, " touched ", event.other);
+                engine::log::debug(LOG_TAG, "ship ", event.ship, " touched ", event.other);
             } else {
-                log::debug(LOG_TAG, "ship ", event.ship, " touched power-up ", event.powerUp);
+                engine::log::debug(LOG_TAG, "ship ", event.ship, " touched power-up ", event.powerUp);
             }
             _bus->publish(event);
         },

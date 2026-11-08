@@ -10,7 +10,6 @@
 #include "CameraPlugin.hpp"
 #include "ClientEvents.hpp"
 #include "HudPlugin.hpp"
-#include "Logger.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "audio/spatial/SpatialConfig.hpp"
 #include "audio/types/AudioConstants.hpp"
@@ -28,6 +27,7 @@
 #include "ecs/time/Time.hpp"
 #include "events/AudioEvents.hpp"
 #include "game/Components.hpp"
+#include "log/Logger.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "protocol/Protocol.hpp"
@@ -173,7 +173,7 @@ void SoundPlugin::init(engine::Engine& engine) {
         const std::string path = std::string(SOUND_DIRECTORY) + std::string(fileName(static_cast<Sound>(i)));
         _sounds.at(i) = audioService.loadSound(path);
         if (_sounds.at(i) == audio::NO_SOUND && audioService.isAvailable()) {
-            rtype::log::warning(LOG_TAG, "cannot load ", path, ": this sound stays silent");
+            engine::log::warning(LOG_TAG, "cannot load ", path, ": this sound stays silent");
         }
     }
 

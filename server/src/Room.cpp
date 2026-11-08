@@ -11,7 +11,6 @@
 #include <utility>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "components/InputBuffer.hpp"
 #include "components/NetworkOwner.hpp"
 #include "components/Transform.hpp"
@@ -28,6 +27,7 @@
 #include "gameplay/ScriptBindings.hpp"
 #include "gameplay/ScriptPrefabs.hpp"
 #include "level/Level.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkPlugin.hpp"
@@ -197,7 +197,7 @@ void Room::runInBackground() {
                 std::this_thread::sleep_for(IDLE_SLEEP);
             }
         } catch (const std::exception& error) {
-            log::error(LOG_TAG, "room stopped by an error in its simulation: ", error.what());
+            engine::log::error(LOG_TAG, "room stopped by an error in its simulation: ", error.what());
             broadcastReliable(*_connection, protocol::GameOver{.reason = protocol::GameOverReason::ServerShutdown});
             _ended = true;
         }
