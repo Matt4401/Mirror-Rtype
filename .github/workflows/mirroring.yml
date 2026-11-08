@@ -60,7 +60,7 @@ jobs:
           style: "file"
           tidy-checks: ""
           database: "build"
-          ignore: ".github|build|tests"
+          ignore: ".github|build|tests|engine/tests"
           file-annotations: "true"
           step-summary: "true"
 
