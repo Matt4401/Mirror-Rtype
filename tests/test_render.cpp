@@ -196,6 +196,15 @@ TEST(TextureStore, UnknownIdentifiersResolveToNothing) {
     EXPECT_EQ(textures.get(1), nullptr);
 }
 
+TEST(TextureStore, UnloadIgnoresUnknownIdentifiersAndThePlaceholderNeedsAWindow) {
+    render::TextureStore textures;
+
+    textures.unload(ecs::NO_TEXTURE);
+    textures.unload(42);
+    EXPECT_EQ(textures.placeholder(), ecs::NO_TEXTURE);
+    EXPECT_EQ(textures.loadedCount(), 0U);
+}
+
 TEST(Window, RejectsNonPositiveDimensions) {
     EXPECT_THROW(render::Window(render::WindowConfig{.width = 0, .height = 720}), std::invalid_argument);
     EXPECT_THROW(render::Window(render::WindowConfig{.width = 1280, .height = -1}), std::invalid_argument);

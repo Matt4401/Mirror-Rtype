@@ -15,10 +15,10 @@
 
 namespace rlss::client {
 
-/** @brief Directory of the textures drawn by `rlss/assets/generate_textures.py`, relative to the repository root. */
-inline constexpr std::string_view TEXTURE_DIRECTORY = "rlss/assets/textures/";
-/** @brief Font of the menus, the HUD and the name tags (SIL Open Font License, see `rlss/assets/fonts/OFL.txt`). */
-inline constexpr std::string_view FONT_PATH = "rlss/assets/fonts/RussoOne-Regular.ttf";
+/** @brief Wren module declaring the RLSS assets (`rlss/scripts/Assets.wren`), run from the repository root. */
+inline constexpr std::string_view ASSET_DECLARATIONS = "rlss/scripts/Assets";
+/** @brief Alias of the font of the menus, the HUD and the name tags. */
+inline constexpr std::string_view FONT_ALIAS = "rlss_font";
 
 /** @brief One piece of the arena picture, too big for a single texture. */
 struct ArenaTile {
@@ -80,8 +80,8 @@ struct GameAssets {
 };
 
 /**
- * @brief Loads `GameAssets` at init (smooth filtering, so they stay clean whatever the camera zoom) and adds it to the
- * registry as a resource. Run the client from the repository root.
+ * @brief Resolves `GameAssets` from the aliases declared by `rlss/scripts/Assets.wren` and adds it to the registry as
+ * a resource. The `assets::AssetManager` owns the textures and the font. Run the client from the repository root.
  */
 class AssetsPlugin final : public engine::IPlugin {
   public:
@@ -92,13 +92,14 @@ class AssetsPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "AssetsPlugin"; }
 
     /**
-     * @brief Declares the dependency on `render::RenderPlugin` (textures and font need its window).
+     * @brief Declares the dependencies on `render::RenderPlugin` (textures and font need its window) and
+     * `assets::AssetScriptingPlugin` (the declarations) and `assets::RenderAssetsPlugin` (the loaders).
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Loads every texture and the font.
+     * @brief Loads the global asset group and resolves every texture and the font.
      * @param engine Host engine.
      */
     void init(engine::Engine& engine) override;

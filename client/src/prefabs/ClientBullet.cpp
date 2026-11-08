@@ -7,8 +7,6 @@
 
 #include "prefabs/ClientBullet.hpp"
 
-#include <cstdint>
-
 #include "components/AnimationComponent.hpp"
 #include "components/Collider2D.hpp"
 #include "components/Renderable.hpp"
@@ -18,11 +16,12 @@
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
 #include "prefabs/PrefabParams.hpp"
+#include "prefabs/PrefabTexture.hpp"
 
 namespace client::prefabs {
 
 void buildClientBullet(ecs::Entity e, ecs::Registry& registry, ::prefabs::PrefabParams const& params) {
-    const auto texId = static_cast<ecs::TextureId>(params.get<std::int64_t>("textureId", 0));
+    const ecs::TextureId texId = prefabTexture(registry, params);
     const float speed = params.get("speed", DEFAULT_CLIENT_BULLET_SPEED);
 
     registry.addComponent<ecs::Transform>(e, ::prefabs::makeTransform(params));

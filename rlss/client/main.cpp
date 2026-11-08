@@ -29,6 +29,11 @@
 #include "SessionPlugin.hpp"
 #include "SoundPlugin.hpp"
 #include "VolumeCVarsPlugin.hpp"
+#include "assets/AssetPlugin.hpp"
+#include "assets/audio/AudioAssetsPlugin.hpp"
+#include "assets/render/RenderAssetsPlugin.hpp"
+#include "assets/scene/SceneAssetsPlugin.hpp"
+#include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
@@ -109,6 +114,10 @@ int main(int ac, char** av) {
             .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
             // After the replication: the CarView scripts read the car transforms once interpolated.
             .addPlugin<scripting::ScriptPlugin>()
+            .addPlugin<assets::AssetPlugin>()
+            .addPlugin<assets::AssetScriptingPlugin>(std::string(rlss::client::ASSET_DECLARATIONS))
+            .addPlugin<assets::RenderAssetsPlugin>()
+            .addPlugin<assets::AudioAssetsPlugin>()
             .addPlugin<rlss::client::SessionPlugin>(transport)
             .addPlugin<rlss::client::AssetsPlugin>()
             .addPlugin<rlss::client::ArenaViewPlugin>()
@@ -118,6 +127,7 @@ int main(int ac, char** av) {
             .addPlugin<hierarchy::HierarchyPlugin>()
             .addPlugin<ui::UiPlugin>()
             .addPlugin<scene::ScenePlugin>()
+            .addPlugin<assets::SceneAssetsPlugin>()
             .addPlugin<settings::SettingsPlugin>(config::userConfigDirectory("rlss") / "settings.toml")
             // Drawn on screen in this order: name tags, HUD, then the menus on top (UiPlugin draws in lateUpdate).
             .addPlugin<rlss::client::NameTagPlugin>()

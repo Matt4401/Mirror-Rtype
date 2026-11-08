@@ -30,6 +30,28 @@ target("engine_settings")
     add_includedirs(".", {public = true})
     add_deps("engine_core", "engine_events", "engine_config")
 
+-- Assets: textures, fonts, sounds and musics named by alias, loaded once, held by groups. Headless: the render and
+-- audio modules plug in their loaders.
+target("engine_assets")
+    set_kind("static")
+    add_files("assets/*.cpp", "assets/detail/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_core")
+
+-- Bridge between the assets and Wren: the core/Assets module and the game's asset declaration script.
+target("engine_assets_scripting")
+    set_kind("static")
+    add_files("assets/scripting/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_assets", "engine_scripting")
+
+-- Bridge between the assets and the scenes: a scene's asset group is loaded while the scene is on the stack.
+target("engine_assets_scene")
+    set_kind("static")
+    add_files("assets/scene/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_assets", "engine_scene")
+
 target("engine_prefabs")
     set_kind("static")
     add_files("prefabs/**.cpp")
@@ -144,14 +166,27 @@ target("engine_devconsole")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_timeline", "engine_tools", "engine_tools_scripting", "engine_devconsole")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_assets", "engine_assets_scripting", "engine_assets_scene", "engine_timeline", "engine_tools", "engine_tools_scripting", "engine_devconsole")
     if has_config("graphics") then
-        add_deps("engine_render", "engine_audio")
+        add_deps("engine_render", "engine_audio", "engine_assets_render", "engine_assets_audio")
     end
 
 if has_config("graphics") then
     includes("render")
     includes("audio")
+
+    -- Bridges plugging the render and audio loaders into the asset manager; neither side knows the other.
+    target("engine_assets_render")
+        set_kind("static")
+        add_files("assets/render/*.cpp")
+        add_includedirs(".", {public = true})
+        add_deps("engine_assets", "engine_render")
+
+    target("engine_assets_audio")
+        set_kind("static")
+        add_files("assets/audio/*.cpp")
+        add_includedirs(".", {public = true})
+        add_deps("engine_assets", "engine_audio")
 end
 includes("ui")
 includes("input")
