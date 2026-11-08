@@ -25,6 +25,7 @@
 #include "net/ReplicationEvents.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "protocol/Messages.hpp"
+#include "timeline/TimelineEvent.hpp"
 #include "timeline/TimelineEvents.hpp"
 #include "timeline/TimelinePlugin.hpp"
 
@@ -152,6 +153,16 @@ class GameplayPlugin final : public engine::IPlugin {
     void fire(const PendingShot& shot);
     /** @brief Handles a level event: spawn, scroll speed change or end of level. */
     void onLevelEvent(const timeline::TimelineEventFired& fired);
+    /**
+     * @brief Plays a level event, or keeps it for after the boss fight.
+     *
+     * The scroll is stopped during a boss fight, so only the events reached in the same step as the boss can fire then.
+     * They come after the boss in the level, so they wait for it: a `scroll` must not restart the scroll and an `end`
+     * must not restart the level while the boss is alive. Another `boss` joins the current fight.
+     *
+     * @param event Event to play.
+     */
+    void playLevelEvent(const timeline::TimelineEvent& event);
     /** @brief Spawns the replicated entity of a level `spawn` event. */
     void spawnFromLevel(const prefabs::PrefabParams& params);
     /** @brief A terrain section still entering the screen: what is left to build. */
@@ -220,6 +231,8 @@ class GameplayPlugin final : public engine::IPlugin {
     bool _bossFight = false;
     /** @brief Scroll speed when the boss fight started, restored once it is over. */
     float _speedBeforeBoss = 0.0F;
+    /** @brief Level events fired during a boss fight (e.g. in the same step as the boss), played once it is over. */
+    std::vector<timeline::TimelineEvent> _afterBoss;
     /** @brief Seconds left before the next score log. */
     float _scoreLogTimer = SCORE_LOG_INTERVAL;
 };

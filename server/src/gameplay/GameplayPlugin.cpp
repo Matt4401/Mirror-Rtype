@@ -135,11 +135,17 @@ void GameplayPlugin::startLevel() {
     _timeline->timeline() = _level->timeline;
     _timeline->setSpeed(_level->scrollSpeed);
     _bossFight = false;
+    _afterBoss.clear();
     _terrain.clear();
 }
 
-void GameplayPlugin::onLevelEvent(const timeline::TimelineEventFired& fired) {
-    const timeline::TimelineEvent& event = fired.event;
+void GameplayPlugin::onLevelEvent(const timeline::TimelineEventFired& fired) { playLevelEvent(fired.event); }
+
+void GameplayPlugin::playLevelEvent(const timeline::TimelineEvent& event) {
+    if (_bossFight && event.type != level::EVENT_BOSS) {
+        _afterBoss.push_back(event);
+        return;
+    }
     if (event.type == level::EVENT_SPAWN) {
         spawnFromLevel(event.params);
     } else if (event.type == level::EVENT_SCROLL) {
@@ -293,6 +299,12 @@ void GameplayPlugin::updateBossFight() {
         _bossFight = false;
         _timeline->setSpeed(_speedBeforeBoss);
         log::info(LOG_TAG, "boss destroyed: the level goes on");
+        // Played in order; a new boss among them starts another fight and keeps the next ones waiting again.
+        const std::vector<timeline::TimelineEvent> waiting = std::move(_afterBoss);
+        _afterBoss.clear();
+        for (const timeline::TimelineEvent& event : waiting) {
+            playLevelEvent(event);
+        }
     }
 }
 
