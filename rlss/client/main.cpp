@@ -28,6 +28,7 @@
 #include "ServerLink.hpp"
 #include "SessionPlugin.hpp"
 #include "SoundPlugin.hpp"
+#include "VolumeCVarsPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
@@ -46,6 +47,8 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
+#include "tools/console/ConsolePlugin.hpp"
+#include "tools/devconsole/DevConsolePlugin.hpp"
 #include "ui/UiPlugin.hpp"
 
 namespace {
@@ -120,7 +123,11 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::GoalEffectPlugin>()
             .addPlugin<rlss::client::SoundPlugin>()
             .addPlugin<rlss::client::PlayerInputPlugin>()
-            .addPlugin<rlss::client::MenuScenesPlugin>(link);
+            .addPlugin<rlss::client::MenuScenesPlugin>(link)
+            // Developer console (~ / ²): drawn last, over the HUD and the menus.
+            .addPlugin<tools::ConsolePlugin>()
+            .addPlugin<tools::DevConsolePlugin>()
+            .addPlugin<rlss::client::VolumeCVarsPlugin>();
         engine.run();
         return engine.getPlugin<rlss::client::SessionPlugin>().connectionLost() ? EXIT_ERROR : 0;
     } catch (const std::exception& error) {
