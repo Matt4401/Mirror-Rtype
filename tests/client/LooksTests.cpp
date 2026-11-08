@@ -205,6 +205,29 @@ TEST(Looks, ReadsTheFrameStrideAndDirectionalSprites) {
     EXPECT_FLOAT_EQ(sprite->firstAngle, 22.5F);
 }
 
+TEST(Looks, ReadsMirroredSpritesAndFramesOfDifferentWidths) {
+    std::vector<std::string> warnings;
+    const looks::Looks result = read(R"(
+        [[entity]]
+        prefab = "missile"
+        texture = "sprites/shot.png"
+        frame_x = 151
+        frame_height = 16
+        frame_widths = [63, 66, 16]
+        loop = false
+        flip_x = true
+    )",
+                                     warnings);
+
+    EXPECT_TRUE(warnings.empty()) << (warnings.empty() ? "" : warnings.front());
+    const auto& sprite = result.entities.at("missile").sprite;
+    ASSERT_TRUE(sprite.has_value()) << "frame_widths stands for frame_width";
+    EXPECT_EQ(sprite->frameWidths, (std::vector<int>{63, 66, 16}));
+    EXPECT_EQ(sprite->frames, 3);
+    EXPECT_TRUE(sprite->flipX);
+    EXPECT_FALSE(sprite->loop);
+}
+
 TEST(Looks, ShippedFileReadsWithoutWarnings) {
     std::vector<std::string> warnings;
     const looks::Looks shipped =

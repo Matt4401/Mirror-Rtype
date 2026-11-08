@@ -6,6 +6,7 @@
 #include "RTypeGamePlugin.hpp"
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -146,6 +147,8 @@ struct EntitySprite {
     int startY = 0;
     int startX = 0;
     int frameStride = 0;
+    std::vector<int> frameWidths;
+    bool flipX = false;
     int layer = 0;
     float scale = SPRITE_SCALE;
     float frameDuration = DEFAULT_FRAME_DURATION;
@@ -183,24 +186,26 @@ DefaultBox defaultBox(const std::uint32_t kind) {
 /** @brief Gives a replicated entity its sprite and its size on screen. */
 void applySprite(ecs::Registry& registry, const ecs::Entity entity, const EntitySprite& sprite) {
     auto& transform = registry.getComponents<ecs::Transform>().get(entity);
-    transform.scaleX = sprite.scale;
+    // A negative scale mirrors the sprite.
+    transform.scaleX = sprite.flipX ? -sprite.scale : sprite.scale;
     transform.scaleY = sprite.scale;
-    registry.addComponent<ecs::Renderable>(entity, ecs::Renderable{
-                                                       .textureId = sprite.texture,
-                                                       .sourceRect = {.x = sprite.startX,
-                                                                      .y = sprite.startY,
-                                                                      .width = sprite.frameWidth,
-                                                                      .height = sprite.frameHeight},
-                                                       .origin = {.x = 0.5F, .y = 0.5F},
-                                                       .tint = COLOR_WHITE,
-                                                       .layer = sprite.layer,
-                                                   });
+    const int firstWidth = sprite.frameWidths.empty() ? sprite.frameWidth : sprite.frameWidths.front();
+    registry.addComponent<ecs::Renderable>(
+        entity,
+        ecs::Renderable{
+            .textureId = sprite.texture,
+            .sourceRect = {.x = sprite.startX, .y = sprite.startY, .width = firstWidth, .height = sprite.frameHeight},
+            .origin = {.x = 0.5F, .y = 0.5F},
+            .tint = COLOR_WHITE,
+            .layer = sprite.layer,
+        });
     registry.addComponent<ecs::AnimationComponent>(entity, ecs::AnimationComponent{
                                                                .frameWidth = sprite.frameWidth,
                                                                .frameHeight = sprite.frameHeight,
                                                                .frameCount = sprite.frameCount,
                                                                .startX = sprite.startX,
                                                                .frameStride = sprite.frameStride,
+                                                               .frameWidths = sprite.frameWidths,
                                                                .startY = sprite.startY,
                                                                .frameDuration = sprite.frameDuration,
                                                                .loop = sprite.loop,
@@ -383,9 +388,11 @@ void RTypeGamePlugin::onEntityDespawned(engine::Engine& engine,
     const auto& transform = registry.getComponents<ecs::Transform>().get(event.entity);
     const auto& source = registry.getComponents<ecs::Renderable>().get(event.entity).sourceRect;
     // A box is the placeholder texture scaled up; a sprite is its frame scaled up.
-    const float width = (source.width > 0 ? static_cast<float>(source.width) : PLACEHOLDER_PIXELS) * transform.scaleX;
+    // A mirrored sprite has a negative scale: only its size matters here.
+    const float width =
+        (source.width > 0 ? static_cast<float>(source.width) : PLACEHOLDER_PIXELS) * std::fabs(transform.scaleX);
     const float height =
-        (source.height > 0 ? static_cast<float>(source.height) : PLACEHOLDER_PIXELS) * transform.scaleY;
+        (source.height > 0 ? static_cast<float>(source.height) : PLACEHOLDER_PIXELS) * std::fabs(transform.scaleY);
     if (event.kind == rtype::game::KIND_BOSS_CORE) {
         spawnExplosion(registry, gameplay::explosionBursts(transform.x, transform.y, width, height));
     } else {
@@ -489,6 +496,8 @@ void RTypeGamePlugin::applyLook(ecs::Registry& registry, const ecs::Entity entit
                             .startY = sprite.y,
                             .startX = sprite.x,
                             .frameStride = sprite.frameStride,
+                            .frameWidths = sprite.frameWidths,
+                            .flipX = sprite.flipX,
                             .layer = layer,
                             .scale = sprite.scale,
                             .frameDuration = sprite.frameDuration,

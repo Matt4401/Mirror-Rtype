@@ -181,6 +181,8 @@ frame_height = 16
 | `loop` | `true` | | `false` stops on the last frame. |
 | `scale` | `1` | 0.1–16 | Drawing scale. |
 | `frame_stride` | `frame_width` | 0–4096 | Pixels from one frame to the next, for strips with empty space between their frames. |
+| `frame_widths` | none | 1–4096 each, 64 frames | Widths of frames that differ, side by side from `frame_x`: they give the number of frames and replace `frame_width`. With `loop = false`, the animation holds its last frame. |
+| `flip_x` | `false` | | Draws the sprite mirrored left to right, for a sheet facing the other way. |
 | `directional` | `false` | | The frames are directions around the full turn, not an animation: the client shows the one facing the nearest player ship (`gameplay::AimedSprite`). |
 | `first_angle` | `0` | -360–360 | Direction of the first frame of a directional sprite, in degrees: 0 is right, 90 down, the next frames turning clockwise. |
 

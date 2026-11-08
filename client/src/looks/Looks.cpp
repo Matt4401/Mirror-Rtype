@@ -67,6 +67,17 @@ std::optional<SpriteLook> readSprite(const config::ConfigFile& file, config::Con
     sprite.frameStride = static_cast<int>(reader.count(key("frame_stride"), 0, 0, MAX_FRAME_PIXELS));
     sprite.directional = reader.flag(key("directional"), false);
     sprite.firstAngle = reader.number(key("first_angle"), 0.0F, -FULL_TURN, FULL_TURN);
+    sprite.flipX = reader.flag(key("flip_x"), false);
+    // Frames of different widths: they give the number of frames, and the first one stands for `frame_width`.
+    const std::size_t widths = std::min<std::size_t>(file.arraySize(key("frame_widths")), MAX_FRAMES);
+    for (std::size_t i = 0; i < widths; ++i) {
+        sprite.frameWidths.push_back(
+            static_cast<int>(reader.count(std::format("{}.frame_widths.{}", entry, i), 1, 1, MAX_FRAME_PIXELS)));
+    }
+    if (!sprite.frameWidths.empty()) {
+        sprite.frames = static_cast<int>(sprite.frameWidths.size());
+        sprite.frameWidth = sprite.frameWidths.front();
+    }
     if (!file.contains(key("texture"))) {
         return std::nullopt;
     }

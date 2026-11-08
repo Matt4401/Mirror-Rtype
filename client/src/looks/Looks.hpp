@@ -63,6 +63,10 @@ struct SpriteLook {
     bool directional = false;
     /** @brief Direction of the first frame of a directional sprite, in degrees (0 right, 90 down). */
     float firstAngle = 0.0F;
+    /** @brief True to draw the sprite mirrored left to right, for a sheet facing the other way. */
+    bool flipX = false;
+    /** @brief Widths of frames that differ, side by side from `x`; empty when every frame is `frameWidth` wide. */
+    std::vector<int> frameWidths;
 };
 
 /** @brief Look of a boss variant or of a boss part look. */
@@ -98,7 +102,8 @@ struct Looks {
  * Reads the `[[boss]]` entries (key `variant`), the `[[part]]` entries (key `look`) and the `[[entity]]` entries (key
  * `prefab`, one of `ENTITY_PREFABS`, and optionally `subtype`, 0–255). Each entry sets `width` and
  * `height` (box drawn without a sprite) and, optionally, a sprite: `texture`, `frame_x`, `frame_y`, `frame_width`,
- * `frame_height`, `frame_stride`, `frames`, `frame_duration`, `loop`, `scale`, `directional` and `first_angle`.
+ * `frame_height`, `frame_stride`, `frame_widths`, `frames`, `frame_duration`, `loop`, `scale`, `directional`,
+ * `first_angle` and `flip_x`.
  * Out-of-range values are clamped; an entry without its id, a sprite without its frame size, an unsafe texture path
  * (absolute, with `..` or `\`) and unknown keys are reported in `warnings` and ignored. A later entry with the same id
  * replaces the earlier one. The `[explosion]` table takes the same sprite keys, for the bursts of a boss explosion.
