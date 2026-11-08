@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <exception>
 #include <functional>
 #include <memory>
 #include <queue>
@@ -136,7 +137,8 @@ class Registry {
      * the batch (a hierarchy cascade, for instance). Listener bookkeeping is done once for the whole batch. If a
      * destroy listener throws, every entity of the batch is still fully destroyed before the first exception is
      * rethrown.
-     * @param entities Entities to destroy; the span may refer to storage the listeners do not touch.
+     * @param entities Entities to destroy; the span may refer to any storage, even a component's dense entity array:
+     *        the batch is copied first.
      * @throws Whatever the first throwing destroy listener threw.
      */
     void killEntities(std::span<const Entity> entities);
@@ -411,10 +413,19 @@ class Registry {
         bool active = true;
     };
 
+    /**
+     * @brief Calls the destroy listeners registered when the call starts, for one entity.
+     * @param e Entity being destroyed.
+     * @param error Receives the first exception a listener throws, if it holds none yet.
+     */
+    void notifyDestroyListeners(Entity e, std::exception_ptr& error);
+
     /** @brief Callbacks notified before an entity's components are removed (deque: stable across push_back). */
     std::deque<DestroyListenerEntry> _destroyListeners;
     /** @brief Reentrancy depth counter for destruction listener dispatch. */
     std::size_t _destroyDispatchDepth = 0;
+    /** @brief Copy of the outer `killEntities` batch; capacity kept between calls. */
+    std::vector<Entity> _killBatch;
     /** @brief Identifier assigned to the next registered destruction callback. */
     std::size_t _nextDestroyListenerId = 0;
     /** @brief Callbacks notified after a component is explicitly removed (deque: stable across push_back). */

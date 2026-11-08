@@ -51,11 +51,17 @@ class RecordingScene : public scene::IScene {
             onEnterHook(context);
         }
     }
-    void onExit(SceneContext& /*context*/) override { _log.push_back(_name + ".exit"); }
+    void onExit(SceneContext& context) override {
+        _log.push_back(_name + ".exit");
+        if (onExitHook) {
+            onExitHook(context);
+        }
+    }
     void onPause(SceneContext& /*context*/) override { _log.push_back(_name + ".pause"); }
     void onResume(SceneContext& /*context*/) override { _log.push_back(_name + ".resume"); }
 
     std::function<void(SceneContext&)> onEnterHook;
+    std::function<void(SceneContext&)> onExitHook;
 
   private:
     std::string _name;
@@ -372,6 +378,131 @@ TEST_F(SceneTest, ShutdownExitsEveryScene) {
     EXPECT_EQ(log, (std::vector<std::string>{"Game.exit", "Menu.exit"}));
     EXPECT_FALSE(engine.registry().isAlive(owned));
     EXPECT_FALSE(manager().isActive(menu));
+}
+
+TEST_F(SceneTest, FailedEntryIsRolledBack) {
+    ecs::Entity spawned = ecs::NULL_ENTITY;
+    int pings = 0;
+    manager().get<GameScene>().onEnterHook = [&](SceneContext& context) {
+        spawned = context.spawn();
+        context.subscribe<Ping>([&pings](const Ping& /*ping*/) { ++pings; });
+        throw std::runtime_error("enter");
+    };
+    manager().switchTo(menu);
+    frame();
+    log.clear();
+
+    manager().push(game);
+    EXPECT_THROW(manager().applyTransitions(), std::runtime_error);
+    EXPECT_EQ(log, (std::vector<std::string>{"Menu.pause", "Game.enter", "Menu.resume"}));
+    EXPECT_FALSE(manager().isActive(game));
+    EXPECT_EQ(manager().top(), menu);
+    EXPECT_TRUE(manager().isRunning(menu));
+    EXPECT_TRUE(manager().isVisible(menu));
+    EXPECT_FALSE(engine.registry().isAlive(spawned));
+    engine.eventBus().publish(Ping{});
+    EXPECT_EQ(pings, 0);
+}
+
+TEST_F(SceneTest, ThrowingExitHookStillRemovesTheScene) {
+    ecs::Entity owned = ecs::NULL_ENTITY;
+    manager().get<GameScene>().onEnterHook = [&](SceneContext& context) { owned = context.spawn(); };
+    manager().get<GameScene>().onExitHook = [](SceneContext& /*context*/) { throw std::runtime_error("exit"); };
+    manager().switchTo(menu);
+    manager().push(game);
+    frame();
+
+    manager().pop();
+    EXPECT_THROW(manager().applyTransitions(), std::runtime_error);
+    EXPECT_FALSE(manager().isActive(game));
+    EXPECT_FALSE(engine.registry().isAlive(owned));
+    EXPECT_EQ(manager().top(), menu);
+    EXPECT_TRUE(manager().isRunning(menu));
+}
+
+TEST_F(SceneTest, WhatDestroyListenersAddToAnExitingSceneIsReleasedToo) {
+    SceneContext& context = manager().context(game);
+    ecs::Entity owned = ecs::NULL_ENTITY;
+    ecs::Entity late = ecs::NULL_ENTITY;
+    int pings = 0;
+    int runs = 0;
+    manager().get<GameScene>().onEnterHook = [&](SceneContext& ctx) { owned = ctx.spawn(); };
+    engine.registry().addDestroyListener([&](ecs::Entity entity) {
+        if (entity == owned) {
+            late = context.spawn();
+            context.subscribe<Ping>([&pings](const Ping& /*ping*/) { ++pings; });
+            context.addSystem(SceneStage::Update,
+                              [&runs](engine::Engine& /*engine*/, const ecs::time::Time& /*time*/) { ++runs; });
+        }
+    });
+    manager().switchTo(game);
+    frame();
+
+    manager().switchTo(menu);
+    frame();
+    EXPECT_FALSE(engine.registry().isAlive(owned));
+    EXPECT_FALSE(engine.registry().isAlive(late));
+    engine.eventBus().publish(Ping{});
+    EXPECT_EQ(pings, 0);
+
+    manager().get<GameScene>().onEnterHook = nullptr;
+    manager().switchTo(game);
+    frame();
+    EXPECT_EQ(runs, 0);
+}
+
+TEST_F(SceneTest, SceneSystemsCannotApplyOrClearTheStack) {
+    bool cleared = false;
+    manager().get<GameScene>().onEnterHook = [&](SceneContext& context) {
+        context.addSystem(SceneStage::Update, [&](engine::Engine& /*engine*/, const ecs::time::Time& /*time*/) {
+            manager().switchTo(menu);
+            manager().applyTransitions();  // deferred: the system keeps running safely
+            EXPECT_EQ(manager().top(), game);
+            try {
+                manager().clear();
+            } catch (const std::logic_error&) {
+                cleared = true;
+            }
+        });
+    };
+    manager().switchTo(game);
+    frame();  // enters the game, whose system runs in the same frame
+    EXPECT_TRUE(cleared);
+    EXPECT_EQ(manager().top(), game);
+    frame();  // the switch queued by the system is applied at the frame boundary
+    EXPECT_EQ(manager().top(), menu);
+}
+
+TEST_F(SceneTest, ClearDropsTransitionsQueuedByExitHooks) {
+    manager().get<GameScene>().onExitHook = [this](SceneContext& /*context*/) { manager().switchTo(menu); };
+    manager().switchTo(game);
+    frame();
+
+    manager().clear();
+    EXPECT_EQ(manager().top(), scene::INVALID_SCENE);
+    EXPECT_FALSE(manager().hasPendingTransitions());
+}
+
+TEST(SceneShutdown, ScenesExitBeforeTheHierarchyHooksGoEvenWhenAddedFirst) {
+    std::vector<std::string> log;
+    engine::Engine engine;
+    engine.addPlugin<scene::ScenePlugin>();
+    engine.addPlugin<hierarchy::HierarchyPlugin>();
+    SceneManager& manager = engine.getPlugin<scene::ScenePlugin>().manager();
+    const SceneId game = manager.registerScene<GameScene>(log);
+    ecs::Entity child = ecs::NULL_ENTITY;
+    manager.get<GameScene>().onEnterHook = [&](SceneContext& context) {
+        const ecs::Entity parent = context.spawn();
+        child = context.registry().spawnEntity();  // not owned: only the hierarchy cascade destroys it
+        hierarchy::setParent(context.registry(), child, parent);
+    };
+    engine.init();
+    manager.switchTo(game);
+    (void)engine.advance();
+    ASSERT_TRUE(engine.registry().isAlive(child));
+
+    engine.shutdown();
+    EXPECT_FALSE(engine.registry().isAlive(child));
 }
 
 TEST(SceneManagerStandalone, TransitionsBeforeAttachWaitForTheEngine) {

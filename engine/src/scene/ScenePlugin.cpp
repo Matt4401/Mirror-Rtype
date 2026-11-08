@@ -6,6 +6,7 @@
 #include "core/PluginBuilder.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "ecs/time/Time.hpp"
+#include "hierarchy/HierarchyPlugin.hpp"
 #include "scene/SceneManager.hpp"
 #include "scene/SceneTypes.hpp"
 
@@ -13,6 +14,8 @@ namespace scene {
 
 void ScenePlugin::build(engine::PluginBuilder& builder) {
     builder.require<engine::CorePlugin>();
+    // Not needed, but when there is one, scenes must exit while its hooks still cascade to the children.
+    builder.optionally<hierarchy::HierarchyPlugin>();
     builder.provides<SceneManager>();
 }
 

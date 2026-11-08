@@ -97,7 +97,7 @@ target("engine_scene")
     set_kind("static")
     add_files("scene/*.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core", "engine_events")
+    add_deps("engine_core", "engine_events", "engine_hierarchy")
 
 target("engine_all")
     set_kind("phony")

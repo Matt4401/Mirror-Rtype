@@ -1,6 +1,7 @@
 #include "scene/SceneManager.hpp"
 
 #include <cstddef>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -90,7 +91,7 @@ bool SceneManager::isRunning(SceneId id) const noexcept { return id < _slots.siz
 bool SceneManager::isVisible(SceneId id) const noexcept { return id < _slots.size() && _slots[id]->visible; }
 
 void SceneManager::applyTransitions() {
-    if (_engine == nullptr || _requests.empty() || _applyingTransitions) {
+    if (_engine == nullptr || _requests.empty() || _applyingTransitions || _runningStage) {
         return;
     }
     _applyingTransitions = true;
@@ -150,31 +151,82 @@ void SceneManager::enter(SceneId id) {
     _stack.push_back(id);
     // The scenes below learn they are paused or hidden before the new scene spawns anything.
     refreshStates(true);
-    slot.scene->onEnter(slot.context);
+    try {
+        slot.scene->onEnter(slot.context);
+    } catch (...) {
+        // Roll back: what the scene created goes, and the scenes below run and show again. No `onExit`, no
+        // `SceneExited`: the scene never entered.
+        const std::exception_ptr error = std::current_exception();
+        std::exception_ptr ignored;
+        removeTop(ignored);
+        try {
+            refreshStates(false);
+        } catch (...) {  // NOLINT(bugprone-empty-catch): the error of `onEnter` is the one to report.
+        }
+        std::rethrow_exception(error);
+    }
     _engine->eventBus().publish(SceneEntered{.id = id});
 }
 
 void SceneManager::exitTop(bool refresh) {
     const SceneId id = _stack.back();
     Slot& slot = *_slots[id];
-    slot.scene->onExit(slot.context);
+    std::exception_ptr error;
+    try {
+        slot.scene->onExit(slot.context);
+    } catch (...) {
+        error = std::current_exception();
+    }
+    removeTop(error);
+    try {
+        _engine->eventBus().publish(SceneExited{.id = id});
+        if (refresh) {
+            refreshStates(false);
+        }
+    } catch (...) {
+        if (!error) {
+            error = std::current_exception();
+        }
+    }
+    if (error) {
+        std::rethrow_exception(error);
+    }
+}
+
+void SceneManager::removeTop(std::exception_ptr& error) {
+    const SceneId id = _stack.back();
+    Slot& slot = *_slots[id];
+    // Destroy listeners may subscribe, add systems or spawn through the exiting scene: release and destroy again
+    // until nothing is left, a bounded number of times.
+    constexpr int MAX_PASSES = 8;
+    bool destroyed = true;
+    for (int pass = 0; pass < MAX_PASSES && destroyed; ++pass) {
+        slot.context.release();
+        try {
+            destroyed = destroyMembers(id);
+        } catch (...) {
+            // `killEntities` finishes its batch before rethrowing: go on with the teardown.
+            if (!error) {
+                error = std::current_exception();
+            }
+        }
+    }
     slot.context.release();
-    destroyMembers(id);
     slot.active = false;
     slot.running = false;
     slot.visible = false;
     _stack.pop_back();
-    _engine->eventBus().publish(SceneExited{.id = id});
-    if (refresh) {
-        refreshStates(false);
+    if (destroyed && !error) {
+        error = std::make_exception_ptr(
+            std::logic_error("SceneManager: destroy listeners keep spawning into an exiting scene"));
     }
 }
 
-void SceneManager::destroyMembers(SceneId id) {
+bool SceneManager::destroyMembers(SceneId id) {
     ecs::Registry& registry = _engine->registry();
     const auto* members = static_cast<const ecs::Registry&>(registry).findComponents<SceneMember>();
     if (members == nullptr) {
-        return;
+        return false;
     }
     _scratch.clear();
     const auto& entities = members->getDenseEntities();
@@ -184,8 +236,12 @@ void SceneManager::destroyMembers(SceneId id) {
             _scratch.push_back(entities[i]);
         }
     }
+    if (_scratch.empty()) {
+        return false;
+    }
     registry.killEntities(_scratch);
     _scratch.clear();
+    return true;
 }
 
 void SceneManager::refreshStates(bool silentTop) {
@@ -224,22 +280,48 @@ void SceneManager::refreshStates(bool silentTop) {
 }
 
 void SceneManager::runStage(SceneStage stage, engine::Engine& engine, const ecs::time::Time& time) {
-    // Transitions are deferred, so the stack cannot change while this loop runs.
-    for (const SceneId id : _stack) {
-        Slot& slot = *_slots[id];
-        if (slot.running) {
-            slot.context.runSystems(stage, engine, time);
-        }
+    // Transitions are deferred (and `applyTransitions` / `clear` refuse to run from here), so the stack cannot
+    // change while this loop runs.
+    if (_runningStage) {
+        return;
     }
+    _runningStage = true;
+    try {
+        for (const SceneId id : _stack) {
+            Slot& slot = *_slots[id];
+            if (slot.running) {
+                slot.context.runSystems(stage, engine, time);
+            }
+        }
+    } catch (...) {
+        _runningStage = false;
+        throw;
+    }
+    _runningStage = false;
 }
 
 void SceneManager::clear() {
+    if (_runningStage) {
+        throw std::logic_error("SceneManager: clear() cannot run from a scene system; queue a transition instead");
+    }
     _requests.clear();
     if (_engine == nullptr) {
         return;
     }
+    std::exception_ptr error;
     while (!_stack.empty()) {
-        exitTop(false);
+        try {
+            exitTop(false);
+        } catch (...) {
+            if (!error) {
+                error = std::current_exception();
+            }
+        }
+    }
+    // The exit hooks may have queued transitions: the stack is meant to stay empty.
+    _requests.clear();
+    if (error) {
+        std::rethrow_exception(error);
     }
 }
 

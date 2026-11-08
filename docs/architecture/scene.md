@@ -57,7 +57,19 @@ class TitleScene final : public scene::IScene {
 | `addSystem(stage, system)`        | dropping the system                                                        |
 
 Children of an owned entity (`hierarchy::setParent`) are destroyed with it when `HierarchyPlugin` is loaded, so a
-UI panel spawned with `spawn()` takes its widgets with it.
+UI panel spawned with `spawn()` takes its widgets with it. `ScenePlugin` shuts down before `HierarchyPlugin`, in
+whatever order they were added, so this also holds when the program closes.
+
+What a destroy listener adds to the exiting scene while its entities go (an entity, a subscription, a system) is
+released as well.
+
+Errors in the hooks never leave a half-entered or half-exited scene:
+
+- If `onEnter` throws, the scene is rolled back: its entities, subscriptions and systems go, it leaves the stack, and
+  the scenes below run and show again. It gets no `onExit` and no `SceneExited`.
+- If `onExit` or a destroy listener throws, the scene still leaves the stack completely.
+
+In both cases the first error is then rethrown.
 
 Subscriptions also deliver events while the scene is paused; check `context.isRunning()` in the callback when that
 matters. Systems only run while the scene runs.
@@ -91,6 +103,8 @@ A scene is registered once (one per type, unique name) and keeps its state betwe
     A transition queued by a hook (`onEnter` pushing an overlay, for instance) is applied in the same frame.
     More than `SceneManager::MAX_TRANSITIONS_PER_FRAME` (64) transitions in one frame throws `std::logic_error`:
     scenes are switching each other forever. Pushing a scene already on the stack also throws.
+    From a scene system, `applyTransitions()` does nothing (the queue waits for the next frame) and `clear()` throws,
+    since both would destroy the system while it runs. `clear()` also drops what the exit hooks queue.
 
 ## Stack, modes and pausing
 

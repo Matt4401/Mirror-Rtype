@@ -35,4 +35,19 @@ SceneId SceneManager::idOf() const {
     return *id;
 }
 
+template <typename Scene>
+void SceneManager::switchTo() {
+    switchTo(idOf<Scene>());
+}
+
+template <typename Scene>
+void SceneManager::push() {
+    push(idOf<Scene>());
+}
+
+template <typename Scene>
+void SceneManager::replace() {
+    replace(idOf<Scene>());
+}
+
 }  // namespace scene

@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <optional>
 #include <span>
@@ -161,27 +162,21 @@ class SceneManager {
      * @tparam Scene Registered scene type.
      */
     template <typename Scene>
-    void switchTo() {
-        switchTo(idOf<Scene>());
-    }
+    void switchTo();
 
     /**
      * @brief Queues `push` for a scene given by type.
      * @tparam Scene Registered scene type.
      */
     template <typename Scene>
-    void push() {
-        push(idOf<Scene>());
-    }
+    void push();
 
     /**
      * @brief Queues `replace` for a scene given by type.
      * @tparam Scene Registered scene type.
      */
     template <typename Scene>
-    void replace() {
-        replace(idOf<Scene>());
-    }
+    void replace();
 
     /**
      * @brief Tells whether transitions wait for the next `applyTransitions`.
@@ -240,7 +235,7 @@ class SceneManager {
     /**
      * @brief Applies the queued transitions, in order, with the transitions their hooks queue.
      *
-     * Does nothing before `attach`.
+     * Does nothing before `attach`, nor while `runStage` runs systems: their transitions wait for the next call.
      * @throws std::logic_error if a pushed scene is already on the stack, or if more than
      *         `MAX_TRANSITIONS_PER_FRAME` transitions are applied (scenes switching each other forever).
      */
@@ -257,7 +252,9 @@ class SceneManager {
     /**
      * @brief Exits every scene now (top first) and drops the queued transitions.
      *
-     * Runs the `onExit` hooks; does nothing more than dropping the queue before `attach`.
+     * Runs the `onExit` hooks; does nothing more than dropping the queue before `attach`. Transitions queued by the
+     * exit hooks are dropped too.
+     * @throws std::logic_error if called from a scene system (`runStage` is running).
      */
     void clear();
 
@@ -317,15 +314,24 @@ class SceneManager {
 
     /**
      * @brief Exits the top scene: hook, release of what it owns, destruction of its entities.
+     *
+     * The scene leaves the stack even if a hook or a destroy listener throws; the first error is rethrown after.
      * @param refresh `true` to notify the scenes below that run or show again.
      */
     void exitTop(bool refresh);
 
     /**
+     * @brief Removes the top scene: releases what it owns, destroys its entities, clears its flags, pops it.
+     * @param error Receives the first error thrown by a destroy listener, if it holds none yet.
+     */
+    void removeTop(std::exception_ptr& error);
+
+    /**
      * @brief Destroys every entity owned by a scene.
      * @param id Scene whose entities to destroy.
+     * @return `true` if at least one entity was destroyed.
      */
-    void destroyMembers(SceneId id);
+    bool destroyMembers(SceneId id);
 
     /**
      * @brief Computes which scenes of the stack run and show, and calls the hooks of those that changed.
@@ -333,7 +339,12 @@ class SceneManager {
      */
     void refreshStates(bool silentTop);
 
-    /** @brief Engine the scenes run in; null until `attach`. */
+    /**
+     * @brief Engine the scenes run in; null until `attach`, null again after `detach`.
+     *
+     * Not owning: the engine owns `ScenePlugin`, which owns the manager, so the engine always outlives it. Every
+     * path that reaches the engine is only taken between `attach` and `detach`.
+     */
     engine::Engine* _engine = nullptr;
     /** @brief Registered scenes, by id; boxed so contexts keep their address when more scenes are added. */
     std::vector<std::unique_ptr<Slot>> _slots;
@@ -347,6 +358,8 @@ class SceneManager {
     std::vector<ecs::Entity> _scratch;
     /** @brief `true` while `applyTransitions` runs, so a hook's transitions join the current batch. */
     bool _applyingTransitions = false;
+    /** @brief `true` while `runStage` runs systems, which must not be destroyed under it. */
+    bool _runningStage = false;
 };
 
 }  // namespace scene

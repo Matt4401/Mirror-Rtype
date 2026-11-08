@@ -67,25 +67,25 @@ class IScene {
      * @brief Called when the scene is pushed on the stack: spawn its entities, subscribe to events, add systems.
      * @param context Context of the scene.
      */
-    virtual void onEnter(SceneContext& context) { (void)context; }
+    virtual void onEnter(SceneContext& /*context*/) {}
 
     /**
      * @brief Called when the scene leaves the stack, before its entities, subscriptions and systems are released.
      * @param context Context of the scene.
      */
-    virtual void onExit(SceneContext& context) { (void)context; }
+    virtual void onExit(SceneContext& /*context*/) {}
 
     /**
      * @brief Called when a scene pushed above stops this one; its systems no longer run.
      * @param context Context of the scene.
      */
-    virtual void onPause(SceneContext& context) { (void)context; }
+    virtual void onPause(SceneContext& /*context*/) {}
 
     /**
      * @brief Called when the scenes pausing this one are gone; its systems run again.
      * @param context Context of the scene.
      */
-    virtual void onResume(SceneContext& context) { (void)context; }
+    virtual void onResume(SceneContext& /*context*/) {}
 };
 
 }  // namespace scene

@@ -6,6 +6,7 @@
 #include <span>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 #include "ecs/Entity.hpp"
 
@@ -46,29 +47,24 @@ Entity Registry::spawnEntity() {
 void Registry::killEntity(Entity e) { killEntities(std::span<const Entity>(&e, 1)); }
 
 void Registry::killEntities(std::span<const Entity> entities) {
+    // The span may be the dense entity array of a component, which erasing changes: iterate a copy. The outer batch
+    // reuses a member buffer (no allocation once grown); a batch killed from a destroy listener gets its own.
+    std::vector<Entity> nested;
+    std::vector<Entity>& batch = _destroyDispatchDepth == 0 ? _killBatch : nested;
+    batch.assign(entities.begin(), entities.end());
+
     // A throwing listener must not leave an entity half-destroyed: the other listeners still run, the components are
     // still removed and the slots still recycled, then the first exception is rethrown.
     std::exception_ptr listenerError;
     ++_destroyDispatchDepth;
-    for (const Entity e : entities) {
+    for (const Entity e : batch) {
         if (!isAlive(e)) {
             continue;
         }
         std::uint32_t const idx = entityIndex(e);
         _isAlive[idx] = false;
 
-        const std::size_t count = _destroyListeners.size();
-        for (std::size_t i = 0; i < count; ++i) {
-            if (_destroyListeners[i].active && _destroyListeners[i].callback) {
-                try {
-                    _destroyListeners[i].callback(e);
-                } catch (...) {
-                    if (!listenerError) {
-                        listenerError = std::current_exception();
-                    }
-                }
-            }
-        }
+        notifyDestroyListeners(e, listenerError);
 
         for (auto const& array : _componentsArrays) {
             if (array) {
@@ -81,10 +77,26 @@ void Registry::killEntities(std::span<const Entity> entities) {
     --_destroyDispatchDepth;
     if (_destroyDispatchDepth == 0) {
         std::erase_if(_destroyListeners, [](const auto& entry) { return !entry.active; });
+        _killBatch.clear();
     }
 
     if (listenerError) {
         std::rethrow_exception(listenerError);
+    }
+}
+
+void Registry::notifyDestroyListeners(Entity e, std::exception_ptr& error) {
+    const std::size_t count = _destroyListeners.size();
+    for (std::size_t i = 0; i < count; ++i) {
+        if (_destroyListeners[i].active && _destroyListeners[i].callback) {
+            try {
+                _destroyListeners[i].callback(e);
+            } catch (...) {
+                if (!error) {
+                    error = std::current_exception();
+                }
+            }
+        }
     }
 }
 
