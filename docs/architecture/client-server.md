@@ -138,13 +138,11 @@ All library integers are **little-endian**.
 
 ### TCP (both directions)
 
-```
-+--------------+---------+----------------------------------------+
-| length       | kind    | Protobuf payload                       |
-| u32          | u8      | 0 to 64 KiB (empty for UdpOpen/Close)  |
-+--------------+---------+----------------------------------------+
- \__ library (5 bytes) __/ \__________________ game ______________/
-```
+| Bytes | Field | Type | Owner |
+|---|---|---|---|
+| 0 to 3 | length | u32 | library (5 bytes) |
+| 4 | kind | u8 | library |
+| 5 to end | Protobuf payload, 0 to 64 KiB (empty for UdpOpen/Close) | bytes | game |
 
 | `kind`        | Direction | Meaning                                   |
 |---------------|-----------|-------------------------------------------|
@@ -157,25 +155,20 @@ All library integers are **little-endian**.
 
 ### UDP client → server
 
-```
-+--------------+--------------+------------------------------------+
-| PeerId       | token        | Protobuf payload                   |
-| u32          | u32          | 1 to 1192 bytes (empty = keepalive)|
-+--------------+--------------+------------------------------------+
- \______ library (8 bytes) __/ \______________ game _______________/
-```
+| Bytes | Field | Type | Owner |
+|---|---|---|---|
+| 0 to 3 | PeerId | u32 | library (8 bytes) |
+| 4 to 7 | token | u32 | library |
+| 8 to end | Protobuf payload, 1 to 1192 bytes (empty = keepalive) | bytes | game |
 
 - Whole datagram: **1200 bytes maximum**.
 - Dropped without allocation if: shorter than 8 bytes, unknown id, wrong token, or UDP closed (`udpOpen == false`).
 
 ### UDP server → client
 
-```
-+------------------------------------+
-| Protobuf payload                   |
-| 1 to 1192 bytes (empty = keepalive)|
-+------------------------------------+
-```
+| Bytes | Field | Type | Owner |
+|---|---|---|---|
+| 0 to end | Protobuf payload, 1 to 1192 bytes (empty = keepalive) | bytes | game |
 
 No header: the client filters on the server's address.
 
