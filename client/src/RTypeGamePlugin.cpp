@@ -34,6 +34,7 @@
 #include "gameplay/AimedSprite.hpp"
 #include "gameplay/BossEffects.hpp"
 #include "gameplay/FaceMotion.hpp"
+#include "gameplay/PlayerLives.hpp"
 #include "gameplay/ShipBlink.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
@@ -260,6 +261,13 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     };
 
     _shipTexId = load("sprites/r-typesheet42.gif");
+    // The HUD draws the lives with the ship of the player, at rest.
+    engine.registry().emplaceResource<gameplay::ShipIconSheet>(gameplay::ShipIconSheet{
+        .texture = _shipTexId,
+        .frameWidth = SHIP_FRAME_WIDTH,
+        .frameHeight = SHIP_FRAME_HEIGHT,
+        .frames = SHIP_FRAME_COUNT,
+    });
     _bydosTexId = load("sprites/spritesheet5.png");
     _bulletTexId = load("sprites/r-typesheet-amo.png");
 

@@ -16,6 +16,7 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "gameplay/BossEffects.hpp"
+#include "gameplay/PlayerLives.hpp"
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
 #include "net/SessionEvents.hpp"
@@ -27,6 +28,7 @@
 #include "scenes/MenuKit.hpp"
 #include "scenes/MenuScenes.hpp"
 #include "ui/components/UiAnchor.hpp"
+#include "ui/components/UiImage.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
@@ -65,6 +67,15 @@ ecs::Entity hudText(scene::SceneContext& context, const ui::UiAnchor& anchor, st
     return entity;
 }
 
+/** @brief Left of the column of life icons, as a fraction of the screen: next to the player label. */
+constexpr float LIVES_X = 0.055F;
+/** @brief Top of the first life icon, as a fraction of the screen. */
+constexpr float LIVES_Y = 0.03F;
+/** @brief Gap between two life icons, as a fraction of the screen height. */
+constexpr float LIVES_SPACING = 0.035F;
+/** @brief Scale of a life icon over its frame in the sheet. */
+constexpr float LIFE_ICON_SCALE = 1.3F;
+
 /** @brief Height of the boss health bar, as a fraction of the screen: below the HUD line. */
 constexpr float BOSS_BAR_Y = 0.11F;
 /** @brief Width of the boss health bar, in pixels. */
@@ -102,6 +113,7 @@ void GameScene::onEnter(scene::SceneContext& context) {
     context.subscribe<ScoresUpdated>(
         [showScores](const ScoresUpdated& event) { showScores(event.scores.score, event.scores.playerScores); });
     spawnBossBar(context);
+    spawnLives(context, static_cast<std::uint8_t>(self));
 
     const auto onLevel = [this, &context](const protocol::LevelStart& level) {
         menu::setText(context.registry(), _level,
@@ -126,6 +138,43 @@ void GameScene::onEnter(scene::SceneContext& context) {
     if (const auto& level = session.level()) {
         onLevel(*level);
     }
+}
+
+void GameScene::spawnLives(scene::SceneContext& context, const std::uint8_t playerIndex) {
+    ecs::Registry& registry = context.registry();
+    const gameplay::ShipIconSheet sheet = registry.hasResource<gameplay::ShipIconSheet>()
+                                              ? registry.getResource<gameplay::ShipIconSheet>()
+                                              : gameplay::ShipIconSheet{};
+    for (std::size_t i = 0; i < _lives.size(); ++i) {
+        // A column of ships at rest, next to the player label.
+        _lives.at(i) = context.spawn();
+        registry.addComponent(_lives.at(i), ui::UiAnchor{.anchorX = LIVES_X,
+                                                         .anchorY = LIVES_Y + (LIVES_SPACING * static_cast<float>(i))});
+        registry.addComponent(_lives.at(i),
+                              ui::UiImage{.texture = sheet.texture,
+                                          .width = static_cast<float>(sheet.frameWidth) * LIFE_ICON_SCALE,
+                                          .height = static_cast<float>(sheet.frameHeight) * LIFE_ICON_SCALE,
+                                          .source = gameplay::idleShipFrame(sheet, playerIndex)});
+    }
+    _out = hudText(context, ui::UiAnchor{.anchorX = LIVES_X, .anchorY = LIVES_Y}, "OUT", 20.0F, menu::ERROR);
+    ecs::hide(registry, _out);
+    context.addSystem(scene::SceneStage::Update,
+                      [this, playerIndex](engine::Engine& engine, const ecs::time::Time& /*time*/) {
+                          ecs::Registry& world = engine.registry();
+                          const gameplay::OwnShipStatus status = gameplay::ownShipStatus(world, playerIndex);
+                          for (std::size_t i = 0; i < _lives.size(); ++i) {
+                              if (!status.eliminated && i < status.lives) {
+                                  ecs::show(world, _lives.at(i));
+                              } else {
+                                  ecs::hide(world, _lives.at(i));
+                              }
+                          }
+                          if (status.eliminated) {
+                              ecs::show(world, _out);
+                          } else {
+                              ecs::hide(world, _out);
+                          }
+                      });
 }
 
 void GameScene::spawnBossBar(scene::SceneContext& context) {

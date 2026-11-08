@@ -24,7 +24,8 @@ inline constexpr std::uint8_t OPAQUE_ALPHA = 255;
  * @brief Gives the opacity of an entity at some time.
  * @param flags `rtype::game::EntityNetState::flags` of the entity.
  * @param seconds Time since any fixed origin, shared by all the entities so they blink together.
- * @return `BLINK_FADED_ALPHA` in the faded half of a blink of an entity with `FLAG_INVULNERABLE`, else `OPAQUE_ALPHA`.
+ * @return 0 for an entity with `FLAG_ELIMINATED`, `BLINK_FADED_ALPHA` in the faded half of a blink of an entity with
+ * `FLAG_INVULNERABLE`, else `OPAQUE_ALPHA`.
  */
 [[nodiscard]] std::uint8_t blinkAlpha(std::uint8_t flags, float seconds) noexcept;
 

@@ -323,7 +323,8 @@ target("test_client_blink")
     add_files("client/ShipBlinkTests.cpp", "../client/src/gameplay/ShipBlink.cpp", "client/BossEffectsTests.cpp",
               "../client/src/gameplay/BossEffects.cpp", "client/AimedSpriteTests.cpp",
               "../client/src/gameplay/AimedSprite.cpp", "client/FaceMotionTests.cpp",
-              "../client/src/gameplay/FaceMotion.cpp")
+              "../client/src/gameplay/FaceMotion.cpp", "client/PlayerLivesTests.cpp",
+              "../client/src/gameplay/PlayerLives.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_blink")
 
@@ -375,7 +376,7 @@ target("test_client_scenes")
     add_packages("gtest", "wren")
     add_files("client/ClientScenesTests.cpp", "../client/src/net/RTypeNetworkPlugin.cpp",
               "../client/src/net/PlayerControlPlugin.cpp", "../client/src/scenes/*.cpp",
-              "../client/src/gameplay/BossEffects.cpp")
+              "../client/src/gameplay/BossEffects.cpp", "../client/src/gameplay/PlayerLives.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_scenes")
 

@@ -127,6 +127,10 @@ ship. See [In-Game Metrics](metrics.md).
   replicated `health` goes down. A boss that leaves the snapshots nearly dead (at most 1 hit point, or a tenth of its hit
   points at spawn) explodes: `EXPLOSION_BURSTS` bursts spread over its box for `EXPLOSION_SPREAD` seconds; a turret gets
   one burst. A boss removed with its game (game over, leaving) does not explode. The bursts are client-only entities.
+- **Lives (`GameScene`, `gameplay/PlayerLives`):** a column of the player's ship at rest (its color row of
+  `r-typesheet42`, the `ShipIconSheet` resource set by `RTypeGamePlugin`) next to its label, one icon per life left,
+  read from the `health` of its replicated ship. Once its ship is eliminated, `OUT` replaces them: the ship is no longer
+  drawn (`blinkAlpha` gives 0) and the player watches the others until the game ends.
 - **Boss health bar (`GameScene`):** while a boss is on screen, a red bar under the HUD line shows its hit points left
   over its hit points at spawn (summed when there are several bosses), with a `BOSS` caption. It hides once no boss is
   left. The values come from `gameplay::bossHealth`, which reads the replicated `health` of the bosses.
@@ -224,7 +228,7 @@ stateDiagram-v2
 | `Settings`        | exclusive      | master, music and effects volumes, metrics panel; saved by `SettingsPlugin`     |
 | `Lobby`           | exclusive      | scrollable list of rooms (only open ones are focusable), create, refresh, back  |
 | `Room`            | exclusive      | players and their ready state, ready toggle, leave                              |
-| `Game`            | exclusive      | HUD (player, level, total score and own score, live from `ScoreUpdate`); back opens the pause menu |
+| `Game`            | exclusive      | HUD (player and its lives, level, total score and own score, live from `ScoreUpdate`); back opens the pause menu |
 | `LevelTransition` | overlay        | written in Wren (`scripts/scenes/LevelTransition.wren`): spawns the C++ `level_banner` prefab, waits 2.5 s, pops itself |
 | `Pause`           | overlay        | local only: the game goes on below and for the others, the ship gets no input   |
 | `GameOver`        | exclusive      | victory or defeat, scores, back to the lobby                                    |

@@ -37,6 +37,7 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "ui/UiPlugin.hpp"
+#include "ui/components/UiImage.hpp"
 #include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiText.hpp"
 
@@ -329,6 +330,41 @@ TEST_F(ClientScenesTest, TheHudShowsTheTotalAndTheOwnScoreLive) {
     receive(protocol::ScoreUpdate{.score = 12, .playerScores = {7, 5}});
     EXPECT_TRUE(showsText("SCORE 12"));
     EXPECT_TRUE(showsText("YOU 5")) << "player 2 sees their own score";
+}
+
+TEST_F(ClientScenesTest, TheHudShowsOneShipPerLifeThenOut) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    const auto visibleLives = [this] {
+        int count = 0;
+        engine.registry().runSystem<ui::UiImage>(
+            [this, &count](const ecs::Entity entity, const ui::UiImage& /*image*/) {
+                count += ecs::isHidden(engine.registry(), entity) ? 0 : 1;
+            });
+        return count;
+    };
+    EXPECT_EQ(visibleLives(), 3) << "three lives at the start";
+
+    // The own ship, as the replication leaves it: its lives are its health.
+    ecs::Registry& registry = engine.registry();
+    const ecs::Entity ship = registry.spawnEntity();
+    registry.emplaceComponent<ecs::Replicated>(ship, rtype::game::KIND_PLAYER_SHIP);
+    registry.addComponent(ship, rtype::game::EntityNetState{.subtype = 0, .health = 2});
+    frame();
+    EXPECT_EQ(visibleLives(), 2);
+
+    auto& state = registry.getComponents<rtype::game::EntityNetState>().get(ship);
+    state.health = 0;
+    state.flags |= rtype::game::FLAG_ELIMINATED;
+    frame();
+    EXPECT_EQ(visibleLives(), 0);
+    bool out = false;
+    registry.runSystem<ui::UiText>([&](const ecs::Entity entity, const ui::UiText& text) {
+        out = out || (text.text == "OUT" && !ecs::isHidden(registry, entity));
+    });
+    EXPECT_TRUE(out) << "the player watches the others";
 }
 
 TEST_F(ClientScenesTest, GameOverShowsTheResult) {
