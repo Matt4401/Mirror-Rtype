@@ -1,8 +1,9 @@
 # Scripting Guide (Wren)
 
-Squacaron embeds [Wren](https://wren.io/), a lightweight, fast, class-based concurrent scripting language.
+Squacaron embeds [Wren](https://wren.io/), a small class-based scripting language with fibers.
 
-This guide is designed for **Game Designers and scripters**. You do not need to understand C++ internals or ECS memory layouts to build gameplay features, enemy behaviors, weapons, and cutscenes.
+This guide is for game designers and scripters. Writing enemy behaviours, weapons or cutscenes does not require
+knowing the C++ side or how the ECS stores its data.
 
 ---
 

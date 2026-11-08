@@ -2,11 +2,11 @@
 
 ## 1. Introduction
 
-Squacaron, the engine, is built as a generic, reusable, and modular standalone library. It is strictly decoupled from the specific gameplay rules and assets of R-Type. This modularity ensures that the engine can power different types of games (such as Pong or other custom titles) to demonstrate true reusability as required by Track #1.
+Squacaron is a generic library split into modules. It contains none of R-Type's gameplay rules or assets, so it can run other games: RLSS, a 2D car football game, uses it without any change to `engine/`, as Track #1 asks.
 
 ## 2. Core Paradigm: Entity-Component-System (ECS)
 
-To maximize performance, flexibility, and architectural decoupling, the engine is designed around a custom **Entity-Component-System (ECS)** architecture (Data-Oriented Design).
+The engine is built around its own Entity-Component-System (ECS), a data-oriented design: data lives in components, logic in systems, and systems do not call each other.
 
 ### 2.1 Entities
 
