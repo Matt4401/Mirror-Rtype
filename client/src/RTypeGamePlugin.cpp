@@ -29,6 +29,7 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "gameplay/AimedSprite.hpp"
 #include "gameplay/BossEffects.hpp"
 #include "gameplay/ShipBlink.hpp"
 #include "input/InputPlugin.hpp"
@@ -144,6 +145,7 @@ struct EntitySprite {
     int frameCount = 1;
     int startY = 0;
     int startX = 0;
+    int frameStride = 0;
     int layer = 0;
     float scale = SPRITE_SCALE;
     float frameDuration = DEFAULT_FRAME_DURATION;
@@ -198,6 +200,7 @@ void applySprite(ecs::Registry& registry, const ecs::Entity entity, const Entity
                                                                .frameHeight = sprite.frameHeight,
                                                                .frameCount = sprite.frameCount,
                                                                .startX = sprite.startX,
+                                                               .frameStride = sprite.frameStride,
                                                                .startY = sprite.startY,
                                                                .frameDuration = sprite.frameDuration,
                                                                .loop = sprite.loop,
@@ -485,11 +488,23 @@ void RTypeGamePlugin::applyLook(ecs::Registry& registry, const ecs::Entity entit
                             .frameCount = sprite.frames,
                             .startY = sprite.y,
                             .startX = sprite.x,
+                            .frameStride = sprite.frameStride,
                             .layer = layer,
                             .scale = sprite.scale,
                             .frameDuration = sprite.frameDuration,
                             .loop = sprite.loop,
                         });
+            if (sprite.directional) {
+                // Its frames are directions, not an animation: the one facing the ships is picked every frame.
+                registry.removeComponent<ecs::AnimationComponent>(entity);
+                registry.addComponent(entity, gameplay::AimedSprite{.startX = sprite.x,
+                                                                    .startY = sprite.y,
+                                                                    .frameWidth = sprite.frameWidth,
+                                                                    .frameHeight = sprite.frameHeight,
+                                                                    .frameStride = sprite.frameStride,
+                                                                    .frames = sprite.frames,
+                                                                    .firstAngle = sprite.firstAngle});
+            }
             return;
         }
     }
@@ -503,6 +518,7 @@ void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& time
     gameplay::blinkInvulnerableShips(engine.registry(), _elapsed);
     gameplay::updateHitFlashes(engine.registry(), time.deltaTime);
     gameplay::updateExplosions(engine.registry(), time.deltaTime);
+    gameplay::aimSprites(engine.registry());
 }
 
 void RTypeGamePlugin::shutdown(engine::Engine& engine) {

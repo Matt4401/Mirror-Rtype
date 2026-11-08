@@ -57,6 +57,12 @@ struct SpriteLook {
     bool loop = true;
     /** @brief Drawing scale. */
     float scale = 1.0F;
+    /** @brief Pixels from one frame to the next; 0 for `frameWidth`, frames that touch. */
+    int frameStride = 0;
+    /** @brief True if the frames are directions around the full turn: the client shows the one facing the ships. */
+    bool directional = false;
+    /** @brief Direction of the first frame of a directional sprite, in degrees (0 right, 90 down). */
+    float firstAngle = 0.0F;
 };
 
 /** @brief Look of a boss variant or of a boss part look. */
@@ -92,10 +98,10 @@ struct Looks {
  * Reads the `[[boss]]` entries (key `variant`), the `[[part]]` entries (key `look`) and the `[[entity]]` entries (key
  * `prefab`, one of `ENTITY_PREFABS`, and optionally `subtype`, 0–255). Each entry sets `width` and
  * `height` (box drawn without a sprite) and, optionally, a sprite: `texture`, `frame_x`, `frame_y`, `frame_width`,
- * `frame_height`, `frames`, `frame_duration`, `loop` and `scale`. Out-of-range values are clamped; an entry without its
- * id, a sprite without its frame size, an unsafe texture path (absolute, with `..` or `\`) and unknown keys are
- * reported in `warnings` and ignored. A later entry with the same id replaces the earlier one. The `[explosion]` table
- * takes the same sprite keys, for the bursts of a boss explosion.
+ * `frame_height`, `frame_stride`, `frames`, `frame_duration`, `loop`, `scale`, `directional` and `first_angle`.
+ * Out-of-range values are clamped; an entry without its id, a sprite without its frame size, an unsafe texture path
+ * (absolute, with `..` or `\`) and unknown keys are reported in `warnings` and ignored. A later entry with the same id
+ * replaces the earlier one. The `[explosion]` table takes the same sprite keys, for the bursts of a boss explosion.
  *
  * @param file Parsed `looks.toml`.
  * @param warnings Receives one message per ignored or corrected value.

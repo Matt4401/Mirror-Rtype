@@ -180,6 +180,9 @@ frame_height = 16
 | `frame_duration` | `0.1` | 0.01–10 s | Seconds per frame. |
 | `loop` | `true` | | `false` stops on the last frame. |
 | `scale` | `1` | 0.1–16 | Drawing scale. |
+| `frame_stride` | `frame_width` | 0–4096 | Pixels from one frame to the next, for strips with empty space between their frames. |
+| `directional` | `false` | | The frames are directions around the full turn, not an animation: the client shows the one facing the nearest player ship (`gameplay::AimedSprite`). |
+| `first_angle` | `0` | -360–360 | Direction of the first frame of a directional sprite, in degrees: 0 is right, 90 down, the next frames turning clockwise. |
 
 An `[explosion]` table takes the same sprite keys (`texture`, `frame_*`, `frames`, `frame_duration`, `scale`): each
 burst plays it once. Without it, the bursts are orange boxes that grow and fade.

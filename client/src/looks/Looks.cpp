@@ -20,6 +20,8 @@ namespace {
 
 /** @brief Largest id of a look: they travel in a byte. */
 constexpr std::size_t MAX_LOOK_ID = 255;
+/** @brief Degrees in a full turn: the bounds of `first_angle`. */
+constexpr float FULL_TURN = 360.0F;
 /** @brief Shortest frame duration, in seconds. */
 constexpr float MIN_FRAME_DURATION = 0.01F;
 /** @brief Longest frame duration, in seconds. */
@@ -62,6 +64,9 @@ std::optional<SpriteLook> readSprite(const config::ConfigFile& file, config::Con
         reader.number(key("frame_duration"), sprite.frameDuration, MIN_FRAME_DURATION, MAX_FRAME_DURATION);
     sprite.loop = reader.flag(key("loop"), true);
     sprite.scale = reader.number(key("scale"), 1.0F, MIN_SCALE, MAX_SCALE);
+    sprite.frameStride = static_cast<int>(reader.count(key("frame_stride"), 0, 0, MAX_FRAME_PIXELS));
+    sprite.directional = reader.flag(key("directional"), false);
+    sprite.firstAngle = reader.number(key("first_angle"), 0.0F, -FULL_TURN, FULL_TURN);
     if (!file.contains(key("texture"))) {
         return std::nullopt;
     }

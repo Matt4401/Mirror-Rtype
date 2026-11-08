@@ -182,6 +182,29 @@ TEST(Looks, ReadsTheEntityLooksByPrefab) {
     EXPECT_TRUE(anyWarningMentions(warnings, "entity.1: 'prefab' must be one of the enemies"));
 }
 
+TEST(Looks, ReadsTheFrameStrideAndDirectionalSprites) {
+    std::vector<std::string> warnings;
+    const looks::Looks result = read(R"(
+        [[entity]]
+        prefab = "alien_gunner"
+        texture = "sprites/turret.png"
+        frame_width = 33
+        frame_height = 32
+        frame_stride = 33
+        frames = 16
+        directional = true
+        first_angle = 22.5
+    )",
+                                     warnings);
+
+    EXPECT_TRUE(warnings.empty());
+    const auto& sprite = result.entities.at("alien_gunner").sprite;
+    ASSERT_TRUE(sprite.has_value());
+    EXPECT_EQ(sprite->frameStride, 33);
+    EXPECT_TRUE(sprite->directional);
+    EXPECT_FLOAT_EQ(sprite->firstAngle, 22.5F);
+}
+
 TEST(Looks, ShippedFileReadsWithoutWarnings) {
     std::vector<std::string> warnings;
     const looks::Looks shipped =
