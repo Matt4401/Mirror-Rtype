@@ -1,4 +1,4 @@
-set_project("R-type")
+set_project("mirror-rtype")
 set_version("0.1.0")
 set_languages("c++23")
 add_rules("mode.debug", "mode.release")
@@ -31,7 +31,6 @@ end
 
 includes("xmake/common.lua")
 
-includes("log/*/xmake.lua")
 includes("common/xmake.lua")
 includes("engine/*/xmake.lua")
 includes("game/*/xmake.lua")

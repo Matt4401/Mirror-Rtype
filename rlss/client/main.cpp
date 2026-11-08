@@ -21,9 +21,9 @@
 #include "CameraPlugin.hpp"
 #include "CarViewPlugin.hpp"
 #include "CommandLine.hpp"
+#include "Controls.hpp"
 #include "GoalEffectPlugin.hpp"
 #include "HudPlugin.hpp"
-#include "Logger.hpp"
 #include "NameTagPlugin.hpp"
 #include "PlayerInputPlugin.hpp"
 #include "ServerLink.hpp"
@@ -42,6 +42,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
 #include "input/InputPlugin.hpp"
+#include "log/Logger.hpp"
 #include "menu/MenuScenesPlugin.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -89,16 +90,16 @@ int main(int ac, char** av) {
     try {
         const std::shared_ptr<ecs::net::INetworkClient> transport =
             ecs::net::createClient({.protocolId = rlss::protocol::PROTOCOL_ID});
-        rtype::log::info(LOG_TAG, "connecting to ", host, ":", *port, "...");
+        engine::log::info(LOG_TAG, "connecting to ", host, ":", *port, "...");
         auto received = rlss::client::connectToServer(*transport, host, *port, CONNECT_TIMEOUT);
         if (!received) {
-            rtype::log::error(LOG_TAG, "cannot connect: ", rlss::client::describe(transport->disconnectReason()));
+            engine::log::error(LOG_TAG, "cannot connect: ", rlss::client::describe(transport->disconnectReason()));
             return EXIT_ERROR;
         }
-        rtype::log::info(LOG_TAG, "connected");
+        engine::log::info(LOG_TAG, "connected");
         // Snapshots and inputs travel over UDP, on the same port number as the TCP connection.
         if (!transport->openUdp(*port)) {
-            rtype::log::error(LOG_TAG, "cannot open the UDP channel");
+            engine::log::error(LOG_TAG, "cannot open the UDP channel");
             return EXIT_ERROR;
         }
         const auto link = std::make_shared<rlss::client::ServerLink>(transport, std::move(*received));

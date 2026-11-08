@@ -1,18 +1,26 @@
 /**
  * @file MenuScenes.hpp
- * @brief Scenes of the R-Type client before the lobby: title, server address, settings.
+ * @brief Scenes of the R-Type client before the lobby: title, server address, settings, controls.
  */
 
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
+#include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
+#include "input/RTypeBindings.hpp"
 #include "scene/IScene.hpp"
 
 namespace client {
+
+/** @brief Size of a table indexed by `engine::Key`. */
+inline constexpr std::size_t KEY_SLOTS = 256;
 
 /** @brief Title screen: Play, Settings, Quit. */
 class TitleScene final : public scene::IScene {
@@ -91,7 +99,10 @@ class ConnectScene final : public scene::IScene {
     ecs::Entity _connectButton = ecs::NULL_ENTITY;
 };
 
-/** @brief Settings: volumes and the metrics panel, saved at once. Pushed from the title or the pause menu. */
+/**
+ * @brief Settings: volumes, metrics panel, accessibility options (auto-fire, text size) and the controls screen,
+ * saved at once. Pushed from the title or the pause menu.
+ */
 class SettingsScene final : public scene::IScene {
   public:
     /**
@@ -105,6 +116,51 @@ class SettingsScene final : public scene::IScene {
      * @param context Scene context.
      */
     void onEnter(scene::SceneContext& context) override;
+
+  private:
+    /** @brief Set when the scene is rebuilt after a text size change, to keep the focus on that button. */
+    bool _focusScale = false;
+};
+
+/**
+ * @brief Controls: one button per control showing its key; select one, press a key, and it is saved. Pushed from
+ * the settings.
+ */
+class ControlsScene final : public scene::IScene {
+  public:
+    /**
+     * @brief Gets the scene name.
+     * @return "Controls".
+     */
+    [[nodiscard]] std::string_view name() const noexcept override { return "Controls"; }
+
+    /**
+     * @brief Spawns a button per control and starts listening for keys.
+     * @param context Scene context.
+     */
+    void onEnter(scene::SceneContext& context) override;
+
+  private:
+    /**
+     * @brief Writes the current key of every control on its button.
+     * @param context Scene context.
+     */
+    void refreshLabels(scene::SceneContext& context) const;
+
+    /**
+     * @brief Looks for a key pressed this frame while a control waits for one, and binds it.
+     * @param context Scene context.
+     */
+    void pollKeys(scene::SceneContext& context);
+
+    /** @brief Button of each control, indexed by `input::Control`. */
+    std::array<ecs::Entity, input::CONTROL_COUNT> _buttons{};
+    /** @brief Control waiting for a key, if any. */
+    std::optional<input::Control> _waiting;
+    /** @brief Keys down at the previous frame, indexed by `engine::Key`, so only new presses count. */
+    std::array<bool, KEY_SLOTS> _wasDown{};
+    /** @brief Key just bound: clicks are ignored until it is released, so Enter or Space do not start a new wait. */
+    engine::Key _justBound = engine::Key::Unknown;
 };
 
 }  // namespace client

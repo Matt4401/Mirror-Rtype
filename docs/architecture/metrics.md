@@ -9,10 +9,12 @@ and responsiveness.
 Whoever measures a value does not know how it is shown, and the other way around. Everything goes through one registry
 resource, the `metrics::MetricsBoard`:
 
-```text
-metrics::MetricsPlugin ─────────── FPS, Frame, Entities, CPU, RAM ─┐
-ecs::net::NetworkMetricsPlugin ─── Down, Up, Packets, RTT, Missed ─┼─► MetricsBoard ─► metrics::MetricsOverlayPlugin
-The game (ShipMetricsPlugin) ───── Position ───────────────────────┘
+```mermaid
+flowchart LR
+    MP["metrics::MetricsPlugin"] -->|"FPS, Frame, Entities, CPU, RAM"| B[("MetricsBoard")]
+    NP["ecs::net::NetworkMetricsPlugin"] -->|"Down, Up, Packets, RTT, Missed"| B
+    SP["The game (ShipMetricsPlugin)"] -->|Position| B
+    B --> O["metrics::MetricsOverlayPlugin"]
 ```
 
 | Target | Content | Depends on |

@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/Entity.hpp"
@@ -17,6 +16,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/GameplayEvents.hpp"
 #include "level/Level.hpp"
+#include "log/Logger.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
@@ -130,12 +130,12 @@ void LevelDirectorPlugin::play(const timeline::TimelineEvent& event) {
     } else if (event.type == level::EVENT_SCROLL) {
         _timeline->setSpeed(event.params.get("speed", _timeline->speed()));
     } else if (event.type == level::EVENT_END && _gameStarted) {
-        log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete");
+        engine::log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete");
         _finished = true;
         _timeline->setSpeed(0.0F);
         _bus->publish(LevelFinished{.levelIndex = 0, .lastLevel = true});
     } else if (event.type == level::EVENT_END) {
-        log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete, restarting it");
+        engine::log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete, restarting it");
         startLevel();
     }
 }
@@ -167,7 +167,7 @@ void LevelDirectorPlugin::releaseScroll() {
     }
     _scrollHeld = false;
     _timeline->setSpeed(_speedBeforeHold);
-    log::info(LOG_TAG, "the level goes on");
+    engine::log::info(LOG_TAG, "the level goes on");
     // Played in order; a new boss among them holds the scroll again and keeps the next ones waiting.
     const std::vector<timeline::TimelineEvent> waiting = std::move(_heldEvents);
     _heldEvents.clear();

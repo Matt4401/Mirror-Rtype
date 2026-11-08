@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD033 -->
-# R-Type Game Engine
+# Squacaron
 
 [![Cross-platform build](https://github.com/Matt4401/Mirror-Rtype/actions/workflows/build.yml/badge.svg)](https://github.com/Matt4401/Mirror-Rtype/actions/workflows/build.yml)
 [![macOS build](https://github.com/Matt4401/Mirror-Rtype/actions/workflows/build-macos.yml/badge.svg)](https://github.com/Matt4401/Mirror-Rtype/actions/workflows/build-macos.yml)
@@ -8,7 +8,7 @@
 [![Build System](https://img.shields.io/badge/Build%20System-xmake-red)](https://xmake.io/)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-informational)
 
-A highly decoupled, data-oriented **C++23 game engine** built from scratch to power a networked multiplayer **R-Type** clone, developed as part of the EPITECH curriculum.
+**Squacaron** is a decoupled, data-oriented **C++23 game engine** written from scratch. It runs two games: a networked multiplayer **R-Type** clone and **RLSS**, a 2D car football game. It was built for the EPITECH Advanced C++ project.
 
 ---
 
@@ -21,6 +21,7 @@ A highly decoupled, data-oriented **C++23 game engine** built from scratch to po
   - [Prerequisites](#prerequisites)
   - [Installation & Build](#installation--build)
   - [Running the Game](#running-the-game)
+- [Second Game: RLSS](#second-game-rlss)
 - [Project Architecture](#project-architecture)
 - [Network Protocol](#network-protocol)
 - [Testing & Quality Assurance](#testing--quality-assurance)
@@ -32,18 +33,18 @@ A highly decoupled, data-oriented **C++23 game engine** built from scratch to po
 
 ## About the Project
 
-This project is part of the **Advanced C++** curriculum in the 3rd year of EPITECH. The objective is to design a generic, modular, and performant game engine utilizing an **Entity-Component-System (ECS)** architecture, and to implement a networked 2D shooter (**R-Type**) on top of it using an **authoritative server model**.
+This is the third-year EPITECH Advanced C++ project. We wrote a generic game engine built on an Entity-Component-System (ECS), then a networked 2D shooter (R-Type) on top of it, with an authoritative server. A second game, RLSS, runs on the same engine to check that the engine does not depend on R-Type.
 
 ---
 
 ## Key Features
 
-- **Custom ECS Architecture**: Cache-friendly sparse/dense storage with type-safe entity management and reactive lifecycle listeners.
-- **Authoritative Server**: Server-authoritative state synchronization, input validation, and collision management over UDP.
-- **Client Interpolation & Prediction**: Smooth rendering and lag compensation for high-latency connections.
-- **2D Physics Engine**: Rigid-body physics and collision detection powered by Box2D.
-- **Scripting Engine**: Extensible game logic and event scripting using Wren.
-- **Cross-Platform**: Seamless builds across Linux, Windows, and macOS via `xmake`.
+- ECS with sparse/dense component storage and listeners on component add and remove.
+- Authoritative server: it validates the inputs, runs the collisions and sends the world state over UDP.
+- Client prediction, reconciliation and interpolation, so the game stays playable with latency.
+- 2D physics and collision detection with Box2D.
+- Gameplay scripts in Wren.
+- Builds on Linux, Windows and macOS with `xmake`.
 
 ---
 
@@ -64,12 +65,12 @@ The project is fully self-contained using **xmake**, which automatically manages
 
 ## Quick Start
 
-> **Full Guide**: For detailed platform-specific setup and options, see the **[Getting Started Documentation](docs/getting-started/index.md)**.
+> Platform-specific setup and build options are in the [Getting Started documentation](docs/getting-started/index.md).
 
 ### Prerequisites
 
-- A **C++23** compliant compiler (`gcc` 13+, `clang` 16+, or MSVC 2022+).
-- **[xmake](https://xmake.io/)** (latest version recommended).
+- A C++23 compiler (`gcc` 13+, `clang` 16+, or MSVC 2022+).
+- [xmake](https://xmake.io/), a recent version.
 
 <details>
 <summary><b>Installing xmake</b></summary>
@@ -122,7 +123,7 @@ Then open a new terminal and run `xmake f -c`. xmake detects MSVC by itself.
 
 ### Installation & Build
 
-For comprehensive instructions, check the **[Building Guide](docs/getting-started/building.md)**.
+The [Building Guide](docs/getting-started/building.md) has the details.
 
 ```bash
 # 1. Clone the repository
@@ -153,6 +154,24 @@ xmake run test_ecs
 
 ---
 
+## Second Game: RLSS
+
+RLSS is a 2D, side-view car football game (cars, boost, a ball, two goals) whose car and ball physics follow
+Rocket League. We built it on the same engine to show that Squacaron does not depend on R-Type: it lives in `rlss/`,
+links only the engine modules it needs, and nothing in `engine/` was changed for it. The car physics are written in
+Wren (`rlss/scripts/`) and hot-reload while the server runs.
+
+```bash
+xmake                          # also builds rlss_server and rlss_client
+./rlss_server [port]           # default port 4250
+./rlss_client [host] [port]    # default 127.0.0.1 4250, one per player
+```
+
+Run both from the repository root (scripts and assets are loaded from `rlss/`). Controls, rules and the module
+layout are in the **[RLSS documentation](docs/rlss/index.md)**.
+
+---
+
 ## Project Architecture
 
 The codebase is organized into modular libraries and applications:
@@ -162,7 +181,7 @@ The codebase is organized into modular libraries and applications:
 ├── client/        # Graphical client implementation (Raylib rendering, input, interpolation)
 ├── common/        # Game protocol: Protobuf schema and codec
 ├── docs/          # Complete MkDocs & Doxygen documentation
-├── engine/        # Agnostic core game engine:
+├── engine/        # Squacaron, the game-agnostic engine:
 │   ├── ecs/       # Entity-Component-System (Registry, SparseSet, Systems)
 │   ├── events/    # Decoupled Event Bus & Dispatcher
 │   ├── net/       # Transport (Asio in net/asio/), NetworkPlugin & replication
@@ -170,23 +189,22 @@ The codebase is organized into modular libraries and applications:
 │   ├── scripting/ # Wren scripting integration
 │   └── time/      # High-resolution game clock & tick management
 ├── game/          # R-Type code shared by client and server (replication codec, ship movement)
+├── rlss/          # Second game on the engine: 2D car football (server, client, Wren scripts)
 ├── server/        # Authoritative server (lobby, one engine per room)
 └── tests/         # Unit and integration test suites (GoogleTest)
 ```
 
-For an in-depth breakdown of each subsystem, see the **[Architecture Overview](docs/architecture/overview.md)**.
+Each module is described in the [Architecture Overview](docs/architecture/overview.md).
 
 ---
 
 ## Network Protocol
 
-The game uses a lightweight binary protocol over UDP designed for low-latency transmission:
+Lobby and session messages go over TCP; in-game inputs and world snapshots go over UDP. Both carry a small binary
+header followed by a Protobuf payload. The server checks every input it receives before applying it, and sends the
+world state to each client in its room.
 
-- Dedicated packet IDs with structured payloads.
-- Client inputs are validated server-side to prevent desynchronization.
-- State updates are broadcast to connected clients.
-
-Read the specifications:
+Specifications:
 
 - **[Network RFC](docs/protocol/rfc.txt)**
 - **[Packet Definitions](docs/protocol/packets.md)**
@@ -196,7 +214,7 @@ Read the specifications:
 
 ## Testing & Quality Assurance
 
-We maintain strict test coverage and code quality standards:
+The tests are GoogleTest suites, one binary per module:
 
 ```bash
 # Run all automated tests
@@ -225,7 +243,8 @@ pre-commit install
 
 ## Documentation
 
-Full documentation is available via **MkDocs Material** and **Doxygen**:
+The documentation is hosted at **<https://matt4401.github.io/Mirror-Rtype/>** (rebuilt on every push to `main`).
+It is written with MkDocs Material and Doxygen. To build it locally:
 
 ```bash
 # Install documentation dependencies
@@ -246,10 +265,9 @@ Browse the documentation topics:
 
 ## Contributing
 
-Contributions are welcome! Please follow our commit standards and guidelines before submitting a pull request:
-
-- Review **[CONTRIBUTING.md](CONTRIBUTING.md)** for our [Conventional Commits](https://www.conventionalcommits.org/) standards and pull request workflows.
-- Check our **[Development Workflow](docs/development/workflow.md)** and **[Coding Style Guide](docs/development/coding-style.md)**.
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/) and go through pull requests; see
+[CONTRIBUTING.md](CONTRIBUTING.md), the [development workflow](docs/development/workflow.md) and the
+[coding style](docs/development/coding-style.md).
 
 ---
 

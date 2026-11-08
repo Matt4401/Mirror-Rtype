@@ -1,4 +1,4 @@
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 
 #include <atomic>
 #include <chrono>
@@ -9,10 +9,10 @@
 #include <string>
 #include <string_view>
 
-#include "LogLevel.hpp"
-#include "LogStyle.hpp"
+#include "log/LogLevel.hpp"
+#include "log/LogStyle.hpp"
 
-namespace rtype::log {
+namespace engine::log {
 
 namespace {
 
@@ -78,4 +78,4 @@ void write(const Level level, const std::string_view tag, const std::string_view
 
 }  // namespace detail
 
-}  // namespace rtype::log
+}  // namespace engine::log

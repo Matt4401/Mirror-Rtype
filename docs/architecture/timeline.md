@@ -43,6 +43,25 @@ A copy that changes its events gets its own list first (copy-on-write).
 
 Plays a timeline: every fixed step, it moves the cursor by `speed * dt` and publishes on the `EventBus`:
 
+```mermaid
+sequenceDiagram
+    participant E as Engine (fixed step)
+    participant P as TimelinePlugin
+    participant T as Timeline
+    participant B as EventBus
+    participant G as Game handler
+    E->>P: fixedUpdate(dt)
+    P->>T: advance(speed * dt)
+    T-->>P: events reached, in order
+    loop each event
+        P->>B: TimelineEventFired{event}
+        B->>G: e.g. "spawn": build the prefab
+    end
+    opt last pending event fired
+        P->>B: TimelineFinished{}
+    end
+```
+
 | Event | When |
 |-------|------|
 | `TimelineEventFired{event}` | Once per event reached, in firing order. It holds a copy, so a handler may change the timeline (add events, rewind, replace it). |

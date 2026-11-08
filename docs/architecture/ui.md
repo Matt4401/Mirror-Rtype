@@ -10,6 +10,20 @@ Add `ui::UiPlugin` (it requires `hierarchy::HierarchyPlugin`). Every frame:
    keyboard and gamepad navigation, text inputs, sliders, toggles, list scrolling).
 2. `lateUpdate` lays the HUD out again, after every plugin's `update`, and draws it.
 
+```mermaid
+flowchart LR
+    subgraph update
+        L1["layout"] --> B["UiButtonSystem<br/>mouse clicks"] --> I["UiInteractionSystem<br/>focus, keys, gamepad,<br/>sliders, toggles, text"]
+    end
+    subgraph lateUpdate
+        L2["layout again"] --> D["draw through<br/>IScreenDrawService"]
+    end
+    W(["IWindowService"]) --> B
+    W --> I
+    I -->|"UiButtonClickedEvent, UiValueChangedEvent, ..."| G["game listeners<br/>(matched by action)"]
+    update --> lateUpdate
+```
+
 ## Elements
 
 An element is an entity with a `UiAnchor` (where it sits) and one or more drawables, all in `ui/components/`:

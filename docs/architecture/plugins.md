@@ -2,7 +2,7 @@
 
 ## 1. Overview & Motivation
 
-The R-Type engine is designed according to **Track #1 (Advanced Architecture)**: it must remain a generic, standalone,
+Squacaron is designed according to **Track #1 (Advanced Architecture)**: it must remain a generic, standalone,
 and decoupled game engine library that can power multiple distinct games.
 
 To achieve true modularity, the engine introduces three interconnected architectural patterns:

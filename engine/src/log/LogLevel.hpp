@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <string_view>
 
-namespace rtype::log {
+namespace engine::log {
 
 /** @brief Severity of a log message. */
 enum class Level : std::uint8_t { Debug, Info, Warning, Error };
@@ -23,4 +23,4 @@ constexpr std::string_view levelName(const Level level) noexcept {
     return "?????";
 }
 
-}  // namespace rtype::log
+}  // namespace engine::log

@@ -3,9 +3,9 @@
 #include <sstream>
 #include <string_view>
 
-#include "LogLevel.hpp"
+#include "log/LogLevel.hpp"
 
-namespace rtype::log {
+namespace engine::log {
 
 template <typename... Args>
 void message(const Level level, const std::string_view tag, const Args&... args) {
@@ -38,4 +38,4 @@ void error(const std::string_view tag, const Args&... args) {
     message(Level::Error, tag, args...);
 }
 
-}  // namespace rtype::log
+}  // namespace engine::log
