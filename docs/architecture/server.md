@@ -106,8 +106,10 @@ they spawn is replicated: the client only draws what the server simulates.
 - **Scripts:** each room has its own Wren VM. What a script spawns with `Engine.spawnPrefab(name, x, y)` goes through
   `gameplay::registerScriptPrefabs()`, so it is replicated too (kind `makeEntityKind(name)`). Player ships and bullets
   cannot be spawned by a script, nor a `boss_core`: a boss fight only starts from a level `boss` event.
-- **Shots:** while a player's input holds `shoot`, its ship fires a `player_bullet` every 0.2 s at most. The bullet's
-  `subtype` is the index of the player who fired it.
+- **Shots:** while a player's input holds `shoot`, its ship fires a `player_bullet` every 0.2 s at most (0.08 s for
+  5 s after picking up a `power_up`). The bullet's `subtype` is the index of the player who fired it.
+- **Ship hits:** room ships carry the `player_ship` collider. An enemy shot (`missile`), an enemy or an obstacle touching
+  a ship destroys it, and it respawns; a ship that is respawning cannot be hit, and enemy shots fly through it.
 - **Kills and scores:** a `ShotHitEvent` of a player shot on an enemy destroys both and gives 1 point to the shooter.
   Each player has their own score.
 - **Cleanup:** player bullets more than 64 px past the right edge, and enemies, enemy shots and power-ups more than

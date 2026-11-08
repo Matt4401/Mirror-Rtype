@@ -109,8 +109,9 @@ it.
 
 When the event fires, the scroll stops and the boss flies in from the right until its `stop_x`. Each player shot
 removes one hit point; at 0, the boss is destroyed, the shooter scores, and the scroll resumes at its speed before the
-fight. The script only moves the boss and fires: everything it spawns with `Engine.spawnPrefab` is replicated. See
-`scripts/Boss.wren`.
+fight. The script moves the boss and attacks: everything it spawns with `Engine.spawnPrefab` is replicated. Its
+missiles and the boss itself destroy the ships they touch (they respawn), and the power-up it drops gives rapid fire to
+the player who picks it up. See `scripts/Boss.wren`.
 
 Events at the same distance as the boss (or reached in the same server step) wait for the end of the fight, then play
 in order: a `scroll` there does not restart the scroll, and an `end` does not restart the level while the boss is alive.

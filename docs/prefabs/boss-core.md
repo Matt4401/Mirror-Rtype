@@ -43,8 +43,8 @@ Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `BOSS_CORE_HALF_WIDTH` | `64` px | Half-width of the hitbox. |
-| `BOSS_CORE_HALF_HEIGHT` | `80` px | Half-height of the hitbox. |
+| `BOSS_CORE_HALF_WIDTH` | `64` px | Half-width of the hitbox: half of `rtype::game::BOSS_CORE_WIDTH`, shared with the clients. |
+| `BOSS_CORE_HALF_HEIGHT` | `80` px | Half-height of the hitbox: half of `rtype::game::BOSS_CORE_HEIGHT`. |
 
 ## API
 
