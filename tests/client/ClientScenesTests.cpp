@@ -364,7 +364,8 @@ TEST_F(ClientScenesTest, TheHudShowsOneShipPerLifeThenOut) {
     registry.runSystem<ui::UiText>([&](const ecs::Entity entity, const ui::UiText& text) {
         out = out || (text.text == "OUT" && !ecs::isHidden(registry, entity));
     });
-    EXPECT_TRUE(out) << "the player watches the others";
+    EXPECT_TRUE(out) << "OUT shows, then the client closes (Engine::stop, not observable without Engine::run)";
+    frame(2.1);
 }
 
 TEST_F(ClientScenesTest, GameOverShowsTheResult) {

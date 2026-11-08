@@ -73,6 +73,8 @@ constexpr float LIVES_X = 0.055F;
 constexpr float LIVES_Y = 0.03F;
 /** @brief Gap between two life icons, as a fraction of the screen height. */
 constexpr float LIVES_SPACING = 0.035F;
+/** @brief Seconds `OUT` shows after the last life before the client closes. */
+constexpr float OUT_CLOSE_DELAY = 2.0F;
 /** @brief Scale of a life icon over its frame in the sheet. */
 constexpr float LIFE_ICON_SCALE = 1.3F;
 
@@ -159,9 +161,16 @@ void GameScene::spawnLives(scene::SceneContext& context, const std::uint8_t play
     _out = hudText(context, ui::UiAnchor{.anchorX = LIVES_X, .anchorY = LIVES_Y}, "OUT", 20.0F, menu::ERROR);
     ecs::hide(registry, _out);
     context.addSystem(scene::SceneStage::Update,
-                      [this, playerIndex](engine::Engine& engine, const ecs::time::Time& /*time*/) {
+                      [this, playerIndex](engine::Engine& engine, const ecs::time::Time& time) {
                           ecs::Registry& world = engine.registry();
                           const gameplay::OwnShipStatus status = gameplay::ownShipStatus(world, playerIndex);
+                          // Out of lives: OUT shows for a moment, then the client closes; the game goes on without it.
+                          if (status.eliminated) {
+                              _closeIn = _closeIn.value_or(OUT_CLOSE_DELAY) - time.deltaTime;
+                              if (*_closeIn <= 0.0F) {
+                                  engine.stop();
+                              }
+                          }
                           for (std::size_t i = 0; i < _lives.size(); ++i) {
                               if (!status.eliminated && i < status.lives) {
                                   ecs::show(world, _lives.at(i));

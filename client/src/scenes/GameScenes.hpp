@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -33,8 +34,8 @@ struct LevelBanner {
  * menu.
  *
  * The world itself (ships, enemies, shots) comes from the replication and is drawn by `RTypeGamePlugin`.
- * The lives of the player are a column of ships next to its label, from the `health` of its ship; `OUT` once it is
- * eliminated, while it watches the others until the end of the game.
+ * The lives of the player are a column of ships next to its label, from the `health` of its ship. Once it is
+ * eliminated, `OUT` shows for two seconds, then the client closes: the game goes on for the other players.
  * The boss health bar shows while a boss is on screen (`gameplay::bossHealth`), hidden otherwise.
  * Each `LevelStart` and `LevelComplete` shows a banner in the scripted `LevelTransition` overlay. The game ends on
  * `GameEnded` (game over screen), on leaving (lobby), or when the connection is lost (connect screen).
@@ -69,8 +70,8 @@ class GameScene final : public scene::IScene {
     void spawnBossBar(scene::SceneContext& context);
 
     /**
-     * @brief Spawns the life icons of the player and the system that shows one per life left, or `OUT` once it is
-     * eliminated.
+     * @brief Spawns the life icons of the player and the system that shows one per life left; once it is eliminated,
+     * `OUT`, then the client closes.
      * @param context Scene context.
      * @param playerIndex Index of the local player.
      */
@@ -90,6 +91,8 @@ class GameScene final : public scene::IScene {
     std::array<ecs::Entity, gameplay::STARTING_LIVES> _lives{};
     /** @brief Shown instead of the lives once the player is out. */
     ecs::Entity _out = ecs::NULL_ENTITY;
+    /** @brief Seconds before the client closes, once the player is out. */
+    std::optional<float> _closeIn;
 };
 
 /**

@@ -129,8 +129,8 @@ ship. See [In-Game Metrics](metrics.md).
   one burst. A boss removed with its game (game over, leaving) does not explode. The bursts are client-only entities.
 - **Lives (`GameScene`, `gameplay/PlayerLives`):** a column of the player's ship at rest (its color row of
   `r-typesheet42`, the `ShipIconSheet` resource set by `RTypeGamePlugin`) next to its label, one icon per life left,
-  read from the `health` of its replicated ship. Once its ship is eliminated, `OUT` replaces them: the ship is no longer
-  drawn (`blinkAlpha` gives 0) and the player watches the others until the game ends.
+  read from the `health` of its replicated ship. Once its ship is eliminated, `OUT` replaces them for two seconds,
+  then the client closes (`Engine::stop`); the server goes on with the other players.
 - **Boss health bar (`GameScene`):** while a boss is on screen, a red bar under the HUD line shows its hit points left
   over its hit points at spawn (summed when there are several bosses), with a `BOSS` caption. It hides once no boss is
   left. The values come from `gameplay::bossHealth`, which reads the replicated `health` of the bosses.
