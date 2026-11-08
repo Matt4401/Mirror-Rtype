@@ -83,7 +83,8 @@ void BossFightPlugin::startFight(ecs::Registry& registry, const ::prefabs::Prefa
 
 void BossFightPlugin::spawnParts(ecs::Registry& registry, const ecs::Entity boss,
                                  const ::prefabs::PrefabParams& params) {
-    const auto& center = registry.getComponents<ecs::Transform>().get(boss);
+    // A copy: spawning the parts adds transforms, which may move the storage a reference would point into.
+    const ecs::Transform center = registry.getComponents<ecs::Transform>().get(boss);
     const auto count = static_cast<std::size_t>(std::clamp<std::int64_t>(
         params.get<std::int64_t>("parts.count", 0), 0, static_cast<std::int64_t>(level::MAX_BOSS_PARTS)));
     for (std::size_t i = 0; i < count; ++i) {

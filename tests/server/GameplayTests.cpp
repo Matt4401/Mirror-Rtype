@@ -623,9 +623,16 @@ TEST_F(BossPartsTest, PartsSpawnAsChildrenOfTheBossAndMoveWithIt) {
     EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(turret).health, 2);
 
     run(1.0F);
-    const float coreX = registry().getComponents<ecs::Transform>().get(core).x;
-    EXPECT_LT(coreX, 1300.0F) << "the boss flies in";
-    EXPECT_NEAR(registry().getComponents<ecs::Transform>().get(weak).x, coreX + WEAK_POINT_X, 3.0);
+    const ecs::Transform center = registry().getComponents<ecs::Transform>().get(core);
+    EXPECT_LT(center.x, 1300.0F) << "the boss flies in";
+    EXPECT_NEAR(registry().getComponents<ecs::Transform>().get(weak).x, center.x + WEAK_POINT_X, 3.0);
+    // Every part keeps its offset, not only the first one spawned.
+    const ecs::Transform armor = registry().getComponents<ecs::Transform>().get(part(prefabs::BossPartRole::Armor));
+    EXPECT_NEAR(armor.x, center.x, 3.0);
+    EXPECT_NEAR(armor.y, center.y - 60.0F, 3.0);
+    const ecs::Transform gun = registry().getComponents<ecs::Transform>().get(turret);
+    EXPECT_NEAR(gun.x, center.x, 3.0);
+    EXPECT_NEAR(gun.y, center.y + 60.0F, 3.0);
 }
 
 TEST_F(BossPartsTest, OnlyTheWeakPointHurtsTheBoss) {
