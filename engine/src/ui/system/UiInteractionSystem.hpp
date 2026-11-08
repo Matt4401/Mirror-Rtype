@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "core/services/IWindowService.hpp"
+#include "core/services/InputCodes.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
