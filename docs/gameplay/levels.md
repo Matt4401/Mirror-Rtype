@@ -10,6 +10,14 @@ replication, like any other entity. At start-up, the server loads every `server/
 the directory of its executable (the project root): sorted by name, they form the campaign every room plays
 (`level_01.toml`, then `level_02.toml`...). `--level <path>` plays one file alone.
 
+The shipped campaign:
+
+| File | Name | Content |
+|------|------|---------|
+| `level_01.toml` | Sector 1 - Outer Patrol | Basic scouts only, in waves of different shapes (files, diagonals, V, walls, fast lanes). No terrain, no boss. |
+| `level_02.toml` | Sector 2 - Gunline | Scouts and gunners, which fire at the ships. |
+| `level_03.toml` | Sector 3 - Bastion | Scouts, gunners and three rare elites, then the [Bastion](bosses.md#bastion-scriptsbossesbastionwren-variant-2). |
+
 The engine only provides generic building blocks, the TOML arrays of `config::ConfigFile` and the
 [Timeline](../architecture/timeline.md). The format below and its loader (`server/src/level/`, target `rtype_level`)
 belong to R-Type.

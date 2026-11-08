@@ -238,6 +238,8 @@ target("test_server_gameplay")
     -- path.unix: a Windows path would put backslashes, read as escape sequences, in the string literal.
     on_load(function (target)
         target:add("defines", 'RTYPE_SCRIPTS_DIR="' .. path.unix(path.join(os.projectdir(), "scripts")) .. '"')
+        target:add("defines", 'RTYPE_LEVELS_DIR="' .. path.unix(path.join(os.projectdir(), "server", "levels")) .. '"')
+        target:add("defines", 'RTYPE_DATA_DIR="' .. path.unix(os.projectdir()) .. '"')
     end)
     add_tests("test_server_gameplay")
 

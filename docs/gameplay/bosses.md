@@ -5,6 +5,9 @@ a `boss_core` with its `variant` (its look on the clients, see the [looks file](
 its [parts](../prefabs/boss-part.md) and a Wren script under `scripts/bosses/` that moves it and attacks with the
 `game/Combat` helpers.
 
+The Bastion ends the last level of the shipped campaign (`server/levels/level_03.toml`); the Hive Warden is ready for a
+level that wants it.
+
 ## Hive Warden (`scripts/bosses/Warden.wren`, variant 1)
 
 A drifting carrier guarded by turrets. Its body is armored: only its weak point hurts it.

@@ -1,0 +1,275 @@
+# R-Type — level 3: the Bastion.
+# Read by the server only; clients receive the spawned entities through replication.
+# Format: docs/gameplay/levels.md. Every invalid value is corrected or its event skipped, with a warning at start-up.
+#
+# Positions (`at`) are scroll distances in pixels: at 60 px/s, 60 px is one second.
+# Scouts and gunners, three rare elites, then the Bastion: the scroll stops until it falls.
+
+[level]
+name = "Sector 3 - Bastion"
+scroll_speed = 60.0
+
+# --- Opening: scouts and gunners together ---
+
+[[events]]
+at = 120.0
+type = "spawn"
+prefab = "alien_scout"
+count = 6
+interval = 0.7
+y = 160.0
+spacing_y = 80.0
+
+[[events]]
+at = 360.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 2
+interval = 0.0
+y = 200.0
+spacing_y = 320.0
+
+# --- A V with a gunner in its middle ---
+
+[[events]]
+at = 780.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 0.5
+y = 160.0
+spacing_y = 40.0
+
+[[events]]
+at = 780.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 0.5
+y = 560.0
+spacing_y = -40.0
+
+[[events]]
+at = 900.0
+type = "spawn"
+prefab = "alien_gunner"
+y = 360.0
+
+# --- Fast lanes ---
+
+[[events]]
+at = 1260.0
+type = "spawn"
+prefab = "alien_scout"
+count = 4
+interval = 0.5
+y = 240.0
+speed = -260.0
+
+[[events]]
+at = 1260.0
+type = "spawn"
+prefab = "alien_scout"
+count = 4
+interval = 0.5
+y = 480.0
+speed = -260.0
+
+# --- First elite, alone ---
+
+[[events]]
+at = 1800.0
+type = "spawn"
+prefab = "alien_elite"
+y = 360.0
+
+# --- Gunner column, scouts slipping through ---
+
+[[events]]
+at = 2340.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 3
+interval = 0.0
+y = 200.0
+spacing_y = 160.0
+fire_interval = 2.0
+
+[[events]]
+at = 2460.0
+type = "spawn"
+prefab = "alien_scout"
+count = 6
+interval = 0.6
+y = 120.0
+spacing_y = 90.0
+
+# --- Breather ---
+
+[[events]]
+at = 2880.0
+type = "scroll"
+speed = 45.0
+
+[[events]]
+at = 2940.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 1.0
+y = 300.0
+spacing_y = 30.0
+speed = -110.0
+
+[[events]]
+at = 3300.0
+type = "scroll"
+speed = 60.0
+
+# --- Crossing diagonals, gunners on the edges ---
+
+[[events]]
+at = 3480.0
+type = "spawn"
+prefab = "alien_scout"
+count = 8
+interval = 0.8
+y = 140.0
+spacing_y = 60.0
+
+[[events]]
+at = 3516.0
+type = "spawn"
+prefab = "alien_scout"
+count = 8
+interval = 0.8
+y = 580.0
+spacing_y = -60.0
+
+[[events]]
+at = 3600.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 2
+interval = 0.0
+y = 100.0
+spacing_y = 520.0
+
+# --- Second elite, escorted ---
+
+[[events]]
+at = 3900.0
+type = "spawn"
+prefab = "alien_elite"
+y = 240.0
+
+[[events]]
+at = 3960.0
+type = "spawn"
+prefab = "alien_scout"
+count = 4
+interval = 0.6
+y = 480.0
+
+# --- Gauntlet ---
+
+[[events]]
+at = 4440.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 3
+interval = 1.4
+y = 140.0
+
+[[events]]
+at = 4500.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 3
+interval = 1.4
+y = 580.0
+
+[[events]]
+at = 4560.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 0.0
+y = 160.0
+spacing_y = 100.0
+
+# --- Third elite, then a last wave ---
+
+[[events]]
+at = 5400.0
+type = "spawn"
+prefab = "alien_elite"
+y = 480.0
+health = 8
+
+[[events]]
+at = 5520.0
+type = "spawn"
+prefab = "alien_scout"
+count = 8
+interval = 0.6
+y = 140.0
+spacing_y = 60.0
+
+[[events]]
+at = 5580.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 2
+interval = 0.0
+y = 200.0
+spacing_y = 320.0
+fire_interval = 1.6
+
+# --- Boss: the Bastion (scripts/bosses/Bastion.wren, docs/gameplay/bosses.md) ---
+
+[[events]]
+at = 6300.0
+type = "boss"
+prefab = "boss_core"
+variant = 2
+y = 360.0
+health = 45
+width = 180.0
+height = 220.0
+script = "scripts/bosses/Bastion.wren"
+
+[[events.parts]]
+role = "weak_point"
+width = 40.0
+height = 40.0
+
+[[events.parts]]
+role = "armor"
+x = -80.0
+y = -40.0
+width = 30.0
+height = 60.0
+
+[[events.parts]]
+role = "armor"
+x = -80.0
+y = 40.0
+width = 30.0
+height = 60.0
+
+[[events.parts]]
+role = "turret"
+y = -120.0
+health = 8
+look = 2
+
+[[events.parts]]
+role = "turret"
+y = 120.0
+health = 8
+look = 2
+
+[[events]]
+at = 6360.0
+type = "end"

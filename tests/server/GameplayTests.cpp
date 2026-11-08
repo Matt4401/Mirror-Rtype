@@ -34,6 +34,7 @@
 #include "hierarchy/Hierarchy.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
 #include "level/Level.hpp"
+#include "level/LevelLoader.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/CollisionCategories.hpp"
@@ -1581,6 +1582,75 @@ TEST_F(BastionTest, DropsTwoPowerUpsWhenKilled) {
     engine.registry().killEntity(boss());
     run(0.1F);
     EXPECT_EQ(entitiesOf(game::KIND_POWER_UP).size(), 2U);
+}
+
+namespace {
+
+/** @brief What a shipped level is made of. */
+struct LevelContent {
+    std::vector<std::string> prefabs;
+    std::vector<std::string> bossScripts;
+    std::size_t terrain = 0;
+    std::size_t elites = 0;
+};
+
+/**
+ * @brief Loads a shipped level with the catalog of the game, expecting no warning, and lists what it spawns.
+ * @param file File name in `server/levels/`.
+ * @return Its content.
+ */
+LevelContent shippedLevel(const std::string& file) {
+    std::vector<std::string> warnings;
+    const auto loaded =
+        level::loadLevel(std::filesystem::path(RTYPE_LEVELS_DIR) / file, LevelDirectorPlugin::levelPrefab, warnings);
+    EXPECT_TRUE(loaded.has_value()) << file;
+    EXPECT_TRUE(warnings.empty()) << file << ": " << (warnings.empty() ? "" : warnings.front());
+    LevelContent content;
+    if (!loaded) {
+        return content;
+    }
+    EXPECT_EQ(loaded->timeline.events().back().type, level::EVENT_END) << file;
+    for (const timeline::TimelineEvent& event : loaded->timeline.events()) {
+        if (event.type == level::EVENT_SPAWN) {
+            const auto prefab = event.params.get<std::string>("prefab", "");
+            if (!std::ranges::contains(content.prefabs, prefab)) {
+                content.prefabs.push_back(prefab);
+            }
+            content.elites += prefab == "alien_elite" ? 1 : 0;
+        } else if (event.type == level::EVENT_BOSS) {
+            content.bossScripts.push_back(event.params.get<std::string>("script", ""));
+        } else if (event.type == level::EVENT_TERRAIN) {
+            ++content.terrain;
+        }
+    }
+    std::ranges::sort(content.prefabs);
+    return content;
+}
+
+}  // namespace
+
+TEST(ShippedLevels, LevelOneIsBasicScoutsOnly) {
+    const LevelContent content = shippedLevel("level_01.toml");
+    EXPECT_EQ(content.prefabs, (std::vector<std::string>{"alien_scout"}));
+    EXPECT_TRUE(content.bossScripts.empty());
+    EXPECT_EQ(content.terrain, 0U);
+}
+
+TEST(ShippedLevels, LevelTwoAddsTheGunners) {
+    const LevelContent content = shippedLevel("level_02.toml");
+    EXPECT_EQ(content.prefabs, (std::vector<std::string>{"alien_gunner", "alien_scout"}));
+    EXPECT_TRUE(content.bossScripts.empty());
+    EXPECT_EQ(content.terrain, 0U);
+}
+
+TEST(ShippedLevels, LevelThreeAddsRareElitesAndEndsWithTheBastion) {
+    const LevelContent content = shippedLevel("level_03.toml");
+    EXPECT_EQ(content.prefabs, (std::vector<std::string>{"alien_elite", "alien_gunner", "alien_scout"}));
+    EXPECT_GE(content.elites, 1U);
+    EXPECT_LE(content.elites, 4U) << "elites stay rare";
+    ASSERT_EQ(content.bossScripts.size(), 1U);
+    EXPECT_EQ(content.bossScripts.front(), "scripts/bosses/Bastion.wren");
+    EXPECT_TRUE(std::filesystem::exists(std::filesystem::path(RTYPE_DATA_DIR) / content.bossScripts.front()));
 }
 
 int main(int argc, char** argv) {
