@@ -69,6 +69,7 @@ nav:
       - Engine: architecture/engine.md
       - Entity Hierarchy: architecture/hierarchy.md
       - Scenes: architecture/scene.md
+      - Assets: architecture/assets.md
       - User Interface: architecture/ui.md
       - User Settings: architecture/settings.md
       - Plugins & Mediator: architecture/plugins.md
