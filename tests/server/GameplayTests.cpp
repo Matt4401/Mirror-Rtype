@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "components/Replicated.hpp"
@@ -15,13 +16,21 @@
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
+#include "protocol/Messages.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 
 namespace {
 
 using rtype::server::gameplay::ENEMY_SPAWN_INTERVAL;
 using rtype::server::gameplay::GameplayPlugin;
+using rtype::server::gameplay::INTERMISSION_DURATION;
+using rtype::server::gameplay::LevelInfo;
+using rtype::server::gameplay::LevelProgress;
 using rtype::server::gameplay::POINTS_PER_KILL;
+using rtype::server::gameplay::SHIP_SPAWN_FIRST_Y;
+using rtype::server::gameplay::SHIP_SPAWN_SPACING_Y;
+using rtype::server::gameplay::SHIP_SPAWN_X;
+namespace protocol = rtype::protocol;
 namespace game = rtype::game;
 
 constexpr float FIXED_DT = 1.0F / 60.0F;
@@ -178,6 +187,94 @@ TEST_F(GameplayTest, ShipWithoutNetStateCannotShoot) {
     shoot(entity);
     run(FIXED_DT * 2);
     EXPECT_TRUE(entitiesOf(game::KIND_PLAYER_BULLET).empty());
+}
+
+/** @brief Gameplay engine recording the level messages the room would send. */
+class LevelFlowTest : public GameplayTest {
+  protected:
+    LevelFlowTest() {
+        auto& bus = engine.eventBus();
+        bus.subscribe<protocol::LevelStart>([this](const protocol::LevelStart& message) {
+            log.push_back("start " + std::to_string(message.levelIndex) + "/" + std::to_string(message.levelCount) +
+                          " " + message.name);
+        });
+        bus.subscribe<protocol::LevelComplete>([this](const protocol::LevelComplete& message) {
+            log.push_back("complete " + std::to_string(message.levelIndex));
+        });
+        bus.subscribe<protocol::GameOver>([this](const protocol::GameOver& message) {
+            log.push_back(message.reason == protocol::GameOverReason::Victory ? "victory" : "defeat");
+        });
+        // Two short levels that end after one second, whatever the kills.
+        gameplay().setLevels({LevelInfo{.name = "A", .spawnInterval = 0.3F}, LevelInfo{.name = "B"}});
+        gameplay().setLevelFinished(
+            [](const LevelProgress& progress, const LevelInfo& /*level*/) { return progress.elapsed >= 1.0F; });
+    }
+
+    std::vector<std::string> log;
+};
+
+TEST_F(LevelFlowTest, StartGameAnnouncesTheFirstLevel) {
+    gameplay().startGame();
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/2 A"}));
+    EXPECT_EQ(gameplay().levelIndex(), 0U);
+}
+
+TEST_F(LevelFlowTest, ClearingALevelRemovesEnemiesAndRepositionsShips) {
+    const ecs::Entity ship = spawnShip(1, 900.0F, LANE_Y);
+    gameplay().startGame();
+    run(0.95F);
+    EXPECT_FALSE(entitiesOf(game::KIND_ALIEN_SCOUT).empty());
+
+    run(0.1F);
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/2 A", "complete 0"}));
+    EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty());
+    const auto& transform = registry().getComponents<ecs::Transform>().get(ship);
+    EXPECT_FLOAT_EQ(transform.x, SHIP_SPAWN_X);
+    EXPECT_FLOAT_EQ(transform.y, SHIP_SPAWN_FIRST_Y + SHIP_SPAWN_SPACING_Y);
+
+    run(INTERMISSION_DURATION * 0.5F);
+    EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty()) << "nothing spawns between two levels";
+    run(INTERMISSION_DURATION * 0.6F);
+    EXPECT_EQ(log.back(), "start 1/2 B");
+}
+
+TEST_F(LevelFlowTest, ClearingTheLastLevelIsAVictoryAndStopsTheWaves) {
+    spawnShip(0, 200.0F, LANE_Y);
+    gameplay().startGame();
+    run(1.1F + INTERMISSION_DURATION + 1.1F);
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/2 A", "complete 0", "start 1/2 B", "complete 1", "victory"}));
+    EXPECT_TRUE(gameplay().isOver());
+
+    run(5.0F);
+    EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty());
+    EXPECT_EQ(log.size(), 5U);
+}
+
+TEST_F(LevelFlowTest, LosingEveryShipEndsTheGame) {
+    const ecs::Entity ship = spawnShip(0, 200.0F, LANE_Y);
+    gameplay().startGame();
+    run(0.2F);
+    registry().killEntity(ship);
+    run(0.1F);
+    EXPECT_EQ(log.back(), "defeat");
+    EXPECT_TRUE(gameplay().isOver());
+}
+
+TEST_F(GameplayTest, DefaultRuleClearsALevelAtItsKillQuota) {
+    std::vector<std::string> log;
+    engine.eventBus().subscribe<protocol::GameOver>([&](const protocol::GameOver& message) {
+        log.push_back(message.reason == protocol::GameOverReason::Victory ? "victory" : "defeat");
+        EXPECT_EQ(message.score, POINTS_PER_KILL);
+        EXPECT_EQ(message.playerScores, (std::vector<std::uint32_t>{0, POINTS_PER_KILL}));
+    });
+    gameplay().setLevels({LevelInfo{.name = "Only", .killQuota = 1, .maxDuration = 0.0F, .spawnInterval = 99.0F}});
+    gameplay().setLevelFinished({});
+    const ecs::Entity ship = spawnShip(1, 200.0F, LANE_Y);
+    gameplay().startGame();
+    spawnEnemy(500.0F, LANE_Y);
+    shoot(ship);
+    run(0.5F);
+    EXPECT_EQ(log, (std::vector<std::string>{"victory"}));
 }
 
 int main(int argc, char** argv) {

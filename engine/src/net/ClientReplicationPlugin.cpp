@@ -148,4 +148,16 @@ void ClientReplicationPlugin::shutdown(engine::Engine& engine) {
     }
 }
 
+void ClientReplicationPlugin::reset(engine::Engine& engine) {
+    ecs::Registry& registry = engine.registry();
+    despawnMissing(registry, engine.eventBus(), {});
+    if (registry.hasResource<SnapshotState>()) {
+        registry.getResource<SnapshotState>() = SnapshotState{};
+    }
+    _sentInputs.clear();
+    _snapshotInterval = 0.0F;
+    _partsReceived = 0;
+    _snapshotEntities.clear();
+}
+
 }  // namespace ecs::net

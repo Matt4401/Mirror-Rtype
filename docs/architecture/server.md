@@ -47,7 +47,7 @@ A room holds at most `MAX_PLAYERS_PER_ROOM` players: 2 for now, while the protoc
 | `LobbyCreate`      | Creates a room with the client in it, sends `LobbyUpdate`                                |
 | `LobbyJoin`        | Adds the client if the room is open, sends `LobbyUpdate` to the room                     |
 | `LobbyReady`       | Updates the room; when everyone is ready, starts it and sends `GameStart` to each player |
-| `Leave`            | Removes the client from its room (a disconnection does the same)                         |
+| `Leave`            | Removes the client from its room, waiting or in game; it stays connected, back in the lobby (a disconnection does the same) |
 
 - A departure sends `PlayerLeft` to the others. In a lobby it can also start the room, if the player who left was the
   last one not ready.
@@ -55,6 +55,10 @@ A room holds at most `MAX_PLAYERS_PER_ROOM` players: 2 for now, while the protoc
 - Each change of the list is pushed as `LobbyList` to the clients not in a game.
 - A message in the wrong phase is dropped, as the [RFC](../protocol/packets.md#8-validation) requires.
 - Rooms are referred to by `RoomId`, never by pointer: an event for a room that no longer exists is ignored.
+- `GameStart` is sent before the room starts, because starting it sends the `LevelStart` of the first level.
+- `Lobby::update()`, called at every iteration of the server loop, destroys the rooms whose game is over
+  (`Room::hasEnded()`). Their players are back in the lobby and get the list of rooms.
+- When the server stops, the players in game receive `GameOver{SERVER_SHUTDOWN}` before the rooms are destroyed.
 
 ## `Room`
 
@@ -103,10 +107,30 @@ Each room's engine runs `systems::PhysicsPlugin` and `gameplay::GameplayPlugin` 
 - **Kills and scores:** a `ShotHitEvent` of a player shot on an enemy destroys both and gives 1 point to the shooter.
   Each player has their own score.
 - **Cleanup:** bullets and enemies more than 64 px off the screen are destroyed.
-- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`. Scores are not sent to the
-  clients yet.
+- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`.
+
+### Levels
+
+`Room::start()` calls `GameplayPlugin::startGame()`, which plays the levels in order:
+
+1. **Start.** A `protocol::LevelStart` is published on the room's bus, and the room sends it to its players. Enemies
+   spawn at the level's pace.
+2. **Clear.** When the level's `LevelFinishedRule` holds:
+   - every replicated entity except the ships is destroyed, and the ships go back to their start positions;
+   - a `protocol::LevelComplete` with the scores is published;
+   - nothing spawns for 3 s, then the next level starts.
+3. **End.** After the last level the game ends with `protocol::GameOver{VICTORY}`; if every ship is destroyed first,
+   with `ALL_DEAD`. The room forwards it, marks itself ended, and the lobby destroys it.
+
+The gameplay never touches the network: it only publishes protocol structs, and the room broadcasts them.
+
+The levels are placeholders until the data-driven levels land (`defaultLevels()`: three levels of increasing pace,
+cleared after a kill quota or a maximum duration). Both are replaceable:
+
+- `GameplayPlugin::setLevels(...)` sets the level list, for instance from level files;
+- `setLevelFinished(rule)` sets the end condition, for instance "the level timeline is finished".
 
 ## What is not simulated yet
 
-Enemy shots, ship damage, power-ups and `GameOver` are still to do, as well as `Chat`, which the server drops. A snapshot is the complete state of the room, split into as many datagrams as needed: 36 entities per
+Enemy shots, ship damage and power-ups are still to do (so `ALL_DEAD` cannot happen yet), as well as `Chat`, which the server drops. A snapshot is the complete state of the room, split into as many datagrams as needed: 36 entities per
 datagram, and at most 64 of them, about 2300 entities. Past that it is not sent (an error is logged).

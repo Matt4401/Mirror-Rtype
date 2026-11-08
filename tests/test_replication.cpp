@@ -510,6 +510,35 @@ TEST(ClientReplication, DropsStaleAndMalformedSnapshots) {
     EXPECT_EQ(client.registry().getResource<ecs::net::SnapshotState>().tick, 2U);
 }
 
+TEST(ClientReplication, ResetForgetsTheSessionSoANewGameStartsAtTickZero) {
+    Server previous;
+    Client client;
+    spawnPlayer(previous.registry(), 3);
+    for (int i = 0; i < 5; ++i) {
+        previous.step();
+    }
+    deliver(previous, client, 3);
+    client.step();
+    ASSERT_TRUE(clientEntity(client, 1).has_value());
+    std::vector<std::uint32_t> despawned;
+    client.engine.eventBus().subscribe<ecs::net::ReplicatedEntityDespawned>(
+        [&](const auto& event) { despawned.push_back(event.id); });
+
+    client.engine.getPlugin<ecs::net::ClientReplicationPlugin>().reset(client.engine);
+    EXPECT_FALSE(clientEntity(client, 1).has_value());
+    EXPECT_EQ(despawned, (std::vector<std::uint32_t>{1}));
+    EXPECT_FALSE(client.registry().getResource<ecs::net::SnapshotState>().tick.has_value());
+
+    Server next;  // a new room: its ticks start again from 1
+    spawnPlayer(next.registry(), 3, 7.0F);
+    next.step();
+    deliver(next, client, 3);
+    client.step();
+    const auto local = clientEntity(client, 1);
+    ASSERT_TRUE(local.has_value()) << "the first snapshot of the new game was not dropped as stale";
+    EXPECT_FLOAT_EQ(client.registry().getComponents<ecs::Transform>().get(*local).x, 7.0F);
+}
+
 /** @brief A server whose snapshots are split into one part per entity, and a client. */
 struct SplitSnapshot : public ::testing::Test {
     void SetUp() override {

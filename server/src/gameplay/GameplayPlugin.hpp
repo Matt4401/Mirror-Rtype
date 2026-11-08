@@ -1,6 +1,6 @@
 /**
  * @file GameplayPlugin.hpp
- * @brief Server-side R-Type rules of a room: enemy waves, player shots, kills and scores.
+ * @brief Server-side R-Type rules of a room: levels, enemy waves, player shots, kills and scores.
  */
 
 #pragma once
@@ -8,8 +8,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -32,6 +34,50 @@ inline constexpr float SHOT_COOLDOWN = 0.2F;
 inline constexpr float SCORE_LOG_INTERVAL = 5.0F;
 /** @brief Points given to a player for each enemy their shots destroy. */
 inline constexpr std::uint32_t POINTS_PER_KILL = 1;
+/** @brief Seconds between the end of a level and the start of the next one. */
+inline constexpr float INTERMISSION_DURATION = 3.0F;
+/** @brief Abscissa of the ships at the start of a level. */
+inline constexpr float SHIP_SPAWN_X = 200.0F;
+/** @brief Ordinate of the first ship at the start of a level. */
+inline constexpr float SHIP_SPAWN_FIRST_Y = 120.0F;
+/** @brief Vertical gap between two ships at the start of a level. */
+inline constexpr float SHIP_SPAWN_SPACING_Y = 160.0F;
+
+/**
+ * @brief One level of the game.
+ *
+ * Placeholder content until the data-driven levels: a level ends after `killQuota` kills or `maxDuration` seconds.
+ * `setLevelFinished` replaces that rule (for instance with the end of a level timeline).
+ */
+struct LevelInfo {
+    /** @brief Display name, sent in `LevelStart`. */
+    std::string name;
+    /** @brief Kills that clear the level. */
+    std::uint32_t killQuota = 0;
+    /** @brief Seconds after which the level is cleared anyway. */
+    float maxDuration = 0.0F;
+    /** @brief Seconds between two enemy spawns in this level. */
+    float spawnInterval = ENEMY_SPAWN_INTERVAL;
+};
+
+/** @brief Progress of the level being played, given to the "level finished" rule. */
+struct LevelProgress {
+    /** @brief Index of the level. */
+    std::size_t index = 0;
+    /** @brief Enemies destroyed by players in this level. */
+    std::uint32_t kills = 0;
+    /** @brief Seconds played in this level. */
+    float elapsed = 0.0F;
+};
+
+/** @brief Rule telling whether the level being played is cleared. */
+using LevelFinishedRule = std::function<bool(const LevelProgress& progress, const LevelInfo& level)>;
+
+/**
+ * @brief The default levels: three placeholder levels of increasing pace.
+ * @return Level list.
+ */
+[[nodiscard]] std::vector<LevelInfo> defaultLevels();
 
 /**
  * @brief R-Type rules of one room, run by the room's engine.
@@ -45,6 +91,16 @@ inline constexpr std::uint32_t POINTS_PER_KILL = 1;
  * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time.
  *
  * Every spawned entity is replicated, so the clients only draw what the server simulates.
+ *
+ * Once `startGame()` is called, the room plays its levels in order (before that, waves spawn endlessly):
+ * - each level publishes a `protocol::LevelStart` on the room's bus, then spawns at its own pace until its
+ *   `LevelFinishedRule` holds;
+ * - the level is then cleared: enemies and shots are destroyed, ships go back to their start positions, a
+ *   `protocol::LevelComplete` is published, and the next level starts after `INTERMISSION_DURATION` seconds;
+ * - after the last level, `protocol::GameOver{Victory}` is published; if every ship is destroyed first,
+ *   `protocol::GameOver{AllDead}`. Nothing spawns any more.
+ *
+ * The room forwards these messages to its players. The plugin itself knows nothing about the network.
  */
 class GameplayPlugin final : public engine::IPlugin {
   public:
@@ -102,7 +158,81 @@ class GameplayPlugin final : public engine::IPlugin {
      */
     [[nodiscard]] std::uint32_t score(std::size_t playerIndex) const noexcept;
 
+    /**
+     * @brief Replaces the levels; takes effect at the next `startGame()`.
+     * @param levels Levels in play order, at most `protocol::MAX_LEVELS` (extra ones are dropped); empty keeps the
+     *        current ones.
+     */
+    void setLevels(std::vector<LevelInfo> levels);
+
+    /**
+     * @brief Replaces the rule ending a level (by default: kill quota or maximum duration).
+     * @param rule New rule; empty restores the default.
+     */
+    void setLevelFinished(LevelFinishedRule rule);
+
+    /**
+     * @brief Starts the level sequence at the first level; publishes its `protocol::LevelStart` right away.
+     */
+    void startGame();
+
+    /**
+     * @brief Moves every player ship to its start position (by player index).
+     */
+    void placeShips();
+
+    /**
+     * @brief Gets the index of the level being played or about to start.
+     * @return Level index.
+     */
+    [[nodiscard]] std::size_t levelIndex() const noexcept { return _levelIndex; }
+
+    /**
+     * @brief Tells whether the game is over (victory or every ship destroyed).
+     * @return `true` once `protocol::GameOver` was published.
+     */
+    [[nodiscard]] bool isOver() const noexcept { return _phase == Phase::Over; }
+
   private:
+    /** @brief Where the room is in its level sequence. */
+    enum class Phase : std::uint8_t {
+        /** @brief No level sequence: endless waves (before `startGame()`). */
+        Free,
+        /** @brief A level is being played. */
+        Playing,
+        /** @brief Between two levels. */
+        Intermission,
+        /** @brief The game ended. */
+        Over,
+    };
+
+    /** @brief Starts the level `_levelIndex`. */
+    void beginLevel();
+    /** @brief Clears the current level and starts the intermission, or ends the game after the last one. */
+    void clearLevel();
+    /**
+     * @brief Ends the game.
+     * @param reason Why it ended.
+     */
+    void endGame(protocol::GameOverReason reason);
+    /** @brief Destroys every replicated entity that is not a player ship. */
+    void killLevelEntities();
+    /**
+     * @brief Tells whether a player ship was seen and none is left.
+     * @return `true` if every ship is destroyed.
+     */
+    [[nodiscard]] bool everyShipDestroyed();
+    /**
+     * @brief Copies the scores of the players.
+     * @return One score per player.
+     */
+    [[nodiscard]] std::vector<std::uint32_t> playerScores() const;
+    /**
+     * @brief Sums the scores of the players.
+     * @return Room score.
+     */
+    [[nodiscard]] std::uint32_t totalScore() const;
+
     /** @brief A shot requested by an input, fired at the next fixed step. */
     struct PendingShot {
         /** @brief Index of the player who fires. */
@@ -150,6 +280,22 @@ class GameplayPlugin final : public engine::IPlugin {
     std::size_t _enemiesSpawned = 0;
     /** @brief Seconds left before the next score log. */
     float _scoreLogTimer = SCORE_LOG_INTERVAL;
+    /** @brief Levels of the game. */
+    std::vector<LevelInfo> _levels = defaultLevels();
+    /** @brief Rule ending a level. */
+    LevelFinishedRule _levelFinished;
+    /** @brief Where the room is in its level sequence. */
+    Phase _phase = Phase::Free;
+    /** @brief Index of the level being played or about to start. */
+    std::size_t _levelIndex = 0;
+    /** @brief Progress of the current level. */
+    LevelProgress _progress;
+    /** @brief Seconds left in the intermission. */
+    float _intermission = 0.0F;
+    /** @brief A player ship existed during this game, so "no ship left" means they were all destroyed. */
+    bool _shipsSeen = false;
+    /** @brief Scratch list of entities to destroy; capacity kept between steps. */
+    std::vector<ecs::Entity> _toDestroy;
 };
 
 }  // namespace rtype::server::gameplay

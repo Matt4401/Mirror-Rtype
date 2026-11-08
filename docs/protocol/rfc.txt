@@ -208,15 +208,31 @@ Table of Contents
      |<-- LobbyUpdate (37) --------------- |
      |-- LobbyReady (36) ----------------> |
      |<-- GameStart (48) ----------------- |
+     |<-- LevelStart (51) [level 0] ------ |
      |                                        |
      |-- [UDP open] -----------------------> | (transport)
      |-- PlayerInput (1) [UDP] ----------> | In-game
      |<-- WorldState (2) [UDP] ----------- |
-     |                                        |
-     |<-- GameOver (49) [TCP] ------------ |
+     |<-- LevelComplete (52) [TCP] ------- | level cleared
+     |<-- LevelStart (51) [level n] ------ | after the intermission
+     |        ...                              |
+     |<-- GameOver (49) [TCP] ------------ | after the last level
      |-- [UDP close] ----------------------> | (transport)
+     |<-- LobbyList (33) ----------------- | back in the lobby
+     |        ...                              |
      |-- Leave (64) [TCP] ---------------> |
      |<-- TCP closed ----------------------- |
+
+   A game is a sequence of levels.  The server sends LevelStart for
+   each level (the first one right after GameStart), LevelComplete
+   when a level is cleared, then the next LevelStart after an
+   intermission.  After the last level, or when every ship is
+   destroyed, it sends GameOver and destroys the room: its players are
+   back in the lobby and receive the list of rooms again.
+
+   Leave removes the client from its room, waiting or in game, and the
+   client stays connected: it is used to go back to the lobby, and is
+   also sent before closing the connection.
 
 6.  Message Table
 
@@ -235,6 +251,8 @@ Table of Contents
    48    GameStart         S->C   Reliable    Lobby -> In-game
    49    GameOver          S->C   Reliable    In-game -> Lobby
    50    PlayerLeft        S->C   Reliable    Lobby + In-game
+   51    LevelStart        S->C   Reliable    In-game
+   52    LevelComplete     S->C   Reliable    In-game
    64    Leave             C->S   Reliable    Any
    65    Chat              Both   Reliable    Lobby + In-game
 

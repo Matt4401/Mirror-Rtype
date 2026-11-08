@@ -41,6 +41,7 @@ bool ServerManager::run(const std::uint16_t port) {
     while (_running.load()) {
         handleEvents();
         expireHandshakes();
+        _lobby.update();
         std::this_thread::sleep_for(IDLE_SLEEP);
     }
 

@@ -110,6 +110,16 @@ class ClientReplicationPlugin final : public engine::IPlugin {
      */
     void shutdown(engine::Engine& engine) override;
 
+    /**
+     * @brief Forgets the current session, for instance when leaving a game to join another one.
+     *
+     * Every replicated entity is removed (with `ReplicatedEntityDespawned`), the `SnapshotState` goes back to "no
+     * snapshot yet" (so the first snapshot of a new game is not dropped as older than the last one of the previous
+     * game), and the partial snapshot and the inputs waiting to be sent again are dropped.
+     * @param engine Host engine.
+     */
+    void reset(engine::Engine& engine);
+
   private:
     /** @brief An input already sent, kept to be sent again. */
     struct SentInput {

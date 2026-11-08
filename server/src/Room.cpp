@@ -18,6 +18,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
+#include "events/EventBus.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
 #include "gameplay/GameplayPlugin.hpp"
@@ -28,18 +29,26 @@
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "net/ServerReplicationPlugin.hpp"
+#include "protocol/Messages.hpp"
+#include "protocol/Protocol.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 
 namespace rtype::server {
 
 namespace {
 
-constexpr float SPAWN_X = 200.0F;
-constexpr float SPAWN_FIRST_Y = 120.0F;
-constexpr float SPAWN_SPACING_Y = 160.0F;
 // Sleep between two iterations of a room's thread. Short enough to keep the step jitter around 1 ms, long enough not to
 // burn a core.
 constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
+
+/**
+ * @brief Sends a message to every player of a room on the reliable channel.
+ * @param connection Peers of the room.
+ * @param message Message to send.
+ */
+void broadcastReliable(ecs::net::PeerGroupConnection& connection, const protocol::Message& message) {
+    connection.broadcast(protocol::encode(message), ecs::net::Channel::Reliable);
+}
 
 }  // namespace
 
@@ -54,6 +63,15 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<systems::PhysicsPlugin>();
     _engine.addPlugin<gameplay::GameplayPlugin>();
     // TODO(ecs): add ScriptPlugin for the scripted enemies.
+    ecs::EventBus& bus = _engine.eventBus();
+    bus.subscribe<protocol::LevelStart>(
+        [this](const protocol::LevelStart& message) { broadcastReliable(*_connection, message); });
+    bus.subscribe<protocol::LevelComplete>(
+        [this](const protocol::LevelComplete& message) { broadcastReliable(*_connection, message); });
+    bus.subscribe<protocol::GameOver>([this](const protocol::GameOver& message) {
+        broadcastReliable(*_connection, message);
+        _ended = true;
+    });
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
         if (registry.hasComponent<ecs::Transform>(event.entity)) {
@@ -123,12 +141,12 @@ void Room::start() {
     std::uint8_t index = 0;
     for (const RoomPlayer& player : _players) {
         registry.getComponents<game::EntityNetState>().get(player.entity).subtype = index;
-        auto& transform = registry.getComponents<ecs::Transform>().get(player.entity);
-        transform.x = SPAWN_X;
-        transform.y = SPAWN_FIRST_Y + (SPAWN_SPACING_Y * static_cast<float>(index));
         ++index;
     }
-    _engine.getPlugin<gameplay::GameplayPlugin>().setPlayerCount(_players.size());
+    auto& gameplay = _engine.getPlugin<gameplay::GameplayPlugin>();
+    gameplay.setPlayerCount(_players.size());
+    gameplay.placeShips();
+    gameplay.startGame();
     _playing = true;
     _engine.clock().reset();
 }
@@ -150,6 +168,8 @@ void Room::runInBackground() {
             }
         } catch (const std::exception& error) {
             log::error(LOG_TAG, "room stopped by an error in its simulation: ", error.what());
+            broadcastReliable(*_connection, protocol::GameOver{.reason = protocol::GameOverReason::ServerShutdown});
+            _ended = true;
         }
     });
 }
