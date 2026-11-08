@@ -554,6 +554,22 @@ TEST_F(RespawnTest, RespawnedShipCannotBeDestroyedForItsDuration) {
     EXPECT_FALSE(invulnerable(ship));
 }
 
+TEST_F(RespawnTest, ShipStillInTheTerrainWhenItsRespawnEndsIsDestroyedAgain) {
+    run(1.5F);
+    const ecs::Entity ship = spawnShip(0, 200.0F, LANE_Y);
+    crash(ship);
+
+    // Parked in the terrain for the whole respawn: its contact began while it could not be hit.
+    const ecs::Transform block = registry().getComponents<ecs::Transform>().get(columns().front());
+    auto& transform = registry().getComponents<ecs::Transform>().get(ship);
+    transform.x = block.x;
+    transform.y = block.y;
+    run(RESPAWN_DURATION + 0.2F);
+
+    EXPECT_TRUE(invulnerable(ship));
+    EXPECT_FLOAT_EQ(transform.x, shipSpawnPoint(0).x);
+}
+
 TEST_F(RespawnTest, ScrollWaitsDuringTheRespawn) {
     run(1.5F);
     const ecs::Entity ship = spawnShip(0, 200.0F, LANE_Y);
