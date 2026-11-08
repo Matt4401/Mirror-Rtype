@@ -34,8 +34,9 @@
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
-#include "looks/BossLooks.hpp"
+#include "looks/Looks.hpp"
 #include "net/ReplicationEvents.hpp"
+#include "protocol/Messages.hpp"
 #include "render/RenderPlugin.hpp"
 #include "render/texture/TextureStore.hpp"
 #include "systems/render/AnimationPlugin.hpp"
@@ -74,6 +75,8 @@ constexpr ecs::Rgba COLOR_BOSS = {.r = 170, .g = 60, .b = 200, .a = 255};
 constexpr float BOSS_PART_PLACEHOLDER_SIZE = 48.0F;
 /** @brief Side of the box drawn for an alien gunner until its look is configured, in pixels. */
 constexpr float GUNNER_PLACEHOLDER_SIZE = 40.0F;
+/** @brief Side of the box drawn for an alien scout restyled without a sprite, in pixels: its hitbox. */
+constexpr float SCOUT_BOX_SIZE = 32.0F;
 /** @brief Color of an alien gunner drawn as a box. */
 constexpr ecs::Rgba COLOR_GUNNER = {.r = 90, .g = 200, .b = 230, .a = 255};
 /** @brief Side of the box drawn for an alien elite until its look is configured, in pixels. */
@@ -146,6 +149,34 @@ struct EntitySprite {
     float frameDuration = DEFAULT_FRAME_DURATION;
     bool loop = true;
 };
+
+/** @brief Built-in box of an entity kind: its size and color when `looks.toml` gives it no sprite. */
+struct DefaultBox {
+    /** @brief Width, in pixels. */
+    float width = 0.0F;
+    /** @brief Height, in pixels. */
+    float height = 0.0F;
+    /** @brief Fill color. */
+    ecs::Rgba color;
+};
+
+/**
+ * @brief Gives the built-in box of the kinds `looks.toml` may restyle.
+ * @param kind Replicated kind.
+ * @return Its box; a white scout-sized box for any other kind.
+ */
+DefaultBox defaultBox(const std::uint32_t kind) {
+    if (kind == rtype::game::KIND_ALIEN_GUNNER) {
+        return {.width = GUNNER_PLACEHOLDER_SIZE, .height = GUNNER_PLACEHOLDER_SIZE, .color = COLOR_GUNNER};
+    }
+    if (kind == rtype::game::KIND_MISSILE) {
+        return {.width = rtype::game::MISSILE_WIDTH, .height = rtype::game::MISSILE_HEIGHT, .color = COLOR_MISSILE};
+    }
+    if (kind == rtype::game::KIND_POWER_UP) {
+        return {.width = rtype::game::POWER_UP_SIZE, .height = rtype::game::POWER_UP_SIZE, .color = COLOR_POWER_UP};
+    }
+    return {.width = SCOUT_BOX_SIZE, .height = SCOUT_BOX_SIZE, .color = COLOR_WHITE};
+}
 
 /** @brief Gives a replicated entity its sprite and its size on screen. */
 void applySprite(ecs::Registry& registry, const ecs::Entity entity, const EntitySprite& sprite) {
@@ -226,7 +257,7 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     _starMediumId = load("sprites/star_medium.png");
     _starLargeId = load("sprites/star_large.png");
 
-    loadBossLooks(*textures);
+    loadLooks(*textures);
 
     if (engine.mediator().hasService<engine::IInputService>()) {
         client::input::setupDefaultBindings(engine.service<engine::IInputService>().mapping());
@@ -259,6 +290,11 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = row * SHIP_FRAME_HEIGHT,
                         .layer = 3,
                     });
+    } else if (const looks::Look* custom = entityLook(event.kind);
+               custom != nullptr && event.kind != rtype::game::KIND_ALIEN_ELITE) {
+        // A look from looks.toml replaces the built-in one; the box keeps the built-in size without a sprite.
+        const auto [width, height, color] = defaultBox(event.kind);
+        applyLook(registry, event.entity, custom, {width, height}, color, 2);
     } else if (event.kind == rtype::game::KIND_ALIEN_SCOUT) {
         applySprite(registry, event.entity,
                     {
@@ -272,16 +308,20 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
     } else if (event.kind == rtype::game::KIND_ALIEN_GUNNER) {
         applyBox(registry, event.entity, GUNNER_PLACEHOLDER_SIZE, GUNNER_PLACEHOLDER_SIZE, COLOR_GUNNER, 2);
     } else if (event.kind == rtype::game::KIND_ALIEN_ELITE) {
-        applyBox(registry, event.entity, ELITE_PLACEHOLDER_SIZE, ELITE_PLACEHOLDER_SIZE, COLOR_ELITE, 2);
+        applyLook(registry, event.entity, entityLook(event.kind), {ELITE_PLACEHOLDER_SIZE, ELITE_PLACEHOLDER_SIZE},
+                  COLOR_ELITE, 2);
         // Tough enough to need several shots: it flashes on each hit, like a boss.
         const std::uint8_t health = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).health;
-        registry.addComponent(event.entity,
-                              gameplay::HitFlash{.spawnHealth = health, .lastHealth = health, .baseTint = COLOR_ELITE});
+        registry.addComponent(
+            event.entity,
+            gameplay::HitFlash{.spawnHealth = health,
+                               .lastHealth = health,
+                               .baseTint = registry.getComponents<ecs::Renderable>().get(event.entity).tint});
     } else if (event.kind == rtype::game::KIND_BOSS_CORE || event.kind == rtype::game::KIND_BOSS_PART) {
         // The subtype picks the look: the variant of a boss, the look of a part.
         const bool part = event.kind == rtype::game::KIND_BOSS_PART;
         const std::uint8_t id = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
-        const auto& configured = part ? _bossLooks.parts : _bossLooks.bosses;
+        const auto& configured = part ? _looks.parts : _looks.bosses;
         const auto found = configured.find(id);
         const looks::Look* look = found != configured.end() ? &found->second : nullptr;
         if (part) {
@@ -348,7 +388,7 @@ void RTypeGamePlugin::onEntityDespawned(engine::Engine& engine,
 }
 
 void RTypeGamePlugin::spawnExplosion(ecs::Registry& registry, const std::vector<gameplay::BurstSpec>& bursts) const {
-    const looks::SpriteLook* look = _bossLooks.explosion.has_value() ? &*_bossLooks.explosion : nullptr;
+    const looks::SpriteLook* look = _looks.explosion.has_value() ? &*_looks.explosion : nullptr;
     const auto texture = look != nullptr ? _lookTextures.find(look->texture) : _lookTextures.end();
     if (texture == _lookTextures.end() || texture->second == ecs::NO_TEXTURE) {
         look = nullptr;
@@ -385,28 +425,40 @@ void RTypeGamePlugin::spawnExplosion(ecs::Registry& registry, const std::vector<
     }
 }
 
-void RTypeGamePlugin::loadBossLooks(render::TextureStore& textures) {
-    if (!std::filesystem::exists(looks::BOSS_LOOKS_PATH)) {
-        log::info(LOG_TAG, looks::BOSS_LOOKS_PATH, " not found: the bosses are drawn as boxes");
+void RTypeGamePlugin::loadLooks(render::TextureStore& textures) {
+    if (!std::filesystem::exists(looks::LOOKS_PATH)) {
+        log::info(LOG_TAG, looks::LOOKS_PATH, " not found: the bosses are drawn as boxes");
         return;
     }
     std::vector<std::string> warnings;
-    _bossLooks = looks::readBossLooks(config::ConfigFile::load(looks::BOSS_LOOKS_PATH), warnings);
+    _looks = looks::readLooks(config::ConfigFile::load(looks::LOOKS_PATH), warnings);
     for (const std::string& warning : warnings) {
-        log::warning(LOG_TAG, looks::BOSS_LOOKS_PATH, ": ", warning);
+        log::warning(LOG_TAG, looks::LOOKS_PATH, ": ", warning);
     }
-    for (auto* table : {&_bossLooks.bosses, &_bossLooks.parts}) {
-        for (auto& [id, look] : *table) {
-            if (!look.sprite.has_value() || _lookTextures.contains(look.sprite->texture)) {
-                continue;
-            }
-            const ecs::TextureId texture = textures.load(look.sprite->texture);
-            if (texture == ecs::NO_TEXTURE) {
-                log::warning(LOG_TAG, "cannot load ", look.sprite->texture, ": that look is drawn as a box");
-            }
-            _lookTextures.emplace(look.sprite->texture, texture);
+    const auto loadTexture = [this, &textures](const looks::Look& look) {
+        if (!look.sprite.has_value() || _lookTextures.contains(look.sprite->texture)) {
+            return;
+        }
+        const ecs::TextureId texture = textures.load(look.sprite->texture);
+        if (texture == ecs::NO_TEXTURE) {
+            log::warning(LOG_TAG, "cannot load ", look.sprite->texture, ": that look is drawn as a box");
+        }
+        _lookTextures.emplace(look.sprite->texture, texture);
+    };
+    for (auto* table : {&_looks.bosses, &_looks.parts}) {
+        for (const auto& [id, look] : *table) {
+            loadTexture(look);
         }
     }
+    for (const auto& [prefab, look] : _looks.entities) {
+        loadTexture(look);
+        _entityLooks.emplace(rtype::protocol::makeEntityKind(prefab), &look);
+    }
+}
+
+const looks::Look* RTypeGamePlugin::entityLook(const std::uint32_t kind) const {
+    const auto found = _entityLooks.find(kind);
+    return found != _entityLooks.end() ? found->second : nullptr;
 }
 
 void RTypeGamePlugin::applyLook(ecs::Registry& registry, const ecs::Entity entity, const looks::Look* look,

@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <optional>
@@ -21,7 +22,7 @@
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
 #include "gameplay/BossEffects.hpp"
-#include "looks/BossLooks.hpp"
+#include "looks/Looks.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "render/texture/TextureStore.hpp"
 
@@ -106,14 +107,14 @@ class RTypeGamePlugin final : public engine::IPlugin {
     void spawnExplosion(ecs::Registry& registry, const std::vector<gameplay::BurstSpec>& bursts) const;
 
     /**
-     * @brief Reads `client/config/bosses.toml` and loads the textures it names.
+     * @brief Reads `client/config/looks.toml` and loads the textures it names.
      *
      * A missing file keeps every boss a box; a texture that does not load turns its look back into a box. Every problem
      * is logged, none stops the client.
      *
      * @param textures Texture store of the render plugin.
      */
-    void loadBossLooks(render::TextureStore& textures);
+    void loadLooks(render::TextureStore& textures);
 
     /**
      * @brief Draws a boss or a boss part with its configured look, or as a box without one.
@@ -128,8 +129,17 @@ class RTypeGamePlugin final : public engine::IPlugin {
                    ecs::Rgba color, int layer) const;
 
     /** @brief Looks of the boss variants and of the boss parts. */
-    looks::BossLooks _bossLooks;
-    /** @brief Textures of the boss looks, by path. */
+    looks::Looks _looks;
+    /**
+     * @brief Finds the `[[entity]]` look of a kind.
+     * @param kind Replicated kind.
+     * @return The look, or null if `looks.toml` does not restyle that kind.
+     */
+    [[nodiscard]] const looks::Look* entityLook(std::uint32_t kind) const;
+
+    /** @brief `[[entity]]` looks by replicated kind, pointing into `_looks`. */
+    std::map<std::uint32_t, const looks::Look*> _entityLooks;
+    /** @brief Textures of the looks, by path. */
     std::map<std::string, ecs::TextureId, std::less<>> _lookTextures;
 
     /** @brief Seconds since the plugin started, the clock of the blinks. */

@@ -1,7 +1,7 @@
 # Bosses
 
 The bosses of the game are original designs. Each one is a level `boss` event (see [Level Files](levels.md#boss-a-boss-fight)):
-a `boss_core` with its `variant` (its look on the clients, see the [boss looks file](../architecture/client.md#boss-looks-file-clientconfigbossestoml)),
+a `boss_core` with its `variant` (its look on the clients, see the [looks file](../architecture/client.md#looks-file-clientconfiglookstoml)),
 its [parts](../prefabs/boss-part.md) and a Wren script under `scripts/bosses/` that moves it and attacks with the
 `game/Combat` helpers.
 

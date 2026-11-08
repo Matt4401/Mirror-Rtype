@@ -121,7 +121,7 @@ ship. See [In-Game Metrics](metrics.md).
   the ship spritesheet, so that players can tell their ships apart. A kind the client does not know stays invisible.
 - **Shots:** the client spawns nothing. The `shoot` action travels in the player's input, and the bullets arrive in the
   snapshots like any other entity, interpolated: a shot appears one round trip after the key press.
-- **Boss looks:** a `boss_core` and a `boss_part` are drawn from `client/config/bosses.toml` (see below), by their
+- **Boss looks:** a `boss_core` and a `boss_part` are drawn from `client/config/looks.toml` (see [the looks file](#looks-file-clientconfiglookstoml)), by their
   `subtype`: the variant of a boss, the look of a part. Without an entry, they are colored boxes.
 - **Boss effects (`client/src/gameplay/BossEffects`):** a boss or a turret flashes red for `HIT_FLASH_DURATION` when its
   replicated `health` goes down. A boss that leaves the snapshots nearly dead (at most 1 hit point, or a tenth of its hit
@@ -131,9 +131,9 @@ ship. See [In-Game Metrics](metrics.md).
   over its hit points at spawn (summed when there are several bosses), with a `BOSS` caption. It hides once no boss is
   left. The values come from `gameplay::bossHealth`, which reads the replicated `health` of the bosses.
 
-#### Boss looks file (`client/config/bosses.toml`)
+#### Looks file (`client/config/looks.toml`)
 
-Read at start-up by `looks::readBossLooks` (`client/src/looks/`). A missing file, a bad value or a texture that does
+Read at start-up by `looks::readLooks` (`client/src/looks/`). A missing file, a bad value or a texture that does
 not load is logged and never stops the client: the look falls back to a box.
 
 ```toml
@@ -153,12 +153,18 @@ scale = 2.0
 look = 1
 width = 40.0                   # without `texture`: a box of this size
 height = 40.0
+
+[[entity]]                     # one entry per prefab: alien_scout, alien_gunner, alien_elite, missile, power_up
+prefab = "alien_gunner"
+texture = "sprites/my_gunner.png"
+frame_width = 40
+frame_height = 40
 ```
 
 | Key | Default | Range | Description |
 |-----|---------|-------|-------------|
-| `variant` / `look` | required | 0–255 | Which boss variant or part look the entry is for. A later entry with the same id wins. |
-| `width`, `height` | default box | 0–2048 px | Box drawn without a sprite; 0 keeps the default size (128×160 for a boss, 48×48 for a part). |
+| `variant` / `look` / `prefab` | required | 0–255 / prefab name | Which boss variant, part look or entity the entry is for. A later entry with the same id wins. |
+| `width`, `height` | default box | 0–2048 px | Box drawn without a sprite; 0 keeps the default size (128×160 for a boss, 48×48 for a part, the hitbox for an entity). |
 | `texture` | none | relative path, no `..` | Spritesheet; without it, the entry is a box. |
 | `frame_x`, `frame_y` | `0` | 0–4096 | Origin of the first frame. |
 | `frame_width`, `frame_height` | required with `texture` | 1–4096 | Size of a frame. |

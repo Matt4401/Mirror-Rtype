@@ -306,7 +306,7 @@ target("test_client_looks")
     set_kind("binary")
     add_deps("engine_config")
     add_packages("gtest")
-    add_files("client/BossLooksTests.cpp", "../client/src/looks/BossLooks.cpp")
+    add_files("client/LooksTests.cpp", "../client/src/looks/Looks.cpp")
     add_includedirs("../client/src")
     -- The shipped looks file is read from the source tree, whatever the directory the tests run from.
     on_load(function (target)

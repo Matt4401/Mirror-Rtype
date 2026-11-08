@@ -1,4 +1,4 @@
-#include "looks/BossLooks.hpp"
+#include "looks/Looks.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -77,6 +77,22 @@ std::optional<SpriteLook> readSprite(const config::ConfigFile& file, config::Con
 }
 
 /**
+ * @brief Reads the box size and the sprite of an entry, then reports its unknown keys.
+ * @param file Looks file.
+ * @param reader Reader reporting corrections.
+ * @param entry Dotted key of the entry, such as `boss.0`.
+ * @return The look.
+ */
+Look readLook(const config::ConfigFile& file, config::ConfigReader& reader, const std::string& entry) {
+    Look look;
+    look.width = reader.number(std::format("{}.width", entry), 0.0F, 0.0F, MAX_BOX_SIZE);
+    look.height = reader.number(std::format("{}.height", entry), 0.0F, 0.0F, MAX_BOX_SIZE);
+    look.sprite = readSprite(file, reader, entry);
+    reader.reportUnknownKeys(entry);
+    return look;
+}
+
+/**
  * @brief Reads the entries of one array (`boss` or `part`).
  * @param file Looks file.
  * @param reader Reader reporting corrections.
@@ -99,22 +115,42 @@ void readEntries(const config::ConfigFile& file, config::ConfigReader& reader, c
             continue;
         }
         const auto key = static_cast<std::uint8_t>(reader.count(id, 0, 0, MAX_LOOK_ID));
-        Look look;
-        look.width = reader.number(std::format("{}.width", entry), 0.0F, 0.0F, MAX_BOX_SIZE);
-        look.height = reader.number(std::format("{}.height", entry), 0.0F, 0.0F, MAX_BOX_SIZE);
-        look.sprite = readSprite(file, reader, entry);
-        reader.reportUnknownKeys(entry);
-        out[key] = look;
+        out[key] = readLook(file, reader, entry);
+    }
+}
+
+/**
+ * @brief Reads the `[[entity]]` entries, by prefab name; a prefab whose look cannot be set is reported and ignored.
+ * @param file Looks file.
+ * @param reader Reader reporting corrections.
+ * @param out Receives the looks by prefab name.
+ */
+void readEntities(const config::ConfigFile& file, config::ConfigReader& reader, std::map<std::string, Look>& out) {
+    std::size_t count = file.arraySize("entity");
+    if (count > MAX_LOOKS) {
+        reader.warn(std::format("entity: {} entries, only the first {} are kept", count, MAX_LOOKS));
+        count = MAX_LOOKS;
+    }
+    for (std::size_t i = 0; i < count; ++i) {
+        const std::string entry = std::format("entity.{}", i);
+        const std::string prefab = reader.text(entry + ".prefab", "");
+        if (std::ranges::find(ENTITY_PREFABS, prefab) == ENTITY_PREFABS.end()) {
+            reader.warn(
+                std::format("{}: 'prefab' must be one of the enemies, missile or power_up, entry ignored", entry));
+            continue;
+        }
+        out[prefab] = readLook(file, reader, entry);
     }
 }
 
 }  // namespace
 
-BossLooks readBossLooks(const config::ConfigFile& file, std::vector<std::string>& warnings) {
+Looks readLooks(const config::ConfigFile& file, std::vector<std::string>& warnings) {
     config::ConfigReader reader(file, warnings);
-    BossLooks looks;
+    Looks looks;
     readEntries(file, reader, "boss", "variant", looks.bosses);
     readEntries(file, reader, "part", "look", looks.parts);
+    readEntities(file, reader, looks.entities);
     looks.explosion = readSprite(file, reader, "explosion");
     reader.reportUnknownKeys("explosion");
     return looks;

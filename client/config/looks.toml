@@ -1,4 +1,4 @@
-# R-Type client: how the bosses and their parts look.
+# R-Type client: how the bosses, their parts and the other enemies look.
 # Read at startup; every problem is reported in the log and never stops the client. Format: docs/architecture/client.md.
 #
 # The server sends the `variant` of each boss (set by the level `boss` event) and the `look` of each part (set in its
@@ -30,6 +30,17 @@
 # frame_height = 32
 # frames = 2
 # scale = 2.0
+
+# Enemies, missiles and power-ups: one [[entity]] entry per prefab (alien_scout, alien_gunner, alien_elite, missile,
+# power_up). Without an entry, the client keeps its built-in look.
+#
+# [[entity]]
+# prefab = "alien_gunner"
+# texture = "sprites/my_gunner.png"
+# frame_width = 40
+# frame_height = 40
+# frames = 4
+# scale = 1.0
 
 # Optional sprite of one burst of a boss explosion, played once; without it, the bursts are growing boxes:
 #
