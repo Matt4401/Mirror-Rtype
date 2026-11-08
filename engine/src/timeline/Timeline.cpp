@@ -60,7 +60,7 @@ void Timeline::addAll(std::vector<TimelineEvent> added) {
     std::stable_sort(std::next(events.begin(), static_cast<std::ptrdiff_t>(_next)), events.end(), byPosition);
 }
 
-std::span<const TimelineEvent> Timeline::advanceTo(float position) {
+std::span<const TimelineEvent> Timeline::advanceTo(double position) {
     // std::max keeps its first argument when the comparison is false, so a NaN position leaves the cursor in place.
     _cursor = std::max(_cursor, position);
     const std::span<const TimelineEvent> all = events();
@@ -71,7 +71,7 @@ std::span<const TimelineEvent> Timeline::advanceTo(float position) {
     return all.subspan(first, _next - first);
 }
 
-std::span<const TimelineEvent> Timeline::advance(float delta) { return advanceTo(_cursor + delta); }
+std::span<const TimelineEvent> Timeline::advance(double delta) { return advanceTo(_cursor + delta); }
 
 void Timeline::rewind() {
     // Events added behind the cursor were placed by firing order: restore the position order before replaying. Only
@@ -80,13 +80,13 @@ void Timeline::rewind() {
         std::ranges::stable_sort(ownEvents(), byPosition);
     }
     _next = 0;
-    _cursor = 0.0F;
+    _cursor = 0.0;
 }
 
 void Timeline::clear() noexcept {
     _events.reset();
     _next = 0;
-    _cursor = 0.0F;
+    _cursor = 0.0;
 }
 
 }  // namespace timeline

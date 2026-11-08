@@ -64,14 +64,14 @@ class Timeline {
      * @param position New cursor position.
      * @return Events reached by this move, in order; valid until the next call that changes the timeline.
      */
-    [[nodiscard]] std::span<const TimelineEvent> advanceTo(float position);
+    [[nodiscard]] std::span<const TimelineEvent> advanceTo(double position);
 
     /**
      * @brief Moves the cursor forward by a distance and returns the events reached.
      * @param delta Distance to move by; a negative or zero delta fires only events added behind the cursor.
      * @return Events reached by this move, in order.
      */
-    [[nodiscard]] std::span<const TimelineEvent> advance(float delta);
+    [[nodiscard]] std::span<const TimelineEvent> advance(double delta);
 
     /**
      * @brief Puts the cursor back to 0, so every event can fire again, in position order.
@@ -87,7 +87,7 @@ class Timeline {
      * @brief Gets the cursor position.
      * @return Current position.
      */
-    [[nodiscard]] float cursor() const noexcept { return _cursor; }
+    [[nodiscard]] double cursor() const noexcept { return _cursor; }
 
     /**
      * @brief Gets every event, fired or not, in firing order.
@@ -121,8 +121,11 @@ class Timeline {
     std::shared_ptr<std::vector<TimelineEvent>> _events;
     /** @brief Index of the first event that has not fired. */
     std::size_t _next = 0;
-    /** @brief Cursor position. */
-    float _cursor = 0.0F;
+    /**
+     * @brief Cursor position. A double: far along a long timeline, a float could no longer add a small step (at 1e6, a
+     * float step is 0.0625), and the cursor would stall.
+     */
+    double _cursor = 0.0;
 };
 
 }  // namespace timeline
