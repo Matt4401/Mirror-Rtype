@@ -36,6 +36,8 @@ inline constexpr float TERRAIN_HEIGHT_UNIT = 2.0F;
 inline constexpr std::uint8_t FLAG_ALIVE = 0x01;
 /** @brief `EntityNetState::flags` bit: the entity is shooting. */
 inline constexpr std::uint8_t FLAG_SHOOTING = 0x02;
+/** @brief `EntityNetState::flags` bit: the ship just respawned and cannot be hit; the clients make it blink. */
+inline constexpr std::uint8_t FLAG_INVULNERABLE = 0x04;
 
 /**
  * @brief Fields of `protocol::EntityState` the engine does not know, as a component.
