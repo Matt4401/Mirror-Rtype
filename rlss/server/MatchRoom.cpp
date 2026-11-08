@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <thread>
@@ -30,11 +31,12 @@ constexpr auto FRAME_SLEEP = std::chrono::milliseconds(1);
 
 }  // namespace
 
-MatchRoom::MatchRoom(ecs::net::INetworkServer& transport, const std::uint16_t id)
+MatchRoom::MatchRoom(ecs::net::INetworkServer& transport, const std::uint16_t id,
+                     const std::filesystem::path& scriptRoot)
     : _id(id), _connection(std::make_shared<ecs::net::PeerGroupConnection>(transport)) {
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection)
         .addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>(id))
-        .addPlugin<scripting::ScriptPlugin>()
+        .addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::EveryFrame, scriptRoot)
         .addPlugin<CarSimulationPlugin>()
         .addPlugin<RosterPlugin>();
     _engine.init();

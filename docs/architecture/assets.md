@@ -50,7 +50,7 @@ plug in their loaders, without it they behave as before.
 
 ## Declaring assets in Wren
 
-Each game has one declaration module, given to `AssetScriptingPlugin` and run from the repository root:
+Each game has one declaration module, given to `AssetScriptingPlugin`:
 
 ```wren
 import "core/Assets" for Assets
@@ -76,6 +76,19 @@ loaded twice. An alias declared again for another file names the new file (with 
 Script arguments are untrusted: a value of the wrong type aborts the calling fiber with an error, an empty, too long
 (`MAX_PATH_LENGTH`, `MAX_NAME_LENGTH`) or NUL-holding path or name is rejected with a warning. A directory preload takes
 at most `MAX_DIRECTORY_FILES` files.
+
+## Content root
+
+Relative paths are resolved against the **content root**, given to `AssetPlugin` (and to `ScriptPlugin` for the
+script files), so a game runs from any working directory. The games pass `engine::contentRoot()`
+(`core/ContentRoot.hpp`):
+
+1. the `ENGINE_CONTENT_ROOT` environment variable, if it names a directory (content installed apart from the binary);
+2. otherwise the directory of the executable, which the build puts at the repository root;
+3. otherwise (platform cannot tell) an empty root: the working directory, as before.
+
+Aliases and keys keep the path as declared (`"sprites/ship.png"`); only the loader receives the resolved path. An
+absolute path is used as is. Tests and tools that pass no root keep reading from the working directory.
 
 ## Using assets from C++
 

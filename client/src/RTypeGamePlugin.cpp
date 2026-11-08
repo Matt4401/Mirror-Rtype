@@ -188,7 +188,7 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
         const ecs::TextureId id = manager.get<assets::Texture>(alias);
         if (id == ecs::NO_TEXTURE) {
             throw std::runtime_error("texture '" + std::string(alias) +
-                                     "' is not declared — run the client from the project root directory");
+                                     "' is not declared — is scripts/rtype/Assets.wren next to the executable?");
         }
         return id;
     };

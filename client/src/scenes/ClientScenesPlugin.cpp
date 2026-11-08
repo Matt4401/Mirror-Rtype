@@ -44,7 +44,7 @@ namespace client {
 
 namespace {
 
-/** @brief Module of the scripted level transition, relative to the working directory (the project root). */
+/** @brief Module of the scripted level transition, relative to the content root (the project root). */
 constexpr const char* LEVEL_TRANSITION_MODULE = "scripts/scenes/LevelTransition";
 
 /**

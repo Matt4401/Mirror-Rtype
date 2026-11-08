@@ -15,7 +15,7 @@
 
 namespace rlss::client {
 
-/** @brief Wren module declaring the RLSS assets (`rlss/scripts/Assets.wren`), run from the repository root. */
+/** @brief Wren module declaring the RLSS assets (`rlss/scripts/Assets.wren`), read from the content root. */
 inline constexpr std::string_view ASSET_DECLARATIONS = "rlss/scripts/Assets";
 /** @brief Alias of the font of the menus, the HUD and the name tags. */
 inline constexpr std::string_view FONT_ALIAS = "rlss_font";
@@ -81,7 +81,7 @@ struct GameAssets {
 
 /**
  * @brief Resolves `GameAssets` from the aliases declared by `rlss/scripts/Assets.wren` and adds it to the registry as
- * a resource. The `assets::AssetManager` owns the textures and the font. Run the client from the repository root.
+ * a resource. The `assets::AssetManager` owns the textures and the font.
  */
 class AssetsPlugin final : public engine::IPlugin {
   public:

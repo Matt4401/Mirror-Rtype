@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -35,8 +36,9 @@ bool isMenuRequest(const ecs::net::Bytes& data) {
 
 }  // namespace
 
-MatchServer::MatchServer(std::shared_ptr<ecs::net::INetworkServer> transport, const bool threaded)
-    : _transport(std::move(transport)), _threaded(threaded) {}
+MatchServer::MatchServer(std::shared_ptr<ecs::net::INetworkServer> transport, const bool threaded,
+                         std::filesystem::path scriptRoot)
+    : _transport(std::move(transport)), _threaded(threaded), _scriptRoot(std::move(scriptRoot)) {}
 
 void MatchServer::update() {
     for (const ecs::net::NetworkEvent& event : _transport->poll()) {
@@ -148,7 +150,7 @@ void MatchServer::create(const ecs::net::PeerId peer) {
     const std::uint16_t id = nextMatchId();
     std::unique_ptr<MatchRoom> room;
     try {
-        room = std::make_unique<MatchRoom>(*_transport, id);
+        room = std::make_unique<MatchRoom>(*_transport, id, _scriptRoot);
     } catch (const std::exception& error) {
         rtype::log::error(LOG_TAG, "cannot start a match: ", error.what());
         sendResult(peer, protocol::JoinStatus::ServerFull);

@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <span>
 
@@ -16,6 +17,7 @@
 #include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "config/Settings.hpp"
+#include "core/ContentRoot.hpp"
 #include "core/Engine.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
 #include "input/InputPlugin.hpp"
@@ -49,6 +51,8 @@ int main(int ac, char** av) {
         return EXIT_ERROR;
     }
     try {
+        // Scripts and assets are read next to the executable, so the client runs from any working directory.
+        const std::filesystem::path root = engine::contentRoot();
         engine::Engine engine;
         // Escape means "back" and "pause" in the menus: the game quits from its title screen.
         engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.escapeClosesWindow = false})
@@ -57,8 +61,8 @@ int main(int ac, char** av) {
             .addPlugin<systems::PhysicsPlugin>()
             .addPlugin<systems::AnimationPlugin>()
             .addPlugin<prefabs::PrefabPlugin>()
-            .addPlugin<scripting::ScriptPlugin>()
-            .addPlugin<assets::AssetPlugin>()
+            .addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::EveryFrame, root)
+            .addPlugin<assets::AssetPlugin>(root)
             .addPlugin<assets::AssetScriptingPlugin>("scripts/rtype/Assets")
             .addPlugin<hierarchy::HierarchyPlugin>()
             .addPlugin<ui::UiPlugin>()

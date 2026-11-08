@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -32,6 +33,7 @@
 #include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "config/Settings.hpp"
+#include "core/ContentRoot.hpp"
 #include "core/Engine.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
@@ -93,7 +95,9 @@ int main(int ac, char** av) {
         }
         const auto link = std::make_shared<rlss::client::ServerLink>(transport, std::move(*received));
 
-        // Connected: open the game window, on the menu.
+        // Connected: open the game window, on the menu. Scripts and assets are read next to the executable, so the
+        // client runs from any working directory.
+        const std::filesystem::path root = engine::contentRoot();
         engine::Engine engine;
         // Escape means "back" in the menus; on the main menu and in a match it still quits.
         engine
@@ -105,8 +109,8 @@ int main(int ac, char** av) {
             .addPlugin<ecs::net::NetworkPlugin>(link, link)
             .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
             // After the replication: the CarView scripts read the car transforms once interpolated.
-            .addPlugin<scripting::ScriptPlugin>()
-            .addPlugin<assets::AssetPlugin>()
+            .addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::EveryFrame, root)
+            .addPlugin<assets::AssetPlugin>(root)
             .addPlugin<assets::AssetScriptingPlugin>(std::string(rlss::client::ASSET_DECLARATIONS))
             .addPlugin<rlss::client::SessionPlugin>(transport)
             .addPlugin<rlss::client::AssetsPlugin>()

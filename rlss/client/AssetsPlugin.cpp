@@ -40,7 +40,8 @@ void AssetsPlugin::init(engine::Engine& engine) {
     const auto texture = [&manager](const std::string_view alias) {
         const ecs::TextureId id = manager.get<assets::Texture>(alias);
         if (id == ecs::NO_TEXTURE) {
-            rtype::log::warning(LOG_TAG, "no texture '", alias, "' (run the client from the repository root)");
+            rtype::log::warning(LOG_TAG, "no texture '", alias,
+                                "' (is rlss/scripts/Assets.wren next to the executable?)");
         }
         return id;
     };

@@ -18,6 +18,7 @@
 #include "CommandLine.hpp"
 #include "Logger.hpp"
 #include "MatchServer.hpp"
+#include "core/ContentRoot.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkFactory.hpp"
 #include "protocol/Protocol.hpp"
@@ -64,7 +65,8 @@ int main(int ac, char** av) {
 
         {
             // The menu runs here; each match runs on its own thread, with its own engine.
-            rlss::server::MatchServer server(transport);
+            // The scripts are read next to the executable, so the server runs from any working directory.
+            rlss::server::MatchServer server(transport, true, engine::contentRoot());
             while (g_running.load()) {
                 server.update();
                 std::this_thread::sleep_for(FRAME_SLEEP);

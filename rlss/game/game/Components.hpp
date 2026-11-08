@@ -39,7 +39,7 @@ inline constexpr input::ActionId BOOST_ID = input::makeActionId(ACTION_BOOST);
 /** @brief Tag (`ecs::Tag::name`) of the entity carrying the `ArenaShape`, found by the Wren scripts. */
 inline constexpr std::string_view ARENA_TAG = "arena";
 
-/** @brief Wren module (file path without `.wren`, relative to the working directory) of the match simulation. */
+/** @brief Wren module (file path without `.wren`, relative to the script root) of the match simulation. */
 inline constexpr std::string_view MATCH_SCRIPT_MODULE = "rlss/scripts/Match";
 /** @brief Wren module of the car physics. */
 inline constexpr std::string_view CAR_SCRIPT_MODULE = "rlss/scripts/Car";
