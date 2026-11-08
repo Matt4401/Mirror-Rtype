@@ -4,13 +4,17 @@ Console variables (CVars) are engine and game settings that can be read and chan
 `sv_gravity 12` changes the gravity on the next physics step, without a restart. The console interpreter runs
 commands (`help`, `set`, `spawn alien`...) typed as text.
 
-| Module         | Contents                                                                                | Depends on   |
-|----------------|-----------------------------------------------------------------------------------------|--------------|
-| `engine_tools` | `CVarManager`, `Console`, `splitCommandLine`, built-in commands, `ConsolePlugin`        | core, events |
+| Module              | Contents                                                                           | Depends on    |
+|---------------------|------------------------------------------------------------------------------------|---------------|
+| `engine_tools`      | `CVarManager`, `Console`, `splitCommandLine`, built-in commands, `ConsolePlugin`   | core, events  |
+| `engine_devconsole` | `DevConsolePlugin`: the in-game window, toggled with `~` / `²`                      | tools, ui     |
 
-Sources are split by role: `tools/cvars/` holds the `CVarManager`, `tools/console/` the interpreter, the built-in
-commands and the plugin. The module draws nothing and does not use raylib: a server uses it as well as a client. The in-game terminal window
-(toggled with `~` / `²`) is a separate UI plugin built on top of this one.
+Sources are split by role: `tools/common/` holds shared text helpers, `tools/cvars/` the `CVarManager`,
+`tools/console/` the interpreter, the built-in commands and the plugin, `tools/devconsole/` the window.
+
+Neither module uses raylib. `engine_tools` draws nothing, so a server uses it as well as a client. `engine_devconsole`
+draws and reads input through the engine services (`IScreenDrawService`, `IWindowService`, `IInputCaptureService`),
+so it builds headless and is tested with fake services.
 
 ## Registering and reading a CVar
 
@@ -126,3 +130,51 @@ console.addCommand("spawn", {.usage = "<prefab>",
   (rebuild a resource, resize a buffer).
 
 Not thread-safe: use the console and the cvars from the main thread.
+
+## Developer console window
+
+```cpp
+#include "tools/console/ConsolePlugin.hpp"
+#include "tools/devconsole/DevConsolePlugin.hpp"
+
+engine.addPlugin<tools::ConsolePlugin>()
+    .addPlugin<tools::DevConsolePlugin>();  // after the RenderPlugin, which provides the services it needs
+```
+
+Both clients (R-Type and RLSS) add them. The window takes the top half of the screen: the output log (typed lines in blue, errors
+in red), a scroll hint, and the input line with a blinking cursor.
+
+| Key                     | Effect                                                   |
+|-------------------------|----------------------------------------------------------|
+| `~` / `²` (left of `1`) | Opens / closes the console (`DevConsoleConfig::toggleKey`) |
+| Escape                  | Closes the console                                       |
+| Enter                   | Runs the line                                            |
+| Tab                     | Completes the word before the cursor; several candidates are listed in the output |
+| Up / Down               | Browses the history; the line being typed comes back after the newest entry |
+| Left / Right / Home / End | Moves the cursor                                       |
+| Backspace / Delete      | Erases before / after the cursor                         |
+| PageUp / PageDown, wheel | Scrolls the output                                      |
+
+Held keys repeat (`repeatDelay`, `repeatInterval`). `DevConsoleConfig` also sets the height, font, sizes and colours.
+
+The plugin is split for testing: `DevConsole` holds the state and editing logic (no device, no drawing), `InputLine`
+edits UTF-8 text with a cursor (control characters refused, byte limit enforced), `KeyRepeater` turns held keys into
+presses, `DevConsoleView` draws, and `DevConsolePlugin` wires them to the services.
+
+### Blocking the game while the console is open
+
+While the console is open it captures the input through `engine::IInputCaptureService`, provided by the
+`RenderPlugin`:
+
+- `IWindowService` then reports no key, mouse button, wheel, gamepad input or typed character. Gameplay
+  (`InputSystem`), menus (`UiPlugin`) and any other reader see an idle device without knowing about the console.
+- Only the capture owner reads the real input, through `IInputCaptureService`.
+- When the capture is released, keys still held stay hidden until released: the Escape that closes the console does
+  not also open the pause menu.
+- The character typed by the toggle key itself (`²`, `` ` ``) is discarded, so it reaches neither the console nor a
+  focused menu text field.
+
+Input is read in `preUpdate`, before the systems of the frame; the window is queued in `lateUpdate`. The plugin
+declares `optionally<ui::UiPlugin>()` and returns a low `IPlugin::priority()`, so it runs after the UI and after every
+game plugin that does not depend on it (RLSS HUD, name tags...): it stays on top whatever the order the plugins were
+added in.

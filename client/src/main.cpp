@@ -31,6 +31,8 @@
 #include "settings/SettingsPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
+#include "tools/console/ConsolePlugin.hpp"
+#include "tools/devconsole/DevConsolePlugin.hpp"
 #include "ui/UiPlugin.hpp"
 
 namespace {
@@ -64,6 +66,8 @@ int main(int ac, char** av) {
             .addPlugin<scene::ScenePlugin>()
             .addPlugin<scene::SceneScriptingPlugin>()
             .addPlugin<settings::SettingsPlugin>(config::userConfigDirectory("rtype") / "settings.toml")
+            .addPlugin<tools::ConsolePlugin>()
+            .addPlugin<tools::DevConsolePlugin>()
             .addPlugin<client::RTypeGamePlugin>();
         client::addNetworkPlugins(engine);
         engine.addPlugin<client::ClientScenesPlugin>(options->host, options->port, args.size() > 1);

@@ -3,7 +3,7 @@ target("r-type_client")
     set_targetdir("$(projectdir)")
     add_files("**.cpp")
     add_includedirs(".")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting", "engine_render", "engine_input", "engine_physics", "engine_audio", "engine_config", "engine_prefabs", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_network", "engine_network_metrics", "engine_network_asio", "rtype_game", "rtype_collision", "engine_scene", "engine_scene_scripting", "engine_settings")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scripting", "engine_render", "engine_input", "engine_physics", "engine_audio", "engine_config", "engine_prefabs", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_network", "engine_network_metrics", "engine_network_asio", "rtype_game", "rtype_collision", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_tools", "engine_devconsole")
     add_packages("asio", "wren")
     if is_plat("linux") then
         -- A libxcb built by xmake makes raylib link all its modules, used or not, and the system libxcb may lack some
