@@ -11,7 +11,6 @@
 #include <utility>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "components/RigidBody2D.hpp"
 #include "components/ScriptComponent.hpp"
 #include "components/Transform.hpp"
@@ -26,6 +25,7 @@
 #include "hierarchy/HierarchyPlugin.hpp"
 #include "level/Level.hpp"
 #include "level/LevelLoader.hpp"
+#include "log/Logger.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabParams.hpp"
@@ -78,7 +78,7 @@ void BossFightPlugin::startFight(ecs::Registry& registry, const ::prefabs::Prefa
     }
     ecs::net::replicate(registry, boss, game::KIND_BOSS_CORE);
     spawnParts(registry, boss, params);
-    log::info(LOG_TAG, "boss fight: the scroll stops until the boss is destroyed");
+    engine::log::info(LOG_TAG, "boss fight: the scroll stops until the boss is destroyed");
 }
 
 void BossFightPlugin::spawnParts(ecs::Registry& registry, const ecs::Entity boss,
@@ -92,7 +92,7 @@ void BossFightPlugin::spawnParts(ecs::Registry& registry, const ecs::Entity boss
         const auto key = [&prefix](const std::string_view field) { return prefix + std::string(field); };
         const auto role = params.get<std::string>(key("role"), "");
         if (!::prefabs::bossPartRole(role).has_value()) {
-            log::warning(LOG_TAG, "boss part ", i, ": unknown role '", role, "', skipped");
+            engine::log::warning(LOG_TAG, "boss part ", i, ": unknown role '", role, "', skipped");
             continue;
         }
         ::prefabs::PrefabParams part{{"role", role}};
@@ -129,7 +129,7 @@ void BossFightPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time&
         });
     if (_fighting && !bossLeft) {
         _fighting = false;
-        log::info(LOG_TAG, "boss destroyed");
+        engine::log::info(LOG_TAG, "boss destroyed");
         _bus->publish(BossFightEnded{});
     }
 }

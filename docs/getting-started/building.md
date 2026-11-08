@@ -19,3 +19,8 @@ xmake build
 ```
 
 This will generate the binaries directly in the project root directory.
+
+## Build the engine on its own
+
+The engine is a standalone project. See [Use the Engine in Your Own Game](use-the-engine.md) to build it alone, install
+it and use it as the `squacaron` package.

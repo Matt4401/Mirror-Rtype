@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetManager.hpp"
 #include "assets/render/RenderAssetsPlugin.hpp"
@@ -31,7 +31,6 @@
 #include "config/ConfigFile.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
-#include "core/services/IInputService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
@@ -55,7 +54,7 @@ namespace client {
 
 namespace {
 
-namespace log = rtype::log;
+namespace log = engine::log;
 
 /** @brief Tag of the messages of this plugin in the log. */
 constexpr const char* LOG_TAG = "client";
@@ -290,10 +289,7 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
 
     loadLooks(manager);
 
-    if (engine.mediator().hasService<engine::IInputService>()) {
-        client::input::setupDefaultBindings(engine.service<engine::IInputService>().mapping());
-    }
-
+    // The key bindings come from the settings: `ClientScenesPlugin` sets them up.
     ecs::Registry& registry = engine.registry();
     spawnStarfield(registry, _starSmallId, _starMediumId, _starLargeId);
     registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});

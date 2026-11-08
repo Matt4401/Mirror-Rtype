@@ -1,4 +1,4 @@
-# Mirror-Rtype
+# Squacaron (Mirror-Rtype repository)
 
 A highly decoupled, data-oriented C++23 game engine, built from scratch to power a networked multiplayer R-Type clone
 (Epitech Advanced C++ project). Binaries: `r-type_server`, `r-type_client`.

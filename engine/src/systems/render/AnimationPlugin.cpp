@@ -1,6 +1,6 @@
 /*
 ** EPITECH PROJECT, 2026
-** r-type
+** Squacaron
 ** File description:
 ** AnimationPlugin implementation.
 */

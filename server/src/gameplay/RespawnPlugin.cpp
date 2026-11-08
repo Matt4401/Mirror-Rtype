@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
@@ -14,6 +13,7 @@
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/GameplayComponents.hpp"
 #include "gameplay/GameplayEvents.hpp"
+#include "log/Logger.hpp"
 #include "prefabs/player_ship/PlayerShip.hpp"
 
 namespace rtype::server::gameplay {
@@ -82,14 +82,14 @@ void RespawnPlugin::eliminate(ecs::Registry& registry, const ecs::Entity ship) {
     if (registry.hasComponent<ecs::Transform>(ship)) {
         registry.getComponents<ecs::Transform>().get(ship).x = ELIMINATED_SHIP_X;
     }
-    log::info(LOG_TAG, "a ship lost its last life");
+    engine::log::info(LOG_TAG, "a ship lost its last life");
     _bus->publish(ShipEliminated{.ship = ship});
     bool anyLeft = false;
     registry.runSystem<Lives>([&registry, &anyLeft](const ecs::Entity other, const Lives& /*lives*/) {
         anyLeft = anyLeft || !registry.hasComponent<Eliminated>(other);
     });
     if (!anyLeft) {
-        log::info(LOG_TAG, "every ship is out: the game is lost");
+        engine::log::info(LOG_TAG, "every ship is out: the game is lost");
         _bus->publish(AllShipsEliminated{});
     }
 }
@@ -127,7 +127,7 @@ void RespawnPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& t
     for (const ecs::Entity ship : over) {
         registry.removeComponent<Respawning>(ship);
         if (isInTerrain(registry, ship)) {
-            log::info(LOG_TAG, "a ship was still in the terrain at the end of its respawn");
+            engine::log::info(LOG_TAG, "a ship was still in the terrain at the end of its respawn");
             respawn(registry, ship);
             stillRespawning = true;
             continue;

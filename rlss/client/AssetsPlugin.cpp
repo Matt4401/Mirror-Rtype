@@ -4,7 +4,6 @@
 #include <string_view>
 #include <utility>
 
-#include "Logger.hpp"
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetManager.hpp"
 #include "assets/render/RenderAssetsPlugin.hpp"
@@ -13,6 +12,7 @@
 #include "core/PluginBuilder.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "ecs/Registry.hpp"
+#include "log/Logger.hpp"
 #include "render/RenderPlugin.hpp"
 
 namespace rlss::client {
@@ -44,8 +44,8 @@ void AssetsPlugin::init(engine::Engine& engine) {
     const auto texture = [&manager](const std::string_view alias) {
         const assets::AssetStatus status = manager.status<assets::Texture>(alias);
         if (status != assets::AssetStatus::Loaded) {
-            rtype::log::warning(LOG_TAG, "texture '", alias,
-                                "' not loaded (are rlss/scripts/Assets.wren and assets/ next to the executable?)");
+            engine::log::warning(LOG_TAG, "texture '", alias,
+                                 "' not loaded (are rlss/scripts/Assets.wren and assets/ next to the executable?)");
         }
         return status == assets::AssetStatus::Unknown ? manager.fallback<assets::Texture>()
                                                       : manager.get<assets::Texture>(alias);
@@ -62,7 +62,7 @@ void AssetsPlugin::init(engine::Engine& engine) {
         }
     }
     if (loaded.arena.empty()) {
-        rtype::log::warning(LOG_TAG, "no arena texture");
+        engine::log::warning(LOG_TAG, "no arena texture");
     }
     loaded.carBody = texture("car_body");
     loaded.carDetails = texture("car_details");
@@ -83,7 +83,7 @@ void AssetsPlugin::init(engine::Engine& engine) {
     loaded.spark = texture("spark");
     loaded.font = manager.get<assets::Font>(FONT_ALIAS);
     if (loaded.font == engine::NO_FONT) {
-        rtype::log::warning(LOG_TAG, "no font '", FONT_ALIAS, "', using the default font");
+        engine::log::warning(LOG_TAG, "no font '", FONT_ALIAS, "', using the default font");
     }
     engine.registry().addResource(std::move(loaded));
 }

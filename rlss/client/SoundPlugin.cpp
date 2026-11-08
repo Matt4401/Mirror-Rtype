@@ -9,7 +9,6 @@
 #include "CameraPlugin.hpp"
 #include "ClientEvents.hpp"
 #include "HudPlugin.hpp"
-#include "Logger.hpp"
 #include "assets/AssetKinds.hpp"
 #include "assets/AssetManager.hpp"
 #include "assets/audio/AudioAssetsPlugin.hpp"
@@ -30,6 +29,7 @@
 #include "ecs/time/Time.hpp"
 #include "events/AudioEvents.hpp"
 #include "game/Components.hpp"
+#include "log/Logger.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "protocol/Protocol.hpp"
@@ -180,7 +180,7 @@ void SoundPlugin::init(engine::Engine& engine) {
         const std::string_view alias = soundAlias(static_cast<Sound>(i));
         _sounds.at(i) = manager.get<assets::Sound>(alias);
         if (_sounds.at(i) == audio::NO_SOUND && audioService.isAvailable()) {
-            rtype::log::warning(LOG_TAG, "no sound '", alias, "': this sound stays silent");
+            engine::log::warning(LOG_TAG, "no sound '", alias, "': this sound stays silent");
         }
     }
 

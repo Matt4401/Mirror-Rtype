@@ -9,6 +9,7 @@
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
 #include "events/EventBus.hpp"
+#include "gameplay/AutoFire.hpp"
 #include "net/ReplicationEvents.hpp"
 
 namespace client {
@@ -69,6 +70,21 @@ class PlayerControlPlugin final : public engine::IPlugin {
      */
     [[nodiscard]] bool paused() const noexcept { return _paused; }
 
+    /**
+     * @brief Turns auto-fire on or off: when on, one press of `shoot` starts firing and the next one stops it.
+     * @param on `true` to latch the shoot button.
+     */
+    void setAutoFire(bool on) noexcept {
+        _autoFire = on;
+        _autoFireLatch.reset();
+    }
+
+    /**
+     * @brief Tells whether auto-fire is on.
+     * @return Value given to `setAutoFire`.
+     */
+    [[nodiscard]] bool autoFire() const noexcept { return _autoFire; }
+
   private:
     /**
      * @brief The ship of this player becomes `ecs::Predicted`, every other replicated entity `ecs::Interpolated`.
@@ -91,6 +107,10 @@ class PlayerControlPlugin final : public engine::IPlugin {
     std::vector<std::function<void()>> _endings;
     /** @brief No input is sent while paused. */
     bool _paused = false;
+    /** @brief Whether the shoot button is latched (accessibility option). */
+    bool _autoFire = false;
+    /** @brief Firing state while auto-fire is on. */
+    AutoFireLatch _autoFireLatch;
 };
 
 }  // namespace client

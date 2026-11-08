@@ -13,6 +13,12 @@ target("engine_core")
     add_includedirs(".", {public = true})
     add_deps("engine_time")
 
+-- Thread-safe logger shared by the engine modules and the games.
+target("engine_log")
+    set_kind("static")
+    add_files("log/*.cpp")
+    add_includedirs(".", {public = true})
+
 target("engine_events")
     set_kind("headeronly")
     add_includedirs(".", {public = true})
@@ -95,7 +101,7 @@ target("engine_network_asio")
     set_kind("static")
     add_files("net/asio/*.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_network", "log")
+    add_deps("engine_network", "engine_log")
     add_packages("asio")
     if is_plat("windows", "mingw") then
         add_syslinks("ws2_32", "mswsock", {public = true})
@@ -164,9 +170,15 @@ target("engine_devconsole")
     add_includedirs(".", {public = true})
     add_deps("engine_tools", "engine_ui")
 
+-- Public headers, installed under include/squacaron/ by `xmake install` (and so by the squacaron package).
+target("engine_headers")
+    set_kind("headeronly")
+    add_includedirs(".", {public = true})
+    add_headerfiles("(**.hpp)", "(**.tpp)", {prefixdir = "squacaron"})
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_assets", "engine_assets_scripting", "engine_assets_scene", "engine_timeline", "engine_tools", "engine_tools_scripting", "engine_devconsole")
+    add_deps("engine_headers", "engine_log", "engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_assets", "engine_assets_scripting", "engine_assets_scene", "engine_timeline", "engine_tools", "engine_tools_scripting", "engine_devconsole")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio", "engine_assets_render", "engine_assets_audio")
     end

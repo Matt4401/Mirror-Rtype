@@ -36,6 +36,7 @@ void PlayerControlPlugin::init(engine::Engine& engine) {
     _started = events.subscribe<GameStarted>([this](const GameStarted& event) {
         _playerIndex = event.playerIndex;
         _paused = false;
+        _autoFireLatch.reset();
     });
     const auto stop = [this](const auto& /*event*/) { _playerIndex.reset(); };
     const auto ended = events.subscribe<GameEnded>(stop);
@@ -77,9 +78,14 @@ void PlayerControlPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::T
         return;
     }
     ecs::NetInput input{.sequence = ++_sequence, .held = {}, .axes = {}};
-    withLocalInput(engine.registry(), [&input](const ::input::InputState& state) {
+    bool shootHeld = false;
+    withLocalInput(engine.registry(), [this, &input, &shootHeld](const ::input::InputState& state) {
         for (const auto& [action, data] : state.actions) {
             if (action == input::ACTION_READY) {
+                continue;
+            }
+            if (_autoFire && action == rtype::game::ACTION_SHOOT) {
+                shootHeld = data.held;
                 continue;
             }
             if (data.held && input.held.size() < protocol::MAX_INPUT_BUTTONS) {
@@ -90,6 +96,10 @@ void PlayerControlPlugin::fixedUpdate(engine::Engine& engine, const ecs::time::T
             }
         }
     });
+    // The server fires while `shoot` is held, so auto-fire only has to keep it in the held list.
+    if (_autoFire && _autoFireLatch.update(shootHeld) && input.held.size() < protocol::MAX_INPUT_BUTTONS) {
+        input.held.push_back(rtype::game::ACTION_SHOOT);
+    }
     engine.eventBus().publish(ecs::net::LocalInput{.input = std::move(input)});
 }
 

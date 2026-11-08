@@ -1,6 +1,7 @@
-site_name: R-Type Engine
-site_description: Documentation for the R-Type Game Engine and Client/Server binaries
-site_author: R-Type Team
+site_name: Squacaron
+site_description: Documentation of the Squacaron engine and of the two games built on it (R-Type, RLSS)
+site_author: Squacaron Team
+site_url: https://matt4401.github.io/Mirror-Rtype/
 repo_name: Mirror-Rtype
 repo_url: https://github.com/Matt4401/Mirror-Rtype
 
@@ -38,7 +39,7 @@ plugins:
   - mkdoxy:
       projects:
         rtype:
-          src-dirs: "engine/src client/src server/src log/src common/src game/src rlss"
+          src-dirs: "engine/src client/src server/src common/src game/src rlss"
           full-doc: True
           doxy-cfg:
             FILE_PATTERNS: "*.cpp *.hpp *.h"
@@ -118,6 +119,7 @@ nav:
       - Index: getting-started/index.md
       - Building: getting-started/building.md
       - Running: getting-started/running.md
+      - Use the Engine in Your Own Game: getting-started/use-the-engine.md
       - Add the Network to a Game: getting-started/networked-game.md
       - Scripting Guide: getting-started/scripting-guide.md
   - Accessibility: accessibility/index.md

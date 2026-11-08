@@ -9,12 +9,12 @@
 #include <variant>
 #include <vector>
 
-#include "Logger.hpp"
 #include "components/InputBuffer.hpp"
 #include "components/Replicated.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "log/Logger.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/IReplicationCodec.hpp"
 #include "net/NetworkConfig.hpp"
@@ -46,7 +46,7 @@ void ReplicationCodec::writeEntity(const ecs::Registry& registry, const ecs::Ent
         transform = registry.getComponents<ecs::Transform>().get(entity);
     }
     if (!std::isfinite(transform.x) || !std::isfinite(transform.y)) {
-        log::error(LOG_TAG, "entity ", id, " has a non-finite position: not replicated");
+        engine::log::error(LOG_TAG, "entity ", id, " has a non-finite position: not replicated");
         return;
     }
     EntityNetState state;
@@ -70,8 +70,8 @@ std::vector<ecs::net::Bytes> ReplicationCodec::encodeSnapshot(const std::uint32_
     const std::size_t partCount =
         std::max<std::size_t>((entities + protocol::MAX_ENTITIES_PER_PART - 1) / protocol::MAX_ENTITIES_PER_PART, 1);
     if (partCount > protocol::MAX_SNAPSHOT_PARTS) {
-        log::error(LOG_TAG, "snapshot of ", entities, " entities does not fit in ", protocol::MAX_SNAPSHOT_PARTS,
-                   " parts: not sent");
+        engine::log::error(LOG_TAG, "snapshot of ", entities, " entities does not fit in ",
+                           protocol::MAX_SNAPSHOT_PARTS, " parts: not sent");
         return {};
     }
 

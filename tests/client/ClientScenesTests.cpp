@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cmath>
+#include <cstddef>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -14,6 +17,7 @@
 #include "core/Engine.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "core/services/IInputService.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "core/services/IWindowService.hpp"
 #include "ecs/Registry.hpp"
@@ -21,6 +25,8 @@
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/BossEffects.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
+#include "input/InputPlugin.hpp"
+#include "input/RTypeBindings.hpp"
 #include "net/ClientConnection.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -33,7 +39,9 @@
 #include "scene/ScenePlugin.hpp"
 #include "scene/scripting/SceneScriptingPlugin.hpp"
 #include "scenes/ClientScenesPlugin.hpp"
+#include "scenes/ClientSettings.hpp"
 #include "scenes/GameScenes.hpp"
+#include "scenes/MenuKit.hpp"
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "ui/UiPlugin.hpp"
@@ -59,7 +67,9 @@ struct QuietWindow final : engine::IWindowService {
     void endFrame() override {}
     [[nodiscard]] int width() const noexcept override { return 1280; }
     [[nodiscard]] int height() const noexcept override { return 720; }
-    [[nodiscard]] bool isKeyDown(engine::Key /*key*/) const noexcept override { return false; }
+    [[nodiscard]] bool isKeyDown(engine::Key key) const noexcept override {
+        return keys.at(static_cast<std::size_t>(key));
+    }
     [[nodiscard]] bool isGamepadAvailable(int /*gamepad*/) const noexcept override { return false; }
     [[nodiscard]] bool isGamepadButtonDown(int /*gamepad*/, engine::GamepadButton /*button*/) const noexcept override {
         return false;
@@ -73,6 +83,8 @@ struct QuietWindow final : engine::IWindowService {
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return {.x = -1.0F, .y = -1.0F}; }
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return 0.0F; }
     [[nodiscard]] char32_t nextTypedCharacter() noexcept override { return U'\0'; }
+
+    std::array<bool, 256> keys{};
 };
 
 /** @brief Draw service that draws nothing. */
@@ -149,6 +161,7 @@ class ClientScenesTest : public ::testing::Test {
         engine.setFixedDeltaTime(DT);
         const auto connection = std::make_shared<ecs::net::ClientConnection>(nullptr);
         engine.addPlugin<FakeServicesPlugin>()
+            .addPlugin<input::InputPlugin>()
             .addPlugin<hierarchy::HierarchyPlugin>()
             .addPlugin<ui::UiPlugin>()
             .addPlugin<scene::ScenePlugin>()
@@ -201,6 +214,14 @@ class ClientScenesTest : public ::testing::Test {
         receive(protocol::LobbyUpdate{.roomId = ROOM, .slots = {{.clientId = 1, .ready = false}}});
     }
 
+    [[nodiscard]] config::Settings& settings() { return engine.getPlugin<settings::SettingsPlugin>().settings(); }
+
+    void setKey(engine::Key key, bool down) {
+        auto& window = static_cast<QuietWindow&>(engine.service<engine::IWindowService>());
+        window.keys.at(static_cast<std::size_t>(key)) = down;
+        frame();
+    }
+
     [[nodiscard]] bool showsText(std::string_view text) {
         bool found = false;
         engine.registry().runSystem<ui::UiText>(
@@ -223,6 +244,66 @@ TEST_F(ClientScenesTest, SettingsOpenOverTheTitleAndGoBack) {
     engine.eventBus().publish(ui::UiBackEvent{});
     frame();
     EXPECT_EQ(top(), "Title");
+}
+
+TEST_F(ClientScenesTest, TheControlsOpenFromTheSettingsAndGoBack) {
+    click("title.settings");
+    click("settings.controls");
+    EXPECT_EQ(top(), "Controls");
+    engine.eventBus().publish(ui::UiBackEvent{});
+    frame();
+    EXPECT_EQ(top(), "Settings");
+}
+
+TEST_F(ClientScenesTest, AKeyPressedAfterChoosingAControlIsSaved) {
+    click("title.settings");
+    click("settings.controls");
+    click("controls.key.shoot");
+    setKey(engine::Key::F, true);
+    setKey(engine::Key::F, false);
+    EXPECT_EQ(settings().getString(client::settings_keys::controlKey(client::input::Control::Shoot)), "F");
+    EXPECT_TRUE(engine.service<engine::IInputService>().mapping().hasKey("shoot", engine::Key::F));
+    EXPECT_FALSE(engine.service<engine::IInputService>().mapping().hasKey("shoot", engine::Key::Space));
+}
+
+TEST_F(ClientScenesTest, EscapeCancelsTheWaitForAKey) {
+    click("title.settings");
+    click("settings.controls");
+    click("controls.key.shoot");
+    engine.eventBus().publish(ui::UiBackEvent{});
+    frame();
+    EXPECT_EQ(top(), "Controls");
+    setKey(engine::Key::F, true);
+    EXPECT_EQ(settings().getString(client::settings_keys::controlKey(client::input::Control::Shoot)), "Space");
+}
+
+TEST_F(ClientScenesTest, ResetPutsTheDefaultKeysBack) {
+    settings().set(client::settings_keys::controlKey(client::input::Control::Shoot), std::string("F"));
+    click("title.settings");
+    click("settings.controls");
+    click("controls.reset");
+    EXPECT_EQ(settings().getString(client::settings_keys::controlKey(client::input::Control::Shoot)), "Space");
+}
+
+TEST_F(ClientScenesTest, TheTextSizeButtonScalesTheMenus) {
+    click("title.settings");
+    click("settings.scale");
+    EXPECT_EQ(top(), "Settings");
+    EXPECT_FLOAT_EQ(static_cast<float>(settings().getNumber(client::settings_keys::UI_SCALE)), 1.15F);
+    EXPECT_FLOAT_EQ(client::menu::scale(engine.registry()), 1.15F);
+    bool scaledPanel = false;
+    engine.registry().runSystem<ui::UiRect>([&scaledPanel](ecs::Entity /*entity*/, const ui::UiRect& rect) {
+        scaledPanel = scaledPanel || std::abs(rect.width - (500.0F * 1.15F)) < 0.01F;
+    });
+    EXPECT_TRUE(scaledPanel);
+    EXPECT_TRUE(showsText("SETTINGS"));
+}
+
+TEST_F(ClientScenesTest, TheAutoFireToggleReachesThePlayerControls) {
+    click("title.settings");
+    engine.eventBus().publish(ui::UiToggleChangedEvent{.entity = 0, .action = "settings.autofire", .on = true});
+    frame();
+    EXPECT_TRUE(engine.getPlugin<client::PlayerControlPlugin>().autoFire());
 }
 
 TEST_F(ClientScenesTest, FromTheTitleToARoom) {

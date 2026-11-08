@@ -5,12 +5,12 @@
 #include <optional>
 
 #include "LogTag.hpp"
-#include "Logger.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "gameplay/Targeting.hpp"
 #include "hierarchy/Hierarchy.hpp"
+#include "log/Logger.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabParams.hpp"
@@ -35,7 +35,7 @@ bool bindPosition(scripting::WrenVM& vm) {
     binder.property<&ecs::Transform::x>("x").property<&ecs::Transform::y>("y");
     const auto result = vm.interpret(POSITION_MODULE, binder.generateWrenClass());
     if (!result) {
-        log::error(LOG_TAG, "cannot bind ", POSITION_MODULE, " for the scripts: ", result.error());
+        engine::log::error(LOG_TAG, "cannot bind ", POSITION_MODULE, " for the scripts: ", result.error());
         return false;
     }
     return true;
@@ -202,7 +202,7 @@ bool bindCombat(scripting::WrenVM& vm) {
     vm.registerForeignMethod<&combatFireAt>(COMBAT_MODULE, "Combat", true, "fireAt(_,_,_,_,_,_)");
     const auto result = vm.interpret(COMBAT_MODULE, COMBAT_SOURCE);
     if (!result) {
-        log::error(LOG_TAG, "cannot bind ", COMBAT_MODULE, " for the scripts: ", result.error());
+        engine::log::error(LOG_TAG, "cannot bind ", COMBAT_MODULE, " for the scripts: ", result.error());
         return false;
     }
     return true;

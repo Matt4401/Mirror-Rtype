@@ -2,16 +2,17 @@
 
 #include <string_view>
 
-#include "LogLevel.hpp"
+#include "log/LogLevel.hpp"
 
 /**
- * @brief Logger library (xmake target `log`), usable by the engine, the network module, the server and the client.
+ * @brief Logger library (xmake target `engine_log`), usable by the engine, the network module, the server and the
+ * client.
  *
  * Each line looks like `[  12.345] LEVEL [tag] message`: the time since the program start in seconds, the severity
  * and the subsystem that logs. Debug and info go to stdout, warnings and errors to stderr. Thread-safe: the network
  * thread and the game thread can log at the same time without mixing their lines.
  */
-namespace rtype::log {
+namespace engine::log {
 
 /** @brief Turns the debug messages on or off (`--logs`). Thread-safe. */
 void setVerbose(bool enabled) noexcept;
@@ -61,6 +62,6 @@ void write(Level level, std::string_view tag, std::string_view message);
 
 }  // namespace detail
 
-}  // namespace rtype::log
+}  // namespace engine::log
 
 #include "Logger.tpp"  // IWYU pragma: export
