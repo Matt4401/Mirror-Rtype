@@ -21,7 +21,15 @@ void ScriptPlugin::init(engine::Engine& engine) {
 }
 
 void ScriptPlugin::update(engine::Engine& /*engine*/, const ecs::time::Time& time) {
-    _scriptSystem.update(time.deltaTime);
+    if (_tick == ScriptTick::EveryFrame) {
+        _scriptSystem.update(time.deltaTime);
+    }
+}
+
+void ScriptPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time& time) {
+    if (_tick == ScriptTick::FixedStep) {
+        _scriptSystem.update(time.deltaTime);
+    }
 }
 
 void ScriptPlugin::shutdown(engine::Engine& /*engine*/) { _scriptSystem.stopForwardingCollisions(); }

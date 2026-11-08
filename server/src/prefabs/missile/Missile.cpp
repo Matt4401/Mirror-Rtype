@@ -6,6 +6,7 @@
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "game/ReplicationCodec.hpp"
 #include "prefabs/CollisionCategories.hpp"
 #include "prefabs/PrefabParams.hpp"
 
@@ -20,8 +21,8 @@ void buildMissile(ecs::Entity e, ecs::Registry& registry, PrefabParams const& pa
                                                    .bullet = true,
                                                });
     registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{
-                                                  .halfWidth = 8.0F,
-                                                  .halfHeight = 3.0F,
+                                                  .halfWidth = rtype::game::MISSILE_WIDTH / 2.0F,
+                                                  .halfHeight = rtype::game::MISSILE_HEIGHT / 2.0F,
                                                   .categoryBits = collision::ENEMY_SHOT,
                                                   .maskBits = collision::ENEMY_SHOT_MASK,
                                                   .isSensor = true,

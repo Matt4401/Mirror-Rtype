@@ -21,10 +21,40 @@ inline constexpr protocol::EntityKind KIND_PLAYER_SHIP = protocol::makeEntityKin
 inline constexpr protocol::EntityKind KIND_PLAYER_BULLET = protocol::makeEntityKind("player_bullet");
 /** @brief Kind of the basic Bydos enemy. */
 inline constexpr protocol::EntityKind KIND_ALIEN_SCOUT = protocol::makeEntityKind("alien_scout");
+/** @brief Kind of the boss ending a level; its `health` is the hit points left. */
+inline constexpr protocol::EntityKind KIND_BOSS_CORE = protocol::makeEntityKind("boss_core");
+/** @brief Kind of an enemy shot, fired by a boss script. */
+inline constexpr protocol::EntityKind KIND_MISSILE = protocol::makeEntityKind("missile");
+/** @brief Kind of a power-up, dropped by a boss script and picked up by touching it. */
+inline constexpr protocol::EntityKind KIND_POWER_UP = protocol::makeEntityKind("power_up");
+/** @brief Width of the boss hitbox, in pixels; the clients draw it at this size. */
+inline constexpr float BOSS_CORE_WIDTH = 128.0F;
+/** @brief Height of the boss hitbox, in pixels. */
+inline constexpr float BOSS_CORE_HEIGHT = 160.0F;
+/** @brief Width of a missile hitbox, in pixels. */
+inline constexpr float MISSILE_WIDTH = 16.0F;
+/** @brief Height of a missile hitbox, in pixels. */
+inline constexpr float MISSILE_HEIGHT = 6.0F;
+/** @brief Diameter of a power-up hitbox, in pixels. */
+inline constexpr float POWER_UP_SIZE = 24.0F;
+/**
+ * @brief Kind of a terrain block: a solid block scrolling with the level, `TERRAIN_BLOCK_WIDTH` wide. Its height is
+ * `subtype * TERRAIN_HEIGHT_UNIT` pixels, centered on its position.
+ */
+inline constexpr protocol::EntityKind KIND_OBSTACLE = protocol::makeEntityKind("obstacle");
+/**
+ * @brief Width of a terrain block, in pixels. Wide blocks keep a section on the screen down to a few replicated
+ * entities; a section is as long as a whole number of blocks.
+ */
+inline constexpr float TERRAIN_BLOCK_WIDTH = 256.0F;
+/** @brief Pixels per unit of a terrain column's `subtype`: up to 510 px fit in the byte. */
+inline constexpr float TERRAIN_HEIGHT_UNIT = 2.0F;
 /** @brief `EntityNetState::flags` bit: the entity is alive. */
 inline constexpr std::uint8_t FLAG_ALIVE = 0x01;
 /** @brief `EntityNetState::flags` bit: the entity is shooting. */
 inline constexpr std::uint8_t FLAG_SHOOTING = 0x02;
+/** @brief `EntityNetState::flags` bit: the ship just respawned and cannot be hit; the clients make it blink. */
+inline constexpr std::uint8_t FLAG_INVULNERABLE = 0x04;
 
 /**
  * @brief Fields of `protocol::EntityState` the engine does not know, as a component.

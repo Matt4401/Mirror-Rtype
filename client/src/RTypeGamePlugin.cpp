@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -26,7 +27,9 @@
 #include "core/services/IInputService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "gameplay/ShipBlink.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
@@ -54,6 +57,14 @@ constexpr float BULLET_SCALE = 1.5F;
 constexpr float BULLET_FRAME_DURATION = 0.015F;
 constexpr float DEFAULT_FRAME_DURATION = 0.12F;
 constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
+/** @brief Side of the square the renderer draws for an untextured `Renderable`, before the `Transform` scale. */
+constexpr float PLACEHOLDER_PIXELS = 32.0F;
+/** @brief Height of an obstacle whose subtype carries none (spawned by a script): the default 64 px block. */
+constexpr float DEFAULT_OBSTACLE_HEIGHT = 64.0F;
+constexpr ecs::Rgba COLOR_BOSS = {.r = 170, .g = 60, .b = 200, .a = 255};
+constexpr ecs::Rgba COLOR_MISSILE = {.r = 255, .g = 90, .b = 60, .a = 255};
+constexpr ecs::Rgba COLOR_POWER_UP = {.r = 80, .g = 220, .b = 120, .a = 255};
+constexpr ecs::Rgba COLOR_TERRAIN = {.r = 110, .g = 90, .b = 70, .a = 255};
 constexpr ecs::Rgba COLOR_STAR_SMALL = {.r = 200, .g = 200, .b = 220, .a = 80};
 constexpr ecs::Rgba COLOR_STAR_MEDIUM = {.r = 220, .g = 220, .b = 255, .a = 150};
 constexpr ecs::Rgba COLOR_STAR_LARGE = {.r = 255, .g = 255, .b = 255, .a = 220};
@@ -137,6 +148,27 @@ void applySprite(ecs::Registry& registry, const ecs::Entity entity, const Entity
                                                            });
 }
 
+/**
+ * @brief Draws a replicated entity as a plain colored box, for the entities without a sprite yet (boss, terrain).
+ * @param registry Registry owning the entity.
+ * @param entity Replicated entity.
+ * @param width Width on screen, in pixels.
+ * @param height Height on screen, in pixels.
+ * @param color Fill color.
+ * @param layer Draw layer.
+ */
+void applyBox(ecs::Registry& registry, const ecs::Entity entity, const float width, const float height,
+              const ecs::Rgba color, const int layer) {
+    auto& transform = registry.getComponents<ecs::Transform>().get(entity);
+    transform.scaleX = width / PLACEHOLDER_PIXELS;
+    transform.scaleY = height / PLACEHOLDER_PIXELS;
+    registry.addComponent<ecs::Renderable>(entity, ecs::Renderable{
+                                                       .origin = {.x = 0.5F, .y = 0.5F},
+                                                       .tint = color,
+                                                       .layer = layer,
+                                                   });
+}
+
 }  // namespace
 
 void RTypeGamePlugin::build(engine::PluginBuilder& builder) {
@@ -208,6 +240,18 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = 0,
                         .layer = 2,
                     });
+    } else if (event.kind == rtype::game::KIND_BOSS_CORE) {
+        applyBox(registry, event.entity, rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT, COLOR_BOSS, 2);
+    } else if (event.kind == rtype::game::KIND_OBSTACLE) {
+        // A terrain column carries its height in its subtype; the columns touch, so the terrain looks continuous.
+        const std::uint8_t units = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
+        const float height =
+            units == 0 ? DEFAULT_OBSTACLE_HEIGHT : static_cast<float>(units) * rtype::game::TERRAIN_HEIGHT_UNIT;
+        applyBox(registry, event.entity, rtype::game::TERRAIN_BLOCK_WIDTH, height, COLOR_TERRAIN, 1);
+    } else if (event.kind == rtype::game::KIND_MISSILE) {
+        applyBox(registry, event.entity, rtype::game::MISSILE_WIDTH, rtype::game::MISSILE_HEIGHT, COLOR_MISSILE, 2);
+    } else if (event.kind == rtype::game::KIND_POWER_UP) {
+        applyBox(registry, event.entity, rtype::game::POWER_UP_SIZE, rtype::game::POWER_UP_SIZE, COLOR_POWER_UP, 2);
     } else if (event.kind == rtype::game::KIND_PLAYER_BULLET) {
         applySprite(registry, event.entity,
                     {
@@ -222,6 +266,11 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .loop = false,
                     });
     }
+}
+
+void RTypeGamePlugin::update(engine::Engine& engine, const ecs::time::Time& time) {
+    _elapsed += time.deltaTime;
+    gameplay::blinkInvulnerableShips(engine.registry(), _elapsed);
 }
 
 void RTypeGamePlugin::shutdown(engine::Engine& engine) {

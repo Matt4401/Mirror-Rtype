@@ -24,6 +24,9 @@ A collectible bonus slowly drifting to the left with the scrolling. Its collider
 
 Only players can pick it up. Shots, enemies and obstacles go through it. See [Collision Categories](collision-categories.md).
 
+In R-Type, a ship touching it picks it up: the power-up disappears and its player fires every 0.08 s instead of 0.2 s
+for 5 seconds (`RAPID_FIRE_COOLDOWN`, `RAPID_FIRE_DURATION` in `server/src/gameplay/CombatPlugin.hpp`).
+
 ## Parameters
 
 Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`, `scaleY`) plus:
@@ -34,7 +37,7 @@ Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `POWER_UP_RADIUS` | `12` px | Radius of the pickup area. |
+| `POWER_UP_RADIUS` | `12` px | Radius of the pickup area: half of `rtype::game::POWER_UP_SIZE`, shared with the clients. |
 
 ## API
 
