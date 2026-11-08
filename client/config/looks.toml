@@ -86,7 +86,8 @@ scale = 1.2
 flip_x = true
 
 # --- Enemy shots: a stretched shot shrinking into a round, played once then held on the round ---
-# Three frames side by side from x = 151: 63, 66 then 16 px wide. Mirrored, so that the round leads to the left.
+# Three frames side by side from x = 151: 63, 66 then 16 px wide. Mirrored, so that the round leads, and turned
+# towards where each shot flies.
 
 # Shots of the alien gunners (subtype 1): red.
 [[entity]]
@@ -96,9 +97,10 @@ texture = "sprites/r-typesheet9_red.png"
 frame_x = 151
 frame_height = 16
 frame_widths = [63, 66, 16]
-frame_duration = 0.08
+frame_duration = 0.16
 loop = false
 flip_x = true
+face_motion = true
 
 # Shots of the alien elites (subtype 2): blue.
 [[entity]]
@@ -108,6 +110,7 @@ texture = "sprites/r-typesheet9_blue.png"
 frame_x = 151
 frame_height = 16
 frame_widths = [63, 66, 16]
-frame_duration = 0.08
+frame_duration = 0.16
 loop = false
 flip_x = true
+face_motion = true
