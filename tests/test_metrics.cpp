@@ -82,6 +82,7 @@ struct FakeWindow final : engine::IWindowService {
     [[nodiscard]] bool isMouseButtonReleased(engine::MouseButton /*button*/) const noexcept override { return false; }
     [[nodiscard]] engine::MousePosition mousePosition() const noexcept override { return {.x = 0.0F, .y = 0.0F}; }
     [[nodiscard]] float mouseWheelDelta() const noexcept override { return 0.0F; }
+    [[nodiscard]] char32_t nextTypedCharacter() noexcept override { return 0; }
 };
 
 /** @brief Records what is drawn, to check the overlay reaches the screen. */
@@ -97,6 +98,8 @@ struct FakeScreenDraw final : engine::IScreenDrawService {
                   const ecs::Rgba& /*color*/, engine::FontId /*font*/) override {
         texts.emplace_back(text);
     }
+    void drawTexture(ecs::TextureId /*texture*/, const ecs::TextureRect& /*source*/, const engine::ScreenRect& /*dest*/,
+                     float /*rotation*/, const ecs::Rgba& /*tint*/) override {}
 
     std::vector<engine::ScreenRect> rects;
     std::vector<std::string> texts;
