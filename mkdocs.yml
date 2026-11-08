@@ -91,6 +91,7 @@ nav:
       - Missile: prefabs/missile.md
       - Player Bullet: prefabs/player-bullet.md
       - Alien Scout: prefabs/alien-scout.md
+      - Alien Gunner: prefabs/alien-gunner.md
       - Boss Core: prefabs/boss-core.md
       - Boss Part: prefabs/boss-part.md
       - Obstacle: prefabs/obstacle.md

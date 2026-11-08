@@ -93,7 +93,7 @@ class LevelDirectorPlugin final : public engine::IPlugin {
      * @brief Prefabs a level may use, per event type, and the parameters they read: the level catalog given to
      * `level::loadLevel`.
      *
-     * A `spawn` event may name `alien_scout`, a `boss` event `boss_core`.
+     * A `spawn` event may name `alien_scout` or `alien_gunner`, a `boss` event `boss_core`.
      *
      * @param type Event type.
      * @param prefab Prefab name.

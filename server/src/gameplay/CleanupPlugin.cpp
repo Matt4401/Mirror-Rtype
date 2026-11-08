@@ -23,7 +23,8 @@ namespace {
  * @return True for the kinds removed past the left edge.
  */
 bool flowsLeft(const std::uint32_t kind) noexcept {
-    return kind == game::KIND_ALIEN_SCOUT || kind == game::KIND_MISSILE || kind == game::KIND_POWER_UP;
+    return kind == game::KIND_ALIEN_SCOUT || kind == game::KIND_ALIEN_GUNNER || kind == game::KIND_MISSILE ||
+           kind == game::KIND_POWER_UP;
 }
 
 }  // namespace

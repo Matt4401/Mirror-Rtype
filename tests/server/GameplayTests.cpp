@@ -40,6 +40,7 @@
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabPlugin.hpp"
+#include "prefabs/alien_gunner/AlienGunner.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
 #include "prefabs/boss_part/BossPart.hpp"
@@ -521,6 +522,63 @@ TEST_F(GameplayTest, AimedMissilesLeavingByAnyEdgeAreDestroyed) {
     EXPECT_FALSE(registry().isAlive(up));
     EXPECT_FALSE(registry().isAlive(down));
     EXPECT_FALSE(registry().isAlive(right));
+}
+
+namespace {
+
+/** @brief Spawns a motionless alien gunner, as the level director does. */
+ecs::Entity spawnGunner(ecs::Registry& registry, const float x, const float y) {
+    const ecs::Entity gunner = registry.spawnEntity();
+    ::prefabs::buildAlienGunner(gunner, registry, {{"x", x}, {"y", y}, {"speed", 0.0F}});
+    registry.addComponent(gunner, game::EntityNetState{});
+    ecs::net::replicate(registry, gunner, game::KIND_ALIEN_GUNNER);
+    return gunner;
+}
+
+}  // namespace
+
+TEST_F(GameplayWithoutLevelTest, GunnerFiresAtTheNearestShip) {
+    spawnShip(0, 200.0F, 600.0F);
+    spawnGunner(registry(), 900.0F, 360.0F);
+    run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL / 2.0F - 0.1F);
+    EXPECT_TRUE(entitiesOf(game::KIND_MISSILE).empty()) << "the first shot comes half an interval after it appears";
+
+    run(0.2F);
+    const auto missiles = entitiesOf(game::KIND_MISSILE);
+    ASSERT_EQ(missiles.size(), 1U);
+    const auto& body = registry().getComponents<ecs::RigidBody2D>().get(missiles.front());
+    EXPECT_LT(body.velocityX, 0.0F);
+    EXPECT_GT(body.velocityY, 0.0F) << "down towards the ship";
+    EXPECT_NEAR(std::hypot(body.velocityX, body.velocityY), ::prefabs::DEFAULT_ALIEN_GUNNER_SHOT_SPEED, 1.0);
+
+    run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL);
+    EXPECT_EQ(entitiesOf(game::KIND_MISSILE).size(), 2U) << "one shot per interval";
+}
+
+TEST_F(GameplayWithoutLevelTest, GunnerFiresStraightAheadWithoutATarget) {
+    spawnGunner(registry(), 900.0F, 360.0F);
+    run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL);
+    const auto missiles = entitiesOf(game::KIND_MISSILE);
+    ASSERT_EQ(missiles.size(), 1U);
+    const auto& body = registry().getComponents<ecs::RigidBody2D>().get(missiles.front());
+    EXPECT_LT(body.velocityX, 0.0F);
+    EXPECT_FLOAT_EQ(body.velocityY, 0.0F);
+}
+
+TEST_F(GameplayWithoutLevelTest, GunnerHoldsItsFireOffScreen) {
+    spawnShip(0, 200.0F, 360.0F);
+    spawnGunner(registry(), 1400.0F, 360.0F);
+    run(::prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL * 3.0F);
+    EXPECT_TRUE(entitiesOf(game::KIND_MISSILE).empty());
+}
+
+TEST_F(GameplayWithoutLevelTest, GunnerDiesOnTheFirstHitAndScores) {
+    const ecs::Entity ship = spawnShip(1, 200.0F, LANE_Y);
+    const ecs::Entity gunner = spawnGunner(registry(), 500.0F, LANE_Y);
+    shoot(ship);
+    run(0.5F);
+    EXPECT_FALSE(registry().isAlive(gunner));
+    EXPECT_EQ(combat().score(1), POINTS_PER_KILL);
 }
 
 TEST_F(GameplayTest, EnemiesThatLeaveTheScreenAreDestroyed) {
@@ -1140,6 +1198,7 @@ TEST_F(ShippedBossScriptTest, BossScriptAttacksAndDropsAPowerUpWhenKilled) {
 TEST(LevelDirectorPluginTest, EachEventTypeHasItsPrefabs) {
     EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_scout").has_value());
     EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("boss", "boss_core").has_value());
+    EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_gunner").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "boss_core").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("boss", "alien_scout").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "dragon").has_value());

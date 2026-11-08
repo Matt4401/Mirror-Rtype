@@ -72,6 +72,10 @@ constexpr float DEFAULT_OBSTACLE_HEIGHT = 64.0F;
 constexpr ecs::Rgba COLOR_BOSS = {.r = 170, .g = 60, .b = 200, .a = 255};
 /** @brief Side of the box drawn for a boss part until boss looks are configured, in pixels. */
 constexpr float BOSS_PART_PLACEHOLDER_SIZE = 48.0F;
+/** @brief Side of the box drawn for an alien gunner until its look is configured, in pixels. */
+constexpr float GUNNER_PLACEHOLDER_SIZE = 40.0F;
+/** @brief Color of an alien gunner drawn as a box. */
+constexpr ecs::Rgba COLOR_GUNNER = {.r = 90, .g = 200, .b = 230, .a = 255};
 /** @brief Color of an explosion burst drawn as a box. */
 constexpr ecs::Rgba COLOR_EXPLOSION = {.r = 255, .g = 190, .b = 70, .a = 255};
 /** @brief Draw layer of the explosions, in front of the bosses. */
@@ -261,6 +265,8 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .startY = 0,
                         .layer = 2,
                     });
+    } else if (event.kind == rtype::game::KIND_ALIEN_GUNNER) {
+        applyBox(registry, event.entity, GUNNER_PLACEHOLDER_SIZE, GUNNER_PLACEHOLDER_SIZE, COLOR_GUNNER, 2);
     } else if (event.kind == rtype::game::KIND_BOSS_CORE || event.kind == rtype::game::KIND_BOSS_PART) {
         // The subtype picks the look: the variant of a boss, the look of a part.
         const bool part = event.kind == rtype::game::KIND_BOSS_PART;

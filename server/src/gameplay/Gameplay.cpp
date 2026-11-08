@@ -6,6 +6,7 @@
 #include "gameplay/BossFightPlugin.hpp"
 #include "gameplay/CleanupPlugin.hpp"
 #include "gameplay/CombatPlugin.hpp"
+#include "gameplay/EnemyFirePlugin.hpp"
 #include "gameplay/LevelDirectorPlugin.hpp"
 #include "gameplay/RespawnPlugin.hpp"
 #include "gameplay/TerrainPlugin.hpp"
@@ -21,6 +22,7 @@ void addGameplayPlugins(engine::Engine& engine, const std::shared_ptr<const leve
     engine.addPlugin<RespawnPlugin>();
     engine.addPlugin<TerrainPlugin>();
     engine.addPlugin<CleanupPlugin>();
+    engine.addPlugin<EnemyFirePlugin>();
 }
 
 }  // namespace rtype::server::gameplay

@@ -21,6 +21,8 @@ inline constexpr protocol::EntityKind KIND_PLAYER_SHIP = protocol::makeEntityKin
 inline constexpr protocol::EntityKind KIND_PLAYER_BULLET = protocol::makeEntityKind("player_bullet");
 /** @brief Kind of the basic Bydos enemy. */
 inline constexpr protocol::EntityKind KIND_ALIEN_SCOUT = protocol::makeEntityKind("alien_scout");
+/** @brief Kind of the enemy that fires at the ships. */
+inline constexpr protocol::EntityKind KIND_ALIEN_GUNNER = protocol::makeEntityKind("alien_gunner");
 /** @brief Kind of the boss ending a level; its `subtype` is its variant, its `health` the hit points left. */
 inline constexpr protocol::EntityKind KIND_BOSS_CORE = protocol::makeEntityKind("boss_core");
 /** @brief Kind of a piece of a boss (weak point, turret, armor); its `subtype` is its look, its `health` the hit points

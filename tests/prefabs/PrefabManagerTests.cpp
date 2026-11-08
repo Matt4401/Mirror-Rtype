@@ -17,11 +17,13 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
+#include "prefabs/EnemyGun.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/PrefabRegistry.hpp"
+#include "prefabs/alien_gunner/AlienGunner.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
 #include "prefabs/boss_part/BossPart.hpp"
@@ -196,6 +198,26 @@ TEST(PrefabManager, AlienScoutHasNoScriptYet) {
     EXPECT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).bodyType, ecs::BodyType::Kinematic);
     EXPECT_FLOAT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).velocityX, prefabs::DEFAULT_ALIEN_SCOUT_SPEED);
     EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
+}
+
+TEST(PrefabManager, AlienGunnerIsAnEnemyWithAGun) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::ALIEN_GUNNER_PREFAB, buffer, {});
+    manager.spawn(prefabs::ALIEN_GUNNER_PREFAB, buffer, {{"fire_interval", 0.01F}, {"shot_speed", 99999.0F}});
+    buffer.flush(registry);
+
+    EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).velocityX, prefabs::DEFAULT_ALIEN_GUNNER_SPEED);
+    const auto& gun = registry.getComponents<prefabs::EnemyGun>().get(0);
+    EXPECT_FLOAT_EQ(gun.interval, prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL);
+    EXPECT_FLOAT_EQ(gun.cooldown, prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL / 2.0F);
+    const auto& clamped = registry.getComponents<prefabs::EnemyGun>().get(1);
+    EXPECT_FLOAT_EQ(clamped.interval, 0.3F);
+    EXPECT_FLOAT_EQ(clamped.shotSpeed, 900.0F);
 }
 
 TEST(PrefabManager, BossCoreIsAnArmoredEnemy) {

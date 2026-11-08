@@ -1,19 +1,14 @@
 #include "gameplay/ScriptBindings.hpp"
 
 #include <algorithm>
-#include <cmath>
-#include <limits>
 #include <optional>
-#include <utility>
 
 #include "LogTag.hpp"
 #include "Logger.hpp"
-#include "components/Replicated.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
-#include "game/ReplicationCodec.hpp"
-#include "gameplay/GameplayComponents.hpp"
+#include "gameplay/Targeting.hpp"
 #include "hierarchy/Hierarchy.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
@@ -135,36 +130,19 @@ void combatPartRole(scripting::ForeignCall& call) {
 void combatNearestShip(scripting::ForeignCall& call) {
     const auto x = call.arg<double>(1);
     const auto y = call.arg<double>(2);
-    ecs::Registry* registry = registryOf(call);
+    const ecs::Registry* registry = registryOf(call);
     if (!x || !y) {
         return;
     }
-    if (registry == nullptr) {
-        call.retNull();
-        return;
-    }
-    std::optional<std::pair<double, double>> nearest;
-    double best = std::numeric_limits<double>::infinity();
-    registry->runSystem<ecs::Transform, ecs::Replicated>(
-        [&](const ecs::Entity entity, const ecs::Transform& transform, const ecs::Replicated& replicated) {
-            if (replicated.kind != game::KIND_PLAYER_SHIP || registry->hasComponent<Respawning>(entity)) {
-                return;
-            }
-            const double dx = transform.x - *x;
-            const double dy = transform.y - *y;
-            const double distance = (dx * dx) + (dy * dy);
-            if (distance < best) {
-                best = distance;
-                nearest = {transform.x, transform.y};
-            }
-        });
-    if (!nearest) {
+    const std::optional<AimPoint> ship =
+        registry != nullptr ? nearestShip(*registry, static_cast<float>(*x), static_cast<float>(*y)) : std::nullopt;
+    if (!ship) {
         call.retNull();
         return;
     }
     call.retList();
-    call.listAppend(nearest->first);
-    call.listAppend(nearest->second);
+    call.listAppend(ship->x);
+    call.listAppend(ship->y);
 }
 
 /**
@@ -185,18 +163,11 @@ void combatFireAt(scripting::ForeignCall& call) {
     if (!x || !y || !targetX || !targetY || !speed || scripts == nullptr || scripts->getPrefabManager() == nullptr) {
         return;
     }
-    const double clamped = std::clamp(*speed, MIN_AIMED_SHOT_SPEED, MAX_AIMED_SHOT_SPEED);
-    double dx = *targetX - *x;
-    double dy = *targetY - *y;
-    const double length = std::hypot(dx, dy);
-    if (length < 1.0) {
-        dx = -1.0;
-        dy = 0.0;
-    } else {
-        dx /= length;
-        dy /= length;
-    }
-    const ::prefabs::PrefabParams params{{"x", *x}, {"y", *y}, {"speed", dx * clamped}, {"speed_y", dy * clamped}};
+    const auto clamped = static_cast<float>(std::clamp(*speed, MIN_AIMED_SHOT_SPEED, MAX_AIMED_SHOT_SPEED));
+    const Velocity velocity =
+        aimAt(static_cast<float>(*x), static_cast<float>(*y),
+              AimPoint{.x = static_cast<float>(*targetX), .y = static_cast<float>(*targetY)}, clamped);
+    const ::prefabs::PrefabParams params{{"x", *x}, {"y", *y}, {"speed", velocity.x}, {"speed_y", velocity.y}};
     const systems::ScriptSystem::SpawnDecorator decorator = scripts->spawnDecorator();
     if (decorator == nullptr) {
         (void)scripts->getPrefabManager()->spawn(::prefabs::MISSILE_PREFAB, scripts->getCommandBuffer(), params);

@@ -24,6 +24,7 @@
 #include "level/Level.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/PrefabParams.hpp"
+#include "prefabs/alien_gunner/AlienGunner.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
 #include "protocol/Messages.hpp"
@@ -60,6 +61,9 @@ std::optional<std::vector<std::string>> LevelDirectorPlugin::levelPrefab(const s
                                                                          const std::string_view prefab) {
     if (type == level::EVENT_SPAWN && prefab == ::prefabs::ALIEN_SCOUT_PREFAB) {
         return std::vector<std::string>{"speed", "z", "rotation", "scaleX", "scaleY"};
+    }
+    if (type == level::EVENT_SPAWN && prefab == ::prefabs::ALIEN_GUNNER_PREFAB) {
+        return std::vector<std::string>{"speed", "fire_interval", "shot_speed", "z", "rotation", "scaleX", "scaleY"};
     }
     if (type == level::EVENT_BOSS && prefab == ::prefabs::BOSS_CORE_PREFAB) {
         return std::vector<std::string>{"speed",  "stop_x", "health",   "variant", "width",
@@ -194,15 +198,20 @@ void LevelDirectorPlugin::play(const timeline::TimelineEvent& event) {
 }
 
 void LevelDirectorPlugin::spawnEnemy(const ::prefabs::PrefabParams& params) {
-    // The loader only keeps the prefabs accepted by levelPrefab(), so the name is known here.
-    if (params.get<std::string>("prefab", "") != ::prefabs::ALIEN_SCOUT_PREFAB) {
-        return;
-    }
+    // The loader only keeps the prefabs accepted by levelPrefab(), so the name is one of these.
+    const auto prefab = params.get<std::string>("prefab", "");
     ecs::Registry& registry = *_registry;
-    const ecs::Entity enemy = registry.spawnEntity();
-    ::prefabs::buildAlienScout(enemy, registry, params);
-    registry.addComponent(enemy, game::EntityNetState{});
-    ecs::net::replicate(registry, enemy, game::KIND_ALIEN_SCOUT);
+    if (prefab == ::prefabs::ALIEN_SCOUT_PREFAB) {
+        const ecs::Entity enemy = registry.spawnEntity();
+        ::prefabs::buildAlienScout(enemy, registry, params);
+        registry.addComponent(enemy, game::EntityNetState{});
+        ecs::net::replicate(registry, enemy, game::KIND_ALIEN_SCOUT);
+    } else if (prefab == ::prefabs::ALIEN_GUNNER_PREFAB) {
+        const ecs::Entity enemy = registry.spawnEntity();
+        ::prefabs::buildAlienGunner(enemy, registry, params);
+        registry.addComponent(enemy, game::EntityNetState{});
+        ecs::net::replicate(registry, enemy, game::KIND_ALIEN_GUNNER);
+    }
 }
 
 void LevelDirectorPlugin::holdScroll() {

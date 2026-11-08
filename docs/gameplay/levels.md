@@ -75,7 +75,7 @@ with the same `at` keep the file order.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `prefab` | string | required | Enemy to spawn. The server knows `alien_scout` and `boss_core`. |
+| `prefab` | string | required | Enemy to spawn: `alien_scout`, or `alien_gunner` (it fires at the ships; extra keys `fire_interval` and `shot_speed`, see [Alien Gunner](../prefabs/alien-gunner.md)). |
 | `count` | integer | `1` | Number of enemies, from 1 to 32. |
 | `interval` | number | `0` | Seconds of scrolling between two enemies, from 0 to 10. |
 | `x` | number | `1328` | Spawn abscissa: just past the right edge of the 1280 px screen. |
