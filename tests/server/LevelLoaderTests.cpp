@@ -18,12 +18,15 @@ namespace {
 
 namespace level = rtype::server::level;
 
-/** @brief Test catalog: spawns of `alien_scout` or `obstacle`, bosses of `boss_core`, each reading `speed`. */
+/**
+ * @brief Test catalog: spawns of `alien_scout` or `obstacle`, bosses of `boss_core`. Their parameters are made up for
+ * the tests: a movement `pattern`, its `amplitude`, a `boss` flag, and the boss `health`.
+ */
 std::optional<std::vector<std::string>> knownPrefab(std::string_view type, std::string_view name) {
     const bool spawn = type == level::EVENT_SPAWN && (name == "alien_scout" || name == "obstacle");
     const bool boss = type == level::EVENT_BOSS && name == "boss_core";
     if (spawn || boss) {
-        return std::vector<std::string>{"speed"};
+        return std::vector<std::string>{"speed", "pattern", "amplitude", "boss", "health"};
     }
     return std::nullopt;
 }
@@ -152,7 +155,7 @@ TEST(LevelLoader, WaveIsSpacedAtTheScrollSpeedWhereItStarts) {
     EXPECT_FLOAT_EQ(eventAt(built, 2).position, 620.0F);
 }
 
-TEST(LevelLoader, ExtraSpawnKeysArePassedToThePrefab) {
+TEST(LevelLoader, PrefabParametersArePassedToThePrefab) {
     const level::Level built = build(R"(
         [[events]]
         at = 0.0
