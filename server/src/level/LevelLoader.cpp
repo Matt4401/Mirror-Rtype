@@ -147,22 +147,23 @@ std::vector<RawEvent> readEvents(const config::ConfigFile& file, config::ConfigR
 }
 
 /**
- * @brief Reads the prefab of a spawn or boss event, checking that the game can spawn it.
+ * @brief Reads the prefab of a spawn or boss event, checking that the game can spawn it for this event type.
  * @param file Level file.
  * @param event The event.
- * @param isKnownPrefab Prefabs the game can spawn.
- * @param warnings Receives a message if the prefab is missing or unknown.
+ * @param prefabs Prefabs the game can spawn per event type.
+ * @param warnings Receives a message if the prefab is missing, unknown, or not for this event type.
  * @return The prefab name, or nothing if the event must be skipped.
  */
 std::optional<std::string> readPrefab(const config::ConfigFile& file, const RawEvent& event,
-                                      const PrefabFilter& isKnownPrefab, std::vector<std::string>& warnings) {
+                                      const PrefabCatalog& prefabs, std::vector<std::string>& warnings) {
     std::optional<std::string> prefab = file.getString(eventKey(event.index, "prefab"));
     if (!prefab.has_value()) {
         warnings.push_back(std::format("events.{}: {} without 'prefab', event skipped", event.index, event.type));
         return std::nullopt;
     }
-    if (!isKnownPrefab || !isKnownPrefab(*prefab)) {
-        warnings.push_back(std::format("events.{}: unknown prefab '{}', event skipped", event.index, *prefab));
+    if (!prefabs || !prefabs(event.type, *prefab).has_value()) {
+        warnings.push_back(std::format("events.{}: prefab '{}' cannot be used by a {} event, event skipped",
+                                       event.index, *prefab, event.type));
         return std::nullopt;
     }
     return prefab;
@@ -192,14 +193,14 @@ bool isValidScriptPath(std::string_view path) {
  * @param file Level file.
  * @param reader Reader reporting corrections.
  * @param event The boss event.
- * @param isKnownPrefab Prefabs the game can spawn.
+ * @param prefabs Prefabs the game can spawn per event type.
  * @param out Level receiving the event.
  * @param warnings Receives a message if the event is skipped or its script ignored.
  */
 void addBoss(const config::ConfigFile& file, config::ConfigReader& reader, const RawEvent& event,
-             const PrefabFilter& isKnownPrefab, Level& out, std::vector<std::string>& warnings) {
+             const PrefabCatalog& prefabs, Level& out, std::vector<std::string>& warnings) {
     const std::size_t i = event.index;
-    const std::optional<std::string> prefab = readPrefab(file, event, isKnownPrefab, warnings);
+    const std::optional<std::string> prefab = readPrefab(file, event, prefabs, warnings);
     if (!prefab.has_value()) {
         return;
     }
@@ -231,14 +232,14 @@ void addBoss(const config::ConfigFile& file, config::ConfigReader& reader, const
  * @param reader Reader reporting corrections.
  * @param event The wave.
  * @param scrollSpeed Scroll speed where the wave starts, used to space its enemies.
- * @param isKnownPrefab Prefabs the game can spawn.
+ * @param prefabs Prefabs the game can spawn per event type.
  * @param out Level receiving the events.
  * @param warnings Receives a message if the wave is skipped.
  */
 void addWave(const config::ConfigFile& file, config::ConfigReader& reader, const RawEvent& event, float scrollSpeed,
-             const PrefabFilter& isKnownPrefab, Level& out, std::vector<std::string>& warnings) {
+             const PrefabCatalog& prefabs, Level& out, std::vector<std::string>& warnings) {
     const std::size_t i = event.index;
-    const std::optional<std::string> prefab = readPrefab(file, event, isKnownPrefab, warnings);
+    const std::optional<std::string> prefab = readPrefab(file, event, prefabs, warnings);
     if (!prefab.has_value()) {
         return;
     }
@@ -314,8 +315,7 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, Le
 
 }  // namespace
 
-Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPrefab,
-                 std::vector<std::string>& warnings) {
+Level buildLevel(const config::ConfigFile& file, const PrefabCatalog& prefabs, std::vector<std::string>& warnings) {
     config::ConfigReader reader(file, warnings);
     Level level;
     level.name = reader.text("level.name", "Unnamed level");
@@ -325,7 +325,7 @@ Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPref
     float scrollSpeed = level.scrollSpeed;
     for (const RawEvent& event : readEvents(file, reader, warnings)) {
         if (event.type == EVENT_SPAWN) {
-            addWave(file, reader, event, scrollSpeed, isKnownPrefab, level, warnings);
+            addWave(file, reader, event, scrollSpeed, prefabs, level, warnings);
         } else if (event.type == EVENT_SCROLL) {
             if (!file.getNumber(eventKey(event.index, "speed")).has_value()) {
                 warnings.push_back(std::format("events.{}: scroll without 'speed', event skipped", event.index));
@@ -339,7 +339,7 @@ Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPref
                 .params = {{"speed", static_cast<double>(scrollSpeed)}},
             });
         } else if (event.type == EVENT_BOSS) {
-            addBoss(file, reader, event, isKnownPrefab, level, warnings);
+            addBoss(file, reader, event, prefabs, level, warnings);
         } else if (event.type == EVENT_END) {
             level.timeline.add(
                 timeline::TimelineEvent{.position = event.at, .type = std::string(EVENT_END), .params = {}});
@@ -351,14 +351,14 @@ Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPref
     return level;
 }
 
-std::expected<Level, std::string> loadLevel(const std::filesystem::path& path, const PrefabFilter& isKnownPrefab,
+std::expected<Level, std::string> loadLevel(const std::filesystem::path& path, const PrefabCatalog& prefabs,
                                             std::vector<std::string>& warnings) {
     const config::ConfigFile file = config::ConfigFile::load(path);
     if (file.error().has_value()) {
         return std::unexpected(*file.error());
     }
     warnings.insert(warnings.end(), file.warnings().begin(), file.warnings().end());
-    return buildLevel(file, isKnownPrefab, warnings);
+    return buildLevel(file, prefabs, warnings);
 }
 
 }  // namespace rtype::server::level

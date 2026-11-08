@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -120,11 +121,17 @@ class GameplayPlugin final : public engine::IPlugin {
     [[nodiscard]] std::uint32_t score(std::size_t playerIndex) const noexcept;
 
     /**
-     * @brief Tells whether a level may spawn a prefab: the ones this plugin knows how to build and replicate.
+     * @brief Prefabs a level may use, per event type, and the parameters they read: the level catalog given to
+     * `level::loadLevel`.
+     *
+     * A `spawn` event may name `alien_scout`, a `boss` event `boss_core`.
+     *
+     * @param type Event type.
      * @param prefab Prefab name.
-     * @return True if `prefab` can be used in a level `spawn` event.
+     * @return The parameters the prefab reads beyond `x` and `y`, or nothing if `type` cannot use `prefab`.
      */
-    [[nodiscard]] static bool canSpawn(std::string_view prefab) noexcept;
+    [[nodiscard]] static std::optional<std::vector<std::string>> levelPrefab(std::string_view type,
+                                                                             std::string_view prefab);
 
   private:
     /** @brief A shot requested by an input, fired at the next fixed step. */

@@ -103,8 +103,15 @@ void GameplayPlugin::build(engine::PluginBuilder& builder) {
     builder.require<timeline::TimelinePlugin>();
 }
 
-bool GameplayPlugin::canSpawn(const std::string_view prefab) noexcept {
-    return prefab == ::prefabs::ALIEN_SCOUT_PREFAB || prefab == ::prefabs::BOSS_CORE_PREFAB;
+std::optional<std::vector<std::string>> GameplayPlugin::levelPrefab(const std::string_view type,
+                                                                    const std::string_view prefab) {
+    if (type == level::EVENT_SPAWN && prefab == ::prefabs::ALIEN_SCOUT_PREFAB) {
+        return std::vector<std::string>{"speed", "z", "rotation", "scaleX", "scaleY"};
+    }
+    if (type == level::EVENT_BOSS && prefab == ::prefabs::BOSS_CORE_PREFAB) {
+        return std::vector<std::string>{"speed", "stop_x", "health", "z", "rotation", "scaleX", "scaleY"};
+    }
+    return std::nullopt;
 }
 
 void GameplayPlugin::init(engine::Engine& engine) {
@@ -148,7 +155,7 @@ void GameplayPlugin::onLevelEvent(const timeline::TimelineEventFired& fired) {
 }
 
 void GameplayPlugin::spawnFromLevel(const ::prefabs::PrefabParams& params) {
-    // The loader only keeps the prefabs accepted by canSpawn(), so the name is known here.
+    // The loader only keeps the prefabs accepted by levelPrefab(), so the name is known here.
     if (params.get<std::string>("prefab", "") != ::prefabs::ALIEN_SCOUT_PREFAB) {
         return;
     }
@@ -242,7 +249,7 @@ void GameplayPlugin::crashShipsIntoTerrain() {
 }
 
 void GameplayPlugin::startBossFight(const ::prefabs::PrefabParams& params) {
-    // The loader only keeps the prefabs accepted by canSpawn(): a boss event names boss_core.
+    // The loader only keeps the prefabs accepted by levelPrefab(): a boss event names boss_core.
     if (params.get<std::string>("prefab", "") != ::prefabs::BOSS_CORE_PREFAB) {
         return;
     }

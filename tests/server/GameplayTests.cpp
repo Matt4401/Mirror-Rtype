@@ -507,11 +507,13 @@ TEST_F(ShippedBossScriptTest, BossScriptAttacksAndDropsAPowerUpWhenKilled) {
     EXPECT_TRUE(entitiesOf(game::KIND_BOSS_CORE).empty());
 }
 
-TEST(GameplayPluginTest, OnlyKnownPrefabsCanBeSpawned) {
-    EXPECT_TRUE(GameplayPlugin::canSpawn("alien_scout"));
-    EXPECT_TRUE(GameplayPlugin::canSpawn("boss_core"));
-    EXPECT_FALSE(GameplayPlugin::canSpawn("dragon"));
-    EXPECT_FALSE(GameplayPlugin::canSpawn(""));
+TEST(GameplayPluginTest, EachEventTypeHasItsPrefabs) {
+    EXPECT_TRUE(GameplayPlugin::levelPrefab("spawn", "alien_scout").has_value());
+    EXPECT_TRUE(GameplayPlugin::levelPrefab("boss", "boss_core").has_value());
+    EXPECT_FALSE(GameplayPlugin::levelPrefab("spawn", "boss_core").has_value());
+    EXPECT_FALSE(GameplayPlugin::levelPrefab("boss", "alien_scout").has_value());
+    EXPECT_FALSE(GameplayPlugin::levelPrefab("spawn", "dragon").has_value());
+    EXPECT_FALSE(GameplayPlugin::levelPrefab("spawn", "").has_value());
 }
 
 TEST_F(GameplayTest, ShootingSpawnsABulletTaggedWithItsShooter) {

@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -17,7 +18,15 @@ namespace {
 
 namespace level = rtype::server::level;
 
-bool knownPrefab(std::string_view name) { return name == "alien_scout" || name == "obstacle" || name == "boss_core"; }
+/** @brief Test catalog: spawns of `alien_scout` or `obstacle`, bosses of `boss_core`, each reading `speed`. */
+std::optional<std::vector<std::string>> knownPrefab(std::string_view type, std::string_view name) {
+    const bool spawn = type == level::EVENT_SPAWN && (name == "alien_scout" || name == "obstacle");
+    const bool boss = type == level::EVENT_BOSS && name == "boss_core";
+    if (spawn || boss) {
+        return std::vector<std::string>{"speed"};
+    }
+    return std::nullopt;
+}
 
 level::Level build(std::string_view toml, std::vector<std::string>& warnings) {
     return level::buildLevel(config::ConfigFile::parse(toml), knownPrefab, warnings);

@@ -65,7 +65,7 @@ std::filesystem::path dataRoot(const char* program) {
 std::shared_ptr<const rtype::server::level::Level> loadLevelFile(const std::filesystem::path& path,
                                                                  const std::filesystem::path& root) {
     std::vector<std::string> warnings;
-    auto level = rtype::server::level::loadLevel(path, rtype::server::gameplay::GameplayPlugin::canSpawn, warnings);
+    auto level = rtype::server::level::loadLevel(path, rtype::server::gameplay::GameplayPlugin::levelPrefab, warnings);
     for (const std::string& warning : warnings) {
         rtype::log::warning(rtype::server::LOG_TAG, "level: ", warning);
     }

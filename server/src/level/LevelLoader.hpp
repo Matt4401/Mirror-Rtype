@@ -9,6 +9,7 @@
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -68,8 +69,14 @@ inline constexpr std::size_t MAX_SCRIPT_PATH_LENGTH = 256;
 /** @brief Extension a boss script must have. */
 inline constexpr std::string_view SCRIPT_EXTENSION = ".wren";
 
-/** @brief Tells whether a prefab name can be spawned by the game. */
-using PrefabFilter = std::function<bool(std::string_view)>;
+/**
+ * @brief Prefabs the game can spawn for each event type, and the parameters each one reads.
+ *
+ * Called with an event type (`spawn`, `boss`) and a prefab name. Returns the prefab parameters the loader may pass on
+ * beyond `x` and `y` (e.g. `speed`), or nothing if this event type cannot use this prefab: the event is then skipped
+ * with a warning, at load time rather than silently during the game.
+ */
+using PrefabCatalog = std::function<std::optional<std::vector<std::string>>(std::string_view, std::string_view)>;
 
 /**
  * @brief Builds a level from an already parsed file.
@@ -119,22 +126,22 @@ using PrefabFilter = std::function<bool(std::string_view)>;
  * into one spawn event per enemy, `interval` seconds apart at the scroll speed in effect where the wave starts.
  *
  * @param file Parsed level file.
- * @param isKnownPrefab Prefabs the game can spawn; a spawn event naming another one is skipped.
+ * @param prefabs Prefabs the game can spawn per event type; an event naming another one is skipped.
  * @param warnings Receives one message per corrected value or skipped event.
  * @return The level.
  */
-[[nodiscard]] Level buildLevel(const config::ConfigFile& file, const PrefabFilter& isKnownPrefab,
+[[nodiscard]] Level buildLevel(const config::ConfigFile& file, const PrefabCatalog& prefabs,
                                std::vector<std::string>& warnings);
 
 /**
  * @brief Reads and builds a level file.
  * @param path Level file.
- * @param isKnownPrefab Prefabs the game can spawn.
+ * @param prefabs Prefabs the game can spawn per event type.
  * @param warnings Receives one message per corrected value or skipped event.
  * @return The level, or why the file could not be read or parsed.
  */
 [[nodiscard]] std::expected<Level, std::string> loadLevel(const std::filesystem::path& path,
-                                                          const PrefabFilter& isKnownPrefab,
+                                                          const PrefabCatalog& prefabs,
                                                           std::vector<std::string>& warnings);
 
 }  // namespace rtype::server::level
