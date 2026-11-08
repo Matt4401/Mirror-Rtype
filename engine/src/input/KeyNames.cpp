@@ -154,12 +154,14 @@ engine::Key azertyLabelKey(engine::Key key) noexcept {
 std::span<const KeyName> keyNames() noexcept { return KEY_NAMES; }
 
 std::string_view keyId(engine::Key key) noexcept {
-    const auto* found = std::ranges::find(KEY_NAMES, key, &KeyName::key);
+    // NOLINTNEXTLINE(readability-qualified-auto): std::array iterator is not a pointer on MSVC.
+    const auto found = std::ranges::find(KEY_NAMES, key, &KeyName::key);
     return found != KEY_NAMES.end() ? found->id : std::string_view{};
 }
 
 std::optional<engine::Key> keyFromId(std::string_view id) noexcept {
-    const auto* found = std::ranges::find(KEY_NAMES, id, &KeyName::id);
+    // NOLINTNEXTLINE(readability-qualified-auto): std::array iterator is not a pointer on MSVC.
+    const auto found = std::ranges::find(KEY_NAMES, id, &KeyName::id);
     if (found == KEY_NAMES.end()) {
         return std::nullopt;
     }
