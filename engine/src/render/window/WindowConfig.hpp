@@ -15,7 +15,7 @@ struct WindowConfig {
     int height = 720;
 
     /** @brief Title shown in the window decoration. */
-    std::string title = "R-Type";
+    std::string title = "Squacaron";
 
     /** @brief Maximum render frames per second (must be positive). */
     int targetFps = 60;

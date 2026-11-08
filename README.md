@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD033 -->
-# R-Type Game Engine
+# Squacaron
 
 [![Cross-platform build](https://github.com/Matt4401/Mirror-Rtype/actions/workflows/build.yml/badge.svg)](https://github.com/Matt4401/Mirror-Rtype/actions/workflows/build.yml)
 [![macOS build](https://github.com/Matt4401/Mirror-Rtype/actions/workflows/build-macos.yml/badge.svg)](https://github.com/Matt4401/Mirror-Rtype/actions/workflows/build-macos.yml)
@@ -8,7 +8,7 @@
 [![Build System](https://img.shields.io/badge/Build%20System-xmake-red)](https://xmake.io/)
 ![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows%20%7C%20macOS-informational)
 
-A highly decoupled, data-oriented **C++23 game engine** built from scratch to power a networked multiplayer **R-Type** clone, developed as part of the EPITECH curriculum.
+**Squacaron** is a decoupled, data-oriented **C++23 game engine** written from scratch. It runs two games: a networked multiplayer **R-Type** clone and **RLSS**, a 2D car football game. It was built for the EPITECH Advanced C++ project.
 
 ---
 
@@ -21,6 +21,7 @@ A highly decoupled, data-oriented **C++23 game engine** built from scratch to po
   - [Prerequisites](#prerequisites)
   - [Installation & Build](#installation--build)
   - [Running the Game](#running-the-game)
+- [Second Game: RLSS](#second-game-rlss)
 - [Project Architecture](#project-architecture)
 - [Network Protocol](#network-protocol)
 - [Testing & Quality Assurance](#testing--quality-assurance)
@@ -153,6 +154,24 @@ xmake run test_ecs
 
 ---
 
+## Second Game: RLSS
+
+RLSS is a 2D, side-view car football game (cars, boost, a ball, two goals) whose car and ball physics follow
+Rocket League. We built it on the same engine to show that Squacaron does not depend on R-Type: it lives in `rlss/`,
+links only the engine modules it needs, and nothing in `engine/` was changed for it. The car physics are written in
+Wren (`rlss/scripts/`) and hot-reload while the server runs.
+
+```bash
+xmake                          # also builds rlss_server and rlss_client
+./rlss_server [port]           # default port 4250
+./rlss_client [host] [port]    # default 127.0.0.1 4250, one per player
+```
+
+Run both from the repository root (scripts and assets are loaded from `rlss/`). Controls, rules and the module
+layout are in the **[RLSS documentation](docs/rlss/index.md)**.
+
+---
+
 ## Project Architecture
 
 The codebase is organized into modular libraries and applications:
@@ -162,7 +181,7 @@ The codebase is organized into modular libraries and applications:
 ├── client/        # Graphical client implementation (Raylib rendering, input, interpolation)
 ├── common/        # Game protocol: Protobuf schema and codec
 ├── docs/          # Complete MkDocs & Doxygen documentation
-├── engine/        # Agnostic core game engine:
+├── engine/        # Squacaron, the game-agnostic engine:
 │   ├── ecs/       # Entity-Component-System (Registry, SparseSet, Systems)
 │   ├── events/    # Decoupled Event Bus & Dispatcher
 │   ├── net/       # Transport (Asio in net/asio/), NetworkPlugin & replication
@@ -170,6 +189,7 @@ The codebase is organized into modular libraries and applications:
 │   ├── scripting/ # Wren scripting integration
 │   └── time/      # High-resolution game clock & tick management
 ├── game/          # R-Type code shared by client and server (replication codec, ship movement)
+├── rlss/          # Second game on the engine: 2D car football (server, client, Wren scripts)
 ├── server/        # Authoritative server (lobby, one engine per room)
 └── tests/         # Unit and integration test suites (GoogleTest)
 ```
@@ -225,7 +245,8 @@ pre-commit install
 
 ## Documentation
 
-Full documentation is available via **MkDocs Material** and **Doxygen**:
+The documentation is hosted at **<https://matt4401.github.io/Mirror-Rtype/>** (rebuilt on every push to `main`).
+It is written with **MkDocs Material** and **Doxygen**; to build it locally:
 
 ```bash
 # Install documentation dependencies

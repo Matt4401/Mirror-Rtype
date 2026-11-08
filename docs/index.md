@@ -1,8 +1,9 @@
-# R-Type Engine
+# Squacaron
 
-Welcome to the official documentation for the **R-Type** project.
+Squacaron is a C++23 game engine written from scratch for the EPITECH Advanced C++ project. Two games run on it:
 
-This project focuses on the development of a multiplayer networked video game (client/server architecture) based on the classic arcade game R-Type, built entirely from scratch in modern C++.
+- **R-Type**, a networked multiplayer shoot'em up with an authoritative server ([gameplay](gameplay/levels.md)).
+- **RLSS**, a 2D car football game, built to check that the engine does not depend on R-Type ([RLSS](rlss/index.md)).
 
 ## Core Architecture
 

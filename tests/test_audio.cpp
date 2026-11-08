@@ -101,7 +101,7 @@ TEST(RaylibAudioBackend, VoicesPerSoundAreBounded) {
     if (!backend.isAvailable()) {
         GTEST_SKIP() << "No audio device available";
     }
-    const audio::SoundId sound = backend.loadSound(writeSineWav("mirror_rtype_voices.wav", 1.0F).string());
+    const audio::SoundId sound = backend.loadSound(writeSineWav("squacaron_voices.wav", 1.0F).string());
     ASSERT_NE(sound, audio::NO_SOUND);
 
     for (int i = 0; i < 5; ++i) {
@@ -118,7 +118,7 @@ TEST(RaylibAudioBackend, ActiveVoicesAreBoundedAcrossSounds) {
     if (!backend.isAvailable()) {
         GTEST_SKIP() << "No audio device available";
     }
-    const std::string path = writeSineWav("mirror_rtype_cap.wav", 1.0F).string();
+    const std::string path = writeSineWav("squacaron_cap.wav", 1.0F).string();
     const audio::SoundId first = backend.loadSound(path);
     const audio::SoundId second = backend.loadSound(path);
     ASSERT_NE(first, audio::NO_SOUND);
@@ -136,7 +136,7 @@ TEST(RaylibAudioBackend, MusicCanBePlayedAndStopped) {
     if (!backend.isAvailable()) {
         GTEST_SKIP() << "No audio device available";
     }
-    const audio::MusicId music = backend.loadMusic(writeSineWav("mirror_rtype_music.wav", 1.0F).string());
+    const audio::MusicId music = backend.loadMusic(writeSineWav("squacaron_music.wav", 1.0F).string());
     ASSERT_NE(music, audio::NO_MUSIC);
 
     backend.setMusicVolume(0.0F);
@@ -152,7 +152,7 @@ TEST(RaylibAudioBackend, VoicesCanBeUpdatedAndStopped) {
     if (!backend.isAvailable()) {
         GTEST_SKIP() << "No audio device available";
     }
-    const audio::SoundId sound = backend.loadSound(writeSineWav("mirror_rtype_voice.wav", 1.0F).string());
+    const audio::SoundId sound = backend.loadSound(writeSineWav("squacaron_voice.wav", 1.0F).string());
     ASSERT_NE(sound, audio::NO_SOUND);
 
     const audio::VoiceId first = backend.playSound(sound, {.volume = 0.0F});
@@ -179,7 +179,7 @@ TEST(RaylibAudioBackend, EveryReplacedInstanceReportsItWasStolen) {
     if (!backend.isAvailable()) {
         GTEST_SKIP() << "No audio device available";
     }
-    const audio::SoundId sound = backend.loadSound(writeSineWav("mirror_rtype_steals.wav", 1.0F).string());
+    const audio::SoundId sound = backend.loadSound(writeSineWav("squacaron_steals.wav", 1.0F).string());
     ASSERT_NE(sound, audio::NO_SOUND);
 
     const audio::VoiceId first = backend.playSound(sound, {.volume = 0.0F});
@@ -196,7 +196,7 @@ TEST(RaylibAudioBackend, GlobalLimitStealsTheOldestInstance) {
     if (!backend.isAvailable()) {
         GTEST_SKIP() << "No audio device available";
     }
-    const std::string path = writeSineWav("mirror_rtype_global.wav", 1.0F).string();
+    const std::string path = writeSineWav("squacaron_global.wav", 1.0F).string();
     const audio::SoundId first = backend.loadSound(path);
     const audio::SoundId second = backend.loadSound(path);
 
@@ -217,7 +217,7 @@ TEST(RaylibAudioBackend, UnloadedSoundStopsAndCannotPlay) {
     if (!backend.isAvailable()) {
         GTEST_SKIP() << "No audio device available";
     }
-    const std::string path = writeSineWav("mirror_rtype_unload.wav", 1.0F).string();
+    const std::string path = writeSineWav("squacaron_unload.wav", 1.0F).string();
     const audio::SoundId sound = backend.loadSound(path);
     const audio::VoiceId voice = backend.playSound(sound, {.volume = 0.0F});
     ASSERT_NE(voice, audio::NO_VOICE);
@@ -243,7 +243,7 @@ TEST(RaylibAudioBackend, UnloadedMusicStopsAndCannotPlay) {
     if (!backend.isAvailable()) {
         GTEST_SKIP() << "No audio device available";
     }
-    const audio::MusicId music = backend.loadMusic(writeSineWav("mirror_rtype_music_unload.wav", 1.0F).string());
+    const audio::MusicId music = backend.loadMusic(writeSineWav("squacaron_music_unload.wav", 1.0F).string());
     ASSERT_NE(music, audio::NO_MUSIC);
     backend.setMusicVolume(0.0F);
     backend.playMusic(music, true);

@@ -1,6 +1,6 @@
 # C++ API Reference
 
-Welcome to the automated C++ API Reference for the R-Type engine and subsystems.
+Welcome to the automated C++ API Reference for the Squacaron engine and its modules.
 
 The documentation in this section is **automatically extracted from code docstrings**
 using [Doxygen](https://www.doxygen.nl/index.html) and generated into MkDocs Material

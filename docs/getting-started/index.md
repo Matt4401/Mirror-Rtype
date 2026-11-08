@@ -1,6 +1,6 @@
 # Getting Started
 
-Welcome to the R-Type engine project! This guide will help you set up your development environment.
+This guide sets up a development environment for Squacaron and the two games built on it.
 
 ## Prerequisites
 

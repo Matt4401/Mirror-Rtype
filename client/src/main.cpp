@@ -62,7 +62,7 @@ int main(int ac, char** av) {
         const std::filesystem::path root = engine::contentRoot();
         engine::Engine engine;
         // Escape means "back" and "pause" in the menus: the game quits from its title screen.
-        engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.escapeClosesWindow = false})
+        engine.addPlugin<render::RenderPlugin>(render::WindowConfig{.title = "R-Type", .escapeClosesWindow = false})
             .addPlugin<input::InputPlugin>()
             .addPlugin<audio::AudioPlugin>()
             .addPlugin<systems::PhysicsPlugin>()

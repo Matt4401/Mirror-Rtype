@@ -1,6 +1,6 @@
 # Scripting Guide (Wren)
 
-Welcome to the R-Type engine scripting guide! Our engine embeds [Wren](https://wren.io/), a lightweight, fast, class-based concurrent scripting language.
+Squacaron embeds [Wren](https://wren.io/), a lightweight, fast, class-based concurrent scripting language.
 
 This guide is designed for **Game Designers and scripters**. You do not need to understand C++ internals or ECS memory layouts to build gameplay features, enemy behaviors, weapons, and cutscenes.
 
