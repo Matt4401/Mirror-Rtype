@@ -86,7 +86,7 @@ scale = 1.2
 flip_x = true
 
 # --- Enemy shots: a stretched shot shrinking into a round, played once then held on the round ---
-# Three frames side by side from x = 151: 63, 66 then 16 px wide. Mirrored, so that the round leads, and turned
+# Three frames side by side from x = 1: 63, 66 then 16 px wide. Mirrored, so that the round leads, and turned
 # towards where each shot flies.
 
 # Shots of the alien gunners (subtype 1): red.
@@ -94,7 +94,7 @@ flip_x = true
 prefab = "missile"
 subtype = 1
 texture = "sprites/r-typesheet9_red.png"
-frame_x = 151
+frame_x = 1
 frame_height = 16
 frame_widths = [63, 66, 16]
 frame_duration = 0.12
@@ -107,10 +107,45 @@ face_motion = true
 prefab = "missile"
 subtype = 2
 texture = "sprites/r-typesheet9_blue.png"
-frame_x = 151
+frame_x = 1
 frame_height = 16
 frame_widths = [63, 66, 16]
 frame_duration = 0.12
 loop = false
 flip_x = true
 face_motion = true
+
+# --- Power-up: a capsule that opens and closes, 12 frames of 16 x 18, 17 px apart. Scaled to its 24 px hitbox. ---
+
+[[entity]]
+prefab = "power_up"
+texture = "sprites/r-typesheet3.gif"
+frame_x = 1
+frame_width = 16
+frame_height = 18
+frame_stride = 17
+frames = 12
+frame_duration = 0.08
+scale = 1.5
+
+# --- Bastion (variant 2): intact, then broken from half of its hit points ---
+# Fill in the frames of your sheet; its hitbox is 180 x 220 (level_03.toml), size the sprites with `scale`.
+#
+# [[boss]]
+# variant = 2
+# texture = "sprites/my_boss.png"
+# frame_x = 0
+# frame_y = 0
+# frame_width = 0
+# frame_height = 0
+# scale = 1.0
+#
+# [[boss]]
+# variant = 2
+# below_health = 0.5
+# texture = "sprites/my_boss.png"
+# frame_x = 0
+# frame_y = 0
+# frame_width = 0
+# frame_height = 0
+# scale = 1.0
