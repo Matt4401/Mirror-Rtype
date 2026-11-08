@@ -29,6 +29,7 @@
 #include "ServerLink.hpp"
 #include "SessionPlugin.hpp"
 #include "SoundPlugin.hpp"
+#include "VolumeCVarsPlugin.hpp"
 #include "assets/AssetPlugin.hpp"
 #include "assets/audio/AudioAssetsPlugin.hpp"
 #include "assets/render/RenderAssetsPlugin.hpp"
@@ -53,6 +54,10 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
+#include "tools/console/ConsolePlugin.hpp"
+#include "tools/console/ConsoleTypes.hpp"
+#include "tools/devconsole/DevConsolePlugin.hpp"
+#include "tools/scripting/ConsoleScriptingPlugin.hpp"
 #include "ui/UiPlugin.hpp"
 
 namespace {
@@ -134,7 +139,13 @@ int main(int ac, char** av) {
             .addPlugin<rlss::client::GoalEffectPlugin>()
             .addPlugin<rlss::client::SoundPlugin>()
             .addPlugin<rlss::client::PlayerInputPlugin>()
-            .addPlugin<rlss::client::MenuScenesPlugin>(link);
+            .addPlugin<rlss::client::MenuScenesPlugin>(link)
+            // Developer console (~ / ²): drawn last, over the HUD and the menus.
+            // Cheats only reach this client: the server stays authoritative and runs its own rules.
+            .addPlugin<tools::ConsolePlugin>(tools::ConsoleConfig{.allowCheats = true})
+            .addPlugin<tools::ConsoleScriptingPlugin>()
+            .addPlugin<tools::DevConsolePlugin>()
+            .addPlugin<rlss::client::VolumeCVarsPlugin>();
         engine.run();
         return engine.getPlugin<rlss::client::SessionPlugin>().connectionLost() ? EXIT_ERROR : 0;
     } catch (const std::exception& error) {

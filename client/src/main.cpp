@@ -38,6 +38,10 @@
 #include "settings/SettingsPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
+#include "tools/console/ConsolePlugin.hpp"
+#include "tools/console/ConsoleTypes.hpp"
+#include "tools/devconsole/DevConsolePlugin.hpp"
+#include "tools/scripting/ConsoleScriptingPlugin.hpp"
 #include "ui/UiPlugin.hpp"
 
 namespace {
@@ -78,6 +82,10 @@ int main(int ac, char** av) {
             .addPlugin<scene::SceneScriptingPlugin>()
             .addPlugin<assets::SceneAssetsPlugin>()
             .addPlugin<settings::SettingsPlugin>(config::userConfigDirectory("rtype") / "settings.toml")
+            // Cheats only reach this client: the server stays authoritative and runs its own rules.
+            .addPlugin<tools::ConsolePlugin>(tools::ConsoleConfig{.allowCheats = true})
+            .addPlugin<tools::ConsoleScriptingPlugin>()
+            .addPlugin<tools::DevConsolePlugin>()
             .addPlugin<client::RTypeGamePlugin>();
         client::addNetworkPlugins(engine);
         engine.addPlugin<client::ClientScenesPlugin>(options->host, options->port, args.size() > 1);

@@ -16,6 +16,7 @@
 #include "core/PluginBuilder.hpp"
 #include "ecs/Entity.hpp"
 #include "events/EventBus.hpp"
+#include "tools/cvars/CVarRef.hpp"
 
 namespace ecs::time {
 struct Time;
@@ -102,6 +103,8 @@ class NameTagPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _joined;
     /** @brief Subscription to `MatchLeft`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _left;
+    /** @brief `cl_nametags`: whether the labels are drawn; unset without a console. */
+    tools::CVarRef<bool> _visible;
 };
 
 }  // namespace rlss::client

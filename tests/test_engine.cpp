@@ -82,6 +82,18 @@ class IndependentUserPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "IndependentUserPlugin"; }
 };
 
+class LowPriorityPlugin final : public engine::IPlugin {
+  public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "LowPriorityPlugin"; }
+    [[nodiscard]] int priority() const noexcept override { return -1; }
+};
+
+class DependsOnLowPriorityPlugin final : public engine::IPlugin {
+  public:
+    [[nodiscard]] std::string_view name() const noexcept override { return "DependsOnLowPriorityPlugin"; }
+    void build(engine::PluginBuilder& builder) override { builder.require<LowPriorityPlugin>(); }
+};
+
 /** @brief Number of times `phase` was recorded. */
 std::size_t countOf(const std::vector<std::string>& log, const std::string_view phase) {
     return static_cast<std::size_t>(std::ranges::count(log, phase));
@@ -198,6 +210,32 @@ TEST(Engine, ImplicitPluginsOrderedBeforeIndependentUserPlugins) {
     EXPECT_EQ(order[0]->name(), "CorePlugin");
     EXPECT_EQ(order[1]->name(), "TimePlugin");
     EXPECT_EQ(order[2]->name(), "IndependentUserPlugin");
+}
+
+TEST(Engine, ALowPriorityPluginRunsAfterTheIndependentPluginsAddedLater) {
+    engine::Engine engineInstance;
+    engineInstance.addPlugin<LowPriorityPlugin>();
+    engineInstance.addPlugin<IndependentUserPlugin>();
+
+    engineInstance.init();
+
+    const auto& order = engineInstance.executionOrder();
+    ASSERT_EQ(order.size(), 4U);
+    EXPECT_EQ(order[2]->name(), "IndependentUserPlugin");
+    EXPECT_EQ(order[3]->name(), "LowPriorityPlugin");
+}
+
+TEST(Engine, DependenciesComeBeforeTheirDependentsWhateverThePriority) {
+    engine::Engine engineInstance;
+    engineInstance.addPlugin<DependsOnLowPriorityPlugin>();
+    engineInstance.addPlugin<LowPriorityPlugin>();
+
+    engineInstance.init();
+
+    const auto& order = engineInstance.executionOrder();
+    ASSERT_EQ(order.size(), 4U);
+    EXPECT_EQ(order[2]->name(), "LowPriorityPlugin");
+    EXPECT_EQ(order[3]->name(), "DependsOnLowPriorityPlugin");
 }
 
 TEST_F(EngineAdvanceTest, InitializesTheEngine) {

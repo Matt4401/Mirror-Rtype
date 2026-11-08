@@ -36,7 +36,11 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
   `engine_assets_scripting` (assets/scripting/: Wren `core/Assets`), `engine_assets_scene` (assets/scene/: a scene's
   asset group follows the scene), `engine_assets_render` / `engine_assets_audio` (assets/render/, assets/audio/:
   bridges plugging the render and audio loaders in; graphics only),
-  `engine_settings` (settings/: persisted user settings). `engine_all` is a phony aggregate.
+  `engine_settings` (settings/: persisted user settings),
+  `engine_tools` (tools/cvars/: CVar registry, tools/console/: interpreter and `ConsolePlugin`; headless),
+  `engine_tools_scripting` (tools/scripting/: `wren` console command, `.wren` files for `exec`),
+  `engine_devconsole` (tools/devconsole/: in-game console window, drawn through engine services).
+  `engine_all` is a phony aggregate.
 - `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`src/protocol/`), protobuf types stay
   private
 - `game/src/` — `rtype_game`: R-Type code shared by server and client (replication codec, ship movement)

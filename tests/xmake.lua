@@ -464,3 +464,33 @@ target("test_rlss_camera")
     add_files("rlss/CameraTests.cpp")
     add_rules("rlss.project_dir")
     add_tests("test_rlss_camera")
+
+target("test_cvars")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_tools")
+    add_packages("gtest")
+    add_files("tools/CVarManagerTests.cpp")
+    add_tests("test_cvars")
+
+target("test_console")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_tools")
+    add_packages("gtest")
+    add_files("tools/ConsoleTests.cpp")
+    add_tests("test_console")
+
+target("test_devconsole")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_tools", "engine_devconsole", "engine_ui",
+             "engine_hierarchy")
+    add_packages("gtest")
+    add_files("tools/DevConsoleTests.cpp")
+    add_tests("test_devconsole")
+
+target("test_console_scripting")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_tools", "engine_tools_scripting",
+             "engine_scripting", "engine_input", "engine_prefabs")
+    add_packages("gtest", "wren")
+    add_files("tools/ConsoleScriptingTests.cpp")
+    add_tests("test_console_scripting")
