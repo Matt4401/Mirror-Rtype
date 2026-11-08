@@ -20,7 +20,7 @@ repos:
         entry: clang-tidy -p=.
         language: system
         types_or: [c++, c]
-        exclude: (^tests/|.*\.tpp$)
+        exclude: ((^|/)tests/|.*\.tpp$)
 
   - repo: local
     hooks:
