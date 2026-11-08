@@ -272,6 +272,52 @@ TEST(TimelinePlugin, MovesTheCursorBySpeedTimesDeltaTime) {
     EXPECT_EQ(recorder.fired[0], "spawn");
 }
 
+TEST(Timeline, AddAllGivesTheSameOrderAsAddingOneByOne) {
+    const std::vector<timeline::TimelineEvent> events{makeEvent(300.0F, "c"), makeEvent(100.0F, "a"),
+                                                      makeEvent(300.0F, "d"), makeEvent(200.0F, "b")};
+    timeline::Timeline oneByOne;
+    for (const timeline::TimelineEvent& event : events) {
+        oneByOne.add(event);
+    }
+    timeline::Timeline atOnce;
+    atOnce.addAll(events);
+
+    EXPECT_EQ(typesOf(atOnce.events()), typesOf(oneByOne.events()));
+    EXPECT_EQ(typesOf(atOnce.events()), (std::vector<std::string>{"a", "b", "c", "d"}));
+}
+
+TEST(Timeline, AddAllKeepsTheFiredEventsInPlace) {
+    timeline::Timeline line;
+    line.add(makeEvent(100.0F, "first"));
+    (void)line.advanceTo(150.0F);
+    line.addAll({makeEvent(400.0F, "late"), makeEvent(120.0F, "behind")});
+
+    EXPECT_EQ(typesOf(line.advanceTo(150.0F)), std::vector<std::string>{"behind"});
+    EXPECT_EQ(typesOf(line.advanceTo(400.0F)), std::vector<std::string>{"late"});
+}
+
+TEST(Timeline, CopiesShareTheirEventsButNotTheirCursor) {
+    timeline::Timeline level;
+    level.addAll({makeEvent(100.0F, "a"), makeEvent(200.0F, "b")});
+    timeline::Timeline first = level;
+    timeline::Timeline second = level;
+
+    EXPECT_EQ(first.events().data(), level.events().data()) << "copying does not copy the events";
+    EXPECT_EQ(typesOf(first.advanceTo(250.0F)), (std::vector<std::string>{"a", "b"}));
+    EXPECT_EQ(typesOf(second.advanceTo(100.0F)), std::vector<std::string>{"a"});
+    EXPECT_EQ(level.pending(), 2U);
+}
+
+TEST(Timeline, ChangingACopyLeavesTheOthersUnchanged) {
+    timeline::Timeline level;
+    level.add(makeEvent(100.0F, "a"));
+    timeline::Timeline copy = level;
+    copy.add(makeEvent(50.0F, "added"));
+
+    EXPECT_EQ(typesOf(level.events()), std::vector<std::string>{"a"});
+    EXPECT_EQ(typesOf(copy.events()), (std::vector<std::string>{"added", "a"}));
+}
+
 TEST(TimelinePlugin, PublishesEveryReachedEventInOrderThenFinishedOnce) {
     engine::Engine engine;
     timeline::TimelinePlugin player;
