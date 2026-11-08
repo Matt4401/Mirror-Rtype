@@ -223,7 +223,7 @@ stateDiagram-v2
 | `Settings`        | exclusive      | master, music and effects volumes, metrics panel; saved by `SettingsPlugin`     |
 | `Lobby`           | exclusive      | scrollable list of rooms (only open ones are focusable), create, refresh, back  |
 | `Room`            | exclusive      | players and their ready state, ready toggle, leave                              |
-| `Game`            | exclusive      | HUD (player, level, score); back opens the pause menu                           |
+| `Game`            | exclusive      | HUD (player, level, total score and own score, live from `ScoreUpdate`); back opens the pause menu |
 | `LevelTransition` | overlay        | written in Wren (`scripts/scenes/LevelTransition.wren`): spawns the C++ `level_banner` prefab, waits 2.5 s, pops itself |
 | `Pause`           | overlay        | local only: the game goes on below and for the others, the ship gets no input   |
 | `GameOver`        | exclusive      | victory or defeat, scores, back to the lobby                                    |

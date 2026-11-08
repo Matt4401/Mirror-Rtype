@@ -318,6 +318,19 @@ TEST_F(ClientScenesTest, TheBossHealthBarShowsWhileABossIsOnScreen) {
     EXPECT_TRUE(ecs::isHidden(registry, bar()->first)) << "the boss is gone";
 }
 
+TEST_F(ClientScenesTest, TheHudShowsTheTotalAndTheOwnScoreLive) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 1, .playerCount = 2});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    EXPECT_TRUE(showsText("SCORE 0"));
+    EXPECT_TRUE(showsText("YOU 0"));
+
+    receive(protocol::ScoreUpdate{.score = 12, .playerScores = {7, 5}});
+    EXPECT_TRUE(showsText("SCORE 12"));
+    EXPECT_TRUE(showsText("YOU 5")) << "player 2 sees their own score";
+}
+
 TEST_F(ClientScenesTest, GameOverShowsTheResult) {
     reachTheRoom();
     receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});

@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "components/Hidden.hpp"
 #include "components/Renderable.hpp"
@@ -88,6 +89,18 @@ void GameScene::onEnter(scene::SceneContext& context) {
     _level = hudText(context, ui::UiAnchor{.anchorX = 0.5F, .anchorY = 0.03F, .pivotX = 0.5F}, "", 22.0F, menu::TEXT);
     _score = hudText(context, ui::UiAnchor{.anchorX = 0.98F, .anchorY = 0.03F, .pivotX = 1.0F}, "SCORE 0", 24.0F,
                      menu::GOLD);
+    _personal =
+        hudText(context, ui::UiAnchor{.anchorX = 0.98F, .anchorY = 0.075F, .pivotX = 1.0F}, "YOU 0", 18.0F, menu::TEXT);
+    const std::size_t self = session.playerIndex().value_or(0);
+    // The total for the room, and this player's own score from the per-player list.
+    const auto showScores = [this, &context, self](const std::uint32_t total,
+                                                   const std::vector<std::uint32_t>& perPlayer) {
+        menu::setText(context.registry(), _score, "SCORE " + std::to_string(total));
+        const std::uint32_t mine = self < perPlayer.size() ? perPlayer[self] : 0;
+        menu::setText(context.registry(), _personal, "YOU " + std::to_string(mine));
+    };
+    context.subscribe<ScoresUpdated>(
+        [showScores](const ScoresUpdated& event) { showScores(event.scores.score, event.scores.playerScores); });
     spawnBossBar(context);
 
     const auto onLevel = [this, &context](const protocol::LevelStart& level) {
@@ -97,8 +110,8 @@ void GameScene::onEnter(scene::SceneContext& context) {
         showBanner(context, "LEVEL " + std::to_string(level.levelIndex + 1), level.name);
     };
     context.subscribe<LevelStarted>([onLevel](const LevelStarted& event) { onLevel(event.level); });
-    context.subscribe<LevelCompleted>([this, &context](const LevelCompleted& event) {
-        menu::setText(context.registry(), _score, "SCORE " + std::to_string(event.result.score));
+    context.subscribe<LevelCompleted>([&context, showScores](const LevelCompleted& event) {
+        showScores(event.result.score, event.result.playerScores);
         showBanner(context, "LEVEL " + std::to_string(event.result.levelIndex + 1) + " CLEARED",
                    "SCORE " + std::to_string(event.result.score));
     });

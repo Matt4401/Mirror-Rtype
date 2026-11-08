@@ -26,7 +26,8 @@ struct LevelBanner {
 };
 
 /**
- * @brief The game: HUD (level, score, player, boss health), level banners, and the way to the pause menu.
+ * @brief The game: HUD (level, total and own score, player, boss health), level banners, and the way to the pause
+ * menu.
  *
  * The world itself (ships, enemies, shots) comes from the replication and is drawn by `RTypeGamePlugin`.
  * The boss health bar shows while a boss is on screen (`gameplay::bossHealth`), hidden otherwise.
@@ -64,8 +65,10 @@ class GameScene final : public scene::IScene {
 
     /** @brief Level line of the HUD. */
     ecs::Entity _level = ecs::NULL_ENTITY;
-    /** @brief Score line of the HUD. */
+    /** @brief Total score line of the HUD. */
     ecs::Entity _score = ecs::NULL_ENTITY;
+    /** @brief Score line of this player, under the total. */
+    ecs::Entity _personal = ecs::NULL_ENTITY;
     /** @brief Boss health bar of the HUD, hidden without a boss. */
     ecs::Entity _bossBar = ecs::NULL_ENTITY;
     /** @brief Caption of the boss health bar. */
