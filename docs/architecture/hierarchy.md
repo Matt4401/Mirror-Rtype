@@ -13,6 +13,15 @@ All in `hierarchy/HierarchyComponents.hpp`, namespace `hierarchy`:
 | `Children`       | parent   | Direct children, **in insertion order** (sibling order for UI draw/layout).    |
 | `LocalTransform` | child    | Position, depth, rotation and scale **relative to the parent**.                |
 
+```mermaid
+flowchart TB
+    S["Ship<br/>Transform (world)<br/>Children = [turret, bar]"]
+    T["Turret<br/>Parent = ship<br/>LocalTransform<br/>Transform (output)"]
+    H["Health bar<br/>Parent = ship<br/>LocalTransform<br/>Transform (output)"]
+    S -->|"world = compose(ship, local)"| T
+    S -->|"world = compose(ship, local)"| H
+```
+
 `ecs::Transform` stays the **world** transform, so render, physics, audio and networking keep reading it unchanged.
 For a child, it is an output: it is rewritten every frame from the parent's world transform and the child's
 `LocalTransform`. Move a child by editing its `LocalTransform`.
@@ -73,6 +82,13 @@ world.z        = parent.z + local.z
 `HierarchyPlugin` runs the propagation in the engine's `lateUpdate` phase: after **every** plugin's `update` (gameplay,
 scripts) and after the frame's fixed steps (physics), before `render`. Children are therefore up to date in the frame
 their parent moved, without the hierarchy depending on any of the plugins that move entities.
+
+```mermaid
+flowchart LR
+    F["fixed steps<br/>(physics)"] --> U["update<br/>(gameplay, scripts)"]
+    U --> L["lateUpdate<br/>HierarchyPlugin: propagateTransforms"]
+    L --> R["render<br/>reads the world Transform"]
+```
 
 ```cpp
 engine.addPlugin<systems::PhysicsPlugin>()

@@ -44,6 +44,22 @@ const double volume = prefs.getNumber("audio.master");
 - **Atomic writes.** `ConfigFile::save` writes `<file>.tmp` then renames it over the file, creating missing
   directories. A crash during a save never leaves a truncated settings file.
 
+```mermaid
+sequenceDiagram
+    participant G as Game / menu
+    participant S as config::Settings
+    participant P as SettingsPlugin
+    participant B as EventBus
+    participant F as settings.toml
+    P->>F: init: load
+    G->>S: set("audio.master", 0.4)
+    Note over S: marked dirty
+    P->>B: next update: SettingChanged{"audio.master"}
+    B->>G: listeners apply the value (volume, overlay, ...)
+    Note over P: no change for saveDelay (1 s)
+    P->>F: save: write .tmp, then rename
+```
+
 ## Where the file lives
 
 `config::userConfigDirectory(app)` returns:

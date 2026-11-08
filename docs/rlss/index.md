@@ -6,7 +6,7 @@ engine modules it needs, and the engine knows nothing about it (the game does no
 
 ## Layout
 
-```
+```text
 rlss/
 ├── xmake.lua           -- includes the targets below (the client only with --graphics=y)
 ├── shared/             -- rlss_shared: protocol + codec, arena dimensions, player palette (no engine)
