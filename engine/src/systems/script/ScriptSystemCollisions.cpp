@@ -34,6 +34,7 @@ void ScriptSystem::invokeEntityMethod(ecs::Entity target, std::string const& sig
         return;
     }
 
+    const OwnerScope scope(*this, target);
     scripting::detail::UniqueWrenHandle argObj;
     if (_vm.hasVariable("core/Entity", "Entity")) {
         argObj = _vm.newInstanceWithHandle(_newHandle, "core/Entity", "Entity", arg);

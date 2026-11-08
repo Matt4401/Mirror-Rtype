@@ -106,6 +106,7 @@ void ScriptSystem::instantiateScript(ecs::Entity e, ecs::ScriptComponent& script
     script.initialized = true;
 
     if (!isReload && _vm.hasVariable("_internal", "Dispatcher")) {
+        const OwnerScope scope(*this, e);
         auto trySpawnHandle = _vm.makeCallHandle("tryCallSpawn(_)");
         _vm.ensureSlots(2);
         _vm.getVariable("_internal", "Dispatcher", 0);
@@ -128,6 +129,7 @@ void ScriptSystem::triggerDestroyHook(ecs::Entity e) {
     }
 
     if (_vm.hasVariable("_internal", "Dispatcher")) {
+        const OwnerScope scope(*this, e);
         auto tryDestroyHandle = _vm.makeCallHandle("tryCallDestroy(_)");
         _vm.ensureSlots(2);
         _vm.getVariable("_internal", "Dispatcher", 0);

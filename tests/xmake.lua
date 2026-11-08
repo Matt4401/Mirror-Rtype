@@ -225,6 +225,14 @@ target("test_scene")
     add_files("test_scene.cpp")
     add_tests("test_scene")
 
+target("test_scene_scripting")
+    set_kind("binary")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_scene", "engine_scripting", "engine_input",
+             "engine_prefabs", "engine_scene_scripting")
+    add_packages("gtest", "wren")
+    add_files("test_scene_scripting.cpp")
+    add_tests("test_scene_scripting")
+
 target("test_hierarchy")
     set_kind("binary")
     add_deps("engine_core", "engine_time", "engine_hierarchy")

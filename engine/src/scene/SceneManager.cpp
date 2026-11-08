@@ -23,9 +23,6 @@ SceneId SceneManager::add(std::unique_ptr<IScene> scene) {
         throw std::invalid_argument("SceneManager: cannot register a null scene");
     }
     const std::type_index type(typeid(*scene));
-    if (findType(type)) {
-        throw std::invalid_argument("SceneManager: a scene of this type is already registered");
-    }
     if (find(scene->name())) {
         throw std::invalid_argument("SceneManager: a scene with this name is already registered");
     }
@@ -47,13 +44,26 @@ std::optional<SceneId> SceneManager::find(std::string_view name) const noexcept 
     return std::nullopt;
 }
 
-std::optional<SceneId> SceneManager::findType(std::type_index type) const noexcept {
+std::optional<SceneId> SceneManager::findType(std::type_index type) const {
+    std::optional<SceneId> found;
     for (std::size_t i = 0; i < _slots.size(); ++i) {
         if (_slots[i]->type == type) {
-            return static_cast<SceneId>(i);
+            if (found) {
+                throw std::logic_error("SceneManager: several scenes have this type, look them up by name");
+            }
+            found = static_cast<SceneId>(i);
         }
     }
-    return std::nullopt;
+    return found;
+}
+
+SceneId SceneManager::spawnTarget() const noexcept {
+    for (std::size_t i = _stack.size(); i-- > 0;) {
+        if (_slots[_stack[i]]->scene->mode() == SceneMode::Exclusive) {
+            return _stack[i];
+        }
+    }
+    return _stack.empty() ? INVALID_SCENE : _stack.front();
 }
 
 SceneManager::Slot& SceneManager::slotOf(SceneId id) const {

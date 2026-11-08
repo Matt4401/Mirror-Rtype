@@ -31,7 +31,7 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
   `engine_network_asio` (net/asio/: asio transport behind `net/NetworkFactory.hpp`),
   `engine_metrics` (metrics/), `engine_metrics_overlay` (metrics/overlay/), `engine_network_metrics` (net/metrics/),
   `engine_render` (render/, systems/render/), `engine_input` (input/), `engine_scene` (scene/: scene stack,
-  headless). `engine_all` is a phony aggregate.
+  headless), `engine_scene_scripting` (scene/scripting/: Wren bridge). `engine_all` is a phony aggregate.
 - `common/` — game protocol: Protobuf schema (`proto/rtype.proto`) + codec (`src/protocol/`), protobuf types stay
   private
 - `game/src/` — `rtype_game`: R-Type code shared by server and client (replication codec, ship movement)

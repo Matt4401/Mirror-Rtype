@@ -33,9 +33,10 @@ namespace scene {
 /**
  * @brief Owns the scenes of a game and the stack of the active ones.
  *
- * Scenes are registered once, then `switchTo`, `push`, `pop` and `replace` change the stack. These calls only queue the
- * change: `applyTransitions` (run by `ScenePlugin::preUpdate`) applies them in order at the start of the next frame, so
- * no entity disappears in the middle of a system. A transition requested from a hook is applied in the same call.
+ * Scenes are registered once (names are unique), then `switchTo`, `push`, `pop` and `replace` change the stack. These
+ * calls only queue the change: `applyTransitions` (run by `ScenePlugin::preUpdate`) applies them in order at the start
+ * of the next frame, so no entity disappears in the middle of a system. A transition requested from a hook is applied
+ * in the same call.
  *
  * The top scene always runs and is visible. Below it:
  * - an exclusive scene hides and pauses everything under it;
@@ -69,19 +70,19 @@ class SceneManager {
 
     /**
      * @brief Constructs and registers a scene.
-     * @tparam Scene Concrete scene type; at most one scene of each type.
+     * @tparam Scene Concrete scene type.
      * @param args Arguments of its constructor.
      * @return Id of the scene.
-     * @throws std::invalid_argument if a scene of the same type or the same name is already registered.
+     * @throws std::invalid_argument if a scene with the same name is already registered.
      */
     template <typename Scene, typename... Args>
     SceneId registerScene(Args&&... args);
 
     /**
      * @brief Registers a scene built by the caller.
-     * @param scene Scene to own; its dynamic type identifies it for `get<T>()`.
+     * @param scene Scene to own; its dynamic type identifies it for `get<T>()` when it is the only one of its type.
      * @return Id of the scene.
-     * @throws std::invalid_argument if `scene` is null, or a scene of the same type or name is already registered.
+     * @throws std::invalid_argument if `scene` is null, or a scene with the same name is already registered.
      * @throws std::length_error if every id is taken.
      */
     SceneId add(std::unique_ptr<IScene> scene);
@@ -91,6 +92,7 @@ class SceneManager {
      * @tparam Scene Type given to `registerScene`.
      * @return The scene.
      * @throws std::out_of_range if no scene of this type is registered.
+     * @throws std::logic_error if several scenes have this type (look them up by name instead).
      */
     template <typename Scene>
     [[nodiscard]] Scene& get();
@@ -100,6 +102,7 @@ class SceneManager {
      * @tparam Scene Type given to `registerScene`.
      * @return Its id.
      * @throws std::out_of_range if no scene of this type is registered.
+     * @throws std::logic_error if several scenes have this type (look them up by name instead).
      */
     template <typename Scene>
     [[nodiscard]] SceneId idOf() const;
@@ -197,6 +200,12 @@ class SceneManager {
     [[nodiscard]] std::span<const SceneId> stack() const noexcept { return _stack; }
 
     /**
+     * @brief Gets the scene that owns world content spawned without an explicit owner: the top exclusive scene.
+     * @return The highest exclusive scene of the stack, else its bottom scene, or `INVALID_SCENE` if it is empty.
+     */
+    [[nodiscard]] SceneId spawnTarget() const noexcept;
+
+    /**
      * @brief Tells whether a scene is on the stack.
      * @param id Scene to check; unknown ids are never active.
      * @return `true` if the scene is on the stack.
@@ -287,11 +296,12 @@ class SceneManager {
     };
 
     /**
-     * @brief Finds the slot of a type.
+     * @brief Finds the only scene of a type.
      * @param type Dynamic type of a scene.
-     * @return Its id, or nothing.
+     * @return Its id, or nothing if no scene has this type.
+     * @throws std::logic_error if several scenes have this type.
      */
-    [[nodiscard]] std::optional<SceneId> findType(std::type_index type) const noexcept;
+    [[nodiscard]] std::optional<SceneId> findType(std::type_index type) const;
 
     /**
      * @brief Throws for an unknown id.

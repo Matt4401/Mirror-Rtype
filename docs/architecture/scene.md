@@ -87,7 +87,8 @@ engine.run();
 
 Anywhere else, the manager is a Mediator service: `engine.service<scene::SceneManager>()`.
 
-A scene is registered once (one per type, unique name) and keeps its state between visits.
+A scene is registered once under a unique name and keeps its state between visits. `get<T>()` and `idOf<T>()`
+find a scene by type when it is the only one of its type (they throw otherwise; use `find(name)`).
 `registerScene` returns a dense `SceneId`; `find(name)` and `idOf<T>()` look it up.
 
 | Call            | Effect                                                    |
@@ -125,6 +126,88 @@ Hook order on a push: the scenes below get `onPause` (and `SceneVisibilityChange
 
 Plugins that are not scenes can gate themselves on the stack: `isActive(id)` (on the stack), `isRunning(id)`,
 `isVisible(id)` and `top()` are flag lookups, cheap enough for every frame. They can also listen to the scene events.
+
+## Scenes in Wren
+
+The `engine_scene_scripting` module bridges scenes and Wren. It is the only module that depends on both
+`engine_scene` and `engine_scripting`, so a game without scripting does not link it.
+
+```cpp
+engine.addPlugin<scene::ScenePlugin>();
+engine.addPlugin<scripting::ScriptPlugin>();
+engine.addPlugin<scene::SceneScriptingPlugin>();
+
+auto& bridge = engine.getPlugin<scene::SceneScriptingPlugin>();
+bridge.registerScriptScene(engine, "LevelIntro", "scripts/scenes/LevelIntro", "LevelIntro",
+                           scene::ScriptSceneOptions{.mode = scene::SceneMode::Overlay, .hasUpdate = true});
+```
+
+### The `core/Scene` module
+
+```wren
+import "core/Scene" for Scene
+
+Scene.switchTo("Game")       // push(name), replace(name), pop(): deferred to the next frame, like in C++
+Scene.current                // name of the top scene, or null
+Scene.isActive("Pause")      // on the stack
+Scene.isRunning("Game")      // on the stack and not paused
+```
+
+An unknown name aborts the calling fiber with an error. Names are only resolved on these calls, never per frame.
+
+### Scripted scenes
+
+A scripted scene is a Wren class with `construct new()` and optional hooks:
+
+```wren
+import "core/Engine" for Engine
+import "core/Scene" for Scene
+
+class LevelIntro {
+    construct new() {}
+
+    onEnter() {
+        Engine.spawnPrefab("level_banner", 640, 360)   // owned by this scene
+        Engine.wait(2)                                 // hooks run in a fiber
+        Scene.pop()
+    }
+    onExit() {}
+    onPause() {}
+    onResume() {}
+    update(dt) {}          // only called if ScriptSceneOptions::hasUpdate
+    fixedUpdate(dt) {}     // only called if ScriptSceneOptions::hasFixedUpdate
+}
+```
+
+- The enter, exit, pause and resume hooks run in a fiber, so they may call `Engine.wait`. A missing hook is not an
+  error.
+- `update(dt)` and `fixedUpdate(dt)` are called through cached handles, with no fiber and no lookup per frame. They
+  only run while the scene runs.
+- When the scene exits, the fibers it put to sleep are cancelled, so a pending `Engine.wait` never resumes into a
+  scene that is gone.
+- A hot reload rebuilds the instance in the new VM without calling `onEnter` again. `core/Scene` and its bindings
+  are kept.
+
+### Who owns what scripts spawn
+
+Entities spawned from Wren with `Engine.spawnPrefab` get a `SceneMember`, decided in this order:
+
+1. If the code that spawned it belongs to a **scripted scene** (its hooks, its update, a fiber it put to sleep), the
+   entity goes to that scene.
+2. If it belongs to a **scripted entity** that has a `SceneMember` (its `onSpawn`, `update`, `onCollision`,
+   `onDestroy`, a fiber it put to sleep), the entity goes to the same scene.
+3. Otherwise it goes to the **top exclusive scene**, `SceneManager::spawnTarget()`. With an empty stack, it gets no
+   owner.
+
+An entity whose owner scene exited before the spawn was flushed is destroyed right away.
+
+This relies on two generic hooks of `systems::ScriptSystem`, usable by other extensions:
+- the **script owner** (`currentOwner`, `setCurrentOwner`, `cancelFibers`), recorded by sleeping fibers and spawns;
+- the **spawn decorator** (`setSpawnDecorator`).
+
+Two more hooks support the bridge:
+- `addModuleSource` provides built-in modules such as `core/Scene`;
+- `addVmResetListener` notifies hot reloads, so handles can be released and rebuilt.
 
 ## Frame timeline
 

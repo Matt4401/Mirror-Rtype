@@ -99,9 +99,16 @@ target("engine_scene")
     add_includedirs(".", {public = true})
     add_deps("engine_core", "engine_events", "engine_hierarchy")
 
+-- Bridge between scenes and Wren: the core/Scene module, scripted scenes, ownership of script spawns.
+target("engine_scene_scripting")
+    set_kind("static")
+    add_files("scene/scripting/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_scene", "engine_scripting")
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end

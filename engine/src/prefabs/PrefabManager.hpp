@@ -14,6 +14,7 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "prefabs/PrefabParams.hpp"
+#include "utils/MoveOnlyFunction.hpp"
 
 namespace prefabs {
 
@@ -69,6 +70,21 @@ class PrefabManager {
      * @return True if the spawn was queued, false if the prefab is unknown.
      */
     bool spawn(std::string_view name, ecs::CommandBuffer& buffer, PrefabParams const& params = {}) const;
+
+    /** @brief Callback run on a prefab instance right after its factory built it. */
+    using AfterSpawn = ecs::MoveOnlyFunction<void(ecs::Entity, ecs::Registry&)>;
+
+    /**
+     * @brief Queues the creation of a prefab instance, then runs `after` on it once the factory is done.
+     *
+     * Same as the other overload; `after` can tag or adjust the entity without knowing the prefab.
+     * @param name Prefab identifier.
+     * @param buffer Command buffer receiving the deferred spawn.
+     * @param params Instance parameters, merged over the registration defaults.
+     * @param after Callback run on the new entity; may be empty.
+     * @return True if the spawn was queued, false if the prefab is unknown.
+     */
+    bool spawn(std::string_view name, ecs::CommandBuffer& buffer, PrefabParams const& params, AfterSpawn after) const;
 
   private:
     /** @brief A registered factory and its default parameters. */
