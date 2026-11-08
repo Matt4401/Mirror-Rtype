@@ -32,6 +32,8 @@ namespace rtype::server::gameplay {
 inline constexpr float SHOT_COOLDOWN = 0.2F;
 /** @brief Seconds of game time between two score logs. */
 inline constexpr float SCORE_LOG_INTERVAL = 5.0F;
+/** @brief Shortest time between two `protocol::ScoreUpdate`, in seconds: a burst of kills is sent once. */
+inline constexpr float SCORE_UPDATE_INTERVAL = 0.25F;
 /** @brief Points given to a player for each enemy their shots destroy. */
 inline constexpr std::uint32_t POINTS_PER_KILL = 1;
 /** @brief Seconds of rapid fire given by a power-up. */
@@ -51,7 +53,8 @@ inline constexpr float RAPID_FIRE_COOLDOWN = 0.08F;
  *   the hit to its boss; armor parts, and a boss that has weak points, stop the shot without damage. An enemy with
  *   `prefabs::DropsPowerUp` killed by a player leaves a `power_up` where it died.
  * - An enemy shot, an enemy or an obstacle touching a ship that is not `Respawning` publishes `ShipDestroyed`.
- * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time.
+ * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time, and publishes a
+ *   `protocol::ScoreUpdate` when a score changed, at most every `SCORE_UPDATE_INTERVAL` seconds.
  * - On `LevelFinished`, publishes the `protocol::LevelComplete` with the scores, then `protocol::GameOver{Victory}`
  *   after the last level. The room sends them to its players: the plugin itself knows nothing about the network.
  */
@@ -186,6 +189,10 @@ class CombatPlugin final : public engine::IPlugin {
     std::size_t _playerCount = 0;
     /** @brief Seconds left before the next score log. */
     float _scoreLogTimer = SCORE_LOG_INTERVAL;
+    /** @brief True when a score changed since the last `protocol::ScoreUpdate`. */
+    bool _scoresChanged = false;
+    /** @brief Seconds left before a `protocol::ScoreUpdate` can be published again. */
+    float _scoreUpdateCooldown = 0.0F;
 };
 
 }  // namespace rtype::server::gameplay

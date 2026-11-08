@@ -656,6 +656,36 @@ TEST_F(GameplayWithoutLevelTest, EliteTakesSeveralHitsThenDropsAPowerUp) {
     EXPECT_NEAR(registry().getComponents<ecs::Transform>().get(drops.front()).x, 600.0F, 5.0F);
 }
 
+TEST_F(GameplayWithoutLevelTest, ScoresAreSentWhenTheyChangeAtMostFourTimesASecond) {
+    std::vector<protocol::ScoreUpdate> updates;
+    engine.eventBus().subscribe<protocol::ScoreUpdate>(
+        [&updates](const protocol::ScoreUpdate& update) { updates.push_back(update); });
+    const auto kill = [this](const std::uint8_t player) {
+        const ecs::Entity enemy = spawnEnemy(900.0F, 600.0F);
+        const ecs::Entity shot = registry().spawnEntity();
+        registry().addComponent(shot, game::EntityNetState{.subtype = player});
+        engine.eventBus().publish(rtype::server::collision::ShotHitEvent{
+            .shot = shot, .target = enemy, .targetCategory = prefabs::collision::ENEMY, .byPlayer = true});
+    };
+
+    run(1.0F);
+    EXPECT_TRUE(updates.empty()) << "nothing changed";
+
+    kill(1);
+    kill(1);
+    run(FIXED_DT * 2);
+    ASSERT_EQ(updates.size(), 1U) << "two kills in the same moment: one update";
+    EXPECT_EQ(updates.back().score, 2 * POINTS_PER_KILL);
+    EXPECT_EQ(updates.back().playerScores, (std::vector<std::uint32_t>{0, 2 * POINTS_PER_KILL}));
+
+    kill(0);
+    run(FIXED_DT * 2);
+    EXPECT_EQ(updates.size(), 1U) << "too soon after the previous one";
+    run(rtype::server::gameplay::SCORE_UPDATE_INTERVAL);
+    ASSERT_EQ(updates.size(), 2U);
+    EXPECT_EQ(updates.back().playerScores, (std::vector<std::uint32_t>{POINTS_PER_KILL, 2 * POINTS_PER_KILL}));
+}
+
 TEST_F(GameplayTest, EnemiesThatLeaveTheScreenAreDestroyed) {
     // From x = 1328 at 150 px/s, an enemy is past the left edge after about 9.3 s. In 15 s the level spawns at 1, 2, 6,
     // 7, 11 and 12 s, so the first ones are gone. Entity ids are recycled, so the test looks at positions.

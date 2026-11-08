@@ -156,6 +156,7 @@ void CombatPlugin::onShotHit(const collision::ShotHitEvent& hit) {
             const std::uint8_t shooter = registry.getComponents<game::EntityNetState>().get(hit.shot).subtype;
             if (shooter < _scores.size()) {
                 _scores.at(shooter) += POINTS_PER_KILL;
+                _scoresChanged = true;
             }
         }
         // An enemy carrying loot leaves it where it died; spawned at the next step, outside of the contact callbacks.
@@ -257,6 +258,17 @@ void CombatPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time
         ecs::net::replicate(*_registry, powerUp, game::KIND_POWER_UP);
     }
     _pendingDrops.clear();
+
+    _scoreUpdateCooldown = std::max(_scoreUpdateCooldown - time.deltaTime, 0.0F);
+    if (_scoresChanged && _scoreUpdateCooldown <= 0.0F) {
+        _scoresChanged = false;
+        _scoreUpdateCooldown = SCORE_UPDATE_INTERVAL;
+        const std::vector<std::uint32_t> scores = playerScores();
+        _bus->publish(protocol::ScoreUpdate{
+            .score = std::accumulate(scores.begin(), scores.end(), std::uint32_t{0}),
+            .playerScores = scores,
+        });
+    }
 
     _scoreLogTimer -= time.deltaTime;
     if (_scoreLogTimer <= 0.0F) {

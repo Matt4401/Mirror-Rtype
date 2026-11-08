@@ -89,6 +89,8 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
         [this](const protocol::LevelStart& message) { broadcastReliable(*_connection, message); });
     bus.subscribe<protocol::LevelComplete>(
         [this](const protocol::LevelComplete& message) { broadcastReliable(*_connection, message); });
+    bus.subscribe<protocol::ScoreUpdate>(
+        [this](const protocol::ScoreUpdate& message) { broadcastReliable(*_connection, message); });
     bus.subscribe<protocol::GameOver>([this](const protocol::GameOver& message) {
         broadcastReliable(*_connection, message);
         _ended = true;

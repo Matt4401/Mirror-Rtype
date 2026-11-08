@@ -108,7 +108,7 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 | Plugin | Job | Publishes | Listens to |
 |--------|-----|-----------|------------|
 | `LevelDirectorPlugin` | Plays the level, spawns the enemies, holds the scroll | `LevelEventPlayed`, `LevelStarted`, `LevelFinished`, `protocol::LevelStart` | `TimelineEventFired`, `BossFightStarted`/`Ended`, `ShipRespawnStarted`, `AllRespawnsOver` |
-| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed`, `protocol::LevelComplete`, `protocol::GameOver` | inputs, collision events, `LevelFinished` |
+| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed`, `protocol::ScoreUpdate`, `protocol::LevelComplete`, `protocol::GameOver` | inputs, collision events, `LevelFinished` |
 | `BossFightPlugin` | Spawns the bosses, follows the fight | `BossFightStarted`, `BossFightEnded` | `LevelEventPlayed` (`boss`) |
 | `RespawnPlugin` | Brings destroyed ships back | `ShipRespawnStarted`, `AllRespawnsOver` | `ShipDestroyed` |
 | `TerrainPlugin` | Builds and scrolls the terrain | | `LevelEventPlayed` (`terrain`), `LevelStarted` |
@@ -140,8 +140,9 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
   point, stop the shot. See [Boss Part](../prefabs/boss-part.md).
 - **Cleanup:** player bullets more than 64 px past the right edge, and enemies, enemy shots and power-ups more than
   64 px past the left one, are destroyed.
-- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`. The clients get the scores
-  at the end of the game.
+- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`.
+- **Live scores:** when a score changes, `CombatPlugin` publishes a `protocol::ScoreUpdate` (total and per player), at
+  most every `SCORE_UPDATE_INTERVAL` (0.25 s); the room sends it to its players on the reliable channel.
 
 ### Game flow
 
