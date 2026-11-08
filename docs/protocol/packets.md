@@ -53,6 +53,7 @@ message Envelope {
         PlayerLeft player_left = 50;
         LevelStart level_start = 51;
         LevelComplete level_complete = 52;
+        ScoreUpdate score_update = 53;
 
         Leave leave = 64;
         Chat chat = 65;
@@ -255,6 +256,19 @@ nothing spawns. The client shows the level name.
 When a level is cleared, the server destroys every entity except the ships, moves the ships back to their start
 positions, and sends this message. The next `LevelStart`, or `GameOver` after the last level, follows.
 
+### `ScoreUpdate` (53)
+
+**Direction:** Server → Client · **Channel:** Reliable · **Phase:** In-game
+
+| Field           | # | Type              | Description                               |
+|-----------------|---|-------------------|-------------------------------------------|
+| `score`         | 1 | `uint32`          | Total score of the room                   |
+| `player_scores` | 2 | repeated `uint32` | Score per player slot, at most 4 (packed) |
+
+Sent when a score changes, at most every 0.25 s: a burst of kills is sent once. It travels on the reliable channel
+like the other session messages: it is small and rare, and a lost update would leave a wrong score on screen until
+the next kill. The client shows the total and its own score (`player_scores[GameStart.player_index]`).
+
 ### `PlayerLeft` (50)
 
 **Direction:** Server → Client · **Channel:** Reliable · **Phase:** Lobby + In-game
@@ -393,7 +407,8 @@ payload MUST be dropped silently — when:
 - a number is outside its documented range (`subtype`, `health`, `flags` > 255; `udp_port`
   of 0 or > 65535; `max_players` of 0 or > 4; a room `player_count` > `max_players`; `GameStart.player_count` of 0
   or > 4; `player_index` >= `player_count`);
-- a list is longer than its maximum (`rooms` > 256; `slots`, `player_scores` > 4; `held` > 16; `axes` > 8);
+- a list is longer than its maximum (`rooms` > 256; `slots`, `player_scores` > 4, in `GameOver`, `LevelComplete` and
+  `ScoreUpdate`; `held` > 16; `axes` > 8);
 - a level message is out of range (`level_count` of 0 or > 64, `level_index` >= `level_count` in `LevelStart`,
   `level_index` >= 64 in `LevelComplete`, `name` longer than 64 bytes);
 - a chat `text` is empty or longer than 256 bytes.
@@ -461,5 +476,6 @@ How R-Type fills the game-defined fields of `EntityState`. Another game defines 
 | `50` | `PlayerLeft`       | S → C | Reliable   | ~5                         |
 | `51` | `LevelStart`       | S → C | Reliable   | ~7 + name length           |
 | `52` | `LevelComplete`    | S → C | Reliable   | ~10                        |
+| `53` | `ScoreUpdate`      | S → C | Reliable   | ~8                         |
 | `64` | `Leave`            | C → S | Reliable   | 3                          |
 | `65` | `Chat`             | Both  | Reliable   | ~7 + text length           |
