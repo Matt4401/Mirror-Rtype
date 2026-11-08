@@ -266,7 +266,7 @@ when it drives at supersonic speed, and the view never showing past the arena.
 
 ## Protocol
 
-The transport handshake uses `protocolId = 0x524C0006` ("RL", version 6), so R-Type and RLSS peers (or two RLSS
+The transport handshake uses `protocolId = 0x524C0007` ("RL", version 7), so R-Type and RLSS peers (or two RLSS
 versions) refuse each other. Every message starts with a one-byte type; multi-byte integers are big-endian, floats
 IEEE 754 binary32. Received messages are untrusted: an unknown type, a wrong size, an out-of-range field or a
 non-finite float drops the message.

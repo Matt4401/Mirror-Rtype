@@ -22,7 +22,7 @@ inline constexpr std::string_view GAME_TITLE = "RLSS";
  * @brief Transport protocol id (`ecs::net::NetworkConfig::protocolId`): an R-Type client and an RLSS server refuse
  * each other during the handshake. Bump the low byte on every incompatible protocol change.
  */
-inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0006U;  // "RL", version 6
+inline constexpr std::uint32_t PROTOCOL_ID = 0x524C0007U;  // "RL", version 7
 
 /** @brief Port used when none is given on the command line (TCP and UDP). */
 inline constexpr std::uint16_t DEFAULT_PORT = 4250;
