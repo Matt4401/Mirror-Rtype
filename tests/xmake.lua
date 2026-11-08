@@ -66,6 +66,13 @@ target("test_spatial_queries")
     add_files("scripting/SpatialQueriesTests.cpp")
     add_tests("test_spatial_queries")
 
+target("test_content_root")
+    set_kind("binary")
+    add_deps("engine_core")
+    add_packages("gtest")
+    add_files("core/ContentRootTests.cpp")
+    add_tests("test_content_root")
+
 target("test_assets")
     set_kind("binary")
     add_deps("engine_core", "engine_assets")

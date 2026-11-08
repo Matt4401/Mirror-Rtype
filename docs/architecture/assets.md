@@ -96,7 +96,7 @@ With a muted audio backend (no device, `NullAudioBackend`), `AudioAssetsPlugin` 
 
 ## Declaring assets in Wren
 
-Each game has one declaration module, given to `AssetScriptingPlugin` and run from the repository root:
+Each game has one declaration module, given to `AssetScriptingPlugin`:
 
 ```wren
 import "core/Assets" for Assets
@@ -139,6 +139,19 @@ path leaving the working directory (absolute, drive letter, or starting with `..
 files (`"."` names the working directory) and skips a file whose alias already names another file (`ship.jpg` next to
 `ship.png`, or an alias another group declared). The `smooth` option only applies to textures. Symbolic links are
 followed: the declaration scripts are trusted game data, not downloaded content. Warnings cut long names, so a script cannot flood the logs.
+
+## Content root
+
+Relative paths are resolved against the **content root**, given to `AssetPlugin` (and to `ScriptPlugin` for the
+script files), so a game runs from any working directory. The games pass `engine::contentRoot()`
+(`core/ContentRoot.hpp`):
+
+1. the `ENGINE_CONTENT_ROOT` environment variable, if it names a directory (content installed apart from the binary);
+2. otherwise the directory of the executable, which the build puts at the repository root;
+3. otherwise (platform cannot tell) an empty root: the working directory, as before.
+
+Aliases and keys keep the path as declared (`"sprites/ship.png"`); only the loader receives the resolved path. An
+absolute path is used as is. Tests and tools that pass no root keep reading from the working directory.
 
 ## Using assets from C++
 

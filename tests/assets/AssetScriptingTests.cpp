@@ -306,6 +306,37 @@ TEST(AssetScriptingPlugin, AMissingDeclarationModuleIsReported) {
     engine.shutdown();
 }
 
+TEST(AssetScriptingPlugin, ScriptsAndAssetsAreReadFromTheContentRootWhateverTheWorkingDirectory) {
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() /
+        ("asset_root_" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::filesystem::create_directories(root / "game");
+    std::ofstream(root / "game" / "Names.wren") << "class Names {\n    static ship { \"player_ship\" }\n}\n";
+    std::ofstream(root / "game" / "Assets.wren") << R"wren(
+import "core/Assets" for Assets
+import "game/Names" for Names
+Assets.texture(Names.ship, "sprites/ship.png")
+Assets.loadGroup("global")
+)wren";
+
+    engine::Engine engine;
+    engine.addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::EveryFrame, root)
+        .addPlugin<assets::AssetPlugin>(root)
+        .addPlugin<assets::AssetScriptingPlugin>("game/Assets");
+    engine.init();
+    EXPECT_TRUE(engine.getPlugin<assets::AssetScriptingPlugin>().declarationsLoaded());
+
+    auto log = std::make_shared<LoaderLog>();
+    auto& manager = engine.registry().getResource<assets::AssetManager>();
+    manager.setLoader<assets::Texture>(fakeLoader<assets::Texture>(log));
+    EXPECT_EQ(log->loads, std::vector<std::string>{(root / "sprites/ship.png").generic_string()});
+    EXPECT_NE(manager.get<assets::Texture>("player_ship"), assets::Texture::NONE);
+    engine.shutdown();
+
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

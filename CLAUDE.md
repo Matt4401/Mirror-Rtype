@@ -42,7 +42,7 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
 - `game/src/` — `rtype_game`: R-Type code shared by server and client (replication codec, ship movement)
 - `server/src/`, `client/src/` — the R-Type game executables
 - `rlss/` — second sample game (2D car football): `shared/` (protocol, arena), `game/` (codec, Wren bindings),
-  `server/`, `client/`, `scripts/` (Wren car physics, loaded from the repo root); see `docs/rlss/index.md`
+  `server/`, `client/`, `scripts/` (Wren car physics, read from the content root: the executable's directory); see `docs/rlss/index.md`
 - `scripts/` — Wren scripts (`scripts/core/*.wren`) + tooling scripts
 - `tests/` — GoogleTest binaries, one `target` per suite in `tests/xmake.lua`
 - `docs/` — architecture, protocol, comparative study, accessibility, dev guides

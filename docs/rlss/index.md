@@ -34,9 +34,10 @@ xmake
 ./rlss_client [host] [port]     # default 127.0.0.1 4250, start as many as you want
 ```
 
-Run both from the repository root: the Wren scripts are loaded from `rlss/scripts/`, the sounds from
-`rlss/assets/sounds/`, the textures and the font from `rlss/assets/textures/` and `rlss/assets/fonts/`. Scripts are
-hot-reloaded: save
+Both can be run from any directory: the Wren scripts (`rlss/scripts/`), the sounds (`rlss/assets/sounds/`), the
+textures and the font (`rlss/assets/textures/`, `rlss/assets/fonts/`) are read from the content root, the directory of
+the executable (the repository root, where the build puts it) unless `ENGINE_CONTENT_ROOT` names another one. Scripts
+are hot-reloaded: save
 `rlss/scripts/CarTuning.wren` or `BallTuning.wren` while the server runs to tune the physics live.
 
 The client first asks for a name (keyboard: up to 12 letters, digits, spaces, `-` or `.`; Enter or **VALIDER**). It is
