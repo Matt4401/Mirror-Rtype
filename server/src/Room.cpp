@@ -63,7 +63,8 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<timeline::TimelinePlugin>();
     _engine.addPlugin<gameplay::GameplayPlugin>(std::move(level));
     _engine.addPlugin<prefabs::PrefabPlugin>();
-    _engine.addPlugin<scripting::ScriptPlugin>();
+    // On fixed steps: the room loop advances the engine about every millisecond, scripts follow the 60 Hz simulation.
+    _engine.addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::FixedStep);
     _engine.eventBus().subscribe<ecs::net::InputApplied>([this](const ecs::net::InputApplied& event) {
         ecs::Registry& registry = _engine.registry();
         if (registry.hasComponent<ecs::Transform>(event.entity)) {
