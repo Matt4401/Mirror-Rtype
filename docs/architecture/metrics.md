@@ -12,14 +12,17 @@ resource, the `metrics::MetricsBoard`:
 ```text
 metrics::MetricsPlugin ─────────── FPS, Frame, Entities, CPU, RAM ─┐
 ecs::net::NetworkMetricsPlugin ─── Down, Up, Packets, RTT, Missed ─┼─► MetricsBoard ─► metrics::MetricsOverlayPlugin
-The game (PlayerControlPlugin) ─── Position ───────────────────────┘
+The game (ShipMetricsPlugin) ───── Position ───────────────────────┘
 ```
 
 | Target | Content | Depends on |
 |---|---|---|
 | `engine_metrics` | `MetricsBoard`, `RollingStats`, `ProcessUsage`, `MetricsPlugin` | `engine_core` |
-| `engine_network` | `NetworkMetricsPlugin`, `ReplicationStats`, `TransportStats` | `engine_metrics` |
+| `engine_network_metrics` | `NetworkMetricsPlugin` | `engine_network`, `engine_metrics` |
 | `engine_metrics_overlay` | `MetricsOverlayPlugin` | `engine_metrics`, `engine_ui`, `engine_hierarchy` |
+
+`ReplicationStats` and `TransportStats` are plain counters of `engine_network`, which does not depend on the metrics: only
+`engine_network_metrics` turns them into lines of the board.
 
 No target above contains graphics-library code: the overlay draws with the `ui` components, through
 `engine::IScreenDrawService`. This is why it is tested without a window, and why a headless program can collect metrics
@@ -94,12 +97,21 @@ if (registry.hasResource<metrics::MetricsBoard>()) {
 ```
 
 Pass a `metrics::MetricLevel` as third argument to colour the line. Use a `metrics::RefreshTimer` to avoid writing a new
-value at every frame: `client/src/net/PlayerControlPlugin.cpp` shows both.
+value at every frame. Keep it in a plugin of its own that requires `metrics::MetricsPlugin`, rather than in a gameplay
+plugin: `client/src/metrics/ShipMetricsPlugin.cpp` does this for the `Position` line.
 
 ## Showing or hiding the overlay
 
-The overlay is always shown for now: `client/src/main.cpp` always adds the plugin, and there is no key or option to hide
-it. The game settings will add that switch, around the entities of `MetricsOverlayPlugin` (`panel()` is their parent).
+`client/src/main.cpp` always adds the plugin, and the overlay is shown by default. A menu or a key binding shows or hides
+it with:
+
+```cpp
+engine.getPlugin<metrics::MetricsOverlayPlugin>().setVisible(false);
+```
+
+The change applies at the next frame: hiding destroys the panel and its lines, showing builds them again with the current
+board, so a hidden overlay costs nothing. The measures go on while it is hidden. `visible()` gives the current choice,
+and `setVisible` can be called before the engine starts.
 
 ## Demonstrating lag
 

@@ -6,9 +6,7 @@
 
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
-#include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
-#include "metrics/MetricsBoard.hpp"
 #include "net/ReplicationEvents.hpp"
 
 namespace client {
@@ -64,15 +62,6 @@ class PlayerControlPlugin final : public engine::IPlugin {
      */
     void onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const;
 
-    /**
-     * @brief Shows the position of this player's ship on the metrics board, if the client has one.
-     * @param registry Registry of the client.
-     * @param deltaTime Seconds elapsed since the last call.
-     */
-    void publishPosition(ecs::Registry& registry, float deltaTime);
-
-    /** @brief Paces the refreshes of the position on the metrics board. */
-    metrics::RefreshTimer _positionRefresh;
     /** @brief Index of this player's ship, once the game has started. */
     std::optional<std::uint8_t> _playerIndex;
     /** @brief Sequence of the last input sent. */

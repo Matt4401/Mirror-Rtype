@@ -52,7 +52,14 @@ target("engine_network")
     set_kind("static")
     add_files("net/*.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core", "engine_metrics")
+    add_deps("engine_core")
+
+-- Network lines of the metrics board. Apart from engine_network, so that the network does not depend on the metrics.
+target("engine_network_metrics")
+    set_kind("static")
+    add_files("net/metrics/*.cpp")
+    add_includedirs(".", {public = true})
+    add_deps("engine_network", "engine_metrics")
 
 -- Asio implementation of the transport, behind net/NetworkFactory.hpp. Only the executables that open sockets link it.
 target("engine_network_asio")
@@ -87,7 +94,7 @@ target("engine_metrics_overlay")
 
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay")
+    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end

@@ -81,6 +81,13 @@ Also without window or rendering (`client/src/net/`, same tests).
   `ecs::Interpolated`. On `InputApplied`, it moves the entity with `rtype::game::applyShipInput`, the same function as the
   server.
 
+### `ShipMetricsPlugin`: the game's line on the metrics board
+
+`client/src/metrics/`, tested by `test_client_metrics`. Every `metrics::REFRESH_PERIOD`, writes the position of the
+`ecs::Predicted` ship to the `Position` line of the `metrics::MetricsBoard`; there is no line before the game starts. It
+requires `metrics::MetricsPlugin`, and stays out of `PlayerControlPlugin`, which only handles the player's inputs and
+ship. See [In-Game Metrics](metrics.md).
+
 ### `RTypeGamePlugin`: what is on screen
 
 - **Initialization (`init`):** loads textures, applies the bindings (`client::input::setupDefaultBindings`), spawns the

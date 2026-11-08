@@ -1,4 +1,4 @@
-#include "net/NetworkMetricsPlugin.hpp"
+#include "net/metrics/NetworkMetricsPlugin.hpp"
 
 #include <algorithm>
 #include <cstdint>

@@ -29,7 +29,8 @@ namespace metrics {
  * coloured by its `MetricLevel`. The text only changes when the board does: a frame without a refresh allocates
  * nothing.
  *
- * It is always shown for now: hiding it is left to the game settings.
+ * `setVisible(false)` destroys the panel and `setVisible(true)` builds it again at the next frame, so a hidden overlay
+ * costs nothing. It is shown by default.
  */
 class MetricsOverlayPlugin final : public engine::IPlugin {
   public:
@@ -46,21 +47,42 @@ class MetricsOverlayPlugin final : public engine::IPlugin {
     void build(engine::PluginBuilder& builder) override;
 
     /**
-     * @brief Spawns the panel and the frame time bar.
+     * @brief Spawns the panel and the frame time bar, if the overlay is visible.
      * @param engine Host engine.
      */
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Copies the board to the panel if it changed.
+     * @brief Spawns or destroys the panel to match `visible()`, then copies the board to the panel if it changed.
      * @param engine Host engine.
      * @param time Frame time (unused).
      */
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
+     * @brief Destroys the panel.
+     * @param engine Host engine.
+     */
+    void shutdown(engine::Engine& engine) override;
+
+    /**
+     * @brief Shows or hides the overlay, from the next frame on.
+     *
+     * Only records the choice, so it can be called at any time, from a menu or a key binding, even before `init`.
+     *
+     * @param visible `true` to show the overlay, `false` to hide it.
+     */
+    void setVisible(bool visible) noexcept { _visible = visible; }
+
+    /**
+     * @brief Tells whether the overlay is shown.
+     * @return The last value given to `setVisible`, `true` by default.
+     */
+    [[nodiscard]] bool visible() const noexcept { return _visible; }
+
+    /**
      * @brief Gets the panel.
-     * @return The entity of the panel, once initialized.
+     * @return The entity of the panel, or `ecs::NULL_ENTITY` while the overlay is hidden.
      */
     [[nodiscard]] ecs::Entity panel() const noexcept { return _panel; }
 
@@ -77,6 +99,16 @@ class MetricsOverlayPlugin final : public engine::IPlugin {
     [[nodiscard]] const std::vector<ecs::Entity>& lines() const noexcept { return _lines; }
 
   private:
+    /**
+     * @brief Spawns the panel and the frame time bar; the lines come with the next change of the board.
+     * @param registry Registry of the panel.
+     */
+    void spawnPanel(ecs::Registry& registry);
+    /**
+     * @brief Destroys the panel, with the bar and the lines it holds.
+     * @param registry Registry of the panel.
+     */
+    void destroyPanel(ecs::Registry& registry);
     /**
      * @brief Spawns the text lines missing for the board, and makes the panel tall enough for all of them.
      * @param registry Registry of the panel.
@@ -98,6 +130,8 @@ class MetricsOverlayPlugin final : public engine::IPlugin {
     std::vector<ecs::Entity> _lines;
     /** @brief Version of the board currently shown. */
     std::uint64_t _shownVersion = 0;
+    /** @brief Whether the overlay must be shown. */
+    bool _visible = true;
 };
 
 }  // namespace metrics

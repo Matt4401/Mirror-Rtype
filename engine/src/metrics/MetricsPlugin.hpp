@@ -9,6 +9,7 @@
 #include <string_view>
 
 #include "core/IPlugin.hpp"
+#include "core/PluginBuilder.hpp"
 #include "ecs/Registry.hpp"
 #include "metrics/MetricsBoard.hpp"
 #include "metrics/ProcessUsage.hpp"
@@ -43,7 +44,13 @@ class MetricsPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "MetricsPlugin"; }
 
     /**
-     * @brief Creates the `MetricsBoard` resource.
+     * @brief Declares the dependency on `engine::CorePlugin`.
+     * @param builder Dependency builder.
+     */
+    void build(engine::PluginBuilder& builder) override;
+
+    /**
+     * @brief Creates the `MetricsBoard` resource, unless the registry already has one.
      * @param engine Host engine.
      */
     void init(engine::Engine& engine) override;
@@ -54,6 +61,15 @@ class MetricsPlugin final : public engine::IPlugin {
      * @param time Frame time.
      */
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
+
+    /**
+     * @brief Removes the `MetricsBoard` if `init` created it, and forgets the measures.
+     *
+     * The plugins reading or writing the board require this one, so they are shut down before it.
+     *
+     * @param engine Host engine.
+     */
+    void shutdown(engine::Engine& engine) override;
 
     /**
      * @brief Gets the last frame times.
@@ -75,6 +91,8 @@ class MetricsPlugin final : public engine::IPlugin {
     RefreshTimer _timer;
     /** @brief Measure of the process at the last refresh, to compute the CPU used since then. */
     std::optional<ProcessSample> _lastProcess;
+    /** @brief `init` created the board, so `shutdown` removes it. */
+    bool _ownsBoard = false;
 };
 
 }  // namespace metrics

@@ -22,9 +22,9 @@
 #include "net/INetworkService.hpp"
 #include "net/NetworkEntityMap.hpp"
 #include "net/NetworkEvents.hpp"
-#include "net/NetworkMetricsPlugin.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "net/PeerGroupConnection.hpp"
+#include "net/metrics/NetworkMetricsPlugin.hpp"
 
 namespace {
 

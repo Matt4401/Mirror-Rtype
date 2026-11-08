@@ -3,6 +3,8 @@
 #include <format>
 
 #include "core/Engine.hpp"
+#include "core/PluginBuilder.hpp"
+#include "core/plugins/CorePlugin.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "metrics/MetricsBoard.hpp"
@@ -28,9 +30,12 @@ MetricLevel frameLevel(const float averageSeconds) noexcept {
     return averageSeconds * FPS_WARNING > 1.0F ? MetricLevel::Warning : MetricLevel::Normal;
 }
 
+void MetricsPlugin::build(engine::PluginBuilder& builder) { builder.require<engine::CorePlugin>(); }
+
 void MetricsPlugin::init(engine::Engine& engine) {
     auto& registry = engine.registry();
-    if (!registry.hasResource<MetricsBoard>()) {
+    _ownsBoard = !registry.hasResource<MetricsBoard>();
+    if (_ownsBoard) {
         registry.emplaceResource<MetricsBoard>();
     }
     _lastProcess = sampleProcess();
@@ -41,6 +46,17 @@ void MetricsPlugin::update(engine::Engine& engine, const ecs::time::Time& time) 
     if (const auto elapsed = _timer.tick(time.deltaTime)) {
         publish(engine.registry(), *elapsed);
     }
+}
+
+void MetricsPlugin::shutdown(engine::Engine& engine) {
+    auto& registry = engine.registry();
+    if (_ownsBoard && registry.hasResource<MetricsBoard>()) {
+        registry.removeResource<MetricsBoard>();
+    }
+    _ownsBoard = false;
+    _frames = RollingStats{};
+    _timer = RefreshTimer{};
+    _lastProcess.reset();
 }
 
 void MetricsPlugin::publish(ecs::Registry& registry, const float elapsed) {

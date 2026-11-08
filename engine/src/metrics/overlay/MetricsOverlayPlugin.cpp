@@ -70,8 +70,14 @@ void MetricsOverlayPlugin::build(engine::PluginBuilder& builder) {
 }
 
 void MetricsOverlayPlugin::init(engine::Engine& engine) {
-    auto& registry = engine.registry();
+    if (_visible) {
+        spawnPanel(engine.registry());
+    }
+}
 
+void MetricsOverlayPlugin::shutdown(engine::Engine& engine) { destroyPanel(engine.registry()); }
+
+void MetricsOverlayPlugin::spawnPanel(ecs::Registry& registry) {
     _panel = registry.spawnEntity();
     registry.addComponent<ui::UiAnchor>(
         _panel, ui::UiAnchor{.anchorY = 1.0F, .offsetX = PANEL_MARGIN, .offsetY = -PANEL_MARGIN, .pivotY = 1.0F});
@@ -84,6 +90,16 @@ void MetricsOverlayPlugin::init(engine::Engine& engine) {
         _frameBar,
         ui::UiProgressBar{.max = BAR_FULL_MS, .width = BAR_WIDTH, .height = BAR_HEIGHT, .foreground = COLOR_GOOD});
     hierarchy::setParent(registry, _frameBar, _panel);
+}
+
+void MetricsOverlayPlugin::destroyPanel(ecs::Registry& registry) {
+    if (_panel != ecs::NULL_ENTITY && registry.isAlive(_panel)) {
+        registry.killEntity(_panel);  // the hierarchy destroys the bar and the lines with it
+    }
+    _panel = ecs::NULL_ENTITY;
+    _frameBar = ecs::NULL_ENTITY;
+    _lines.clear();
+    _shownVersion = 0;  // a panel built again shows the board at once
 }
 
 void MetricsOverlayPlugin::growTo(ecs::Registry& registry, const std::size_t count) {
@@ -109,6 +125,13 @@ void MetricsOverlayPlugin::showFrameTime(ecs::Registry& registry, const RollingS
 
 void MetricsOverlayPlugin::update(engine::Engine& engine, const ecs::time::Time& /*time*/) {
     auto& registry = engine.registry();
+    if (!_visible) {
+        destroyPanel(registry);
+        return;
+    }
+    if (_panel == ecs::NULL_ENTITY) {
+        spawnPanel(registry);
+    }
     const auto& board = registry.getResource<MetricsBoard>();
     if (board.version() == _shownVersion) {
         return;

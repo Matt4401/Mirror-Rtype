@@ -14,6 +14,7 @@
 #include "core/PluginBuilder.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "core/services/IWindowService.hpp"
+#include "ecs/Entity.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
 #include "metrics/MetricsBoard.hpp"
 #include "metrics/MetricsPlugin.hpp"
@@ -123,12 +124,14 @@ class FakeServicesPlugin final : public engine::IPlugin {
 };
 
 struct OverlaySide {
-    OverlaySide() {
+    /** @param visible What `setVisible` receives before the engine starts. */
+    explicit OverlaySide(const bool visible = true) {
         engine.addPlugin<FakeServicesPlugin>(draw);
         engine.addPlugin<hierarchy::HierarchyPlugin>();
         engine.addPlugin<ui::UiPlugin>();
         engine.addPlugin<metrics::MetricsPlugin>();
         engine.addPlugin<metrics::MetricsOverlayPlugin>();
+        overlay().setVisible(visible);
         engine.init();
     }
 
@@ -299,6 +302,27 @@ TEST(MetricsPlugin, SlowFramesRaiseTheLevel) {
     EXPECT_EQ(critical.board().find("FPS")->level, MetricLevel::Critical);
 }
 
+TEST(MetricsPlugin, ShutdownRemovesTheBoardItCreated) {
+    HeadlessSide side;
+    side.run(static_cast<double>(metrics::REFRESH_PERIOD), DT_64_FPS);
+
+    side.engine.shutdown();
+
+    EXPECT_FALSE(side.engine.registry().hasResource<MetricsBoard>());
+}
+
+TEST(MetricsPlugin, ShutdownKeepsABoardItDidNotCreate) {
+    engine::Engine engine;
+    engine.registry().emplaceResource<MetricsBoard>().set("Bosses", "2");
+    engine.addPlugin<metrics::MetricsPlugin>();
+    engine.init();
+
+    engine.shutdown();
+
+    ASSERT_TRUE(engine.registry().hasResource<MetricsBoard>());
+    EXPECT_NE(engine.registry().getResource<MetricsBoard>().find("Bosses"), nullptr);
+}
+
 // --- MetricsOverlayPlugin --------------------------------------------------------------------------------------------
 
 TEST(MetricsOverlay, ShowsOneLinePerMetric) {
@@ -371,6 +395,68 @@ TEST(MetricsOverlay, IsDrawnInTheBottomLeftCorner) {
     EXPECT_GT(panel.x, 0.0F);
     EXPECT_LT(panel.y + panel.height, static_cast<float>(WINDOW_HEIGHT));
     EXPECT_GT(panel.y + panel.height, static_cast<float>(WINDOW_HEIGHT) / 2.0F);
+}
+
+TEST(MetricsOverlay, IsVisibleByDefault) {
+    OverlaySide side;
+
+    EXPECT_TRUE(side.overlay().visible());
+}
+
+TEST(MetricsOverlay, HiddenOverlayIsNotDrawn) {
+    OverlaySide side;
+    side.refresh();
+    const ecs::Entity panel = side.overlay().panel();
+    const ecs::Entity firstLine = side.overlay().lines().front();
+
+    side.overlay().setVisible(false);
+    side.draw->rects.clear();
+    side.draw->texts.clear();
+    side.engine.advance();
+
+    EXPECT_FALSE(side.overlay().visible());
+    EXPECT_EQ(side.overlay().panel(), ecs::NULL_ENTITY);
+    EXPECT_TRUE(side.overlay().lines().empty());
+    EXPECT_FALSE(side.engine.registry().isAlive(panel));
+    EXPECT_FALSE(side.engine.registry().isAlive(firstLine)) << "the lines go with the panel";
+    EXPECT_TRUE(side.draw->rects.empty());
+    EXPECT_TRUE(side.draw->texts.empty());
+}
+
+TEST(MetricsOverlay, ShownAgainWithTheCurrentBoard) {
+    OverlaySide side;
+    side.refresh();
+    side.overlay().setVisible(false);
+    side.engine.advance();
+    side.board().set("Position", "12, 34");
+
+    side.overlay().setVisible(true);
+    side.engine.advance();
+
+    ASSERT_NE(side.overlay().panel(), ecs::NULL_ENTITY);
+    ASSERT_EQ(side.overlay().lines().size(), side.board().entries().size());
+    EXPECT_EQ(side.line(side.indexOf("Position")).text, "Position: 12, 34");
+    EXPECT_EQ(side.line(side.indexOf("FPS")).text, "FPS: 64");
+}
+
+TEST(MetricsOverlay, HiddenBeforeInitSpawnsNothing) {
+    OverlaySide side(false);
+    side.refresh();
+
+    EXPECT_EQ(side.overlay().panel(), ecs::NULL_ENTITY);
+    EXPECT_TRUE(side.draw->texts.empty());
+}
+
+TEST(MetricsOverlay, ShutdownDestroysThePanel) {
+    OverlaySide side;
+    side.refresh();
+    const ecs::Entity panel = side.overlay().panel();
+    const ecs::Entity firstLine = side.overlay().lines().front();
+
+    side.engine.shutdown();
+
+    EXPECT_FALSE(side.engine.registry().isAlive(panel));
+    EXPECT_FALSE(side.engine.registry().isAlive(firstLine));
 }
 
 int main(int argc, char** argv) {

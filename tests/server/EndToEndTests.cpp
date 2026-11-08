@@ -31,6 +31,7 @@
 #include "input/RTypeBindings.hpp"
 #include "metrics/MetricsBoard.hpp"
 #include "metrics/MetricsPlugin.hpp"
+#include "metrics/ShipMetricsPlugin.hpp"
 #include "net/ClientConnection.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -38,11 +39,11 @@
 #include "net/NetworkEntityMap.hpp"
 #include "net/NetworkEvents.hpp"
 #include "net/NetworkFactory.hpp"
-#include "net/NetworkMetricsPlugin.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
 #include "net/ReplicationEvents.hpp"
+#include "net/metrics/NetworkMetricsPlugin.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
 
@@ -67,6 +68,7 @@ class GameClient {
         engine.addPlugin<client::PlayerControlPlugin>();
         engine.addPlugin<metrics::MetricsPlugin>();
         engine.addPlugin<ecs::net::NetworkMetricsPlugin>(_transport);
+        engine.addPlugin<client::ShipMetricsPlugin>();
         engine.eventBus().subscribe<ecs::net::PacketReceived>([this](const ecs::net::PacketReceived& packet) {
             const auto message = protocol::decode(packet.data);
             if (packet.channel != Channel::Reliable || !message) {

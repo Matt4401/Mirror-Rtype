@@ -70,13 +70,14 @@ Three ideas drive the design:
 
 ## 3. Library layout
 
-The network code is part of the engine, split between two xmake targets, so that a game using the engine gets a
+The network code is part of the engine, split between xmake targets, so that a game using the engine gets a
 transport without depending on R-Type code:
 
 | Target                | Kind           | Folder                 | Content                                                      | Depends on                      |
 |-----------------------|----------------|------------------------|--------------------------------------------------------------|---------------------------------|
 | `engine_network`      | static library | `engine/src/net/`      | Interfaces, plugins, replication systems, `NetworkConfig`    | `engine_core`                   |
 | `engine_network_asio` | static library | `engine/src/net/asio/` | Asio implementation of the interfaces, `createServer/Client` | `engine_network`, `log`, `asio` |
+| `engine_network_metrics` | static library | `engine/src/net/metrics/` | `NetworkMetricsPlugin`: network lines of the [metrics](metrics.md) board | `engine_network`, `engine_metrics` |
 
 ```
 engine/src/net/                      # target "engine_network": must not include Asio
@@ -99,6 +100,8 @@ engine/src/net/                      # target "engine_network": must not include
 ├── SnapshotApplier.hpp/.cpp          # what a codec writes a snapshot through
 ├── InputQueue.hpp/.cpp               # pushInput / popInput on an InputBuffer
 └── NetworkEntityMap.hpp/.cpp         # network id <-> local entity
+engine/src/net/metrics/              # target "engine_network_metrics"
+└── NetworkMetricsPlugin.hpp/.cpp     # Down, Up, Packets, RTT, Missed on the metrics board
 engine/src/net/asio/                 # target "engine_network_asio": Asio is used only here (namespace ecs::net::detail)
 ├── NetworkServer.hpp/.cpp
 ├── NetworkClient.hpp/.cpp
@@ -108,7 +111,7 @@ engine/src/net/asio/                 # target "engine_network_asio": Asio is use
 └── NetworkFactory.cpp
 ```
 
-Both targets export `engine/src/` as a public include directory, so a header is included with its folder:
+Every target exports `engine/src/` as a public include directory, so a header is included with its folder:
 
 ```cpp
 #include "net/INetworkServer.hpp"
@@ -120,6 +123,8 @@ Both targets export `engine/src/` as a public include directory, so a header is 
   (game logic, tests using a mock network) never pulls in Asio.
 - `engine_network_asio` is the only target linked against Asio. Changing the implementation (another transport, another
   library) does not touch `engine_network` or the game code. Only the executables that open sockets link it.
+- `engine_network_metrics` is apart for the same reason: `engine_network` does not depend on the metrics, and only a
+  program that shows them (the client) links it.
 
 ```
 r-type_server ──┐

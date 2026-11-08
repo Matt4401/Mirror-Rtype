@@ -9,10 +9,10 @@
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/NetworkFactory.hpp"
-#include "net/NetworkMetricsPlugin.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
+#include "net/metrics/NetworkMetricsPlugin.hpp"
 #include "protocol/Messages.hpp"
 
 namespace client {
