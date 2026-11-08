@@ -1,5 +1,7 @@
 #include "gameplay/EnemyFirePlugin.hpp"
 
+#include <cmath>
+
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
@@ -22,6 +24,18 @@ bool onScreen(const ecs::Transform& transform) noexcept {
     return transform.x > 0.0F && transform.x < SCENE_WIDTH && transform.y > 0.0F && transform.y < SCENE_HEIGHT;
 }
 
+/**
+ * @brief Turns a velocity by an angle.
+ * @param velocity Velocity.
+ * @param angle Angle, in radians.
+ * @return The turned velocity, at the same speed.
+ */
+Velocity rotated(const Velocity velocity, const float angle) noexcept {
+    const float cos = std::cos(angle);
+    const float sin = std::sin(angle);
+    return {.x = (velocity.x * cos) - (velocity.y * sin), .y = (velocity.x * sin) + (velocity.y * cos)};
+}
+
 }  // namespace
 
 void EnemyFirePlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) {
@@ -39,7 +53,12 @@ void EnemyFirePlugin::fixedUpdate(engine::Engine& engine, const ecs::time::Time&
             gun.cooldown += gun.interval;
             const AimPoint from{.x = transform.x - MUZZLE_OFFSET, .y = transform.y};
             const AimPoint target = nearestShip(registry, from.x, from.y).value_or(AimPoint{.x = 0.0F, .y = from.y});
-            _shots.push_back({.from = from, .velocity = aimAt(from.x, from.y, target, gun.shotSpeed)});
+            const Velocity aimed = aimAt(from.x, from.y, target, gun.shotSpeed);
+            _shots.push_back({.from = from, .velocity = aimed});
+            if (gun.pattern == ::prefabs::GunPattern::Spread) {
+                _shots.push_back({.from = from, .velocity = rotated(aimed, ::prefabs::SPREAD_ANGLE)});
+                _shots.push_back({.from = from, .velocity = rotated(aimed, -::prefabs::SPREAD_ANGLE)});
+            }
         });
     // Spawned after the walk: adding entities while iterating the guns could move the storage under it.
     for (const Shot& shot : _shots) {

@@ -23,7 +23,9 @@
 #include "gameplay/GameplayEvents.hpp"
 #include "level/Level.hpp"
 #include "net/ReplicationSystems.hpp"
+#include "prefabs/Health.hpp"
 #include "prefabs/PrefabParams.hpp"
+#include "prefabs/alien_elite/AlienElite.hpp"
 #include "prefabs/alien_gunner/AlienGunner.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
@@ -64,6 +66,10 @@ std::optional<std::vector<std::string>> LevelDirectorPlugin::levelPrefab(const s
     }
     if (type == level::EVENT_SPAWN && prefab == ::prefabs::ALIEN_GUNNER_PREFAB) {
         return std::vector<std::string>{"speed", "fire_interval", "shot_speed", "z", "rotation", "scaleX", "scaleY"};
+    }
+    if (type == level::EVENT_SPAWN && prefab == ::prefabs::ALIEN_ELITE_PREFAB) {
+        return std::vector<std::string>{"speed",      "health", "amplitude", "frequency", "fire_interval",
+                                        "shot_speed", "z",      "rotation",  "scaleX",    "scaleY"};
     }
     if (type == level::EVENT_BOSS && prefab == ::prefabs::BOSS_CORE_PREFAB) {
         return std::vector<std::string>{"speed",  "stop_x", "health",   "variant", "width",
@@ -211,6 +217,13 @@ void LevelDirectorPlugin::spawnEnemy(const ::prefabs::PrefabParams& params) {
         ::prefabs::buildAlienGunner(enemy, registry, params);
         registry.addComponent(enemy, game::EntityNetState{});
         ecs::net::replicate(registry, enemy, game::KIND_ALIEN_GUNNER);
+    } else if (prefab == ::prefabs::ALIEN_ELITE_PREFAB) {
+        const ecs::Entity enemy = registry.spawnEntity();
+        ::prefabs::buildAlienElite(enemy, registry, params);
+        // Its hit points are replicated, so that the clients can show its hits.
+        registry.addComponent(
+            enemy, game::EntityNetState{.health = registry.getComponents<::prefabs::Health>().get(enemy).points});
+        ecs::net::replicate(registry, enemy, game::KIND_ALIEN_ELITE);
     }
 }
 

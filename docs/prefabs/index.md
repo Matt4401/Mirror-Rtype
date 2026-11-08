@@ -69,6 +69,7 @@ Every built-in prefab exposes a single `buildXxx(entity, registry, params)` func
 | `player_bullet` | Player projectile | Dynamic, bullet | Box 12×4, sensor | `PLAYER_SHOT` | [Player Bullet](player-bullet.md) |
 | `alien_scout` | Basic enemy | Kinematic | Box 32×32, sensor | `ENEMY` | [Alien Scout](alien-scout.md) |
 | `alien_gunner` | Enemy firing at the ships | Kinematic | Box 40×40, sensor | `ENEMY` | [Alien Gunner](alien-gunner.md) |
+| `alien_elite` | Rare, tough, weaving enemy that drops a power-up | Kinematic | Box 56×56, sensor | `ENEMY` | [Alien Elite](alien-elite.md) |
 | `boss_core` | Boss ending a level, several hit points | Kinematic | Box 128×160, sensor | `ENEMY` | [Boss Core](boss-core.md) |
 | `boss_part` | Weak point, turret or armor of a boss | Kinematic | Box 48×48, sensor | `ENEMY` | [Boss Part](boss-part.md) |
 | `obstacle` | Level geometry | Static | Box 64×64, solid | `OBSTACLE` | [Obstacle](obstacle.md) |

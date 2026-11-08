@@ -48,7 +48,8 @@ inline constexpr float RAPID_FIRE_COOLDOWN = 0.08F;
  * - Turns physics contacts into R-Type events with a `collision::CollisionRouter`. A player shot touching an enemy
  *   hurts it: an enemy with a `prefabs::Health` loses one point (its `EntityNetState::health` follows) and dies at 0,
  *   the others die on the first hit, and the kill gives `POINTS_PER_KILL` to the shooter. A boss weak point passes
- *   the hit to its boss; armor parts, and a boss that has weak points, stop the shot without damage.
+ *   the hit to its boss; armor parts, and a boss that has weak points, stop the shot without damage. An enemy with
+ *   `prefabs::DropsPowerUp` killed by a player leaves a `power_up` where it died.
  * - An enemy shot, an enemy or an obstacle touching a ship that is not `Respawning` publishes `ShipDestroyed`.
  * - Logs the score of each player every `SCORE_LOG_INTERVAL` seconds of game time.
  * - On `LevelFinished`, publishes the `protocol::LevelComplete` with the scores, then `protocol::GameOver{Victory}`
@@ -105,6 +106,14 @@ class CombatPlugin final : public engine::IPlugin {
         /** @brief Position of the ship when it fired. */
         float x = 0.0F;
         /** @brief Position of the ship when it fired. */
+        float y = 0.0F;
+    };
+
+    /** @brief A power-up to drop where an enemy carrying one died, spawned at the next fixed step. */
+    struct PendingDrop {
+        /** @brief Where the enemy died. */
+        float x = 0.0F;
+        /** @brief Where the enemy died. */
         float y = 0.0F;
     };
 
@@ -165,6 +174,8 @@ class CombatPlugin final : public engine::IPlugin {
     std::optional<ecs::EventBus::EventToken> _levelToken;
     /** @brief Shots requested since the last fixed step. */
     std::vector<PendingShot> _pendingShots;
+    /** @brief Power-ups to drop at the next fixed step. */
+    std::vector<PendingDrop> _pendingDrops;
     /** @brief Seconds before each player can fire again. */
     std::array<float, protocol::MAX_PLAYERS> _shotCooldowns{};
     /** @brief Seconds of rapid fire left for each player. */

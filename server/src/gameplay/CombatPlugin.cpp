@@ -28,10 +28,12 @@
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "prefabs/CollisionCategories.hpp"
+#include "prefabs/EnemyMotion.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
 #include "prefabs/boss_part/BossPart.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
+#include "prefabs/power_up/PowerUp.hpp"
 #include "protocol/Messages.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 
@@ -156,6 +158,12 @@ void CombatPlugin::onShotHit(const collision::ShotHitEvent& hit) {
                 _scores.at(shooter) += POINTS_PER_KILL;
             }
         }
+        // An enemy carrying loot leaves it where it died; spawned at the next step, outside of the contact callbacks.
+        if (registry.hasComponent<::prefabs::DropsPowerUp>(*damaged) &&
+            registry.hasComponent<ecs::Transform>(*damaged)) {
+            const auto& at = registry.getComponents<ecs::Transform>().get(*damaged);
+            _pendingDrops.push_back({.x = at.x, .y = at.y});
+        }
         // Destroying a boss destroys its parts too: they are its children in the hierarchy.
         registry.killEntity(*damaged);
     }
@@ -242,6 +250,13 @@ void CombatPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time
         fire(shot);
     }
     _pendingShots.clear();
+    for (const PendingDrop& drop : _pendingDrops) {
+        const ecs::Entity powerUp = _registry->spawnEntity();
+        ::prefabs::buildPowerUp(powerUp, *_registry, {{"x", drop.x}, {"y", drop.y}});
+        _registry->addComponent(powerUp, game::EntityNetState{});
+        ecs::net::replicate(*_registry, powerUp, game::KIND_POWER_UP);
+    }
+    _pendingDrops.clear();
 
     _scoreLogTimer -= time.deltaTime;
     if (_scoreLogTimer <= 0.0F) {

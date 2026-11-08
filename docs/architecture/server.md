@@ -114,6 +114,7 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 | `TerrainPlugin` | Builds and scrolls the terrain | | `LevelEventPlayed` (`terrain`), `LevelStarted` |
 | `CleanupPlugin` | Destroys what left the screen | | |
 | `EnemyFirePlugin` | Fires the guns of the enemies (`prefabs::EnemyGun`) at the nearest ships | | |
+| `EnemyMotionPlugin` | Moves the enemies that weave (`prefabs::SineWave`) | | |
 
 - **Levels:** the server loads the campaign (`server/levels/level_*.toml`, by name) at start-up and every room plays it.
   `TimelinePlugin` moves

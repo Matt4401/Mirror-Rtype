@@ -40,6 +40,7 @@
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabPlugin.hpp"
+#include "prefabs/alien_elite/AlienElite.hpp"
 #include "prefabs/alien_gunner/AlienGunner.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
@@ -579,6 +580,74 @@ TEST_F(GameplayWithoutLevelTest, GunnerDiesOnTheFirstHitAndScores) {
     run(0.5F);
     EXPECT_FALSE(registry().isAlive(gunner));
     EXPECT_EQ(combat().score(1), POINTS_PER_KILL);
+}
+
+namespace {
+
+/** @brief Spawns an alien elite, as the level director does; motionless unless a speed is given. */
+ecs::Entity spawnElite(ecs::Registry& registry, const float x, const float y, const float speed = 0.0F) {
+    const ecs::Entity elite = registry.spawnEntity();
+    ::prefabs::buildAlienElite(elite, registry, {{"x", x}, {"y", y}, {"speed", speed}});
+    registry.addComponent(elite, game::EntityNetState{.health = ::prefabs::DEFAULT_ALIEN_ELITE_HEALTH});
+    ecs::net::replicate(registry, elite, game::KIND_ALIEN_ELITE);
+    return elite;
+}
+
+}  // namespace
+
+TEST_F(GameplayWithoutLevelTest, EliteWeavesAroundItsHeight) {
+    const ecs::Entity elite = spawnElite(registry(), 900.0F, 360.0F, -70.0F);
+    float lowest = 360.0F;
+    float highest = 360.0F;
+    for (int i = 0; i < 30; ++i) {
+        run(0.1F);
+        const float y = registry().getComponents<ecs::Transform>().get(elite).y;
+        lowest = std::min(lowest, y);
+        highest = std::max(highest, y);
+    }
+    EXPECT_LT(lowest, 360.0F - (::prefabs::DEFAULT_ALIEN_ELITE_AMPLITUDE * 0.8F));
+    EXPECT_GT(highest, 360.0F + (::prefabs::DEFAULT_ALIEN_ELITE_AMPLITUDE * 0.8F));
+    EXPECT_LT(registry().getComponents<ecs::Transform>().get(elite).x, 900.0F) << "and still flies to the left";
+}
+
+TEST_F(GameplayWithoutLevelTest, EliteFiresAFanOfThreeShots) {
+    spawnShip(0, 200.0F, 360.0F);
+    spawnElite(registry(), 900.0F, 360.0F);
+    run(::prefabs::DEFAULT_ALIEN_ELITE_FIRE_INTERVAL / 2.0F + 0.05F);
+    const auto missiles = entitiesOf(game::KIND_MISSILE);
+    ASSERT_EQ(missiles.size(), 3U);
+    std::vector<float> slopes;
+    for (const ecs::Entity missile : missiles) {
+        const auto& body = registry().getComponents<ecs::RigidBody2D>().get(missile);
+        EXPECT_LT(body.velocityX, 0.0F);
+        slopes.push_back(body.velocityY);
+    }
+    std::ranges::sort(slopes);
+    EXPECT_LT(slopes[0], -1.0F);
+    EXPECT_GT(slopes[2], 1.0F) << "one shot on each side of the aimed one";
+}
+
+TEST_F(GameplayWithoutLevelTest, EliteTakesSeveralHitsThenDropsAPowerUp) {
+    const ecs::Entity elite = spawnElite(registry(), 600.0F, 360.0F);
+    const auto hit = [this, elite] {
+        const ecs::Entity shot = registry().spawnEntity();
+        registry().addComponent(shot, game::EntityNetState{.subtype = 0});
+        engine.eventBus().publish(rtype::server::collision::ShotHitEvent{
+            .shot = shot, .target = elite, .targetCategory = prefabs::collision::ENEMY, .byPlayer = true});
+    };
+    for (int i = 1; i < ::prefabs::DEFAULT_ALIEN_ELITE_HEALTH; ++i) {
+        hit();
+    }
+    ASSERT_TRUE(registry().isAlive(elite));
+    EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(elite).health, 1);
+    hit();
+    EXPECT_FALSE(registry().isAlive(elite));
+    EXPECT_EQ(combat().score(0), POINTS_PER_KILL);
+
+    run(FIXED_DT * 2);
+    const auto drops = entitiesOf(game::KIND_POWER_UP);
+    ASSERT_EQ(drops.size(), 1U);
+    EXPECT_NEAR(registry().getComponents<ecs::Transform>().get(drops.front()).x, 600.0F, 5.0F);
 }
 
 TEST_F(GameplayTest, EnemiesThatLeaveTheScreenAreDestroyed) {
@@ -1199,6 +1268,7 @@ TEST(LevelDirectorPluginTest, EachEventTypeHasItsPrefabs) {
     EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_scout").has_value());
     EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("boss", "boss_core").has_value());
     EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_gunner").has_value());
+    EXPECT_TRUE(LevelDirectorPlugin::levelPrefab("spawn", "alien_elite").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "boss_core").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("boss", "alien_scout").has_value());
     EXPECT_FALSE(LevelDirectorPlugin::levelPrefab("spawn", "dragon").has_value());

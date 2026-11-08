@@ -22,7 +22,8 @@ inline constexpr float MUZZLE_OFFSET = 24.0F;
  * @brief Counts down the `prefabs::EnemyGun` of the enemies and fires their missiles, on each fixed step.
  *
  * An enemy only fires while it is on the screen: it does not shoot the ships from outside. Each shot is a replicated
- * missile towards the nearest ship that can be hit (`nearestShip()`), or straight ahead without one.
+ * missile towards the nearest ship that can be hit (`nearestShip()`), or straight ahead without one; a
+ * `prefabs::GunPattern::Spread` gun adds two shots, `prefabs::SPREAD_ANGLE` on each side.
  */
 class EnemyFirePlugin final : public engine::IPlugin {
   public:

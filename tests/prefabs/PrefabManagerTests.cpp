@@ -18,11 +18,13 @@
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
 #include "prefabs/EnemyGun.hpp"
+#include "prefabs/EnemyMotion.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/PrefabRegistry.hpp"
+#include "prefabs/alien_elite/AlienElite.hpp"
 #include "prefabs/alien_gunner/AlienGunner.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
@@ -218,6 +220,25 @@ TEST(PrefabManager, AlienGunnerIsAnEnemyWithAGun) {
     const auto& clamped = registry.getComponents<prefabs::EnemyGun>().get(1);
     EXPECT_FLOAT_EQ(clamped.interval, 0.3F);
     EXPECT_FLOAT_EQ(clamped.shotSpeed, 900.0F);
+}
+
+TEST(PrefabManager, AlienEliteIsAToughWeavingEnemyWithLoot) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::ALIEN_ELITE_PREFAB, buffer, {{"y", 300.0F}});
+    manager.spawn(prefabs::ALIEN_ELITE_PREFAB, buffer, {{"health", 1.0e9}, {"amplitude", -5.0}, {"frequency", 99.0}});
+    buffer.flush(registry);
+
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(0).points, prefabs::DEFAULT_ALIEN_ELITE_HEALTH);
+    EXPECT_FLOAT_EQ(registry.getComponents<prefabs::SineWave>().get(0).baseY, 300.0F);
+    EXPECT_EQ(registry.getComponents<prefabs::EnemyGun>().get(0).pattern, prefabs::GunPattern::Spread);
+    EXPECT_TRUE(registry.hasComponent<prefabs::DropsPowerUp>(0));
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(1).points, 255);
+    EXPECT_FLOAT_EQ(registry.getComponents<prefabs::SineWave>().get(1).amplitude, 0.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<prefabs::SineWave>().get(1).frequency, 4.0F);
 }
 
 TEST(PrefabManager, BossCoreIsAnArmoredEnemy) {
