@@ -84,6 +84,7 @@ nav:
   - RLSS: rlss/index.md
   - Gameplay:
       - Level Files: gameplay/levels.md
+      - Bosses: gameplay/bosses.md
   - Prefabs:
       - Overview: prefabs/index.md
       - Collision Categories: prefabs/collision-categories.md

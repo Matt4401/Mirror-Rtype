@@ -1230,6 +1230,88 @@ TEST_F(GameplayPluginAloneTest, RespawnPluginBringsADestroyedShipBack) {
     EXPECT_EQ(registry.getComponents<game::EntityNetState>().get(ship).flags & game::FLAG_INVULNERABLE, 0);
 }
 
+/** @brief Room playing the Hive Warden: a weak point and two turrets, as in the shipped levels. */
+class WardenTest : public ScriptedBossTest {
+  protected:
+    WardenTest()
+        : ScriptedBossTest(std::filesystem::path(RTYPE_SCRIPTS_DIR) / "bosses" / "Warden.wren", TEST_BOSS_SCRIPT,
+                           {{"health", std::int64_t{20}},
+                            {"parts.count", std::int64_t{3}},
+                            {"parts.0.role", std::string("weak_point")},
+                            {"parts.0.x", -40.0},
+                            {"parts.1.role", std::string("turret")},
+                            {"parts.1.y", -70.0},
+                            {"parts.2.role", std::string("turret")},
+                            {"parts.2.y", 70.0}}) {}
+
+    /** @brief A ship far to the left, that the aimed shots go for. */
+    void spawnTarget() {
+        const ecs::Entity ship = engine.registry().spawnEntity();
+        engine.registry().addComponent(ship, ecs::Transform{.x = 200.0F, .y = 600.0F});
+        ecs::net::replicate(engine.registry(), ship, game::KIND_PLAYER_SHIP);
+    }
+
+    /** @brief Whether a missile flies downwards, as only an aimed shot at the target does. */
+    [[nodiscard]] bool anAimedShotFlies() {
+        return std::ranges::any_of(entitiesOf(game::KIND_MISSILE), [this](const ecs::Entity missile) {
+            return engine.registry().getComponents<ecs::RigidBody2D>().get(missile).velocityY > 1.0F;
+        });
+    }
+
+    [[nodiscard]] std::vector<ecs::Entity> turrets() {
+        std::vector<ecs::Entity> found;
+        for (const ecs::Entity part : entitiesOf(game::KIND_BOSS_PART)) {
+            if (engine.registry().getComponents<prefabs::BossPart>().get(part).role == prefabs::BossPartRole::Turret) {
+                found.push_back(part);
+            }
+        }
+        return found;
+    }
+};
+
+TEST_F(WardenTest, ReleasesDronesThenItsTurretsFireAtTheShips) {
+    ASSERT_TRUE(bound);
+    spawnTarget();
+    run(2.5F);
+    EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty()) << "nothing during the flight in";
+
+    run(1.0F);
+    EXPECT_EQ(entitiesOf(game::KIND_ALIEN_SCOUT).size(), 4U) << "a fan of drones";
+    run(2.0F);
+    EXPECT_TRUE(anAimedShotFlies());
+}
+
+TEST_F(WardenTest, DriftsOnceInPlace) {
+    run(3.2F);
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    const ecs::Transform before = engine.registry().getComponents<ecs::Transform>().get(bosses.front());
+    run(1.0F);
+    const ecs::Transform after = engine.registry().getComponents<ecs::Transform>().get(bosses.front());
+    EXPECT_GT(std::abs(after.y - before.y), 10.0F);
+}
+
+TEST_F(WardenTest, WithoutTurretsTheCoreFiresItself) {
+    ASSERT_TRUE(bound);
+    spawnTarget();
+    run(0.5F);
+    for (const ecs::Entity turret : turrets()) {
+        engine.registry().killEntity(turret);
+    }
+    run(5.0F);
+    EXPECT_TRUE(anAimedShotFlies()) << "the frenzy spread";
+}
+
+TEST_F(WardenTest, DropsAPowerUpWhenKilled) {
+    run(1.0F);
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    engine.registry().killEntity(bosses.front());
+    run(0.1F);
+    EXPECT_EQ(entitiesOf(game::KIND_POWER_UP).size(), 1U);
+    EXPECT_TRUE(entitiesOf(game::KIND_BOSS_PART).empty());
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
