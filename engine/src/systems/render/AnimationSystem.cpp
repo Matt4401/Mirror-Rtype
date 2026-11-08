@@ -1,6 +1,6 @@
 /*
 ** EPITECH PROJECT, 2026
-** r-type
+** Squacaron
 ** File description:
 ** Advances spritesheet animations and writes the current frame into Renderable.
 */
