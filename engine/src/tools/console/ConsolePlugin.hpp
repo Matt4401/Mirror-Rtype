@@ -10,19 +10,12 @@
 
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "tools/console/ConsoleTypes.hpp"
 
 namespace tools {
 
 class CVarManager;
 class Console;
-
-/**
- * @brief Settings of the ConsolePlugin.
- */
-struct ConsoleConfig {
-    /** @brief Whether cheat cvars and commands are allowed (keep `false` on competitive servers). */
-    bool allowCheats = false;
-};
 
 /**
  * @brief Owns the `CVarManager` and the `Console` of the program, both Mediator services.
