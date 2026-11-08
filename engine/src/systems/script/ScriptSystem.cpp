@@ -13,7 +13,7 @@
 #include <utility>
 #include <vector>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "components/ScriptComponent.hpp"
 #include "ecs/CommandBuffer.hpp"
 #include "ecs/Entity.hpp"
@@ -299,10 +299,10 @@ void ScriptSystem::recordScriptFailure(ScriptOwner owner, std::string_view hook)
     if (!state.logged || _elapsed - state.lastLogTime >= SCRIPT_ERROR_LOG_INTERVAL) {
         std::string const who = isEntity ? "entity " + std::to_string(owner) : "script owner " + std::to_string(owner);
         if (state.suppressed > 0) {
-            rtype::log::warning(LOG_TAG, who, ": ", hook, " failed: ", detail::formatScriptError(_vm.lastError()), " (",
+            engine::log::warning(LOG_TAG, who, ": ", hook, " failed: ", detail::formatScriptError(_vm.lastError()), " (",
                                 state.suppressed, " similar errors not shown)");
         } else {
-            rtype::log::warning(LOG_TAG, who, ": ", hook, " failed: ", detail::formatScriptError(_vm.lastError()));
+            engine::log::warning(LOG_TAG, who, ": ", hook, " failed: ", detail::formatScriptError(_vm.lastError()));
         }
         state.logged = true;
         state.lastLogTime = _elapsed;
@@ -314,7 +314,7 @@ void ScriptSystem::recordScriptFailure(ScriptOwner owner, std::string_view hook)
     if (isEntity && state.consecutive >= MAX_CONSECUTIVE_SCRIPT_FAILURES) {
         state.disabled = true;
         cancelFibers(owner);
-        rtype::log::error(LOG_TAG, "script of entity ", owner, " disabled after ", state.consecutive,
+        engine::log::error(LOG_TAG, "script of entity ", owner, " disabled after ", state.consecutive,
                           " consecutive failures (enabled again by the next hot reload)");
     }
 }

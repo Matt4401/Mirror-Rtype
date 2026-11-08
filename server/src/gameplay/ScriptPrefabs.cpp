@@ -1,7 +1,9 @@
 #include "gameplay/ScriptPrefabs.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <string_view>
 #include <utility>
 
@@ -28,7 +30,8 @@ using Builder = void (*)(ecs::Entity, ecs::Registry&, const ::prefabs::PrefabPar
 /**
  * @brief Prefabs a script may spawn, with their builder.
  *
- * `boss_core` is left out: a boss stops the scroll until it is destroyed, which only a level `boss` event sets up.
+ * `boss_core` and `boss_part` are left out: a boss stops the scroll until it is destroyed, which only a level `boss`
+ * event sets up, and its parts are spawned with it.
  */
 constexpr std::array<std::pair<std::string_view, Builder>, 4> SCRIPT_PREFABS{{
     {::prefabs::ALIEN_SCOUT_PREFAB, &::prefabs::buildAlienScout},
@@ -49,7 +52,10 @@ void registerScriptPrefabs(::prefabs::PrefabManager& manager) {
             const std::uint8_t health = registry.hasComponent<::prefabs::Health>(entity)
                                             ? registry.getComponents<::prefabs::Health>().get(entity).points
                                             : game::EntityNetState{}.health;
-            registry.addComponent(entity, game::EntityNetState{.health = health});
+            // A script may give a look to what it spawns (the colour of its shots), within the byte of the subtype.
+            const auto look = static_cast<std::uint8_t>(std::clamp<std::int64_t>(
+                params.get<std::int64_t>("subtype", 0), 0, std::numeric_limits<std::uint8_t>::max()));
+            registry.addComponent(entity, game::EntityNetState{.subtype = look, .health = health});
             ecs::net::replicate(registry, entity, kind);
         });
     }

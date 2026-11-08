@@ -1,0 +1,151 @@
+# R-Type client: how the bosses, their parts and the other enemies look.
+# Read at startup; every problem is reported in the log and never stops the client. Format: docs/architecture/client.md.
+#
+# The server sends the `variant` of each boss (set by the level `boss` event) and the `look` of each part (set in its
+# `[[events.parts]]` table). A variant or look without an entry here is drawn as a colored box.
+#
+# Each entry is either a box (`width`, `height`, in pixels) or a sprite: an animation strip of `frames` frames of
+# `frame_width` x `frame_height` texture pixels, side by side from (`frame_x`, `frame_y`), drawn `scale` times bigger.
+#
+# Example of a sprite entry (paths are relative to the directory the client runs from):
+#
+# [[boss]]
+# variant = 1
+# texture = "sprites/my_boss.png"
+# frame_x = 0
+# frame_y = 0
+# frame_width = 160
+# frame_height = 200
+# frames = 4
+# frame_duration = 0.12
+# loop = true
+# scale = 2.0
+#
+# [[part]]
+# look = 1
+# texture = "sprites/my_boss.png"
+# frame_x = 0
+# frame_y = 200
+# frame_width = 32
+# frame_height = 32
+# frames = 2
+# scale = 2.0
+
+# Enemies, missiles and power-ups: one [[entity]] entry per prefab (alien_scout, alien_gunner, alien_elite, missile,
+# power_up). Without an entry, the client keeps its built-in look.
+#
+# [[entity]]
+# prefab = "alien_gunner"
+# texture = "sprites/my_gunner.png"
+# frame_width = 40
+# frame_height = 40
+# frames = 4
+# scale = 1.0
+
+# Optional sprite of one burst of a boss explosion, played once; without it, the bursts are growing boxes:
+#
+# [explosion]
+# texture = "sprites/my_explosion.png"
+# frame_width = 32
+# frame_height = 32
+# frames = 6
+# frame_duration = 0.07
+# scale = 2.0
+
+# Boxes until the sprites are set: their sizes match the hitboxes of the shipped levels.
+
+[[boss]]
+variant = 0
+width = 128.0
+height = 160.0
+
+# --- Enemies ---
+
+# Alien gunner: a turret turning towards the nearest ship. 16 directions of 33 x 32, the first one facing 22.5 degrees
+# (just below "right"), then clockwise.
+[[entity]]
+prefab = "alien_gunner"
+texture = "sprites/r-typesheet19.png"
+frame_width = 33
+frame_height = 32
+frames = 16
+directional = true
+first_angle = 22.5
+scale = 1.56
+
+# Alien elite: 5 frames of 48 x 48, 65 px apart, mirrored to face the players. Scaled to its 56 px hitbox.
+[[entity]]
+prefab = "alien_elite"
+texture = "sprites/r-typesheet24.png"
+frame_width = 48
+frame_height = 48
+frame_stride = 65
+frames = 5
+frame_duration = 0.12
+scale = 1.2
+flip_x = true
+
+# --- Enemy shots: a stretched shot shrinking into a round, played once then held on the round ---
+# Three frames side by side from x = 1: 63, 66 then 16 px wide. Mirrored, so that the round leads, and turned
+# towards where each shot flies.
+
+# Shots of the alien gunners (subtype 1): red.
+[[entity]]
+prefab = "missile"
+subtype = 1
+texture = "sprites/r-typesheet9_red.png"
+frame_x = 1
+frame_height = 16
+frame_widths = [63, 66, 16]
+frame_duration = 0.12
+loop = false
+flip_x = true
+face_motion = true
+
+# Shots of the alien elites (subtype 2): blue.
+[[entity]]
+prefab = "missile"
+subtype = 2
+texture = "sprites/r-typesheet9_blue.png"
+frame_x = 1
+frame_height = 16
+frame_widths = [63, 66, 16]
+frame_duration = 0.12
+loop = false
+flip_x = true
+face_motion = true
+
+# --- Power-up: a capsule that opens and closes, 12 frames of 16 x 18, 17 px apart. Scaled to its 24 px hitbox. ---
+
+[[entity]]
+prefab = "power_up"
+texture = "sprites/r-typesheet3.gif"
+frame_x = 1
+frame_width = 16
+frame_height = 18
+frame_stride = 17
+frames = 12
+frame_duration = 0.08
+scale = 1.5
+
+# --- Bastion (variant 2): intact, then broken from half of its hit points ---
+# Fill in the frames of your sheet; its hitbox is 180 x 220 (level_03.toml), size the sprites with `scale`.
+#
+# [[boss]]
+# variant = 2
+# texture = "sprites/my_boss.png"
+# frame_x = 0
+# frame_y = 0
+# frame_width = 0
+# frame_height = 0
+# scale = 1.0
+#
+# [[boss]]
+# variant = 2
+# below_health = 0.5
+# texture = "sprites/my_boss.png"
+# frame_x = 0
+# frame_y = 0
+# frame_width = 0
+# frame_height = 0
+# scale = 1.0

@@ -5,7 +5,9 @@
 
 #pragma once
 
+#include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -62,6 +64,26 @@ struct Level {
      * directory. Set by the server to its data directory, so that it does not depend on where it is started from.
      */
     std::filesystem::path dataRoot;
+
+    /**
+     * @brief Level played after this one in a campaign, or `nullptr` for the last level.
+     *
+     * The server chains the level files it finds (`server/levels/level_*.toml`, by name) through this pointer.
+     */
+    std::shared_ptr<const Level> next;
 };
+
+/**
+ * @brief Counts the levels of a campaign, from its first level.
+ * @param first First level, or `nullptr`.
+ * @return Number of levels reached through `Level::next`, 0 for `nullptr`.
+ */
+[[nodiscard]] inline std::size_t campaignLength(const Level* first) noexcept {
+    std::size_t count = 0;
+    for (const Level* level = first; level != nullptr; level = level->next.get()) {
+        ++count;
+    }
+    return count;
+}
 
 }  // namespace rtype::server::level

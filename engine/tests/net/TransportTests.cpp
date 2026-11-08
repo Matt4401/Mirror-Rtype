@@ -7,12 +7,11 @@
 #include <asio/io_context.hpp>
 #include <asio/ip/address_v4.hpp>
 #include <asio/ip/tcp.hpp>
-#include <asio/read.hpp>
+#include <asio/read.hpp>  // IWYU pragma: keep
 #include <asio/socket_base.hpp>
-#include <asio/write.hpp>
+#include <asio/write.hpp>  // IWYU pragma: keep
 #include <atomic>
 #include <chrono>
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <future>
@@ -76,6 +75,7 @@ bool serverClosesRawConnection(const std::uint16_t port, const Bytes& firstBytes
     // NOLINTNEXTLINE(misc-include-cleaner): false positive, the public header asio/connect.hpp is included
     asio::connect(socket, resolver.resolve("127.0.0.1", std::to_string(port)));
     if (!firstBytes.empty()) {
+        // NOLINTNEXTLINE(misc-include-cleaner): false positive, asio/write.hpp is included
         asio::write(socket, asio::buffer(firstBytes));
     }
     auto closed = std::async(std::launch::async, [&socket] {
@@ -90,7 +90,7 @@ bool serverClosesRawConnection(const std::uint16_t port, const Bytes& firstBytes
         return closed.get();
     }
     std::error_code ignored;
-    socket.close(ignored);  // unblocks read_some
+    std::ignore = socket.close(ignored);  // unblocks read_some
     return false;
 }
 
@@ -209,8 +209,10 @@ TEST(Transport, RefusedPeerThatStaysConnectedIsClosedAnyway) {
 
     // A `Handshake` of another protocol: `[length u32 = 4][kind u8 = 4][protocolId u32 = 0xB]`. Then this peer stays
     // silent and never closes.
+    // NOLINTNEXTLINE(misc-include-cleaner): false positive, asio/write.hpp is included
     asio::write(socket, asio::buffer(Bytes{4, 0, 0, 0, 4, GAME_B, 0, 0, 0}));
     std::array<std::uint8_t, 6> refused{};
+    // NOLINTNEXTLINE(misc-include-cleaner): false positive, asio/read.hpp is included
     asio::read(socket, asio::buffer(refused));
     EXPECT_EQ(refused[4], 5U) << "kind of a Refused frame";
     EXPECT_EQ(refused[5], static_cast<std::uint8_t>(DisconnectReason::ProtocolMismatch));

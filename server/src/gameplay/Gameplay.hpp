@@ -15,7 +15,7 @@ namespace rtype::server::gameplay {
 /**
  * @brief Adds the R-Type gameplay plugins to an engine, before `Engine::init()`.
  *
- * The engine must already have `systems::PhysicsPlugin` and `timeline::TimelinePlugin`.
+ * The engine must already have `systems::PhysicsPlugin`, `hierarchy::HierarchyPlugin` and `timeline::TimelinePlugin`.
  *
  * @param engine Room engine.
  * @param level Level to play, shared by every room; `nullptr` plays no level (no enemy spawns).

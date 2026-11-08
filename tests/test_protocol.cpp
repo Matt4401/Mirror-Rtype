@@ -61,6 +61,8 @@ TEST(Protocol, RoundTripsEveryMessage) {
         LevelStart{.levelIndex = 2, .levelCount = 3, .name = "Asteroid Belt"},
         LevelStart{.levelIndex = 0, .levelCount = 1, .name = ""},
         LevelComplete{.levelIndex = 1, .score = 42, .playerScores = {20, 22}},
+        ScoreUpdate{.score = 7, .playerScores = {3, 4}},
+        ScoreUpdate{},
         Leave{},
         Chat{.clientId = 2, .text = "hello \xC3\xA9"},
         PlayerInput{.sequence = 0xFFFFFFFF,
@@ -276,4 +278,10 @@ TEST(Protocol, RejectsInvalidLevelMessages) {
     LevelComplete complete{.levelIndex = 0, .score = 0, .playerScores = {}};
     complete.playerScores.resize(MAX_PLAYERS + 1);
     EXPECT_FALSE(decode(encode(complete)).has_value());
+
+    ScoreUpdate scores{.score = 1, .playerScores = {}};
+    scores.playerScores.resize(MAX_PLAYERS + 1);
+    EXPECT_FALSE(decode(encode(scores)).has_value());
+    scores.playerScores.resize(MAX_PLAYERS);
+    EXPECT_TRUE(decode(encode(scores)).has_value());
 }

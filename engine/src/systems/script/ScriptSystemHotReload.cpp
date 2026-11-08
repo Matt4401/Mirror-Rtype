@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "assets/AssetPath.hpp"
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
@@ -40,7 +40,7 @@ bool ScriptSystem::validateScriptSource(std::string_view moduleName, std::string
 
     auto res = stagingVm.interpret(moduleName, source);
     if (!res) {
-        rtype::log::warning(LOG_TAG, "hot reload: script module ", assets::quoteForLog(moduleName),
+        engine::log::warning(LOG_TAG, "hot reload: script module ", assets::quoteForLog(moduleName),
                             " ignored, the previous version keeps running: ", detail::formatScriptError(res.error()));
         return false;
     }
@@ -119,7 +119,7 @@ void ScriptSystem::recreateVmAndModules(const std::vector<std::pair<std::string,
 
     auto const dispRes = _vm.interpret("_internal", scripting::INTERNAL_DISPATCHER_SOURCE);
     if (!dispRes) {
-        rtype::log::error(
+        engine::log::error(
             LOG_TAG, "hot reload: cannot run the internal dispatcher: ", detail::formatScriptError(dispRes.error()));
     }
 
@@ -135,7 +135,7 @@ void ScriptSystem::recreateVmAndModules(const std::vector<std::pair<std::string,
         auto const scriptRes = _vm.interpret(modName, watch.lastGoodSource);
         if (!scriptRes) {
             _lastReplaySucceeded = false;
-            rtype::log::warning(LOG_TAG, "hot reload: script module ", assets::quoteForLog(modName),
+            engine::log::warning(LOG_TAG, "hot reload: script module ", assets::quoteForLog(modName),
                                 " failed: ", detail::formatScriptError(scriptRes.error()));
         }
     }

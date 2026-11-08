@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -36,7 +37,10 @@ constexpr std::array<std::string_view, 8> SPAWN_KEYS{"at",       "type", "prefab
                                                      "interval", "x",    "y",      "spacing_y"};
 
 /** @brief Keys of a boss event read by the loader itself; every other key is passed to the prefab. */
-constexpr std::array<std::string_view, 7> BOSS_KEYS{"at", "type", "prefab", "script", "class", "x", "y"};
+constexpr std::array<std::string_view, 8> BOSS_KEYS{"at", "type", "prefab", "script", "class", "x", "y", "parts"};
+
+/** @brief Keys of a boss part (`[[events.parts]]`). */
+constexpr std::array<std::string_view, 7> PART_KEYS{"role", "x", "y", "width", "height", "health", "look"};
 
 /** @brief Keys of a scroll event. */
 constexpr std::array<std::string_view, 3> SCROLL_KEYS{"at", "type", "speed"};
@@ -110,6 +114,10 @@ prefabs::PrefabParams extraParams(const config::ConfigFile& file, std::size_t in
     const std::string prefix = std::format("events.{}.", index);
     for (const std::string& key : file.keysUnder(std::format("events.{}", index))) {
         const std::string_view name = std::string_view(key).substr(prefix.size());
+        // Nested values the loader reads itself (the boss parts) are not reported.
+        if (std::ranges::find(readKeys, name.substr(0, name.find('.'))) != readKeys.end()) {
+            continue;
+        }
         if (name.contains('.')) {
             warnings.push_back(std::format("{}: nested values are not passed to the prefab, ignored", key));
             continue;
@@ -235,6 +243,58 @@ bool isValidScriptPath(std::string_view path) {
 }
 
 /**
+ * @brief Reads the parts of a boss event into its parameters: `parts.count`, then `parts.<n>.<key>` per part.
+ *
+ * The role is passed as is: the game skips a part whose role it does not know. Offsets are clamped to
+ * `MAX_BOSS_PART_OFFSET`, the other values are passed to the part prefab, which clamps them.
+ *
+ * @param file Level file.
+ * @param reader Reader reporting corrections.
+ * @param index Event index.
+ * @param params Receives the parts.
+ * @param warnings Receives a message per part skipped and per unknown key.
+ */
+void readBossParts(const config::ConfigFile& file, config::ConfigReader& reader, const std::size_t index,
+                   prefabs::PrefabParams& params, std::vector<std::string>& warnings) {
+    const std::string array = eventKey(index, "parts");
+    std::size_t count = file.arraySize(array);
+    if (count > MAX_BOSS_PARTS) {
+        warnings.push_back(
+            std::format("{}: {} parts declared, only the first {} are kept", array, count, MAX_BOSS_PARTS));
+        count = MAX_BOSS_PARTS;
+    }
+    std::size_t kept = 0;
+    for (std::size_t part = 0; part < count; ++part) {
+        const std::string prefix = std::format("{}.{}", array, part);
+        const auto key = [&prefix](const std::string_view field) { return std::format("{}.{}", prefix, field); };
+        const std::optional<std::string> role = file.getString(key("role"));
+        if (!role.has_value()) {
+            warnings.push_back(std::format("{}: missing or invalid 'role', part skipped", prefix));
+            continue;
+        }
+        for (const std::string& name : file.keysUnder(prefix)) {
+            if (std::ranges::find(PART_KEYS, std::string_view(name).substr(prefix.size() + 1)) == PART_KEYS.end()) {
+                warnings.push_back(std::format("{}: unknown key, ignored", name));
+            }
+        }
+        const std::string out = std::format("parts.{}.", kept);
+        params.set(out + "role", *role);
+        params.set(out + "x",
+                   static_cast<double>(reader.number(key("x"), 0.0F, -MAX_BOSS_PART_OFFSET, MAX_BOSS_PART_OFFSET)));
+        params.set(out + "y",
+                   static_cast<double>(reader.number(key("y"), 0.0F, -MAX_BOSS_PART_OFFSET, MAX_BOSS_PART_OFFSET)));
+        for (const std::string_view field : {"width", "height", "health", "look"}) {
+            const std::optional<double> value = file.getNumber(key(field));
+            if (value.has_value() && std::isfinite(*value)) {
+                params.set(out + std::string(field), *value);
+            }
+        }
+        ++kept;
+    }
+    params.set("parts.count", static_cast<std::int64_t>(kept));
+}
+
+/**
  * @brief Adds a boss event.
  * @param file Level file.
  * @param reader Reader reporting corrections.
@@ -269,6 +329,7 @@ void addBoss(const config::ConfigFile& file, config::ConfigReader& reader, const
                 "events.{}: 'script' must be a relative path to a {} file without '..', ignored", i, SCRIPT_EXTENSION));
         }
     }
+    readBossParts(file, reader, i, params, warnings);
     out.push_back(timeline::TimelineEvent{
         .position = event.at,
         .type = std::string(EVENT_BOSS),

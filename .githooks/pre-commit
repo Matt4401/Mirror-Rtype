@@ -38,7 +38,7 @@ fi
 
 TIDY_FAILED=0
 if [ -f "${BUILD_DIR}/compile_commands.json" ]; then
-    TIDY_FILES=$(echo "$STAGED_FILES" | grep -v '^tests/' | grep -E '\.(cpp|cxx|cc)$' || true)
+    TIDY_FILES=$(echo "$STAGED_FILES" | grep -vE '(^|/)tests/' | grep -E '\.(cpp|cxx|cc)$' || true)
 
     for file in $TIDY_FILES; do
         if [ -f "$file" ]; then

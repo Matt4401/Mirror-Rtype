@@ -52,8 +52,9 @@ struct RoomPlayer {
  * entities does not slow down the others. The engine is only touched under `_mutex`; everything else (the players, the
  * ready states) belongs to the thread of the `ServerManager`.
  *
- * The level messages the gameplay publishes on the room's bus (`protocol::LevelStart`, `protocol::LevelComplete`,
- * `protocol::GameOver`) are sent to the players of the room on the reliable channel, from the room's thread.
+ * The session messages the gameplay publishes on the room's bus (`protocol::LevelStart`, `protocol::LevelComplete`,
+ * `protocol::ScoreUpdate`, `protocol::GameOver`) are sent to the players of the room on the reliable channel, from the
+ * room's thread.
  */
 class Room {
   public:

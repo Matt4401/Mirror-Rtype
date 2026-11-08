@@ -98,7 +98,7 @@ The router does not change any state: game rules (damage, kills, pickups) subscr
 
 ## Gameplay
 
-Each room's engine runs `systems::PhysicsPlugin`, `timeline::TimelinePlugin`, the gameplay plugins
+Each room's engine runs `systems::PhysicsPlugin`, `hierarchy::HierarchyPlugin`, `timeline::TimelinePlugin`, the gameplay plugins
 (`server/src/gameplay/`, target `rtype_gameplay`), `prefabs::PrefabPlugin` and `scripting::ScriptPlugin`. Every entity
 they spawn is replicated: the client only draws what the server simulates.
 
@@ -108,21 +108,26 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 | Plugin | Job | Publishes | Listens to |
 |--------|-----|-----------|------------|
 | `LevelDirectorPlugin` | Plays the level, spawns the enemies, holds the scroll | `LevelEventPlayed`, `LevelStarted`, `LevelFinished`, `protocol::LevelStart` | `TimelineEventFired`, `BossFightStarted`/`Ended`, `ShipRespawnStarted`, `AllRespawnsOver` |
-| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed`, `protocol::LevelComplete`, `protocol::GameOver` | inputs, collision events, `LevelFinished` |
+| `CombatPlugin` | Shots, hits, kills, scores, power-ups | `ShipDestroyed`, `protocol::ScoreUpdate`, `protocol::LevelComplete`, `protocol::GameOver` | inputs, collision events, `LevelFinished`, `AllShipsEliminated` |
 | `BossFightPlugin` | Spawns the bosses, follows the fight | `BossFightStarted`, `BossFightEnded` | `LevelEventPlayed` (`boss`) |
-| `RespawnPlugin` | Brings destroyed ships back | `ShipRespawnStarted`, `AllRespawnsOver` | `ShipDestroyed` |
+| `RespawnPlugin` | Brings destroyed ships back while they have lives | `ShipRespawnStarted`, `AllRespawnsOver`, `ShipEliminated`, `AllShipsEliminated` | `ShipDestroyed` |
 | `TerrainPlugin` | Builds and scrolls the terrain | | `LevelEventPlayed` (`terrain`), `LevelStarted` |
 | `CleanupPlugin` | Destroys what left the screen | | |
+| `EnemyFirePlugin` | Fires the guns of the enemies (`prefabs::EnemyGun`) at the nearest ships | | |
+| `EnemyMotionPlugin` | Moves the enemies that weave (`prefabs::SineWave`) | | |
 
-- **Level:** the server loads `server/levels/level_01.toml` at start-up and every room plays it. `TimelinePlugin` moves
+- **Levels:** the server loads the campaign (`server/levels/level_*.toml`, by name) at start-up and every room plays it.
+  `TimelinePlugin` moves
   a cursor at the scroll speed; `LevelDirectorPlugin` handles the events it reaches: `spawn` creates the enemies, `scroll`
   changes the speed, `end` wins the game (see [Game flow](#game-flow)). A `boss` event stops the scroll until its
   `boss_core` is destroyed, and `[[terrain]]` sections scroll as 256 px blocks that destroy the ships touching them. See
   [Level Files](../gameplay/levels.md).
-- **Respawn:** a destroyed ship comes back at its start position (`gameplay::shipSpawnPoint()`) and blinks for
+- **Respawn and lives:** each player starts with `STARTING_LIVES` (3), replicated as the `health` of their ship. A
+  destroyed ship loses one and comes back at its start position (`gameplay::shipSpawnPoint()`), blinking for
   `RESPAWN_DURATION` (3 s) with the `invulnerable` flag: it cannot be hit, and the scroll, the terrain and the next
-  waves wait. Boss fights and respawns share one scroll hold: the scroll resumes once all of them are over. There are
-  no lives or game over yet.
+  waves wait. Boss fights and respawns share one scroll hold. After its last life, the ship is eliminated
+  (`eliminated` flag, parked out of the screen): it cannot move, shoot or be hit, and its player watches the others
+  until the end. Once every ship is eliminated, the game ends with `GameOver{ALL_DEAD}`.
 - **Scripts:** each room has its own Wren VM. What a script spawns with `Engine.spawnPrefab(name, x, y)` goes through
   `gameplay::registerScriptPrefabs()`, so it is replicated too (kind `makeEntityKind(name)`). Player ships and bullets
   cannot be spawned by a script, nor a `boss_core`: a boss fight only starts from a level `boss` event.
@@ -131,24 +136,33 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 - **Ship hits:** room ships carry the `player_ship` collider. An enemy shot (`missile`), an enemy or an obstacle touching
   a ship destroys it, and it respawns; a ship that is respawning cannot be hit, and enemy shots fly through it.
 - **Kills and scores:** a `ShotHitEvent` of a player shot on an enemy destroys both and gives 1 point to the shooter.
-  Each player has their own score.
+  Each player has their own score. An enemy with hit points (a boss, a turret) loses one per shot and dies at 0.
+- **Boss parts:** a boss may have parts, children of it in the entity hierarchy (the room runs
+  `hierarchy::HierarchyPlugin`). A shot on a weak point hurts the boss; armor, and the body of a boss that has a weak
+  point, stop the shot. See [Boss Part](../prefabs/boss-part.md).
 - **Cleanup:** player bullets more than 64 px past the right edge, and enemies, enemy shots and power-ups more than
   64 px past the left one, are destroyed.
-- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`. The clients get the scores
-  at the end of the game.
+- **Score log:** every 5 s of game time, the server logs `[server] scores: P1=<n> P2=<n>`.
+- **Live scores:** when a score changes, `CombatPlugin` publishes a `protocol::ScoreUpdate` (total and per player), at
+  most every `SCORE_UPDATE_INTERVAL` (0.25 s); the room sends it to its players on the reliable channel.
 
 ### Game flow
 
-`Room::start()` calls `LevelDirectorPlugin::startGame()`; the game is the level the server loaded:
+`Room::start()` calls `LevelDirectorPlugin::startGame()`; the game is the campaign the server loaded, its levels chained
+by `level::Level::next`:
 
-1. **Start.** A `protocol::LevelStart` (index 0 of 1, the level name) is published on the room's bus, and the room
-   sends it to its players.
-2. **End.** When the level reaches its `end` event, the scroll stops and `LevelDirectorPlugin` publishes
-   `LevelFinished`. `CombatPlugin`, which keeps the scores, publishes a `protocol::LevelComplete` and then
-   `protocol::GameOver{VICTORY}` with them. The room forwards both, marks itself ended, and the lobby destroys it.
+1. **Start.** A `protocol::LevelStart` (index and count of the level, its name) is published on the room's bus, and the
+   room sends it to its players.
+2. **End of a level.** When the level reaches its `end` event, the scroll stops and `LevelDirectorPlugin` publishes
+   `LevelFinished`. `CombatPlugin`, which keeps the scores, publishes a `protocol::LevelComplete` with them.
+3. **Next level.** After `INTERMISSION_DURATION` (3 s), every replicated entity but the ships is destroyed and the next
+   level starts, back to step 1.
+4. **Victory.** After the last level, `CombatPlugin` also publishes `protocol::GameOver{VICTORY}`. The room forwards it,
+   marks itself ended, and the lobby destroys it.
+5. **Defeat.** When the last ship with lives is eliminated, `RespawnPlugin` publishes `AllShipsEliminated` and
+   `CombatPlugin` publishes `protocol::GameOver{ALL_DEAD}`, forwarded the same way.
 
-Before `startGame()` (in the tests), the `end` event restarts the level instead. There are no lives yet, so the game
-never ends in `ALL_DEAD`.
+Before `startGame()` (in the tests), the `end` event restarts the level instead.
 
 The gameplay never touches the network: it only publishes protocol structs, and the room broadcasts them.
 

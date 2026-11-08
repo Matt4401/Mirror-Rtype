@@ -11,6 +11,7 @@
 #include "core/Engine.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
@@ -24,6 +25,10 @@ namespace rtype::server::gameplay {
  * The boss is a replicated `boss_core`, driven by the event's Wren `script` if any (module `scripts/Boss` for
  * `scripts/Boss.wren`, class named after the file unless the event sets `class`). It flies in until its `stop_x`.
  * Publishes `BossFightStarted` for each boss, and `BossFightEnded` once no boss is left.
+ *
+ * The parts of the event (`parts.<n>.*`, at most `level::MAX_BOSS_PARTS`) are replicated `boss_part` entities,
+ * children of the boss in the entity hierarchy: they move with it and are destroyed with it. A part with an unknown
+ * `role` is skipped, with a warning.
  */
 class BossFightPlugin final : public engine::IPlugin {
   public:
@@ -34,7 +39,8 @@ class BossFightPlugin final : public engine::IPlugin {
     [[nodiscard]] std::string_view name() const noexcept override { return "RTypeBossFightPlugin"; }
 
     /**
-     * @brief Requires `systems::PhysicsPlugin`, which moves the bosses.
+     * @brief Requires `systems::PhysicsPlugin`, which moves the bosses, and `hierarchy::HierarchyPlugin`, which moves
+     * their parts.
      * @param builder Dependency builder.
      */
     void build(engine::PluginBuilder& builder) override;
@@ -65,6 +71,14 @@ class BossFightPlugin final : public engine::IPlugin {
      * @param params Event parameters: `prefab`, `script`, `class` and the prefab parameters.
      */
     void startFight(ecs::Registry& registry, const prefabs::PrefabParams& params);
+
+    /**
+     * @brief Spawns the replicated parts of a boss, as children of it.
+     * @param registry Room registry.
+     * @param boss The boss, already placed.
+     * @param params Event parameters, holding `parts.count` and the `parts.<n>.*` keys.
+     */
+    static void spawnParts(ecs::Registry& registry, ecs::Entity boss, const prefabs::PrefabParams& params);
 
     /** @brief Event bus of the room, set by `init()`. */
     ecs::EventBus* _bus = nullptr;

@@ -78,6 +78,12 @@ inline constexpr std::size_t MAX_SCRIPT_PATH_LENGTH = 256;
 /** @brief Extension a boss script must have. */
 inline constexpr std::string_view SCRIPT_EXTENSION = ".wren";
 
+/** @brief Most parts a boss event may declare (`[[events.parts]]`); the next ones are ignored, with a warning. */
+inline constexpr std::size_t MAX_BOSS_PARTS = 16;
+
+/** @brief Largest offset of a boss part from the center of its boss, in pixels. */
+inline constexpr float MAX_BOSS_PART_OFFSET = 1024.0F;
+
 /**
  * @brief Prefabs the game can spawn for each event type, and the parameters each one reads.
  *

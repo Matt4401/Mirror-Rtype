@@ -12,7 +12,7 @@
 #include <system_error>
 #include <utility>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "assets/AssetPath.hpp"
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
@@ -48,7 +48,7 @@ std::optional<std::filesystem::path> resolveScriptFile(const std::filesystem::pa
 }
 
 void logRefusedScriptModule(std::string_view moduleName) {
-    rtype::log::warning(LOG_TAG, "script module ", assets::quoteForLog(moduleName),
+    engine::log::warning(LOG_TAG, "script module ", assets::quoteForLog(moduleName),
                         " refused: it must be a relative path inside the script root, without '..'");
 }
 
@@ -96,7 +96,7 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
         if (!reportModuleProblemOnce(moduleName)) {
             return false;
         }
-        rtype::log::warning(LOG_TAG, "script module ", assets::quoteForLog(moduleName), ": file ",
+        engine::log::warning(LOG_TAG, "script module ", assets::quoteForLog(moduleName), ": file ",
                             assets::quoteForLog(filename, assets::MAX_PATH_LENGTH), " not found");
         return false;
     }
@@ -108,7 +108,7 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
         if (!reportModuleProblemOnce(moduleName)) {
             return false;
         }
-        rtype::log::warning(LOG_TAG, "cannot load script module ", assets::quoteForLog(moduleName), ": ",
+        engine::log::warning(LOG_TAG, "cannot load script module ", assets::quoteForLog(moduleName), ": ",
                             detail::formatScriptError(res.error()));
         return false;
     }
@@ -131,7 +131,7 @@ scripting::detail::UniqueWrenHandle ScriptSystem::createScriptInstance(ecs::Enti
         if (!reportModuleProblemOnce(script.moduleName + ':' + script.className)) {
             return {};
         }
-        rtype::log::warning(LOG_TAG, "class ", assets::quoteForLog(script.className), " not found in script module ",
+        engine::log::warning(LOG_TAG, "class ", assets::quoteForLog(script.className), " not found in script module ",
                             assets::quoteForLog(script.moduleName));
         return {};
     }
@@ -187,7 +187,7 @@ void ScriptSystem::triggerDestroyHook(ecs::Entity e) {
         _vm.getVariable("_internal", "Dispatcher", 0);
         _vm.setSlot(1, it->second.get());
         if (_vm.call(tryDestroyHandle.get()) != WREN_RESULT_SUCCESS) {
-            rtype::log::warning(LOG_TAG, "entity ", e,
+            engine::log::warning(LOG_TAG, "entity ", e,
                                 ": onDestroy() failed: ", detail::formatScriptError(_vm.lastError()));
         }
     }

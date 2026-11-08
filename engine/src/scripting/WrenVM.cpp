@@ -12,7 +12,7 @@
 #include <string_view>
 #include <utility>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "scripting/detail/LogTag.hpp"
 #include "scripting/detail/WrenApi.hpp"
 #include "scripting/detail/WrenTypes.hpp"
@@ -318,26 +318,26 @@ void WrenVM::onWrite(::WrenVM* vm, const char* text) noexcept {
             return;
         }
         if (self == nullptr) {
-            rtype::log::info(detail::LOG_TAG, chunk);
+            engine::log::info(detail::LOG_TAG, chunk);
             return;
         }
         // `System.print` writes the text, then "\n" on its own: one log line per complete line.
         self->_pendingOutput += chunk;
         if (self->_pendingOutput.size() > MAX_ERROR_LENGTH) {
-            rtype::log::info(detail::LOG_TAG, self->_pendingOutput);
+            engine::log::info(detail::LOG_TAG, self->_pendingOutput);
             self->_pendingOutput.clear();
             return;
         }
         std::size_t newline = self->_pendingOutput.find('\n');
         while (newline != std::string::npos) {
-            rtype::log::info(detail::LOG_TAG, std::string_view(self->_pendingOutput).substr(0, newline));
+            engine::log::info(detail::LOG_TAG, std::string_view(self->_pendingOutput).substr(0, newline));
             self->_pendingOutput.erase(0, newline + 1);
             newline = self->_pendingOutput.find('\n');
         }
     } catch (const std::exception& e) {
-        rtype::log::error(detail::LOG_TAG, "exception in the Wren write callback: ", e.what());
+        engine::log::error(detail::LOG_TAG, "exception in the Wren write callback: ", e.what());
     } catch (...) {
-        rtype::log::error(detail::LOG_TAG, "unknown exception in the Wren write callback");
+        engine::log::error(detail::LOG_TAG, "unknown exception in the Wren write callback");
     }
 }
 
@@ -365,12 +365,12 @@ void WrenVM::onError(::WrenVM* vm, WrenErrorType type, const char* module, int l
             self->_errorHandler(type, modStr, line, msgStr);
         } else {
             // The caller logs `lastError()` once; the pieces are only shown in verbose mode.
-            rtype::log::debug(detail::LOG_TAG, text);
+            engine::log::debug(detail::LOG_TAG, text);
         }
     } catch (const std::exception& e) {
-        rtype::log::error(detail::LOG_TAG, "exception in the Wren error callback: ", e.what());
+        engine::log::error(detail::LOG_TAG, "exception in the Wren error callback: ", e.what());
     } catch (...) {
-        rtype::log::error(detail::LOG_TAG, "unknown exception in the Wren error callback");
+        engine::log::error(detail::LOG_TAG, "unknown exception in the Wren error callback");
     }
 }
 

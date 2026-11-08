@@ -18,6 +18,7 @@ void buildMissile(ecs::Entity e, ecs::Registry& registry, PrefabParams const& pa
     registry.addComponent<ecs::RigidBody2D>(e, ecs::RigidBody2D{
                                                    .bodyType = ecs::BodyType::Dynamic,
                                                    .velocityX = params.get("speed", DEFAULT_MISSILE_SPEED),
+                                                   .velocityY = params.get("speed_y", 0.0F),
                                                    .bullet = true,
                                                });
     registry.addComponent<ecs::Collider2D>(e, ecs::Collider2D{

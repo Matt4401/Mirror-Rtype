@@ -102,6 +102,12 @@ struct LevelCompleted {
     rtype::protocol::LevelComplete result;
 };
 
+/** @brief The scores of the room changed. */
+struct ScoresUpdated {
+    /** @brief Total score and score per player. */
+    rtype::protocol::ScoreUpdate scores;
+};
+
 /** @brief The game is over; the client is back in the lobby, UDP closed and replicated entities gone. */
 struct GameEnded {
     /** @brief Why, and the scores. */
