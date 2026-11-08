@@ -110,6 +110,10 @@ removes one hit point; at 0, the boss is destroyed, the shooter scores, and the 
 fight. The script only moves the boss and fires: everything it spawns with `Engine.spawnPrefab` is replicated. See
 `scripts/Boss.wren`.
 
+Events at the same distance as the boss (or reached in the same server step) wait for the end of the fight, then play
+in order: a `scroll` there does not restart the scroll, and an `end` does not restart the level while the boss is alive.
+Another `boss` at the same distance joins the current fight.
+
 ### `end`: end of the level
 
 No key. For now there is a single level, so `end` restarts it from the start.
