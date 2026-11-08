@@ -6,7 +6,8 @@ import "game/Combat" for Combat
  * @class Bastion
  * @brief The Bastion: an armored fortress that changes tactics as it loses its hit points.
  *
- * Meant for a boss with a `weak_point` behind `armor` plates and two `turret` parts (see `server/levels/`):
+ * Works alone or with parts: a `weak_point` behind `armor` plates and `turret` parts, whose positions its straight
+ * lines then come from (without turrets, they come from the front of the hull):
  *
  *   [[events]]
  *   type = "boss"
@@ -130,13 +131,18 @@ class Bastion {
         }.call()
     }
 
-    /** @brief Phase 1: straight lines from the turrets, then an aimed shot from the core. */
+    /**
+     * @brief Phase 1: straight lines from the turrets (from the bow and the stern of the hull without turrets), then an
+     * aimed shot from the core.
+     */
     siegeRound() {
-        for (turret in Combat.parts(_id)) {
-            if (Combat.partRole(turret) == "turret") {
-                var at = Position.new(turret)
-                Combat.fireAt(at.x, at.y, at.x - 100, at.y, 420, Bastion.shotLook)
-            }
+        var guns = Combat.parts(_id).where {|part| Combat.partRole(part) == "turret" }.map {|part|
+            var at = Position.new(part)
+            return [at.x, at.y]
+        }.toList
+        if (guns.isEmpty) guns = [[_pos.x - 120, _pos.y - 30], [_pos.x - 120, _pos.y + 30]]
+        for (gun in guns) {
+            Combat.fireAt(gun[0], gun[1], gun[0] - 100, gun[1], 420, Bastion.shotLook)
         }
         Engine.wait(0.7)
         if (!_alive) return

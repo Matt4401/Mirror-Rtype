@@ -235,50 +235,11 @@ prefab = "boss_core"
 variant = 2
 y = 360.0
 health = 45
-# A long, flat warship: 280 x 90, a bit inside its 297 x 104 sprite (looks.toml, scale 0.5).
+# A long, flat warship: 280 x 90, a bit inside its 297 x 104 sprite (looks.toml, scale 0.5). No parts: every shot on
+# its hull counts.
 width = 280.0
 height = 90.0
 script = "scripts/bosses/Bastion.wren"
-
-# Weak point in the middle of the hull, behind two armor plates that leave a narrow slit between them.
-[[events.parts]]
-role = "weak_point"
-x = -30.0
-width = 36.0
-height = 36.0
-
-[[events.parts]]
-role = "armor"
-x = -75.0
-y = -24.0
-width = 22.0
-height = 32.0
-
-[[events.parts]]
-role = "armor"
-x = -75.0
-y = 24.0
-width = 22.0
-height = 32.0
-
-# Two turrets on top of the hull, at the bow and at the stern.
-[[events.parts]]
-role = "turret"
-x = -110.0
-y = -36.0
-width = 32.0
-height = 32.0
-health = 8
-look = 2
-
-[[events.parts]]
-role = "turret"
-x = 100.0
-y = -36.0
-width = 32.0
-height = 32.0
-health = 8
-look = 2
 
 [[events]]
 at = 6360.0

@@ -1619,6 +1619,34 @@ TEST_F(BastionTest, LastStandFiresAllAround) {
     EXPECT_GT(missilesFlying(0, 1), 0U) << "some fly down";
 }
 
+/** @brief Room playing the Bastion alone, without parts, as in the shipped level 3. */
+class BastionAloneTest : public ScriptedBossTest {
+  protected:
+    BastionAloneTest()
+        : ScriptedBossTest(std::filesystem::path(RTYPE_SCRIPTS_DIR) / "bosses" / "Bastion.wren", TEST_BOSS_SCRIPT,
+                           {{"health", std::int64_t{30}}, {"width", 280.0}, {"height", 90.0}}) {}
+};
+
+TEST_F(BastionAloneTest, WithoutTurretsItsLinesComeFromTheHullAndShotsHurtIt) {
+    ASSERT_TRUE(bound);
+    run(3.5F);
+    std::size_t lines = 0;
+    for (const ecs::Entity missile : entitiesOf(game::KIND_MISSILE)) {
+        const auto& body = engine.registry().getComponents<ecs::RigidBody2D>().get(missile);
+        lines += body.velocityX < -1.0F && std::abs(body.velocityY) < 1.0F ? 1 : 0;
+    }
+    EXPECT_GE(lines, 2U);
+
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    const ecs::Entity shot = engine.registry().spawnEntity();
+    engine.registry().addComponent(shot, game::EntityNetState{.subtype = 0});
+    engine.eventBus().publish(rtype::server::collision::ShotHitEvent{
+        .shot = shot, .target = bosses.front(), .targetCategory = prefabs::collision::ENEMY, .byPlayer = true});
+    EXPECT_EQ(engine.registry().getComponents<game::EntityNetState>().get(bosses.front()).health, 29)
+        << "no weak point: its hull takes the hits, and its health bar moves";
+}
+
 TEST_F(BastionTest, DropsTwoPowerUpsWhenKilled) {
     run(1.0F);
     engine.registry().killEntity(boss());

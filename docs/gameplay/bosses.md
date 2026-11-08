@@ -55,18 +55,20 @@ Destroying the turrets first takes away the aimed bursts but triggers the frenzy
 
 ## Bastion (`scripts/bosses/Bastion.wren`, variant 2)
 
-An armored fortress whose weak point hides behind two armor plates. It changes tactics as it loses its hit points:
+A fortress that changes tactics as it loses its hit points:
 each phase is checked at the end of a round. All its shots carry the red look of the turret shots (`shotLook`, 1).
 
 | Phase | Hit points left | Behavior |
 |-------|-----------------|----------|
 | Entrance (3 s) | | Flies in to its `stop_x`, does not attack. |
-| 1. Siege | above two thirds | Slides up and down. Each turret fires a straight shot to the left, then the core fires one shot aimed at the nearest ship. |
+| 1. Siege | above two thirds | Slides up and down. Each turret (without turrets, the front of its hull, twice) fires a straight shot to the left, then the core fires one shot aimed at the nearest ship. |
 | 2. Assault | above one third | Charges 420 px towards the ships and back, dropping slow mines (missiles drifting left at 60 px/s) on the way, then fires an aimed shot. |
 | 3. Last stand | below one third | Goes back to its place and fires a spiral: ten shots all around it per turn, the spiral turning at each turn. |
 | Death | | Drops two power-ups. |
 
-Suggested event:
+In the shipped level 3, it has no parts: a long, flat warship (280 x 90, matching its sprite) whose whole hull takes
+the hits. Its straight lines then come from the front of the hull. With `turret` parts, they come from the turrets;
+with a `weak_point`, only the weak point hurts it.
 
 ```toml
 [[events]]
@@ -78,46 +80,4 @@ health = 45
 width = 280.0
 height = 90.0
 script = "scripts/bosses/Bastion.wren"
-
-[[events.parts]]
-role = "weak_point"
-x = -30.0
-width = 36.0
-height = 36.0
-
-[[events.parts]]
-role = "armor"
-x = -75.0
-y = -24.0
-width = 22.0
-height = 32.0
-
-[[events.parts]]
-role = "armor"
-x = -75.0
-y = 24.0
-width = 22.0
-height = 32.0
-
-[[events.parts]]
-role = "turret"
-x = -110.0
-y = -36.0
-width = 32.0
-height = 32.0
-health = 8
-look = 2
-
-[[events.parts]]
-role = "turret"
-x = 100.0
-y = -36.0
-width = 32.0
-height = 32.0
-health = 8
-look = 2
 ```
-
-The hitbox is a long, flat warship (280 x 90). The armor plates sit in front of the weak point and leave a narrow
-slit between them: shots go through it, or come from above or below, which the slide of the siege phase and the
-charges of the assault phase make harder. The turrets sit on top of the hull, at the bow and at the stern.
