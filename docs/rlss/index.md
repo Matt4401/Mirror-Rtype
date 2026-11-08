@@ -213,7 +213,7 @@ sequenceDiagram
   | `Name`     | exclusive | name field (capitals, name characters only), VALIDER; skipped if a name is saved |
   | `Menu`     | exclusive | NOUVELLE PARTIE, REJOINDRE, PARAMETRES, name in the corner (rename), players online |
   | `Browser`  | exclusive | scrollable list of matches (score in team colours, clock, players), RETOUR, NOUVELLE PARTIE |
-  | `Joining`  | exclusive | waiting for the `JoinResult`, 5 s at most; a refusal pops it with the reason    |
+  | `Joining`  | exclusive | waiting for the `JoinResult`, 5 s at most; a refusal pops it with the reason, back cancels |
   | `Match`    | exclusive | nothing: the arena, cars, HUD and name tags are drawn by their plugins          |
   | `Ended`    | overlay   | victory or defeat over the arena, final score, RETOUR AU MENU                   |
   | `Settings` | exclusive | volumes, saved at once                                                          |
@@ -222,8 +222,12 @@ sequenceDiagram
     quits from the main menu and in a match.
   - **What spans the scenes.** The server messages (list of matches, `JoinResult`, team, end of match) and the shared
     `MenuState` (name, matches, team, final score, notice) are handled by `MenuScenesPlugin`.
+  - **Requests.** One create or join request at a time. Back on the waiting screen cancels it: its answer is dropped,
+    and if the server had already put the player in a match, the client leaves it. An answer that comes after the
+    5 s timeout is still followed.
   - **Joining a match.** On `JoinResult(Joined)` it publishes `MatchJoined` and tells the `ServerLink` which match's
-    snapshots to let through. Snapshots are unreliable, so a few from a match just left can still arrive, and must
+    snapshots to let through. From then on it accepts the team and the final status, even when they come in the same
+    poll as the `JoinResult`, and opens the end of match screen only once. Snapshots are unreliable, so a few from a match just left can still arrive, and must
     not bring back its cars nor a newer tick.
   - **Leaving a match.** It calls `ClientReplicationPlugin::reset()`, which removes the replicated entities (each with
     its `ReplicatedEntityDespawned`) and forgets the last tick, so the next match counts its steps from 0. It then

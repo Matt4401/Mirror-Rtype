@@ -331,13 +331,19 @@ bool UiInteractionSystem::moveInList(ecs::Registry& registry, UiFocus& focus, bo
     if (it == rows.end()) {
         return false;
     }
-    const auto index = static_cast<std::size_t>(it - rows.begin());
-    if (forward ? index + 1 >= rows.size() : index == 0) {
-        return false;  // leaving the list: regular navigation takes over
-    }
-    const std::size_t next = forward ? index + 1 : index - 1;
-    if (!registry.hasComponent<UiFocusable>(rows[next])) {
-        return false;
+    // Rows that cannot take the focus (a disabled entry, a separator) are skipped, scrolling past them.
+    std::size_t next = static_cast<std::size_t>(it - rows.begin());
+    const auto canFocus = [&registry, rows](std::size_t index) {
+        return registry.hasComponent<UiFocusable>(rows[index]) && !ecs::isHidden(registry, rows[index]);
+    };
+    for (;;) {
+        if (forward ? next + 1 >= rows.size() : next == 0) {
+            return false;  // leaving the list: regular navigation takes over
+        }
+        next = forward ? next + 1 : next - 1;
+        if (canFocus(next)) {
+            break;
+        }
     }
     if (next < list->first) {
         list->first = next;

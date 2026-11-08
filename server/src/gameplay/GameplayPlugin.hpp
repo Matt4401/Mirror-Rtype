@@ -19,6 +19,7 @@
 #include "collision/GameCollisionEvents.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "events/EventBus.hpp"
 #include "net/ReplicationEvents.hpp"

@@ -8,11 +8,15 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 #include "Arena.hpp"
 #include "AssetsPlugin.hpp"
+#include "components/Renderable.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
+#include "core/services/IScreenDrawService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
@@ -25,12 +29,13 @@
 #include "scene/SceneManager.hpp"
 #include "scene/SceneTypes.hpp"
 #include "ui/components/UiAnchor.hpp"
+#include "ui/components/UiButton.hpp"
 #include "ui/components/UiFocusable.hpp"
 #include "ui/components/UiImage.hpp"
+#include "ui/components/UiNavigation.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiScrollList.hpp"
 #include "ui/components/UiSlider.hpp"
-#include "ui/components/UiText.hpp"
 #include "ui/components/UiTextInput.hpp"
 
 namespace rlss::client {
@@ -156,8 +161,8 @@ void NameScene::onEnter(scene::SceneContext& context) {
     menu::focus(registry, _field);
 
     const auto confirm = [this, &context] {
-        menusOf(context).confirmName(context.engine(),
-                                     context.registry().getComponents<ui::UiTextInput>().get(_field).text);
+        MenuScenesPlugin::confirmName(context.engine(),
+                                      context.registry().getComponents<ui::UiTextInput>().get(_field).text);
     };
     menu::onClick(context, [confirm](std::string_view action) {
         if (action == "name.confirm") {
@@ -207,7 +212,7 @@ void MenuScene::onEnter(scene::SceneContext& context) {
 
     menu::onClick(context, [&context](std::string_view action) {
         if (action == "menu.create") {
-            menusOf(context).request(context.engine(), protocol::encode(protocol::CreateMatch{}));
+            MenuScenesPlugin::request(context.engine(), protocol::encode(protocol::CreateMatch{}));
         } else if (action == "menu.browse") {
             context.manager().switchTo<BrowserScene>();
         } else if (action == "menu.settings") {
@@ -265,12 +270,12 @@ void BrowserScene::onEnter(scene::SceneContext& context) {
         if (action == "browser.back") {
             context.manager().switchTo<MenuScene>();
         } else if (action == "browser.create") {
-            menusOf(context).request(context.engine(), protocol::encode(protocol::CreateMatch{}));
+            MenuScenesPlugin::request(context.engine(), protocol::encode(protocol::CreateMatch{}));
         } else if (action.starts_with(JOIN_PREFIX)) {
             std::uint16_t match = 0;
             const std::string_view id = action.substr(JOIN_PREFIX.size());
             if (std::from_chars(std::to_address(id.begin()), std::to_address(id.end()), match).ec == std::errc{}) {
-                menusOf(context).request(context.engine(), protocol::encode(protocol::JoinMatch{.matchId = match}));
+                MenuScenesPlugin::request(context.engine(), protocol::encode(protocol::JoinMatch{.matchId = match}));
             }
         }
     });
@@ -284,6 +289,14 @@ void BrowserScene::onEnter(scene::SceneContext& context) {
 
 void BrowserScene::showMatches(scene::SceneContext& context) {
     ecs::Registry& registry = context.registry();
+    // The rows are rebuilt: remember which match had the focus, to give it back to the same match.
+    const ecs::Entity focused =
+        registry.hasResource<ui::UiFocus>() ? registry.getResource<ui::UiFocus>().focused : ecs::NULL_ENTITY;
+    const bool rowFocused = std::ranges::find(_rows, focused) != _rows.end();
+    std::string focusedAction;
+    if (rowFocused && registry.hasComponent<ui::UiButton>(focused)) {
+        focusedAction = registry.getComponents<ui::UiButton>().get(focused).action;
+    }
     for (const ecs::Entity row : _rows) {
         registry.killEntity(row);
     }
@@ -321,6 +334,27 @@ void BrowserScene::showMatches(scene::SceneContext& context) {
         _rows.push_back(row);
     }
     menu::setText(registry, _empty, matches.empty() ? "AUCUNE PARTIE EN COURS" : "");
+    if (rowFocused) {
+        restoreFocus(registry, focusedAction);
+    }
+}
+
+void BrowserScene::restoreFocus(ecs::Registry& registry, std::string_view action) const {
+    ecs::Entity fallback = ecs::NULL_ENTITY;
+    for (const ecs::Entity row : _rows) {
+        if (!registry.hasComponent<ui::UiButton>(row)) {
+            continue;  // a full match: not joinable
+        }
+        if (registry.getComponents<ui::UiButton>().get(row).action == action) {
+            menu::focus(registry, row);
+            return;
+        }
+        if (fallback == ecs::NULL_ENTITY) {
+            fallback = row;
+        }
+    }
+    // The match is gone or full: the first joinable one, else the back button.
+    menu::focus(registry, fallback != ecs::NULL_ENTITY ? fallback : _back);
 }
 
 void JoiningScene::onEnter(scene::SceneContext& context) {
@@ -335,10 +369,18 @@ void JoiningScene::onEnter(scene::SceneContext& context) {
                           *remaining -= time.deltaTime;
                           if (*remaining <= 0.0F && context.manager().top() == context.id()) {
                               *remaining = MenuScenesPlugin::REQUEST_TIMEOUT;  // pop only once
+                              // A late answer is still followed: a match joined late is entered.
+                              stateOf(context).requestPending = false;
                               stateOf(context).notify("PAS DE REPONSE DU SERVEUR");
                               context.manager().pop();
                           }
                       });
+    // Back gives up at once; the answer, when it comes, is dropped.
+    menu::onBack(context, [&context] {
+        MenuScenesPlugin::cancelRequest(context.engine());
+        stateOf(context).notify("DEMANDE ANNULEE");
+        context.manager().pop();
+    });
 }
 
 void MatchScene::onEnter(scene::SceneContext& context) {

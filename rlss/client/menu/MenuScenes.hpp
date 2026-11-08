@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
 #include "scene/IScene.hpp"
 #include "scene/SceneTypes.hpp"
 
@@ -82,6 +83,13 @@ class BrowserScene final : public scene::IScene {
      */
     void showMatches(scene::SceneContext& context);
 
+    /**
+     * @brief Focuses the row of a match after the rows were rebuilt.
+     * @param registry Registry.
+     * @param action Action of the row that had the focus; its match may be gone or full.
+     */
+    void restoreFocus(ecs::Registry& registry, std::string_view action) const;
+
     /** @brief Scroll list of the rows. */
     ecs::Entity _list = ecs::NULL_ENTITY;
     /** @brief "No match" line. */
@@ -96,7 +104,10 @@ class BrowserScene final : public scene::IScene {
     float _rowWidth = 0.0F;
 };
 
-/** @brief Waiting for the answer to a create or join request; gives up after `MenuScenesPlugin::REQUEST_TIMEOUT`. */
+/**
+ * @brief Waiting for the answer to a create or join request; gives up after `MenuScenesPlugin::REQUEST_TIMEOUT`, or at
+ *        once on back.
+ */
 class JoiningScene final : public scene::IScene {
   public:
     /**

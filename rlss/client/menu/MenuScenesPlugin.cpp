@@ -146,11 +146,27 @@ bool MenuScenesPlugin::confirmName(engine::Engine& engine, std::string typed) {
 }
 
 void MenuScenesPlugin::request(engine::Engine& engine, const protocol::Bytes& request) {
+    auto& state = engine.registry().getResource<MenuState>();
+    if (state.requestPending) {
+        return;  // a release and a confirm in the same frame, for instance: one request is enough
+    }
+    state.requestPending = true;
     send(engine, request);
     engine.getPlugin<scene::ScenePlugin>().manager().push<JoiningScene>();
 }
 
+void MenuScenesPlugin::cancelRequest(engine::Engine& engine) {
+    auto& state = engine.registry().getResource<MenuState>();
+    if (state.requestPending) {
+        state.requestPending = false;
+        ++state.cancelledRequests;
+    }
+}
+
 void MenuScenesPlugin::leaveMatch(engine::Engine& engine) {
+    auto& state = engine.registry().getResource<MenuState>();
+    state.inMatch = false;
+    state.endedShown = false;
     send(engine, protocol::encode(protocol::LeaveMatch{}));
     _link->setMatch(std::nullopt);
     // Every entity of the match goes (the views remove their parts on `ReplicatedEntityDespawned`), and its last tick
@@ -162,8 +178,8 @@ void MenuScenesPlugin::leaveMatch(engine::Engine& engine) {
 
 void MenuScenesPlugin::onMessage(engine::Engine& engine, const protocol::Message& message) {
     auto& state = engine.registry().getResource<MenuState>();
-    const scene::SceneManager& scenes = engine.getPlugin<scene::ScenePlugin>().manager();
-    const bool inMatch = scenes.isActive(scenes.idOf<MatchScene>());
+    // `state.inMatch` rather than the scene stack: `Welcome` or the final status can come in the same poll as the
+    // `JoinResult`, before the queued switch to `MatchScene` is applied.
     if (const auto* list = std::get_if<protocol::MatchList>(&message)) {
         if (*list != state.matches) {
             state.matches = *list;
@@ -172,12 +188,13 @@ void MenuScenesPlugin::onMessage(engine::Engine& engine, const protocol::Message
     } else if (const auto* result = std::get_if<protocol::JoinResult>(&message)) {
         onJoinResult(engine, *result);
     } else if (const auto* welcome = std::get_if<protocol::Welcome>(&message)) {
-        if (inMatch) {
+        if (state.inMatch) {
             state.team = welcome->team;
         }
     } else if (const auto* status = std::get_if<protocol::MatchStatus>(&message)) {
-        if (inMatch && status->phase == protocol::MatchPhase::Ended && !scenes.isActive(scenes.idOf<EndedScene>())) {
+        if (state.inMatch && status->phase == protocol::MatchPhase::Ended && !state.endedShown) {
             state.final = *status;
+            state.endedShown = true;
             engine.getPlugin<scene::ScenePlugin>().manager().push<EndedScene>();
         }
     }
@@ -186,6 +203,15 @@ void MenuScenesPlugin::onMessage(engine::Engine& engine, const protocol::Message
 void MenuScenesPlugin::onJoinResult(engine::Engine& engine, const protocol::JoinResult& result) {
     scene::SceneManager& scenes = engine.getPlugin<scene::ScenePlugin>().manager();
     auto& state = engine.registry().getResource<MenuState>();
+    if (state.cancelledRequests > 0) {
+        // The answer to a request the player cancelled: drop it, and leave the match it put the player in.
+        --state.cancelledRequests;
+        if (result.status == protocol::JoinStatus::Joined) {
+            send(engine, protocol::encode(protocol::LeaveMatch{}));
+        }
+        return;
+    }
+    state.requestPending = false;
     if (result.status != protocol::JoinStatus::Joined) {
         if (scenes.top() == scenes.idOf<JoiningScene>()) {
             state.notify(std::string(refusal(result.status)));
@@ -194,9 +220,11 @@ void MenuScenesPlugin::onJoinResult(engine::Engine& engine, const protocol::Join
         return;
     }
     // Joined, even if the wait timed out: the server put the player in the match, follow it.
-    if (scenes.isActive(scenes.idOf<MatchScene>())) {
+    if (state.inMatch) {
         return;
     }
+    state.inMatch = true;
+    state.endedShown = false;
     state.team.reset();
     _link->setMatch(result.matchId);
     scenes.switchTo<MatchScene>();

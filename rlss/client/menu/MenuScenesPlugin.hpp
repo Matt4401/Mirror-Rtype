@@ -40,6 +40,14 @@ struct MenuState {
     std::string notice;
     /** @brief Seconds left before the notice disappears. */
     float noticeTime = 0.0F;
+    /** @brief A create or join request waits for its answer: no other one is sent meanwhile. */
+    bool requestPending = false;
+    /** @brief Answers still to come for requests the player cancelled; they are dropped. */
+    int cancelledRequests = 0;
+    /** @brief In a match since its `JoinResult`, even before `MatchScene` is entered. */
+    bool inMatch = false;
+    /** @brief The end of match screen is open or about to be. */
+    bool endedShown = false;
 
     /**
      * @brief Shows a message for `NOTICE_DURATION` seconds.
@@ -107,7 +115,7 @@ class MenuScenesPlugin final : public engine::IPlugin {
     void shutdown(engine::Engine& engine) override;
 
     /**
-     * @brief Sends a create or join request and shows the waiting screen.
+     * @brief Sends a create or join request and shows the waiting screen; does nothing while one is pending.
      * @param engine Host engine.
      * @param request Encoded `CreateMatch` or `JoinMatch`.
      */
@@ -126,6 +134,12 @@ class MenuScenesPlugin final : public engine::IPlugin {
      * @param engine Host engine.
      */
     void leaveMatch(engine::Engine& engine);
+
+    /**
+     * @brief Gives up waiting for the pending request: its answer will be dropped, and a match it joined is left.
+     * @param engine Host engine.
+     */
+    static void cancelRequest(engine::Engine& engine);
 
   private:
     /**
