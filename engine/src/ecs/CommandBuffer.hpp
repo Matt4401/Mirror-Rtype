@@ -50,6 +50,9 @@ class CommandBuffer {
      * Spawns all queued entities, invokes initializers, and destroys scheduled entities.
      * Queues are cleared upon completion.
      *
+     * Commands queued into this buffer during the flush (by an initializer, or by a destroy listener of the registry)
+     * are kept for the next flush.
+     *
      * @param registry Active ECS Registry to apply mutations to.
      */
     void flush(Registry& registry);

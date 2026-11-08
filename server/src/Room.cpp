@@ -21,7 +21,13 @@
 #include "events/EventBus.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
-#include "gameplay/GameplayPlugin.hpp"
+#include "gameplay/CombatPlugin.hpp"
+#include "gameplay/Gameplay.hpp"
+#include "gameplay/LevelDirectorPlugin.hpp"
+#include "gameplay/RespawnPlugin.hpp"
+#include "gameplay/ScriptBindings.hpp"
+#include "gameplay/ScriptPrefabs.hpp"
+#include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkPlugin.hpp"
@@ -29,9 +35,15 @@
 #include "net/ReplicationEvents.hpp"
 #include "net/ReplicationSystems.hpp"
 #include "net/ServerReplicationPlugin.hpp"
+#include "prefabs/PrefabManager.hpp"
+#include "prefabs/PrefabPlugin.hpp"
+#include "prefabs/player_ship/PlayerShip.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
+#include "scripting/ScriptPlugin.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
+#include "systems/script/ScriptSystem.hpp"
+#include "timeline/TimelinePlugin.hpp"
 
 namespace rtype::server {
 
@@ -56,7 +68,7 @@ void broadcastReliable(ecs::net::PeerGroupConnection& connection, const protocol
 }  // namespace
 
 Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, const float fixedDt,
-           ecs::time::Clock::TimeSource timeSource)
+           ecs::time::Clock::TimeSource timeSource, const std::shared_ptr<const level::Level>& level)
     : _maxPlayers(maxPlayers),
       _connection(std::make_shared<ecs::net::PeerGroupConnection>(network)),
       _engine(std::move(timeSource)) {
@@ -64,8 +76,11 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
     _engine.addPlugin<ecs::net::NetworkPlugin>(_connection, _connection);
     _engine.addPlugin<ecs::net::ServerReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
     _engine.addPlugin<systems::PhysicsPlugin>();
-    _engine.addPlugin<gameplay::GameplayPlugin>();
-    // TODO(ecs): add ScriptPlugin for the scripted enemies.
+    _engine.addPlugin<timeline::TimelinePlugin>();
+    gameplay::addGameplayPlugins(_engine, level);
+    _engine.addPlugin<prefabs::PrefabPlugin>();
+    // On fixed steps: the room loop advances the engine about every millisecond, scripts follow the 60 Hz simulation.
+    _engine.addPlugin<scripting::ScriptPlugin>(scripting::ScriptTick::FixedStep);
     ecs::EventBus& bus = _engine.eventBus();
     bus.subscribe<protocol::LevelStart>(
         [this](const protocol::LevelStart& message) { broadcastReliable(*_connection, message); });
@@ -83,6 +98,15 @@ Room::Room(ecs::net::INetworkServer& network, const std::uint8_t maxPlayers, con
         }
     });
     _engine.init();
+    // What a script spawns (a boss's missiles, its escort) is replicated like the rest of the game.
+    ::prefabs::PrefabManager& scriptPrefabs = _engine.getPlugin<prefabs::PrefabPlugin>().manager();
+    gameplay::registerScriptPrefabs(scriptPrefabs);
+    systems::ScriptSystem& scripts = _engine.getPlugin<scripting::ScriptPlugin>().scriptSystem();
+    scripts.setPrefabManager(&scriptPrefabs);
+    // Hot reload is a development tool: on the game server, editing a script mid-match would rebuild the VM of every
+    // room and restart the boss attacks.
+    scripts.enableHotReload(false);
+    (void)gameplay::bindScriptComponents(scripts);
 }
 
 Room::~Room() {
@@ -102,7 +126,8 @@ bool Room::addPlayer(const ClientId player) {
     registry.addComponent(entity, ecs::NetworkOwner{player});
     registry.addComponent(entity, ecs::InputBuffer{.capacity = MAX_PENDING_INPUTS});
     registry.addComponent(entity, game::EntityNetState{});
-    registry.addComponent(entity, ecs::Transform{});
+    // Its collider makes the physics report what touches it: enemies, enemy shots, terrain and power-ups.
+    ::prefabs::buildPlayerShip(entity, registry, {});
     _connection->addPeer(player);
     _players.push_back({.client = player, .entity = entity});
     return true;
@@ -144,12 +169,14 @@ void Room::start() {
     std::uint8_t index = 0;
     for (const RoomPlayer& player : _players) {
         registry.getComponents<game::EntityNetState>().get(player.entity).subtype = index;
+        auto& transform = registry.getComponents<ecs::Transform>().get(player.entity);
+        const gameplay::ShipSpawnPoint spawn = gameplay::shipSpawnPoint(index);
+        transform.x = spawn.x;
+        transform.y = spawn.y;
         ++index;
     }
-    auto& gameplay = _engine.getPlugin<gameplay::GameplayPlugin>();
-    gameplay.setPlayerCount(_players.size());
-    gameplay.placeShips();
-    gameplay.startGame();
+    _engine.getPlugin<gameplay::CombatPlugin>().setPlayerCount(_players.size());
+    _engine.getPlugin<gameplay::LevelDirectorPlugin>().startGame();
     _playing = true;
     _engine.clock().reset();
 }

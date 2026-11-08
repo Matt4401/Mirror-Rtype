@@ -11,6 +11,7 @@
 #include "LogTag.hpp"
 #include "Logger.hpp"
 #include "Room.hpp"
+#include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "protocol/Messages.hpp"
@@ -26,8 +27,9 @@ constexpr auto IDLE_SLEEP = std::chrono::milliseconds(1);
 }  // namespace
 
 ServerManager::ServerManager(std::unique_ptr<ecs::net::INetworkServer> network,
-                             const std::chrono::milliseconds handshakeTimeout)
-    : _network(std::move(network)), _lobby(*_network), _handshakeTimeout(handshakeTimeout) {}
+                             const std::chrono::milliseconds handshakeTimeout,
+                             std::shared_ptr<const level::Level> level)
+    : _network(std::move(network)), _lobby(*_network, std::move(level)), _handshakeTimeout(handshakeTimeout) {}
 
 bool ServerManager::run(const std::uint16_t port) {
     if (!_network->start(port)) {

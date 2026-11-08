@@ -74,6 +74,7 @@ nav:
       - User Settings: architecture/settings.md
       - Plugins & Mediator: architecture/plugins.md
       - Engine Clock: architecture/clock.md
+      - Timeline: architecture/timeline.md
       - Physics: architecture/physics.md
       - Audio: architecture/audio.md
       - Server: architecture/server.md
@@ -82,12 +83,15 @@ nav:
       - Network: architecture/network.md
       - Metrics: architecture/metrics.md
   - RLSS: rlss/index.md
+  - Gameplay:
+      - Level Files: gameplay/levels.md
   - Prefabs:
       - Overview: prefabs/index.md
       - Collision Categories: prefabs/collision-categories.md
       - Missile: prefabs/missile.md
       - Player Bullet: prefabs/player-bullet.md
       - Alien Scout: prefabs/alien-scout.md
+      - Boss Core: prefabs/boss-core.md
       - Obstacle: prefabs/obstacle.md
       - Power-Up: prefabs/power-up.md
   - Protocol:
@@ -96,6 +100,7 @@ nav:
   - Comparative Study:
       - Libraries: comparative-study/libraries.md
       - Algorithms: comparative-study/algorithms.md
+      - ECS Benchmark: comparative-study/ecs-benchmark.md
       - Storage: comparative-study/storage.md
       - Security: comparative-study/security.md
       - Scripting & Events: comparative-study/scripting-events.md
@@ -103,6 +108,7 @@ nav:
   - Development:
       - Coding Style: development/coding-style.md
       - Workflow: development/workflow.md
+      - Test Audit: development/test-audit.md
   - Getting Started:
       - Index: getting-started/index.md
       - Building: getting-started/building.md
