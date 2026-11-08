@@ -162,6 +162,12 @@ class Registry {
     [[nodiscard]] bool isAlive(Entity e) const noexcept;
 
     /**
+     * @brief Counts the entities currently alive.
+     * @return Number of entities spawned and not killed yet.
+     */
+    [[nodiscard]] std::size_t aliveCount() const noexcept;
+
+    /**
      * @brief Registers or pre-allocates storage for a component type.
      *
      * Note: In this modernized registry, components are also automatically registered

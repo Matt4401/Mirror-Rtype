@@ -13,6 +13,7 @@
 
 #include "Logger.hpp"
 #include "ServerManager.hpp"
+#include "ecs/time/PreciseSleep.hpp"
 #include "net/NetworkFactory.hpp"
 #include "parsing/Parsing.hpp"
 #include "protocol/Messages.hpp"
@@ -40,6 +41,9 @@ int main(int ac, char** av) {
     }
     rtype::log::setVerbose(options->logs);
     rtype::log::setColored(options->colors);
+
+    // The server and room loops sleep 1 ms between two passes: without this, Windows makes it about 15.6 ms.
+    const ecs::time::PreciseSleepScope preciseSleep;
 
     rtype::server::ServerManager server(ecs::net::createServer({.protocolId = rtype::protocol::TRANSPORT_PROTOCOL_ID}));
 

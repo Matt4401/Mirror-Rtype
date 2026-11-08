@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -10,7 +11,10 @@
 #include "core/Engine.hpp"
 #include "core/plugins/CorePlugin.hpp"
 #include "ecs/Entity.hpp"
+#include "metrics/MetricsBoard.hpp"
+#include "metrics/MetricsPlugin.hpp"
 #include "net/ClientConnection.hpp"
+#include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
 #include "net/INetworkEventSource.hpp"
 #include "net/INetworkManager.hpp"
@@ -20,6 +24,7 @@
 #include "net/NetworkEvents.hpp"
 #include "net/NetworkPlugin.hpp"
 #include "net/PeerGroupConnection.hpp"
+#include "net/metrics/NetworkMetricsPlugin.hpp"
 
 namespace {
 
@@ -308,6 +313,118 @@ TEST(PeerGroupConnection, HandsOutTheEventsOfItsPeersOnce) {
     ASSERT_EQ(events.size(), 1U);
     EXPECT_EQ(events[0].data, Bytes{7});
     EXPECT_TRUE(group.poll().empty());
+}
+
+namespace {
+
+/** @brief Transport whose traffic is set by the test. */
+class StatsTransport final : public ecs::net::INetworkManager {
+  public:
+    std::vector<NetworkEvent> poll() override { return {}; }
+    void stop() override {}
+    [[nodiscard]] bool isRunning() const override { return true; }
+    [[nodiscard]] ecs::net::TransportStats stats() const override { return traffic; }
+
+    ecs::net::TransportStats traffic;
+};
+
+/** @brief Engine with the network metrics, on a fake clock. */
+struct MetricsSide {
+    MetricsSide() {
+        engine.addPlugin<metrics::MetricsPlugin>();
+        engine.addPlugin<ecs::net::NetworkMetricsPlugin>(transport);
+        engine.init();
+    }
+
+    /** @brief Lets a little more than one refresh period elapse, in one frame. */
+    void refresh() {
+        now += static_cast<double>(metrics::REFRESH_PERIOD);
+        engine.advance();
+    }
+
+    [[nodiscard]] const metrics::Metric& line(const std::string& name) {
+        const metrics::Metric* metric = engine.registry().getResource<metrics::MetricsBoard>().find(name);
+        if (metric == nullptr) {
+            throw std::runtime_error("no metric named " + name);
+        }
+        return *metric;
+    }
+
+    double now = 0.0;
+    std::shared_ptr<StatsTransport> transport = std::make_shared<StatsTransport>();
+    engine::Engine engine{[this]() -> double { return now; }};
+};
+
+}  // namespace
+
+TEST(NetworkMetrics, TrafficIsARateOverTheLastPeriod) {
+    MetricsSide side;
+    side.transport->traffic = {.bytesSent = 500, .bytesReceived = 2000, .packetsSent = 5, .packetsReceived = 10};
+    side.refresh();
+
+    EXPECT_EQ(side.line("Down").value, "4.0 KB/s");
+    EXPECT_EQ(side.line("Up").value, "1.0 KB/s");
+    EXPECT_EQ(side.line("Packets").value, "20 in, 10 out /s");
+
+    // No new traffic: the rate falls back to zero, whatever the totals are.
+    side.refresh();
+    EXPECT_EQ(side.line("Down").value, "0.0 KB/s");
+}
+
+TEST(NetworkMetrics, NoReplicationLinesWithoutReplicationStats) {
+    MetricsSide side;
+    side.refresh();
+
+    EXPECT_EQ(side.engine.registry().getResource<metrics::MetricsBoard>().find("RTT"), nullptr);
+}
+
+TEST(NetworkMetrics, RoundTripLevelFollowsItsValue) {
+    MetricsSide side;
+    auto& stats = side.engine.registry().emplaceResource<ecs::net::ReplicationStats>();
+
+    side.refresh();
+    EXPECT_EQ(side.line("RTT").value, "--");
+
+    stats.inputRttMs = 50.0F;
+    side.refresh();
+    EXPECT_EQ(side.line("RTT").value, "50 ms");
+    EXPECT_EQ(side.line("RTT").level, metrics::MetricLevel::Normal);
+
+    stats.inputRttMs = 150.0F;
+    side.refresh();
+    EXPECT_EQ(side.line("RTT").level, metrics::MetricLevel::Warning);
+
+    stats.inputRttMs = 300.0F;
+    side.refresh();
+    EXPECT_EQ(side.line("RTT").level, metrics::MetricLevel::Critical);
+}
+
+TEST(NetworkMetrics, MissedIsAPercentageOverTheLastPeriod) {
+    MetricsSide side;
+    auto& stats = side.engine.registry().emplaceResource<ecs::net::ReplicationStats>();
+
+    stats.snapshotsReceived = 95;
+    stats.snapshotsMissed = 5;
+    side.refresh();
+    EXPECT_EQ(side.line("Missed").value, "5.0 %");
+    EXPECT_EQ(side.line("Missed").level, metrics::MetricLevel::Warning);
+
+    stats.snapshotsReceived += 100;
+    side.refresh();
+    EXPECT_EQ(side.line("Missed").value, "0.0 %");
+    EXPECT_EQ(side.line("Missed").level, metrics::MetricLevel::Normal);
+}
+
+TEST(NetworkMetrics, LateSnapshotIsNotCountedAsMissed) {
+    MetricsSide side;
+    auto& stats = side.engine.registry().emplaceResource<ecs::net::ReplicationStats>();
+
+    stats.snapshotsReceived = 99;
+    stats.snapshotsMissed = 1;
+    stats.snapshotsStale = 1;
+    side.refresh();
+
+    EXPECT_EQ(side.line("Missed").value, "0.0 %");
 }
 
 int main(int argc, char** argv) {

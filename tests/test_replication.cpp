@@ -830,6 +830,111 @@ TEST(ClientReplication, ShutdownUnsubscribes) {
     EXPECT_TRUE(client.service->sent.empty());
 }
 
+// --- Statistics ------------------------------------------------------------------------------------------------------
+
+namespace {
+
+/** @brief Gives the client a snapshot of no entity, received on its next frame. */
+void receiveSnapshot(Client& client, const std::uint32_t tick, const std::uint32_t lastProcessedInput) {
+    client.codec->beginSnapshot(tick);
+    client.source->data(ecs::net::SERVER_PEER, client.codec->encodeSnapshot(lastProcessedInput).front());
+}
+
+void sendInput(Client& client, const std::uint32_t sequence) {
+    client.engine.eventBus().publish(
+        ecs::net::LocalInput{.input = NetInput{.sequence = sequence, .held = {}, .axes = {}}});
+}
+
+}  // namespace
+
+TEST(ReplicationStats, TickJumpsCountAsMissedSnapshots) {
+    Client client;
+    const auto& stats = client.registry().getResource<ecs::net::ReplicationStats>();
+
+    for (const std::uint32_t tick : {10U, 11U, 14U}) {
+        receiveSnapshot(client, tick, 0);
+        client.step();
+    }
+
+    EXPECT_EQ(stats.snapshotsReceived, 3U);
+    EXPECT_EQ(stats.snapshotsMissed, 2U);  // 12 and 13; nothing is missed before the first snapshot
+    EXPECT_EQ(stats.snapshotsStale, 0U);
+}
+
+TEST(ReplicationStats, SnapshotOlderThanTheLastOneIsStale) {
+    Client client;
+    const auto& stats = client.registry().getResource<ecs::net::ReplicationStats>();
+
+    receiveSnapshot(client, 10, 0);
+    client.step();
+    receiveSnapshot(client, 9, 0);
+    client.step();
+
+    EXPECT_EQ(stats.snapshotsReceived, 1U);
+    EXPECT_EQ(stats.snapshotsStale, 1U);
+}
+
+TEST(ReplicationStats, SnapshotInSeveralPartsCountsOnce) {
+    Server server;
+    Client client;
+    server.codec->entitiesPerPart = 1;
+    spawnPlayer(server.registry(), 3);
+    spawnPlayer(server.registry(), 4);
+    server.service->sent.clear();
+    server.engine.eventBus().publish(ecs::net::PeerConnected{.peer = 3});
+    server.step();
+    deliver(server, client, 3);
+    ASSERT_GE(client.source->next.size(), 2U);
+
+    client.step();
+
+    EXPECT_EQ(client.registry().getResource<ecs::net::ReplicationStats>().snapshotsReceived, 1U);
+}
+
+TEST(ReplicationStats, NoRoundTripBeforeAnInputIsAcknowledged) {
+    Client client;
+    sendInput(client, 1);
+    receiveSnapshot(client, 1, 0);
+    client.step();
+
+    EXPECT_FALSE(client.registry().getResource<ecs::net::ReplicationStats>().inputRttMs.has_value());
+}
+
+TEST(ReplicationStats, RoundTripIsTheTimeUntilAnInputIsAcknowledged) {
+    Client client;
+    const auto& stats = client.registry().getResource<ecs::net::ReplicationStats>();
+
+    sendInput(client, 1);
+    client.now += 0.1;
+    receiveSnapshot(client, 1, 1);
+    client.engine.advance();
+    ASSERT_TRUE(stats.inputRttMs.has_value());
+    EXPECT_NEAR(*stats.inputRttMs, 100.0F, 0.01F);
+
+    // Smoothed: one late input moves the value by a tenth of the difference.
+    sendInput(client, 2);
+    client.now += 0.2;
+    receiveSnapshot(client, 2, 2);
+    client.engine.advance();
+    EXPECT_NEAR(*stats.inputRttMs, 110.0F, 0.01F);
+}
+
+TEST(ReplicationStats, SameAcknowledgementIsMeasuredOnce) {
+    Client client;
+    const auto& stats = client.registry().getResource<ecs::net::ReplicationStats>();
+
+    sendInput(client, 1);
+    client.now += 0.1;
+    receiveSnapshot(client, 1, 1);
+    client.engine.advance();
+
+    client.now += 1.0;
+    receiveSnapshot(client, 2, 1);
+    client.engine.advance();
+
+    EXPECT_NEAR(*stats.inputRttMs, 100.0F, 0.01F);
+}
+
 int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();

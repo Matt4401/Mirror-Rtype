@@ -15,6 +15,8 @@ bool Registry::isAlive(Entity e) const noexcept {
     return idx < _isAlive.size() && _isAlive[idx] && e == makeEntity(idx, _generations[idx]);
 }
 
+std::size_t Registry::aliveCount() const noexcept { return _nextEntity - _deadEntities.size(); }
+
 void Registry::ensureAlive(Entity e) const {
     if (!isAlive(e)) {
         throw std::invalid_argument("Cannot attach a component to an entity that is not alive");

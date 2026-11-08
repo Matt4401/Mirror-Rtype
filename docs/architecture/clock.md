@@ -9,11 +9,12 @@ two loop iterations into a whole number of **fixed-duration simulation steps** (
 It lives in `engine/src/ecs/time/` under the `ecs::time` namespace and has **no graphical dependency**, so the headless
 server and the client use the exact same code.
 
-| File                                    | Content                                                        |
-|-----------------------------------------|----------------------------------------------------------------|
-| `Time.hpp`                              | `Time` structure handed to every simulation step               |
-| `Clock.hpp` / `Clock.tpp` / `Clock.cpp` | The `Clock` class (`tick` is a template defined in the `.tpp`) |
-| `SteadyNow.hpp` / `SteadyNow.cpp`       | `steadyNowSeconds()`, the default time source                  |
+| File                                    | Content                                                               |
+|-----------------------------------------|-----------------------------------------------------------------------|
+| `Time.hpp`                              | `Time` structure handed to every simulation step                      |
+| `Clock.hpp` / `Clock.tpp` / `Clock.cpp` | The `Clock` class (`tick` is a template defined in the `.tpp`)        |
+| `SteadyNow.hpp` / `SteadyNow.cpp`       | `steadyNowSeconds()`, the default time source                         |
+| `PreciseSleep.hpp` / `PreciseSleep.cpp` | `PreciseSleepScope`, so that a 1 ms sleep lasts 1 ms on Windows too   |
 
 ## 2. How It Works
 
@@ -109,6 +110,7 @@ type erasure, heap allocation or indirect call on a path executed every frame.
 ### Server main loop
 
 ```cpp
+const ecs::time::PreciseSleepScope preciseSleep;          // see "Sleeping between two passes" below
 ecs::time::Clock clock;
 constexpr float FIXED_DT = ecs::time::DEFAULT_FIXED_DT;   // 1.0F / 60.0F, 60 Hz
 
@@ -119,9 +121,24 @@ while (running) {
         physics.update(time.deltaTime);    // movement and collisions
         network.sendSnapshot();            // send state to clients
     });
-    // short sleep to avoid burning the CPU
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));   // short sleep to avoid burning the CPU
 }
 ```
+
+### Sleeping between two passes
+
+The clock decides how many steps are due, but a step can only run when the loop is awake. On Linux and macOS a 1 ms
+sleep lasts about 1 ms. On Windows it lasts at least one period of the system timer, **about 15.6 ms by default**: steps
+then run up to 15 ms late, and when two are due at once the server sends a single snapshot for both.
+
+`ecs::time::PreciseSleepScope` asks Windows for a 1 ms period (`timeBeginPeriod(1)`) while it lives, and gives it back
+when destroyed. It does nothing on the other systems, and `raised()` tells whether it changed the period.
+
+- Create one at the start of a program whose loop sleeps: `server/src/main.cpp` does, for the server thread and the
+  room threads.
+- A raylib window already asks for the same period, so a windowed client does not need one.
+- The period applies to the whole process; scopes can be nested. Windows 11 may ignore it for a process whose window
+  is minimized or hidden: this does not concern a headless server.
 
 ### Client main loop & Engine integration
 
@@ -191,7 +208,10 @@ The unit tests in `tests/test_clock.cpp` cover:
 - no drift over 10,000 ticks;
 - same number of steps at 144 Hz and at 20 Hz loop frequency (framerate independence);
 - spiral-of-death cap;
-- `reset()`, an invalid `fixedDt`, and the default real-time source.
+- `reset()`, an invalid `fixedDt`, and the default real-time source;
+- `PreciseSleepScope`: it raises the timer period on Windows only, can be nested, and keeps 1 ms sleeps well below the
+  15.6 ms of the default Windows period. The CI runs this suite on Windows, where this last test fails without the
+  scope.
 
 Run them with:
 

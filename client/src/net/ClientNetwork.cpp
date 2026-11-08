@@ -12,6 +12,7 @@
 #include "net/NetworkPlugin.hpp"
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
+#include "net/metrics/NetworkMetricsPlugin.hpp"
 #include "protocol/Messages.hpp"
 
 namespace client {
@@ -24,7 +25,8 @@ void addNetworkPlugins(engine::Engine& engine, const ClientOptions& options) {
     engine.addPlugin<ecs::net::NetworkPlugin>(connection, connection)
         .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rtype::game::ReplicationCodec>())
         .addPlugin<RTypeNetworkPlugin>(transport)
-        .addPlugin<PlayerControlPlugin>();
+        .addPlugin<PlayerControlPlugin>()
+        .addPlugin<ecs::net::NetworkMetricsPlugin>(transport);
 
     transport->connect(options.host, options.port);
 }

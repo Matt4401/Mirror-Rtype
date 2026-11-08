@@ -67,6 +67,22 @@ struct NetworkEvent {
     Channel channel;
 };
 
+/**
+ * @brief Traffic of a transport since it was created.
+ *
+ * Sizes count the transport framing but not the IP, TCP and UDP headers. A packet is a TCP frame or a datagram.
+ */
+struct TransportStats {
+    /** @brief Bytes sent. */
+    std::uint64_t bytesSent = 0;
+    /** @brief Bytes received. */
+    std::uint64_t bytesReceived = 0;
+    /** @brief Packets sent. */
+    std::uint64_t packetsSent = 0;
+    /** @brief Packets received. */
+    std::uint64_t packetsReceived = 0;
+};
+
 /** @brief Special peer id of the server, used by the client. */
 inline constexpr PeerId SERVER_PEER = 0;
 
@@ -101,6 +117,11 @@ class INetworkManager {
     virtual void stop() = 0;
     /** @brief True between a successful start (`start()` / `connect()`) and `stop()` or a lost connection. */
     [[nodiscard]] virtual bool isRunning() const = 0;
+    /**
+     * @brief Reads the traffic of this transport. Thread-safe, never blocks.
+     * @return The traffic so far; all zeros for a transport that does not measure it.
+     */
+    [[nodiscard]] virtual TransportStats stats() const { return {}; }
 };
 
 }  // namespace ecs::net

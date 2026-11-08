@@ -11,6 +11,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <tuple>
@@ -28,6 +29,9 @@
 #include "game/ShipMovement.hpp"
 #include "input/InputState.hpp"
 #include "input/RTypeBindings.hpp"
+#include "metrics/MetricsBoard.hpp"
+#include "metrics/MetricsPlugin.hpp"
+#include "metrics/ShipMetricsPlugin.hpp"
 #include "net/ClientConnection.hpp"
 #include "net/ClientReplicationPlugin.hpp"
 #include "net/INetworkClient.hpp"
@@ -39,6 +43,7 @@
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
 #include "net/ReplicationEvents.hpp"
+#include "net/metrics/NetworkMetricsPlugin.hpp"
 #include "protocol/Messages.hpp"
 #include "protocol/Protocol.hpp"
 
@@ -61,6 +66,9 @@ class GameClient {
         engine.addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<game::ReplicationCodec>());
         engine.addPlugin<client::RTypeNetworkPlugin>(_transport);
         engine.addPlugin<client::PlayerControlPlugin>();
+        engine.addPlugin<metrics::MetricsPlugin>();
+        engine.addPlugin<ecs::net::NetworkMetricsPlugin>(_transport);
+        engine.addPlugin<client::ShipMetricsPlugin>();
         engine.eventBus().subscribe<ecs::net::PacketReceived>([this](const ecs::net::PacketReceived& packet) {
             const auto message = protocol::decode(packet.data);
             if (packet.channel != Channel::Reliable || !message) {
@@ -103,6 +111,12 @@ class GameClient {
                 }
             });
         return found;
+    }
+
+    /** @brief Value of a line of the metrics board, empty if it does not exist yet. */
+    [[nodiscard]] std::string metric(const std::string_view name) {
+        const metrics::Metric* line = engine.registry().getResource<metrics::MetricsBoard>().find(name);
+        return line == nullptr ? std::string{} : line->value;
     }
 
     /** @brief Number of replicated entities in this client's world. */
@@ -227,6 +241,27 @@ TEST_F(EndToEndTest, TwoClientsPlayTogetherAndSurviveACrash) {
     const auto tick = first.engine.registry().getResource<ecs::net::SnapshotState>().tick;
     EXPECT_TRUE(pump(frame, [&] { return first.engine.registry().getResource<ecs::net::SnapshotState>().tick > tick; }))
         << "snapshots keep coming";
+}
+
+TEST_F(EndToEndTest, ClientMeasuresItsConnection) {
+    GameClient client;
+    const auto frame = [&] { client.engine.advance(); };
+    ASSERT_TRUE(connect(client));
+    ASSERT_TRUE(pump(frame, [&] { return client.lobbyUpdate.has_value(); }));
+    client.pressReady();
+    ASSERT_TRUE(pump(frame, [&] { return client.gameStart.has_value(); }));
+
+    // Through real sockets: inputs get acknowledged, snapshots come in, and all of it reaches the board.
+    EXPECT_TRUE(pump(frame, [&] {
+        const std::string rtt = client.metric("RTT");
+        return !rtt.empty() && rtt != "--";
+    })) << "no input was acknowledged";
+    EXPECT_TRUE(pump(frame, [&] {
+        const std::string down = client.metric("Down");
+        return !down.empty() && down != "0.0 KB/s";
+    })) << "no traffic was measured";
+    EXPECT_TRUE(pump(frame, [&] { return !client.metric("Position").empty(); })) << "the game adds its own metric";
+    EXPECT_GT(client.engine.registry().getResource<ecs::net::ReplicationStats>().snapshotsReceived, 0U);
 }
 
 int main(int argc, char** argv) {

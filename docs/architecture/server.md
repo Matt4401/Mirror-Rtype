@@ -19,6 +19,10 @@ entities does not slow down the others. The mutex of a room is only contended wh
 then waits for the step in progress. An exception in a simulation stops that room only.
 See [Network Architecture](network.md#6-threading-model).
 
+The server thread and the room threads sleep 1 ms between two passes. `main()` holds an `ecs::time::PreciseSleepScope`
+for the whole run so that this stays true on Windows, where a sleep lasts about 15.6 ms by default. See
+[Engine Clock — Sleeping between two passes](clock.md#sleeping-between-two-passes).
+
 ## `ServerManager`
 
 Owns the transport and the `Lobby`, and holds no game logic. Each loop iteration, about every millisecond:
