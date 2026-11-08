@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -448,6 +449,23 @@ TEST_F(GameFlowTest, NothingIsPlayedAfterTheGameIsWon) {
     EXPECT_EQ(log.size(), 3U);
 }
 
+TEST_F(GameplayTest, AimedMissilesLeavingByAnyEdgeAreDestroyed) {
+    const auto missile = [this](const float speedX, const float speedY) {
+        const ecs::Entity entity = registry().spawnEntity();
+        ::prefabs::buildMissile(entity, registry(),
+                                {{"x", 640.0F}, {"y", 360.0F}, {"speed", speedX}, {"speed_y", speedY}});
+        ecs::net::replicate(registry(), entity, game::KIND_MISSILE);
+        return entity;
+    };
+    const ecs::Entity up = missile(0.0F, -900.0F);
+    const ecs::Entity down = missile(0.0F, 900.0F);
+    const ecs::Entity right = missile(900.0F, 0.0F);
+    run(2.0F);
+    EXPECT_FALSE(registry().isAlive(up));
+    EXPECT_FALSE(registry().isAlive(down));
+    EXPECT_FALSE(registry().isAlive(right));
+}
+
 TEST_F(GameplayTest, EnemiesThatLeaveTheScreenAreDestroyed) {
     // From x = 1328 at 150 px/s, an enemy is past the left edge after about 9.3 s. In 15 s the level spawns at 1, 2, 6,
     // 7, 11 and 12 s, so the first ones are gone. Entity ids are recycled, so the test looks at positions.
@@ -827,26 +845,27 @@ class TestBoss {
 class ScriptedBossTest : public ::testing::Test {
   protected:
     /**
-     * @param shipped Script of the game to play; none writes `TEST_BOSS_SCRIPT` to a temporary file instead.
+     * @param shipped Script of the game to play; none writes `source` to a temporary file instead.
+     * @param source Script written when no shipped script is given.
+     * @param extra Parameters added to the boss event, such as its parts.
      */
-    explicit ScriptedBossTest(const std::optional<std::filesystem::path>& shipped = std::nullopt)
+    explicit ScriptedBossTest(const std::optional<std::filesystem::path>& shipped = std::nullopt,
+                              const std::string_view source = TEST_BOSS_SCRIPT, const prefabs::PrefabParams& extra = {})
         : tempDir(std::filesystem::temp_directory_path() /
                   ("rtype_test_boss_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()))),
           scriptPath(shipped.value_or(tempDir / "TestBoss.wren")),
           engine([this] { return now; }) {
         if (!shipped) {
             std::filesystem::create_directories(tempDir);
-            std::ofstream(scriptPath) << TEST_BOSS_SCRIPT;
+            std::ofstream(scriptPath) << source;
         }
 
         auto built = std::make_shared<level::Level>();
         built->scrollSpeed = LEVEL_SPEED;
-        built->timeline.add({.position = 0.0F,
-                             .type = std::string(level::EVENT_BOSS),
-                             .params = {{"prefab", std::string("boss_core")},
-                                        {"x", 900.0},
-                                        {"y", 360.0},
-                                        {"script", scriptPath.generic_string()}}});
+        prefabs::PrefabParams params{
+            {"prefab", std::string("boss_core")}, {"x", 900.0}, {"y", 360.0}, {"script", scriptPath.generic_string()}};
+        params.merge(extra);
+        built->timeline.add({.position = 0.0F, .type = std::string(level::EVENT_BOSS), .params = std::move(params)});
 
         engine.setFixedDeltaTime(FIXED_DT);
         engine.addPlugin<systems::PhysicsPlugin>();
@@ -944,6 +963,89 @@ TEST_F(ScriptedBossTest, ScriptOfADeadBossDoesNotCrashTheRoom) {
     engine.registry().killEntity(bosses.front());
     run(1.0F);
     EXPECT_TRUE(entitiesOf(game::KIND_BOSS_CORE).empty());
+}
+
+/**
+ * @brief Script reading its boss through `game/Combat` (class `TestBoss`, as its file): on its first update, it turns
+ * what it sees into alien scouts at known heights, then fires one aimed missile at the nearest ship.
+ */
+constexpr std::string_view COMBAT_PROBE_SCRIPT = R"(
+import "core/Engine" for Engine
+import "core/Position" for Position
+import "game/Combat" for Combat
+
+class TestBoss {
+    construct new(entity) {
+        _id = (entity is Num) ? entity : entity.id
+        _pos = Position.new(_id)
+        _fired = false
+    }
+
+    onSpawn() {}
+
+    update(dt) {
+        if (_fired) return
+        _fired = true
+        var health = Combat.health(_id)
+        var parts = Combat.parts(_id)
+        var turrets = parts.where {|part| Combat.partRole(part) == "turret" }.count
+        // Each fact the test checks becomes an alien scout at a known height.
+        if (health != null && health[0] == 5 && health[1] == 5) Engine.spawnPrefab("alien_scout", 100, 10)
+        if (parts.count == 2 && turrets == 1) Engine.spawnPrefab("alien_scout", 100, 20)
+        if (Combat.partRole(_id) == null && Combat.health(999999) == null) Engine.spawnPrefab("alien_scout", 100, 30)
+        var ship = Combat.nearestShip(_pos.x, _pos.y)
+        if (ship != null) Combat.fireAt(_pos.x, _pos.y, ship[0], ship[1], 99999)
+    }
+}
+)";
+
+/** @brief Room whose boss runs `COMBAT_PROBE_SCRIPT`, with 5 hit points, a weak point and a turret. */
+class CombatBindingTest : public ScriptedBossTest {
+  protected:
+    CombatBindingTest()
+        : ScriptedBossTest(std::nullopt, COMBAT_PROBE_SCRIPT,
+                           {{"health", std::int64_t{5}},
+                            {"parts.count", std::int64_t{2}},
+                            {"parts.0.role", std::string("weak_point")},
+                            {"parts.1.role", std::string("turret")}}) {}
+
+    /** @brief Heights of the probes the script spawned. */
+    [[nodiscard]] std::vector<float> probes() {
+        std::vector<float> heights;
+        for (const ecs::Entity scout : entitiesOf(game::KIND_ALIEN_SCOUT)) {
+            heights.push_back(engine.registry().getComponents<ecs::Transform>().get(scout).y);
+        }
+        std::ranges::sort(heights);
+        return heights;
+    }
+};
+
+TEST_F(CombatBindingTest, ScriptsReadTheHitPointsAndThePartsOfTheirBoss) {
+    ASSERT_TRUE(bound);
+    run(0.2F);
+    EXPECT_EQ(probes(), (std::vector<float>{10.0F, 20.0F, 30.0F}));
+}
+
+TEST_F(CombatBindingTest, AimedShotFliesTowardsTheNearestShipAtAClampedSpeed) {
+    ASSERT_TRUE(bound);
+    // Below and to the left of the boss (900, 360).
+    const ecs::Entity ship = engine.registry().spawnEntity();
+    engine.registry().addComponent(ship, ecs::Transform{.x = 300.0F, .y = 600.0F});
+    ecs::net::replicate(engine.registry(), ship, game::KIND_PLAYER_SHIP);
+    run(0.2F);
+
+    const auto missiles = entitiesOf(game::KIND_MISSILE);
+    ASSERT_EQ(missiles.size(), 1U);
+    const auto& body = engine.registry().getComponents<ecs::RigidBody2D>().get(missiles.front());
+    EXPECT_LT(body.velocityX, 0.0F);
+    EXPECT_GT(body.velocityY, 0.0F);
+    EXPECT_NEAR(std::hypot(body.velocityX, body.velocityY), rtype::server::gameplay::MAX_AIMED_SHOT_SPEED, 1.0);
+    EXPECT_NEAR(body.velocityY / body.velocityX, 240.0 / -600.0, 1e-3);
+}
+
+TEST_F(CombatBindingTest, NoShipMeansNoAimedShot) {
+    run(0.2F);
+    EXPECT_TRUE(entitiesOf(game::KIND_MISSILE).empty());
 }
 
 /** @brief Same room, playing the boss script shipped with the game. */

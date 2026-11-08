@@ -13,7 +13,7 @@ A fast projectile fired by enemies, flying straight to the left towards the play
 |-----------|--------|
 | `Transform` | built from the spawn parameters (`makeTransform`) |
 | `Renderable` | `layer = 1` |
-| `RigidBody2D` | `Dynamic`, `velocityX = speed`, `bullet = true` |
+| `RigidBody2D` | `Dynamic`, `velocityX = speed`, `velocityY = speed_y`, `bullet = true` |
 | `Collider2D` | Box of `rtype::game::MISSILE_WIDTH` x `MISSILE_HEIGHT` (16 x 6 px, shared with the clients), sensor |
 
 ## Collision
@@ -34,6 +34,7 @@ Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `speed` | `float` | `DEFAULT_MISSILE_SPEED` (`-600` px/s) | Horizontal velocity (negative: to the left). |
+| `speed_y` | `float` | `0` | Vertical velocity (positive: down). Set by the aimed shots of `Combat.fireAt`. |
 
 ## API
 

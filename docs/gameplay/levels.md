@@ -113,6 +113,25 @@ fight. The script moves the boss and attacks: everything it spawns with `Engine.
 missiles and the boss itself destroy the ships they touch (they respawn), and the power-up it drops gives rapid fire to
 the player who picks it up. See `scripts/Boss.wren`.
 
+#### Boss scripts
+
+A boss script is a Wren class named after its file, with the hooks of the
+[scripting guide](../getting-started/scripting-guide.md). Besides `core/Engine` and `core/Position`, the server gives
+boss scripts the `game/Combat` module:
+
+```wren
+import "game/Combat" for Combat
+
+var health = Combat.health(id)          // [points, max] of the boss or a turret, null for anything else
+var parts = Combat.parts(id)            // ids of the living parts of the boss
+var role = Combat.partRole(parts[0])    // "weak_point", "turret", "armor" or null
+var ship = Combat.nearestShip(x, y)     // [x, y] of the nearest ship that can be hit, null if none
+Combat.fireAt(x, y, ship[0], ship[1], 400)  // replicated missile towards the ship, speed clamped to 50-900 px/s
+```
+
+A part position is read with `Position.new(partId)`; a turret fires with `Combat.fireAt` from there. Aimed missiles are
+destroyed once off the screen by any edge.
+
 #### Boss parts
 
 A boss event may declare up to 16 parts, each in an `[[events.parts]]` table after the event. They are
