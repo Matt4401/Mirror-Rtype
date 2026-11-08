@@ -8,7 +8,6 @@
 #include <vector>
 
 #include "core/services/IScreenDrawService.hpp"
-#include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ui/components/UiButton.hpp"
 #include "ui/components/UiProgressBar.hpp"

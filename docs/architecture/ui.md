@@ -62,8 +62,9 @@ The children of a `UiScrollList` are rows. Only `visibleCount` rows, starting at
 anchored in its own slot of `itemHeight` pixels, stacked from the top of the list.
 
 Rows out of view are neither laid out, drawn nor clickable, so a list of hundreds of entries costs only its visible
-rows. The mouse wheel over the list scrolls it, and up/down on a focused row move to the next row, scrolling as
-needed. `first` is clamped to the number of rows.
+rows. The mouse wheel over the list scrolls it, and up/down on a focused row move to the next focusable row,
+scrolling as needed: rows without `UiFocusable` (a disabled entry) are skipped. `first` is clamped to the number of
+rows.
 
 ## Hiding
 
