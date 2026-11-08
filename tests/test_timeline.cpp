@@ -272,6 +272,18 @@ TEST(TimelinePlugin, MovesTheCursorBySpeedTimesDeltaTime) {
     EXPECT_EQ(recorder.fired[0], "spawn");
 }
 
+TEST(Timeline, CursorKeepsMovingFarAlongALongTimeline) {
+    timeline::Timeline line;
+    line.add(makeEvent(1.0e6F + 1.0F, "far"));
+    (void)line.advanceTo(1.0e6);
+    // 1/60 of a 1 px/s scroll: lost in a float at this distance.
+    for (int i = 0; i < 59; ++i) {
+        EXPECT_TRUE(line.advance(1.0 / 60.0).empty());
+    }
+    EXPECT_GT(line.cursor(), 1.0e6 + 0.9);
+    EXPECT_EQ(typesOf(line.advance(0.1)), std::vector<std::string>{"far"});
+}
+
 TEST(Timeline, AddAllGivesTheSameOrderAsAddingOneByOne) {
     const std::vector<timeline::TimelineEvent> events{makeEvent(300.0F, "c"), makeEvent(100.0F, "a"),
                                                       makeEvent(300.0F, "d"), makeEvent(200.0F, "b")};
