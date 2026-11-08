@@ -22,7 +22,6 @@
 #include "ecs/time/Time.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "game/ShipMovement.hpp"
-#include "gameplay/GameplayPlugin.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/NetworkEntityMap.hpp"
@@ -274,7 +273,7 @@ TEST_F(RoomInputTest, StartingSendsTheFirstLevelReliably) {
     ASSERT_TRUE(decoded && std::holds_alternative<protocol::LevelStart>(*decoded));
     const auto& level = std::get<protocol::LevelStart>(*decoded);
     EXPECT_EQ(level.levelIndex, 0);
-    EXPECT_EQ(level.levelCount, rtype::server::gameplay::defaultLevels().size());
+    EXPECT_EQ(level.levelCount, 1U);
     EXPECT_FALSE(room.hasEnded());
 }
 

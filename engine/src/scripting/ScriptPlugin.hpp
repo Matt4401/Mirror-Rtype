@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 
 #include "core/IPlugin.hpp"
@@ -13,13 +14,27 @@
 
 namespace scripting {
 
+/** @brief When the scripts run. */
+enum class ScriptTick : std::uint8_t {
+    /** @brief Every frame, in `update()`, with the frame's delta time: for a client, in step with what is drawn. */
+    EveryFrame,
+    /**
+     * @brief Every fixed step, in `fixedUpdate()`, with the fixed delta time: for a server, so scripts follow the
+     * simulation rate, deterministically, however often the engine is advanced.
+     */
+    FixedStep,
+};
+
 /**
  * @brief Plugin responsible for Wren VM integration, script component lifecycle, and hot-reload.
  */
 class ScriptPlugin final : public engine::IPlugin {
   public:
-    /** @brief Constructs ScriptPlugin. */
-    ScriptPlugin() = default;
+    /**
+     * @brief Constructs ScriptPlugin.
+     * @param tick When the scripts run; every frame by default.
+     */
+    explicit ScriptPlugin(ScriptTick tick = ScriptTick::EveryFrame) noexcept : _tick(tick) {}
 
     /** @brief Destructor. */
     ~ScriptPlugin() override = default;
@@ -55,11 +70,24 @@ class ScriptPlugin final : public engine::IPlugin {
     void init(engine::Engine& engine) override;
 
     /**
-     * @brief Executes script lifecycle updates, fiber sleeps, and deferred commands.
+     * @brief Executes script lifecycle updates, fiber sleeps, and deferred commands, with `ScriptTick::EveryFrame`.
      * @param engine Reference to host Engine.
      * @param time Frame timing information.
      */
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
+
+    /**
+     * @brief Same as `update()`, with `ScriptTick::FixedStep`.
+     * @param engine Reference to host Engine.
+     * @param time Fixed step timing information.
+     */
+    void fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
+
+    /**
+     * @brief Gets when the scripts run.
+     * @return The tick given at construction.
+     */
+    [[nodiscard]] ScriptTick tick() const noexcept { return _tick; }
 
     /**
      * @brief Shuts down scripting runtime: stops forwarding collision events to the scripts.
@@ -76,6 +104,8 @@ class ScriptPlugin final : public engine::IPlugin {
   private:
     /** @brief Internal ScriptSystem instance driving Wren VM execution. */
     systems::ScriptSystem _scriptSystem;
+    /** @brief When the scripts run. */
+    ScriptTick _tick = ScriptTick::EveryFrame;
 };
 
 }  // namespace scripting

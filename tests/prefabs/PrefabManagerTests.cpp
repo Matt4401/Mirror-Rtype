@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -14,11 +17,13 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
+#include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/PrefabRegistry.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
+#include "prefabs/boss_core/BossCore.hpp"
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/obstacle/Obstacle.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
@@ -190,6 +195,59 @@ TEST(PrefabManager, AlienScoutHasNoScriptYet) {
     EXPECT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).bodyType, ecs::BodyType::Kinematic);
     EXPECT_FLOAT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).velocityX, prefabs::DEFAULT_ALIEN_SCOUT_SPEED);
     EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
+}
+
+TEST(PrefabManager, BossCoreIsAnArmoredEnemy) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    ASSERT_TRUE(manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {{"x", 1328.0F}, {"y", 360.0F}}));
+    buffer.flush(registry);
+
+    ASSERT_TRUE(registry.hasComponent<prefabs::Health>(0));
+    ASSERT_TRUE(registry.hasComponent<prefabs::BossCore>(0));
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(0).points, prefabs::DEFAULT_BOSS_CORE_HEALTH);
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(0).max, prefabs::DEFAULT_BOSS_CORE_HEALTH);
+    EXPECT_FLOAT_EQ(registry.getComponents<prefabs::BossCore>().get(0).stopX, prefabs::DEFAULT_BOSS_CORE_STOP_X);
+    auto const& body = registry.getComponents<ecs::RigidBody2D>().get(0);
+    EXPECT_EQ(body.bodyType, ecs::BodyType::Kinematic);
+    EXPECT_FLOAT_EQ(body.velocityX, prefabs::DEFAULT_BOSS_CORE_SPEED);
+    auto const& collider = registry.getComponents<ecs::Collider2D>().get(0);
+    EXPECT_EQ(collider.categoryBits, prefabs::collision::ENEMY);
+    EXPECT_FLOAT_EQ(collider.halfWidth, prefabs::BOSS_CORE_HALF_WIDTH);
+    EXPECT_FLOAT_EQ(collider.halfHeight, prefabs::BOSS_CORE_HALF_HEIGHT);
+}
+
+TEST(PrefabManager, BossCoreHealthAndStopCanBeSetPerSpawn) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {{"health", std::int64_t{60}}, {"stop_x", 900.0F}});
+    buffer.flush(registry);
+
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(0).points, 60);
+    EXPECT_FLOAT_EQ(registry.getComponents<prefabs::BossCore>().get(0).stopX, 900.0F);
+}
+
+TEST(PrefabManager, BossCoreHealthIsClampedToTheNetworkRange) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {{"health", 1.0e30}});
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {{"health", std::int64_t{-5}}});
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {{"health", std::nan("")}});
+    buffer.flush(registry);
+
+    auto const& health = registry.getComponents<prefabs::Health>();
+    EXPECT_EQ(health.get(0).points, std::numeric_limits<std::uint8_t>::max());
+    EXPECT_EQ(health.get(1).points, 1);
+    EXPECT_EQ(health.get(2).points, prefabs::DEFAULT_BOSS_CORE_HEALTH);
 }
 
 TEST(PrefabParams, NumbersConvertOtherTypesFallBack) {

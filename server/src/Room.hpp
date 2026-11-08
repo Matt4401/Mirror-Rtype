@@ -15,6 +15,7 @@
 #include "ecs/Registry.hpp"
 #include "ecs/time/Clock.hpp"
 #include "ecs/time/Time.hpp"
+#include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "net/PeerGroupConnection.hpp"
@@ -62,9 +63,10 @@ class Room {
      * @param maxPlayers Maximum number of players in this room.
      * @param fixedDt Duration of one simulation step in seconds (60 Hz by default).
      * @param timeSource Time source of the room's clock; `nullptr` for the real time. Injectable for tests.
+     * @param level Level played once the game starts, shared by every room; `nullptr` plays no level.
      */
     Room(ecs::net::INetworkServer& network, std::uint8_t maxPlayers, float fixedDt = ecs::time::DEFAULT_FIXED_DT,
-         ecs::time::Clock::TimeSource timeSource = nullptr);
+         ecs::time::Clock::TimeSource timeSource = nullptr, const std::shared_ptr<const level::Level>& level = nullptr);
     /** @brief Stops and joins the thread of the room, if it has one. */
     ~Room();
 

@@ -34,9 +34,16 @@ xmake run r-type_server               # listens on port 4242
 xmake run r-type_server 5000          # listens on another port
 xmake run r-type_server --logs        # also prints the debug logs
 xmake run r-type_server --logs-colorful   # debug logs, colored and bold by severity and origin
+xmake run r-type_server --level /tmp/test.toml   # plays another level file
 ```
 
-Usage: `r-type_server [port] [--logs | --logs-colorful]`, arguments in any order.
+Usage: `r-type_server [port] [--logs | --logs-colorful] [--level <path>]`, arguments in any order.
+
+Every room plays `server/levels/level_01.toml` (see [Level Files](../gameplay/levels.md)). The server looks up this file
+and the boss scripts (`scripts/`) from the directory of its executable, the project root, so it can be started from any
+directory. If the default level cannot be loaded, the server logs a warning and the rooms play without a level. A level
+given with `--level` must load: otherwise the server stops with code 84. Its warnings are printed at start-up, which
+makes `--level` handy to try a level file without touching the shipped one.
 
 Each line starts with the time since startup in seconds, the level and the subsystem:
 

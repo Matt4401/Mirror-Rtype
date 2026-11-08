@@ -433,11 +433,12 @@ layout (about 26 bytes per entity with float positions and a prefab hash), which
 
 How R-Type fills the game-defined fields of `EntityState`. Another game defines its own.
 
-| Field     | R-Type use                                                                                                        |
-|-----------|-------------------------------------------------------------------------------------------------------------------|
-| `kind`    | `makeEntityKind(<prefab name>)`: `player_ship`, `alien_scout`, `missile`, `obstacle`, `player_bullet`, `power_up` |
-| `subtype` | Player index (0–3) of a player ship or a player bullet, 0 otherwise                                               |
-| `flags`   | Bit 0: alive. Bit 1: shooting. Bits 2–7: reserved, 0                                                              |
+| Field     | R-Type use                                                                                                                     |
+|-----------|--------------------------------------------------------------------------------------------------------------------------------|
+| `kind`    | `makeEntityKind(<prefab name>)`: `player_ship`, `alien_scout`, `boss_core`, `missile`, `obstacle`, `player_bullet`, `power_up` |
+| `subtype` | Player index (0–3) of a player ship or a player bullet; height of an `obstacle` terrain block in 2 px units; 0 otherwise       |
+| `health`  | Hit points left of a `boss_core` (1–255), 1 for the entities that die on the first hit; 0 the tick an entity dies              |
+| `flags`   | Bit 0: alive. Bit 1: shooting. Bit 2: invulnerable (a ship that just respawned; it blinks). Bits 3–7: reserved, 0              |
 
 ---
 

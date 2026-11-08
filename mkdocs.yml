@@ -73,6 +73,7 @@ nav:
       - User Settings: architecture/settings.md
       - Plugins & Mediator: architecture/plugins.md
       - Engine Clock: architecture/clock.md
+      - Timeline: architecture/timeline.md
       - Physics: architecture/physics.md
       - Audio: architecture/audio.md
       - Server: architecture/server.md
@@ -81,12 +82,15 @@ nav:
       - Network: architecture/network.md
       - Metrics: architecture/metrics.md
   - RLSS: rlss/index.md
+  - Gameplay:
+      - Level Files: gameplay/levels.md
   - Prefabs:
       - Overview: prefabs/index.md
       - Collision Categories: prefabs/collision-categories.md
       - Missile: prefabs/missile.md
       - Player Bullet: prefabs/player-bullet.md
       - Alien Scout: prefabs/alien-scout.md
+      - Boss Core: prefabs/boss-core.md
       - Obstacle: prefabs/obstacle.md
       - Power-Up: prefabs/power-up.md
   - Protocol:

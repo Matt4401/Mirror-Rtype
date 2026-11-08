@@ -8,6 +8,7 @@
 
 #include "Lobby.hpp"
 #include "Room.hpp"
+#include "level/Level.hpp"
 #include "net/INetworkManager.hpp"
 #include "net/INetworkServer.hpp"
 #include "protocol/Messages.hpp"
@@ -38,9 +39,11 @@ class ServerManager {
      *
      * @param network Network server, owned by the ServerManager.
      * @param handshakeTimeout Time a connected client has to send its `Hello` before being kicked.
+     * @param level Level played by every room; `nullptr` plays no level.
      */
     explicit ServerManager(std::unique_ptr<ecs::net::INetworkServer> network,
-                           std::chrono::milliseconds handshakeTimeout = HANDSHAKE_TIMEOUT);
+                           std::chrono::milliseconds handshakeTimeout = HANDSHAKE_TIMEOUT,
+                           std::shared_ptr<const level::Level> level = nullptr);
     /** @brief Default destructor. */
     ~ServerManager() = default;
 

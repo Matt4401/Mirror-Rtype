@@ -11,6 +11,7 @@
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
 #include "net/ReplicationEvents.hpp"
 
@@ -60,6 +61,13 @@ class RTypeGamePlugin final : public engine::IPlugin {
     void init(engine::Engine& engine) override;
 
     /**
+     * @brief Makes the ships that just respawned blink.
+     * @param engine Reference to host Engine.
+     * @param time Frame time.
+     */
+    void update(engine::Engine& engine, const ecs::time::Time& time) override;
+
+    /**
      * @brief Unsubscribes from the replication events.
      * @param engine Reference to host Engine.
      */
@@ -73,6 +81,8 @@ class RTypeGamePlugin final : public engine::IPlugin {
      */
     void onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const;
 
+    /** @brief Seconds since the plugin started, the clock of the blinks. */
+    float _elapsed = 0.0F;
     /** @brief Subscription to `ReplicatedEntitySpawned`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _spawned;
     /** @brief Texture identifier for the player ship spritesheet. */
