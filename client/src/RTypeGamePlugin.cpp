@@ -25,7 +25,6 @@
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
-#include "core/services/IInputService.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
@@ -33,7 +32,6 @@
 #include "gameplay/ShipBlink.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
-#include "input/RTypeBindings.hpp"
 #include "net/ReplicationEvents.hpp"
 #include "render/RenderPlugin.hpp"
 #include "systems/render/AnimationPlugin.hpp"
@@ -211,10 +209,7 @@ void RTypeGamePlugin::init(engine::Engine& engine) {
     _starMediumId = texture("star_medium");
     _starLargeId = texture("star_large");
 
-    if (engine.mediator().hasService<engine::IInputService>()) {
-        client::input::setupDefaultBindings(engine.service<engine::IInputService>().mapping());
-    }
-
+    // The key bindings come from the settings: `ClientScenesPlugin` sets them up.
     ecs::Registry& registry = engine.registry();
     spawnStarfield(registry, _starSmallId, _starMediumId, _starLargeId);
     registry.addComponent<ecs::CameraComponent>(registry.spawnEntity(), ecs::CameraComponent{});

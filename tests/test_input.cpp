@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstddef>
 #include <memory>
 #include <string_view>
 
@@ -20,6 +21,7 @@
 #include "input/InputConstants.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/InputState.hpp"
+#include "input/KeyNames.hpp"
 #include "input/KeyboardLayout.hpp"
 #include "input/RTypeBindings.hpp"
 #include "systems/input/InputSystem.hpp"
@@ -414,6 +416,53 @@ TEST(InputSystem, UpdatesMouseStateOfMatchingPlayerOnly) {
     EXPECT_FLOAT_EQ(mouse.y, 34.0F);
     EXPECT_FLOAT_EQ(mouse.wheel, 2.0F);
     EXPECT_FLOAT_EQ(registry.getComponents<input::InputState>().get(player1).mouse.x, 0.0F);
+}
+
+TEST(RTypeBindings, CustomKeysReplaceTheMainKeysAndKeepTheSecondaryOnes) {
+    input::ActionMapping mapping;
+    client::input::ControlKeys keys = client::input::defaultControlKeys();
+    client::input::assignKey(keys, client::input::Control::Shoot, engine::Key::F);
+    client::input::setupBindings(mapping, keys);
+
+    EXPECT_TRUE(mapping.hasKey("shoot", engine::Key::F));
+    EXPECT_TRUE(mapping.hasKey("shoot", engine::Key::Enter));
+    EXPECT_FALSE(mapping.hasKey("shoot", engine::Key::Space));
+    EXPECT_TRUE(mapping.hasKey("move_x", engine::Key::A));
+}
+
+TEST(RTypeBindings, AssigningAKeyInUseSwapsTheTwoControls) {
+    client::input::ControlKeys keys = client::input::defaultControlKeys();
+    client::input::assignKey(keys, client::input::Control::Shoot, engine::Key::W);
+
+    EXPECT_EQ(keys.at(static_cast<std::size_t>(client::input::Control::Shoot)), engine::Key::W);
+    EXPECT_EQ(keys.at(static_cast<std::size_t>(client::input::Control::MoveUp)), engine::Key::Space);
+}
+
+TEST(RTypeBindings, ASecondaryKeyUsedAsAMainKeyIsDropped) {
+    input::ActionMapping mapping;
+    client::input::ControlKeys keys = client::input::defaultControlKeys();
+    client::input::assignKey(keys, client::input::Control::Shoot, engine::Key::Up);
+    client::input::setupBindings(mapping, keys);
+
+    EXPECT_TRUE(mapping.hasKey("shoot", engine::Key::Up));
+    EXPECT_FALSE(mapping.hasKey("move_y", engine::Key::Up));
+    EXPECT_TRUE(mapping.hasKey("move_y", engine::Key::Down));
+}
+
+TEST(KeyNames, EveryKeyIdReadsBackAsItsKey) {
+    for (const client::input::KeyName& name : client::input::keyNames()) {
+        EXPECT_EQ(client::input::keyFromId(client::input::keyId(name.key)), name.key) << name.id;
+    }
+    EXPECT_FALSE(client::input::keyFromId("NotAKey").has_value());
+    EXPECT_TRUE(client::input::keyId(engine::Key::Unknown).empty());
+}
+
+TEST(KeyNames, LabelsFollowTheKeyboardLayout) {
+    EXPECT_EQ(client::input::keyLabel(engine::Key::W, input::KeyboardLayout::Qwerty), "W");
+    EXPECT_EQ(client::input::keyLabel(engine::Key::W, input::KeyboardLayout::Azerty), "Z");
+    EXPECT_EQ(client::input::keyLabel(engine::Key::A, input::KeyboardLayout::Azerty), "Q");
+    EXPECT_EQ(client::input::keyLabel(engine::Key::LeftShift, input::KeyboardLayout::Qwerty), "LEFT SHIFT");
+    EXPECT_EQ(client::input::keyLabel(engine::Key::Unknown, input::KeyboardLayout::Qwerty), "NONE");
 }
 
 int main(int argc, char** argv) {
