@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "components/Renderable.hpp"
+#include "components/Replicated.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -78,4 +79,21 @@ TEST(BossEffects, BurstWaitsGrowsFadesThenDisappears) {
 
     gameplay::updateExplosions(registry, gameplay::EXPLOSION_BURST_DURATION);
     EXPECT_FALSE(registry.isAlive(burst));
+}
+
+TEST(BossEffects, BossHealthSumsTheBossesOnScreen) {
+    ecs::Registry registry;
+    EXPECT_FALSE(gameplay::bossHealth(registry).has_value());
+    for (const std::uint8_t health : {std::uint8_t{10}, std::uint8_t{30}}) {
+        const ecs::Entity boss = spawnBoss(registry, 40);
+        registry.emplaceComponent<ecs::Replicated>(boss, rtype::game::KIND_BOSS_CORE);
+        registry.getComponents<rtype::game::EntityNetState>().get(boss).health = health;
+    }
+    const ecs::Entity turret = spawnBoss(registry, 8);
+    registry.emplaceComponent<ecs::Replicated>(turret, rtype::game::KIND_BOSS_PART);
+
+    const auto health = gameplay::bossHealth(registry);
+    ASSERT_TRUE(health.has_value());
+    EXPECT_FLOAT_EQ(health->points, 40.0F) << "turrets do not count";
+    EXPECT_FLOAT_EQ(health->max, 80.0F);
 }

@@ -127,6 +127,9 @@ ship. See [In-Game Metrics](metrics.md).
   replicated `health` goes down. A boss that leaves the snapshots nearly dead (at most 1 hit point, or a tenth of its hit
   points at spawn) explodes: `EXPLOSION_BURSTS` bursts spread over its box for `EXPLOSION_SPREAD` seconds; a turret gets
   one burst. A boss removed with its game (game over, leaving) does not explode. The bursts are client-only entities.
+- **Boss health bar (`GameScene`):** while a boss is on screen, a red bar under the HUD line shows its hit points left
+  over its hit points at spawn (summed when there are several bosses), with a `BOSS` caption. It hides once no boss is
+  left. The values come from `gameplay::bossHealth`, which reads the replicated `health` of the bosses.
 
 #### Boss looks file (`client/config/bosses.toml`)
 

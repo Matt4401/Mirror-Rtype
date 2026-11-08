@@ -26,9 +26,10 @@ struct LevelBanner {
 };
 
 /**
- * @brief The game: HUD (level, score, player), level banners, and the way to the pause menu.
+ * @brief The game: HUD (level, score, player, boss health), level banners, and the way to the pause menu.
  *
  * The world itself (ships, enemies, shots) comes from the replication and is drawn by `RTypeGamePlugin`.
+ * The boss health bar shows while a boss is on screen (`gameplay::bossHealth`), hidden otherwise.
  * Each `LevelStart` and `LevelComplete` shows a banner in the scripted `LevelTransition` overlay. The game ends on
  * `GameEnded` (game over screen), on leaving (lobby), or when the connection is lost (connect screen).
  */
@@ -55,10 +56,20 @@ class GameScene final : public scene::IScene {
      */
     static void showBanner(scene::SceneContext& context, std::string title, std::string subtitle);
 
+    /**
+     * @brief Spawns the boss health bar, hidden, and the system that shows and fills it while a boss is on screen.
+     * @param context Scene context.
+     */
+    void spawnBossBar(scene::SceneContext& context);
+
     /** @brief Level line of the HUD. */
     ecs::Entity _level = ecs::NULL_ENTITY;
     /** @brief Score line of the HUD. */
     ecs::Entity _score = ecs::NULL_ENTITY;
+    /** @brief Boss health bar of the HUD, hidden without a boss. */
+    ecs::Entity _bossBar = ecs::NULL_ENTITY;
+    /** @brief Caption of the boss health bar. */
+    ecs::Entity _bossCaption = ecs::NULL_ENTITY;
 };
 
 /**

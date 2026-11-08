@@ -1,5 +1,6 @@
 #include "scenes/GameScenes.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -7,10 +8,13 @@
 #include <string_view>
 #include <utility>
 
+#include "components/Hidden.hpp"
 #include "components/Renderable.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "ecs/time/Time.hpp"
+#include "gameplay/BossEffects.hpp"
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
 #include "net/SessionEvents.hpp"
@@ -22,6 +26,7 @@
 #include "scenes/MenuKit.hpp"
 #include "scenes/MenuScenes.hpp"
 #include "ui/components/UiAnchor.hpp"
+#include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
 
@@ -59,6 +64,17 @@ ecs::Entity hudText(scene::SceneContext& context, const ui::UiAnchor& anchor, st
     return entity;
 }
 
+/** @brief Height of the boss health bar, as a fraction of the screen: below the HUD line. */
+constexpr float BOSS_BAR_Y = 0.11F;
+/** @brief Width of the boss health bar, in pixels. */
+constexpr float BOSS_BAR_WIDTH = 480.0F;
+/** @brief Height of the boss health bar, in pixels. */
+constexpr float BOSS_BAR_HEIGHT = 12.0F;
+/** @brief Colour of the hit points left. */
+constexpr ecs::Rgba BOSS_BAR_COLOR = {.r = 230, .g = 60, .b = 70, .a = 255};
+/** @brief Colour of the hit points lost. */
+constexpr ecs::Rgba BOSS_BAR_BACKGROUND = {.r = 50, .g = 20, .b = 30, .a = 220};
+
 }  // namespace
 
 // --- Game ------------------------------------------------------------------------------------------------------------
@@ -72,6 +88,7 @@ void GameScene::onEnter(scene::SceneContext& context) {
     _level = hudText(context, ui::UiAnchor{.anchorX = 0.5F, .anchorY = 0.03F, .pivotX = 0.5F}, "", 22.0F, menu::TEXT);
     _score = hudText(context, ui::UiAnchor{.anchorX = 0.98F, .anchorY = 0.03F, .pivotX = 1.0F}, "SCORE 0", 24.0F,
                      menu::GOLD);
+    spawnBossBar(context);
 
     const auto onLevel = [this, &context](const protocol::LevelStart& level) {
         menu::setText(context.registry(), _level,
@@ -96,6 +113,36 @@ void GameScene::onEnter(scene::SceneContext& context) {
     if (const auto& level = session.level()) {
         onLevel(*level);
     }
+}
+
+void GameScene::spawnBossBar(scene::SceneContext& context) {
+    ecs::Registry& registry = context.registry();
+    _bossCaption = hudText(context, ui::UiAnchor{.anchorX = 0.5F, .anchorY = BOSS_BAR_Y - 0.03F, .pivotX = 0.5F},
+                           "BOSS", 16.0F, menu::ERROR);
+    _bossBar = context.spawn();
+    registry.addComponent(_bossBar, ui::UiAnchor{.anchorX = 0.5F, .anchorY = BOSS_BAR_Y, .pivotX = 0.5F});
+    registry.addComponent(_bossBar, ui::UiProgressBar{.width = BOSS_BAR_WIDTH,
+                                                      .height = BOSS_BAR_HEIGHT,
+                                                      .foreground = BOSS_BAR_COLOR,
+                                                      .background = BOSS_BAR_BACKGROUND});
+    ecs::hide(registry, _bossBar);
+    ecs::hide(registry, _bossCaption);
+    context.addSystem(scene::SceneStage::Update, [this](engine::Engine& engine, const ecs::time::Time& /*time*/) {
+        ecs::Registry& world = engine.registry();
+        const std::optional<gameplay::BossHealth> health = gameplay::bossHealth(world);
+        for (const ecs::Entity element : {_bossBar, _bossCaption}) {
+            if (health) {
+                ecs::show(world, element);
+            } else {
+                ecs::hide(world, element);
+            }
+        }
+        if (health) {
+            auto& bar = world.getComponents<ui::UiProgressBar>().get(_bossBar);
+            bar.value = health->points;
+            bar.max = std::max(health->max, 1.0F);
+        }
+    });
 }
 
 void GameScene::showBanner(scene::SceneContext& context, std::string title, std::string subtitle) {

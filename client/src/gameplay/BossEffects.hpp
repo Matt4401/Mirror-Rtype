@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "components/Renderable.hpp"
@@ -83,6 +84,21 @@ struct BurstSpec {
  * @return The bursts, in the order they appear.
  */
 [[nodiscard]] std::vector<BurstSpec> explosionBursts(float x, float y, float width, float height);
+
+/** @brief Hit points of the bosses on screen, for the boss health bar. */
+struct BossHealth {
+    /** @brief Hit points left, summed over the bosses. */
+    float points = 0.0F;
+    /** @brief Hit points at spawn, summed over the bosses. */
+    float max = 0.0F;
+};
+
+/**
+ * @brief Sums the hit points of the replicated bosses (`boss_core` entities with a `HitFlash`).
+ * @param registry Client registry.
+ * @return Their hit points, or nothing when no boss is on screen.
+ */
+[[nodiscard]] std::optional<BossHealth> bossHealth(const ecs::Registry& registry);
 
 /** @brief One burst of an explosion: hidden during its delay, then it grows, fades and is destroyed. */
 struct ExplosionBurst {

@@ -370,7 +370,8 @@ target("test_client_scenes")
              "rtype_game")
     add_packages("gtest", "wren")
     add_files("client/ClientScenesTests.cpp", "../client/src/net/RTypeNetworkPlugin.cpp",
-              "../client/src/net/PlayerControlPlugin.cpp", "../client/src/scenes/*.cpp")
+              "../client/src/net/PlayerControlPlugin.cpp", "../client/src/scenes/*.cpp",
+              "../client/src/gameplay/BossEffects.cpp")
     add_includedirs("../client/src")
     add_tests("test_client_scenes")
 

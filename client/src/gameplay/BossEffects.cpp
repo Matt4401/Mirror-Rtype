@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <vector>
 
 #include "components/Renderable.hpp"
+#include "components/Replicated.hpp"
 #include "components/Transform.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -60,6 +62,25 @@ std::vector<BurstSpec> explosionBursts(const float x, const float y, const float
         bursts.push_back({.x = x + (dx * width / 2.0F), .y = y + (dy * height / 2.0F), .delay = delay});
     }
     return bursts;
+}
+
+std::optional<BossHealth> bossHealth(const ecs::Registry& registry) {
+    std::optional<BossHealth> total;
+    const auto* flashes = registry.findComponents<HitFlash>();
+    if (flashes == nullptr) {
+        return total;
+    }
+    for (const ecs::Entity entity : flashes->getDenseEntities()) {
+        if (!registry.hasComponent<ecs::Replicated>(entity) ||
+            registry.getComponents<ecs::Replicated>().get(entity).kind != rtype::game::KIND_BOSS_CORE ||
+            !registry.hasComponent<rtype::game::EntityNetState>(entity)) {
+            continue;
+        }
+        BossHealth& sum = total ? *total : total.emplace();
+        sum.points += static_cast<float>(registry.getComponents<rtype::game::EntityNetState>().get(entity).health);
+        sum.max += static_cast<float>(flashes->get(entity).spawnHealth);
+    }
+    return total;
 }
 
 void updateExplosions(ecs::Registry& registry, const float deltaTime) {

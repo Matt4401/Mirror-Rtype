@@ -9,6 +9,8 @@
 #include <variant>
 #include <vector>
 
+#include "components/Hidden.hpp"
+#include "components/Replicated.hpp"
 #include "core/Engine.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
@@ -17,6 +19,7 @@
 #include "ecs/Registry.hpp"
 #include "events/UiEvents.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "gameplay/BossEffects.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
 #include "net/ClientConnection.hpp"
 #include "net/ClientReplicationPlugin.hpp"
@@ -34,6 +37,7 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "ui/UiPlugin.hpp"
+#include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiText.hpp"
 
 // The client's menus, without a window: fake window, draw service and transport, the real scenes and session.
@@ -281,6 +285,37 @@ TEST_F(ClientScenesTest, PauseIsLocalAndLeavingGoesBackToTheLobby) {
     EXPECT_EQ(top(), "Lobby");
     EXPECT_EQ(transport->sentOf<protocol::Leave>().size(), 1U);
     EXPECT_FALSE(engine.getPlugin<client::PlayerControlPlugin>().paused());
+}
+
+TEST_F(ClientScenesTest, TheBossHealthBarShowsWhileABossIsOnScreen) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    const auto bar = [this]() -> std::optional<std::pair<ecs::Entity, ui::UiProgressBar>> {
+        std::optional<std::pair<ecs::Entity, ui::UiProgressBar>> found;
+        engine.registry().runSystem<ui::UiProgressBar>(
+            [&found](const ecs::Entity entity, const ui::UiProgressBar& progress) { found = {entity, progress}; });
+        return found;
+    };
+    ASSERT_TRUE(bar().has_value());
+    EXPECT_TRUE(ecs::isHidden(engine.registry(), bar()->first)) << "no boss yet";
+
+    // A boss as the replication and RTypeGamePlugin leave it: replicated, with its hit points and its flash.
+    ecs::Registry& registry = engine.registry();
+    const ecs::Entity boss = registry.spawnEntity();
+    registry.emplaceComponent<ecs::Replicated>(boss, rtype::game::KIND_BOSS_CORE);
+    registry.addComponent(boss, rtype::game::EntityNetState{.health = 30});
+    registry.addComponent(boss, client::gameplay::HitFlash{.spawnHealth = 40, .lastHealth = 30});
+    frame();
+    ASSERT_FALSE(ecs::isHidden(registry, bar()->first));
+    EXPECT_FLOAT_EQ(bar()->second.value, 30.0F);
+    EXPECT_FLOAT_EQ(bar()->second.max, 40.0F);
+    EXPECT_TRUE(showsText("BOSS"));
+
+    registry.killEntity(boss);
+    frame();
+    EXPECT_TRUE(ecs::isHidden(registry, bar()->first)) << "the boss is gone";
 }
 
 TEST_F(ClientScenesTest, GameOverShowsTheResult) {
