@@ -89,6 +89,13 @@ target("test_config")
     add_files("test_config.cpp")
     add_tests("test_config")
 
+target("test_param_bag")
+    set_kind("binary")
+    add_deps("engine_core", "engine_prefabs", "engine_timeline")
+    add_packages("gtest")
+    add_files("test_param_bag.cpp")
+    add_tests("test_param_bag")
+
 target("test_timeline")
     set_kind("binary")
     add_deps("engine_timeline")
