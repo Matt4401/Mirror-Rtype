@@ -231,34 +231,19 @@ void GameplayPlugin::updateTerrain() {
         });
 }
 
-void GameplayPlugin::crashShipsIntoTerrain() {
+bool GameplayPlugin::isInTerrain(const ecs::Entity ship) {
     ecs::Registry& registry = *_registry;
-    std::vector<std::pair<ecs::Transform, TerrainColumn>> columns;
-    registry.runSystem<TerrainColumn, ecs::Transform>(
-        [&columns](ecs::Entity /*column*/, const TerrainColumn& column, const ecs::Transform& transform) {
-            columns.emplace_back(transform, column);
-        });
-    if (columns.empty()) {
-        return;
+    if (!registry.hasComponent<ecs::Transform>(ship)) {
+        return false;
     }
-    std::vector<ecs::Entity> crashed;
-    registry.runSystem<ecs::Transform, ecs::Replicated>(
-        [&](const ecs::Entity ship, const ecs::Transform& transform, const ecs::Replicated& replicated) {
-            if (replicated.kind != game::KIND_PLAYER_SHIP || !isVulnerable(ship)) {
-                return;
-            }
-            const bool hit = std::ranges::any_of(columns, [&transform](const auto& column) {
-                return overlaps(transform, ::prefabs::PLAYER_SHIP_HALF_WIDTH, ::prefabs::PLAYER_SHIP_HALF_HEIGHT,
-                                column.first, column.second.halfWidth, column.second.halfHeight);
-            });
-            if (hit) {
-                crashed.push_back(ship);
-            }
-        });
-    for (const ecs::Entity ship : crashed) {
-        log::info(LOG_TAG, "a ship crashed into the terrain");
-        destroyShip(ship);
-    }
+    const auto& transform = registry.getComponents<ecs::Transform>().get(ship);
+    bool inside = false;
+    registry.runSystem<TerrainColumn, ecs::Transform>([&](ecs::Entity /*block*/, const TerrainColumn& block,
+                                                          const ecs::Transform& blockTransform) {
+        inside = inside || overlaps(transform, ::prefabs::PLAYER_SHIP_HALF_WIDTH, ::prefabs::PLAYER_SHIP_HALF_HEIGHT,
+                                    blockTransform, block.halfWidth, block.halfHeight);
+    });
+    return inside;
 }
 
 void GameplayPlugin::destroyShip(const ecs::Entity ship) {
@@ -297,6 +282,11 @@ void GameplayPlugin::updateRespawns(const float deltaTime) {
         if (registry.hasComponent<game::EntityNetState>(ship)) {
             auto& flags = registry.getComponents<game::EntityNetState>().get(ship).flags;
             flags = static_cast<std::uint8_t>(flags & ~game::FLAG_INVULNERABLE);
+        }
+        // Its contact with the terrain began while it was invulnerable, so no contact event will come for it.
+        if (isInTerrain(ship)) {
+            log::info(LOG_TAG, "a ship was still in the terrain at the end of its respawn");
+            destroyShip(ship);
         }
     }
 }
@@ -456,7 +446,8 @@ void GameplayPlugin::onShipContact(const collision::ShipContactEvent& contact) {
     if (!isVulnerable(contact.ship) || !_registry->isAlive(contact.other)) {
         return;
     }
-    log::info(LOG_TAG, "a ship crashed into an enemy");
+    const bool terrain = (contact.otherCategory & ::prefabs::collision::OBSTACLE) != 0;
+    log::info(LOG_TAG, terrain ? "a ship crashed into the terrain" : "a ship crashed into an enemy");
     destroyShip(contact.ship);
 }
 
@@ -511,7 +502,6 @@ void GameplayPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Ti
     updateRespawns(time.deltaTime);
     updateScrollHold();
     updateTerrain();
-    crashShipsIntoTerrain();
     killOffscreenEntities();
 
     _scoreLogTimer -= time.deltaTime;

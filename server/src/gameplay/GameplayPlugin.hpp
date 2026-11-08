@@ -225,8 +225,13 @@ class GameplayPlugin final : public engine::IPlugin {
      * @return True if a hit destroys it.
      */
     [[nodiscard]] bool isVulnerable(ecs::Entity ship) const;
-    /** @brief Destroys the ships overlapping a terrain column, unless they are respawning. */
-    void crashShipsIntoTerrain();
+    /**
+     * @brief Tells whether a ship overlaps a terrain block. Only used when a respawn ends: the contacts report the
+     * other crashes.
+     * @param ship Player ship.
+     * @return True if the ship is inside the terrain.
+     */
+    [[nodiscard]] bool isInTerrain(ecs::Entity ship);
     /**
      * @brief Destroys a ship: it comes back at its start position, invulnerable, and the scroll is held.
      * @param ship Player ship.
