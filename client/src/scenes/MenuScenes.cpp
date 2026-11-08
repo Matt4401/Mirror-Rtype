@@ -253,7 +253,10 @@ void SettingsScene::onEnter(scene::SceneContext& context) {
             context.manager().push<ControlsScene>();
         } else if (action == "settings.scale" && settings != nullptr) {
             // The kit reads the scale when it spawns a widget: rebuild the scene to show the new size at once.
-            settings->set(settings_keys::UI_SCALE, static_cast<double>(nextScale(scale)));
+            // `SettingChanged` only comes at the next update, after the rebuild: give the kit the scale now.
+            const float next = nextScale(scale);
+            menu::setScale(context.registry(), next);
+            settings->set(settings_keys::UI_SCALE, static_cast<double>(next));
             _focusScale = true;
             context.manager().replace<SettingsScene>();
         }

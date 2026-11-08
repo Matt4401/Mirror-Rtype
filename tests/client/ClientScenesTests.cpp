@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <memory>
@@ -42,6 +43,7 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "ui/UiPlugin.hpp"
+#include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
 
 // The client's menus, without a window: fake window, draw service and transport, the real scenes and session.
@@ -286,6 +288,11 @@ TEST_F(ClientScenesTest, TheTextSizeButtonScalesTheMenus) {
     EXPECT_EQ(top(), "Settings");
     EXPECT_FLOAT_EQ(static_cast<float>(settings().getNumber(client::settings_keys::UI_SCALE)), 1.15F);
     EXPECT_FLOAT_EQ(client::menu::scale(engine.registry()), 1.15F);
+    bool scaledPanel = false;
+    engine.registry().runSystem<ui::UiRect>([&scaledPanel](ecs::Entity /*entity*/, const ui::UiRect& rect) {
+        scaledPanel = scaledPanel || std::abs(rect.width - (500.0F * 1.15F)) < 0.01F;
+    });
+    EXPECT_TRUE(scaledPanel);
     EXPECT_TRUE(showsText("SETTINGS"));
 }
 
