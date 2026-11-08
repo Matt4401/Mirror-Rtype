@@ -114,7 +114,8 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 | `TerrainPlugin` | Builds and scrolls the terrain | | `LevelEventPlayed` (`terrain`), `LevelStarted` |
 | `CleanupPlugin` | Destroys what left the screen | | |
 
-- **Level:** the server loads `server/levels/level_01.toml` at start-up and every room plays it. `TimelinePlugin` moves
+- **Levels:** the server loads the campaign (`server/levels/level_*.toml`, by name) at start-up and every room plays it.
+  `TimelinePlugin` moves
   a cursor at the scroll speed; `LevelDirectorPlugin` handles the events it reaches: `spawn` creates the enemies, `scroll`
   changes the speed, `end` wins the game (see [Game flow](#game-flow)). A `boss` event stops the scroll until its
   `boss_core` is destroyed, and `[[terrain]]` sections scroll as 256 px blocks that destroy the ships touching them. See
@@ -142,13 +143,17 @@ talk through the events of `gameplay/GameplayEvents.hpp`.
 
 ### Game flow
 
-`Room::start()` calls `LevelDirectorPlugin::startGame()`; the game is the level the server loaded:
+`Room::start()` calls `LevelDirectorPlugin::startGame()`; the game is the campaign the server loaded, its levels chained
+by `level::Level::next`:
 
-1. **Start.** A `protocol::LevelStart` (index 0 of 1, the level name) is published on the room's bus, and the room
-   sends it to its players.
-2. **End.** When the level reaches its `end` event, the scroll stops and `LevelDirectorPlugin` publishes
-   `LevelFinished`. `CombatPlugin`, which keeps the scores, publishes a `protocol::LevelComplete` and then
-   `protocol::GameOver{VICTORY}` with them. The room forwards both, marks itself ended, and the lobby destroys it.
+1. **Start.** A `protocol::LevelStart` (index and count of the level, its name) is published on the room's bus, and the
+   room sends it to its players.
+2. **End of a level.** When the level reaches its `end` event, the scroll stops and `LevelDirectorPlugin` publishes
+   `LevelFinished`. `CombatPlugin`, which keeps the scores, publishes a `protocol::LevelComplete` with them.
+3. **Next level.** After `INTERMISSION_DURATION` (3 s), every replicated entity but the ships is destroyed and the next
+   level starts, back to step 1.
+4. **Victory.** After the last level, `CombatPlugin` also publishes `protocol::GameOver{VICTORY}`. The room forwards it,
+   marks itself ended, and the lobby destroys it.
 
 Before `startGame()` (in the tests), the `end` event restarts the level instead. There are no lives yet, so the game
 never ends in `ALL_DEAD`.

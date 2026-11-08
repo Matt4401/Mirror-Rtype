@@ -6,8 +6,9 @@ An R-Type level is a TOML file: enemy waves, scroll speed changes, terrain, a bo
 designers create and tune stages without touching C++ code or recompiling.
 
 Levels are read by the authoritative server only (`server/levels/`). The clients receive what a level spawns through
-replication, like any other entity. The server loads `server/levels/level_01.toml` at start-up, relative to the
-directory it runs from (the project root), and every room plays it.
+replication, like any other entity. At start-up, the server loads every `server/levels/level_*.toml` file, relative to
+the directory of its executable (the project root): sorted by name, they form the campaign every room plays
+(`level_01.toml`, then `level_02.toml`...). `--level <path>` plays one file alone.
 
 The engine only provides generic building blocks, the TOML arrays of `config::ConfigFile` and the
 [Timeline](../architecture/timeline.md). The format below and its loader (`server/src/level/`, target `rtype_level`)
@@ -171,8 +172,8 @@ Another `boss` at the same distance joins the current fight.
 
 ### `end`: end of the level
 
-No key. For now a game is a single level, so `end` wins the game: the players get `LevelComplete` then
-`GameOver{VICTORY}` (see [Server](../architecture/server.md#game-flow)).
+No key. The players get `LevelComplete`; after 3 s the field is cleared and the next level of the campaign starts.
+The `end` of the last level wins the game: `GameOver{VICTORY}` (see [Server](../architecture/server.md#game-flow)).
 
 ## `[[terrain]]`
 

@@ -398,7 +398,7 @@ TEST_F(GameplayTest, EndOfLevelRestartsItBeforeTheGameStarts) {
 /** @brief Gameplay engine recording the session messages the room would send. */
 class GameFlowTest : public GameplayTest {
   protected:
-    GameFlowTest() {
+    explicit GameFlowTest(std::shared_ptr<const level::Level> played = testLevel()) : GameplayTest(std::move(played)) {
         ecs::EventBus& bus = engine.eventBus();
         bus.subscribe<protocol::LevelStart>([this](const protocol::LevelStart& message) {
             log.push_back("start " + std::to_string(message.levelIndex) + "/" + std::to_string(message.levelCount) +
@@ -418,6 +418,63 @@ class GameFlowTest : public GameplayTest {
     std::optional<protocol::LevelComplete> complete;
     std::optional<protocol::GameOver> over;
 };
+
+/**
+ * @brief Two levels chained: "First" spawns an enemy at 0.5 s and ends at 1 s, "Second" ends at 2 s.
+ * @return The first level.
+ */
+std::shared_ptr<const level::Level> campaign() {
+    auto second = std::make_shared<level::Level>();
+    second->name = "Second";
+    second->scrollSpeed = LEVEL_SPEED;
+    second->timeline.add({.position = 120.0F, .type = std::string(level::EVENT_END), .params = {}});
+    auto first = std::make_shared<level::Level>();
+    first->name = "First";
+    first->scrollSpeed = LEVEL_SPEED;
+    first->timeline.add(spawnAt(30.0F, LANE_Y + 300.0F));
+    first->timeline.add({.position = 60.0F, .type = std::string(level::EVENT_END), .params = {}});
+    first->next = second;
+    return first;
+}
+
+/** @brief Room playing `campaign()`. */
+class CampaignTest : public GameFlowTest {
+  protected:
+    CampaignTest() : GameFlowTest(campaign()) {}
+};
+
+TEST_F(CampaignTest, LevelsArePlayedInOrderThenTheGameIsWon) {
+    spawnShip(0, 200.0F, LANE_Y);
+    engine.getPlugin<LevelDirectorPlugin>().startGame();
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/2 First"}));
+
+    run(1.1F);
+    EXPECT_EQ(log, (std::vector<std::string>{"start 0/2 First", "complete 0"})) << "no victory after the first level";
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F) << "the scroll waits during the intermission";
+    EXPECT_FALSE(entitiesOf(game::KIND_ALIEN_SCOUT).empty());
+
+    run(rtype::server::gameplay::INTERMISSION_DURATION);
+    EXPECT_EQ(log.back(), "start 1/2 Second");
+    EXPECT_TRUE(entitiesOf(game::KIND_ALIEN_SCOUT).empty()) << "the field is cleared for the new level";
+    EXPECT_EQ(entitiesOf(game::KIND_PLAYER_SHIP).size(), 1U) << "the ships stay";
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
+
+    run(2.1F);
+    EXPECT_EQ(log,
+              (std::vector<std::string>{"start 0/2 First", "complete 0", "start 1/2 Second", "complete 1", "victory"}));
+}
+
+TEST_F(CampaignTest, BeforeTheGameStartsTheFirstLevelLoops) {
+    run(1.1F);
+    EXPECT_TRUE(log.empty());
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED) << "restarted, not waiting for the next level";
+}
+
+TEST(Campaign, LengthFollowsTheChain) {
+    EXPECT_EQ(level::campaignLength(nullptr), 0U);
+    EXPECT_EQ(level::campaignLength(campaign().get()), 2U);
+    EXPECT_EQ(level::campaignLength(testLevel().get()), 1U);
+}
 
 TEST_F(GameFlowTest, StartGameAnnouncesTheLevel) {
     engine.getPlugin<LevelDirectorPlugin>().startGame();

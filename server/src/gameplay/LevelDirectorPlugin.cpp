@@ -1,5 +1,8 @@
 #include "gameplay/LevelDirectorPlugin.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -9,10 +12,12 @@
 
 #include "LogTag.hpp"
 #include "Logger.hpp"
+#include "components/Replicated.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
 #include "game/ReplicationCodec.hpp"
 #include "gameplay/GameplayEvents.hpp"
@@ -46,7 +51,8 @@ std::pair<ecs::EventBus::EventToken, void (*)(ecs::EventBus&, ecs::EventBus::Eve
 
 }  // namespace
 
-LevelDirectorPlugin::LevelDirectorPlugin(std::shared_ptr<const level::Level> level) : _level(std::move(level)) {}
+LevelDirectorPlugin::LevelDirectorPlugin(std::shared_ptr<const level::Level> level)
+    : _level(std::move(level)), _current(_level) {}
 
 void LevelDirectorPlugin::build(engine::PluginBuilder& builder) { builder.require<timeline::TimelinePlugin>(); }
 
@@ -98,20 +104,59 @@ void LevelDirectorPlugin::shutdown(engine::Engine& /*engine*/) {
 
 void LevelDirectorPlugin::startGame() {
     _gameStarted = true;
-    const std::string name = _level != nullptr ? _level->name : "";
+    announceLevel();
+}
+
+void LevelDirectorPlugin::announceLevel() {
+    const std::string name = _current != nullptr ? _current->name : "";
+    const std::size_t count = std::clamp<std::size_t>(level::campaignLength(_level.get()), 1, protocol::MAX_LEVELS);
     _bus->publish(protocol::LevelStart{
-        .levelIndex = 0,
-        .levelCount = 1,
+        .levelIndex = static_cast<std::uint8_t>(std::min(_levelIndex, count - 1)),
+        .levelCount = static_cast<std::uint8_t>(count),
         .name = name.substr(0, protocol::MAX_LEVEL_NAME_LENGTH),
     });
 }
 
-void LevelDirectorPlugin::startLevel() {
-    if (_timeline == nullptr || _level == nullptr) {
+void LevelDirectorPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Time& time) {
+    if (_intermission <= 0.0F) {
         return;
     }
-    _timeline->timeline() = _level->timeline;
-    _timeline->setSpeed(_level->scrollSpeed);
+    _intermission -= time.deltaTime;
+    if (_intermission <= 0.0F) {
+        nextLevel();
+    }
+}
+
+void LevelDirectorPlugin::nextLevel() {
+    // The field is cleared for the new level: enemies, shots, power-ups and terrain go, the ships stay.
+    std::vector<ecs::Entity> leftovers;
+    _registry->runSystem<ecs::Replicated>([&leftovers](const ecs::Entity entity, const ecs::Replicated& replicated) {
+        if (replicated.kind != game::KIND_PLAYER_SHIP) {
+            leftovers.push_back(entity);
+        }
+    });
+    for (const ecs::Entity entity : leftovers) {
+        if (_registry->isAlive(entity)) {
+            _registry->killEntity(entity);
+        }
+    }
+    _current = _current->next;
+    ++_levelIndex;
+    _finished = false;
+    startLevel();
+    // A ship still respawning keeps the new level waiting, like any respawn.
+    if (_respawning) {
+        holdScroll();
+    }
+    announceLevel();
+}
+
+void LevelDirectorPlugin::startLevel() {
+    if (_timeline == nullptr || _current == nullptr) {
+        return;
+    }
+    _timeline->timeline() = _current->timeline;
+    _timeline->setSpeed(_current->scrollSpeed);
     _scrollHeld = false;
     _heldEvents.clear();
     _bus->publish(LevelStarted{});
@@ -131,12 +176,19 @@ void LevelDirectorPlugin::play(const timeline::TimelineEvent& event) {
     } else if (event.type == level::EVENT_SCROLL) {
         _timeline->setSpeed(event.params.get("speed", _timeline->speed()));
     } else if (event.type == level::EVENT_END && _gameStarted) {
-        log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete");
+        const bool last = _current == nullptr || _current->next == nullptr;
+        log::info(LOG_TAG, "level '", _current != nullptr ? _current->name : "", "' complete");
         _finished = true;
         _timeline->setSpeed(0.0F);
-        _bus->publish(LevelFinished{.levelIndex = 0, .lastLevel = true});
+        if (!last) {
+            _intermission = INTERMISSION_DURATION;
+        }
+        _bus->publish(LevelFinished{
+            .levelIndex = static_cast<std::uint8_t>(std::min<std::size_t>(_levelIndex, protocol::MAX_LEVELS - 1)),
+            .lastLevel = last,
+        });
     } else if (event.type == level::EVENT_END) {
-        log::info(LOG_TAG, "level '", _level != nullptr ? _level->name : "", "' complete, restarting it");
+        log::info(LOG_TAG, "level '", _current != nullptr ? _current->name : "", "' complete, restarting it");
         startLevel();
     }
 }
