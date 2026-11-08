@@ -135,15 +135,16 @@ void GameplayPlugin::startLevel() {
     _timeline->timeline() = _level->timeline;
     _timeline->setSpeed(_level->scrollSpeed);
     _bossFight = false;
-    _afterBoss.clear();
+    _scrollHeld = false;
+    _heldEvents.clear();
     _terrain.clear();
 }
 
 void GameplayPlugin::onLevelEvent(const timeline::TimelineEventFired& fired) { playLevelEvent(fired.event); }
 
 void GameplayPlugin::playLevelEvent(const timeline::TimelineEvent& event) {
-    if (_bossFight && event.type != level::EVENT_BOSS) {
-        _afterBoss.push_back(event);
+    if (_scrollHeld && event.type != level::EVENT_BOSS) {
+        _heldEvents.push_back(event);
         return;
     }
     if (event.type == level::EVENT_SPAWN) {
@@ -259,11 +260,8 @@ void GameplayPlugin::startBossFight(const ::prefabs::PrefabParams& params) {
     if (params.get<std::string>("prefab", "") != ::prefabs::BOSS_CORE_PREFAB) {
         return;
     }
-    if (!_bossFight) {
-        _bossFight = true;
-        _speedBeforeBoss = _timeline->speed();
-        _timeline->setSpeed(0.0F);
-    }
+    _bossFight = true;
+    holdScroll();
     ecs::Registry& registry = *_registry;
     const ecs::Entity boss = registry.spawnEntity();
     ::prefabs::buildBossCore(boss, registry, params);
@@ -297,14 +295,31 @@ void GameplayPlugin::updateBossFight() {
         });
     if (_bossFight && !bossLeft) {
         _bossFight = false;
-        _timeline->setSpeed(_speedBeforeBoss);
-        log::info(LOG_TAG, "boss destroyed: the level goes on");
-        // Played in order; a new boss among them starts another fight and keeps the next ones waiting again.
-        const std::vector<timeline::TimelineEvent> waiting = std::move(_afterBoss);
-        _afterBoss.clear();
-        for (const timeline::TimelineEvent& event : waiting) {
-            playLevelEvent(event);
-        }
+        log::info(LOG_TAG, "boss destroyed");
+    }
+}
+
+void GameplayPlugin::holdScroll() {
+    if (_scrollHeld || _timeline == nullptr) {
+        return;
+    }
+    _scrollHeld = true;
+    _speedBeforeHold = _timeline->speed();
+    _timeline->setSpeed(0.0F);
+}
+
+void GameplayPlugin::updateScrollHold() {
+    if (!_scrollHeld || _bossFight) {
+        return;
+    }
+    _scrollHeld = false;
+    _timeline->setSpeed(_speedBeforeHold);
+    log::info(LOG_TAG, "the level goes on");
+    // Played in order; a new boss among them holds the scroll again and keeps the next ones waiting.
+    const std::vector<timeline::TimelineEvent> waiting = std::move(_heldEvents);
+    _heldEvents.clear();
+    for (const timeline::TimelineEvent& event : waiting) {
+        playLevelEvent(event);
     }
 }
 
@@ -396,6 +411,7 @@ void GameplayPlugin::fixedUpdate(engine::Engine& /*engine*/, const ecs::time::Ti
     _pendingShots.clear();
 
     updateBossFight();
+    updateScrollHold();
     updateTerrain();
     crashShipsIntoTerrain();
     killOffscreenEntities();

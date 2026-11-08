@@ -154,9 +154,9 @@ class GameplayPlugin final : public engine::IPlugin {
     /** @brief Handles a level event: spawn, scroll speed change or end of level. */
     void onLevelEvent(const timeline::TimelineEventFired& fired);
     /**
-     * @brief Plays a level event, or keeps it for after the boss fight.
+     * @brief Plays a level event, or keeps it until the scroll resumes.
      *
-     * The scroll is stopped during a boss fight, so only the events reached in the same step as the boss can fire then.
+     * The scroll is held during a boss fight, so only the events reached in the same step as the boss can fire then.
      * They come after the boss in the level, so they wait for it: a `scroll` must not restart the scroll and an `end`
      * must not restart the level while the boss is alive. Another `boss` joins the current fight.
      *
@@ -185,8 +185,16 @@ class GameplayPlugin final : public engine::IPlugin {
     void crashShipsIntoTerrain();
     /** @brief Handles a `boss` event: stops the scroll and spawns the replicated, possibly scripted, boss. */
     void startBossFight(const prefabs::PrefabParams& params);
-    /** @brief Stops the bosses that reached their place, and resumes the scroll once no boss is left. */
+    /** @brief Stops the bosses that reached their place, and ends the fight once no boss is left. */
     void updateBossFight();
+    /** @brief Stops the scroll, remembering its speed; does nothing if it is already held. */
+    void holdScroll();
+    /**
+     * @brief Resumes the scroll once nothing holds it any more, then plays the level events that waited.
+     *
+     * Several things may hold the scroll at once (a boss fight, ...): it only resumes when all of them are over.
+     */
+    void updateScrollHold();
     /**
      * @brief Applies a player shot to an enemy.
      * @param target Enemy hit.
@@ -229,10 +237,12 @@ class GameplayPlugin final : public engine::IPlugin {
     std::vector<TerrainSection> _terrain;
     /** @brief True from a `boss` event until no boss is left. */
     bool _bossFight = false;
-    /** @brief Scroll speed when the boss fight started, restored once it is over. */
-    float _speedBeforeBoss = 0.0F;
-    /** @brief Level events fired during a boss fight (e.g. in the same step as the boss), played once it is over. */
-    std::vector<timeline::TimelineEvent> _afterBoss;
+    /** @brief True while the scroll is stopped by the game, see `holdScroll()`. */
+    bool _scrollHeld = false;
+    /** @brief Scroll speed when the scroll was held, restored once it resumes. */
+    float _speedBeforeHold = 0.0F;
+    /** @brief Level events fired while the scroll is held (e.g. in the same step as a boss), played once it resumes. */
+    std::vector<timeline::TimelineEvent> _heldEvents;
     /** @brief Seconds left before the next score log. */
     float _scoreLogTimer = SCORE_LOG_INTERVAL;
 };
