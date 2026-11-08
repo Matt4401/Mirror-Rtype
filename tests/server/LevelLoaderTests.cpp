@@ -252,6 +252,41 @@ TEST(LevelLoader, InvalidEventsAreSkippedWithAWarning) {
     EXPECT_TRUE(anyWarningMentions(warnings, "events.5"));
 }
 
+TEST(LevelLoader, NonFinitePositionsSkipTheirEvent) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[events]]
+        at = nan
+        type = "end"
+
+        [[events]]
+        at = inf
+        type = "boss"
+        prefab = "boss_core"
+
+        [[events]]
+        at = -inf
+        type = "spawn"
+        prefab = "alien_scout"
+
+        [[terrain]]
+        from = nan
+        to = 100.0
+        side = "top"
+
+        [[terrain]]
+        from = 0.0
+        to = inf
+        side = "bottom"
+    )",
+                                     warnings);
+
+    EXPECT_TRUE(built.timeline.events().empty());
+    for (std::string_view key : {"events.0", "events.1", "events.2", "terrain.0", "terrain.1"}) {
+        EXPECT_TRUE(anyWarningMentions(warnings, key)) << key;
+    }
+}
+
 TEST(LevelLoader, OutOfRangeValuesAreClampedWithAWarning) {
     std::vector<std::string> warnings;
     const level::Level built = build(R"(
