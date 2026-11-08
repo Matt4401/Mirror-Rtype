@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <format>
 #include <fstream>
 #include <optional>
 #include <string>
@@ -598,10 +599,59 @@ TEST(LevelLoader, TerrainHeightIsClampedAndTyposAreReported) {
     EXPECT_TRUE(anyWarningMentions(warnings, "terrain.0.heigth"));
 }
 
+TEST(LevelLoader, OverlappingSectionsOnTheSameSideAreSkipped) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[terrain]]
+        from = 0.0
+        to = 500.0
+        side = "bottom"
+
+        [[terrain]]
+        from = 400.0
+        to = 900.0
+        side = "bottom"
+
+        [[terrain]]
+        from = 500.0
+        to = 900.0
+        side = "bottom"
+    )",
+                                     warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 2U) << "touching sections are fine, overlapping ones are not";
+    EXPECT_TRUE(anyWarningMentions(warnings, "terrain.1: overlaps another section on the same side"));
+}
+
+TEST(LevelLoader, TopAndBottomSectionsAlwaysLeaveACorridor) {
+    std::vector<std::string> warnings;
+    const level::Level built = build(R"(
+        [[terrain]]
+        from = 0.0
+        to = 500.0
+        side = "top"
+        height = 360.0
+
+        [[terrain]]
+        from = 200.0
+        to = 700.0
+        side = "bottom"
+        height = 360.0
+    )",
+                                     warnings);
+
+    ASSERT_EQ(built.timeline.events().size(), 2U);
+    const double top = eventAt(built, 0).params.find<double>("height").value_or(0.0);
+    const double bottom = eventAt(built, 1).params.find<double>("height").value_or(0.0);
+    EXPECT_LE(top + bottom, level::TERRAIN_SCENE_HEIGHT - level::MIN_TERRAIN_CORRIDOR);
+    EXPECT_TRUE(anyWarningMentions(warnings, "terrain.1: lowered"));
+}
+
 TEST(LevelLoader, TooManyTerrainSectionsAreTruncated) {
     std::string toml;
     for (std::size_t i = 0; i < level::MAX_TERRAIN_SECTIONS + 10; ++i) {
-        toml += "[[terrain]]\nfrom = 0.0\nto = 10.0\nside = \"top\"\n";
+        // Sections one after the other: overlapping ones would be skipped.
+        toml += std::format("[[terrain]]\nfrom = {}.0\nto = {}.0\nside = \"top\"\n", i * 10, (i * 10) + 10);
     }
     std::vector<std::string> warnings;
     const level::Level built = build(toml, warnings);
