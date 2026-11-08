@@ -126,9 +126,15 @@ target("engine_scene_scripting")
     add_includedirs(".", {public = true})
     add_deps("engine_scene", "engine_scripting")
 
+-- Public headers, installed under include/squacaron/ by `xmake install` (and so by the squacaron package).
+target("engine_headers")
+    set_kind("headeronly")
+    add_includedirs(".", {public = true})
+    add_headerfiles("(**.hpp)", "(**.tpp)", {prefixdir = "squacaron"})
+
 target("engine_all")
     set_kind("phony")
-    add_deps("engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_timeline")
+    add_deps("engine_headers", "engine_log", "engine_core", "engine_time", "engine_events", "engine_config", "engine_prefabs", "engine_scripting", "engine_network", "engine_network_metrics", "engine_network_asio", "engine_physics", "engine_input", "engine_hierarchy", "engine_ui", "engine_metrics", "engine_metrics_overlay", "engine_scene", "engine_scene_scripting", "engine_settings", "engine_timeline")
     if has_config("graphics") then
         add_deps("engine_render", "engine_audio")
     end
