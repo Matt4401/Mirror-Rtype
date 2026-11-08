@@ -99,6 +99,10 @@ they spawn is replicated: the client only draws what the server simulates.
   changes the speed, `end` restarts the level. A `boss` event stops the scroll until its `boss_core` is destroyed, and
   `[[terrain]]` sections scroll as 64 px columns that destroy the ships touching them. See
   [Level Files](../gameplay/levels.md).
+- **Respawn:** a destroyed ship comes back at its start position (`gameplay::shipSpawnPoint()`) and blinks for
+  `RESPAWN_DURATION` (3 s) with the `invulnerable` flag: it cannot be hit, and the scroll, the terrain and the next
+  waves wait. Boss fights and respawns share one scroll hold: the scroll resumes once all of them are over. There are
+  no lives or game over yet.
 - **Scripts:** each room has its own Wren VM. What a script spawns with `Engine.spawnPrefab(name, x, y)` goes through
   `gameplay::registerScriptPrefabs()`, so it is replicated too (kind `makeEntityKind(name)`). Player ships and bullets
   cannot be spawned by a script, nor a `boss_core`: a boss fight only starts from a level `boss` event.

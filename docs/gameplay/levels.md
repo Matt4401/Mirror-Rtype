@@ -134,7 +134,9 @@ A solid ground or ceiling that scrolls with the level. Touching it destroys a sh
 The server builds a section as **columns of 64 px** (`obstacle` entities) as they enter the screen, so a long section
 never floods the snapshots. A column carries its height in its `subtype` (2 px units, see the
 [protocol](../protocol/packets.md#appendix-a--r-type-entity-conventions)). The length is rounded up to whole columns.
-Terrain moves at the scroll speed: it stops during a boss fight too.
+Terrain moves at the scroll speed: it stops during a boss fight too. A ship touching it is destroyed and respawns at
+its start position, blinking and invulnerable for 3 seconds, while the scroll waits; it can fly out of the terrain in
+the meantime.
 
 ## Validation
 
