@@ -1,7 +1,9 @@
 #include "gameplay/ScriptPrefabs.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <string_view>
 #include <utility>
 
@@ -50,7 +52,10 @@ void registerScriptPrefabs(::prefabs::PrefabManager& manager) {
             const std::uint8_t health = registry.hasComponent<::prefabs::Health>(entity)
                                             ? registry.getComponents<::prefabs::Health>().get(entity).points
                                             : game::EntityNetState{}.health;
-            registry.addComponent(entity, game::EntityNetState{.health = health});
+            // A script may give a look to what it spawns (the colour of its shots), within the byte of the subtype.
+            const auto look = static_cast<std::uint8_t>(std::clamp<std::int64_t>(
+                params.get<std::int64_t>("subtype", 0), 0, std::numeric_limits<std::uint8_t>::max()));
+            registry.addComponent(entity, game::EntityNetState{.subtype = look, .health = health});
             ecs::net::replicate(registry, entity, kind);
         });
     }

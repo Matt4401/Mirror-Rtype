@@ -34,7 +34,9 @@ inline constexpr double MIN_AIMED_SHOT_SPEED = 50.0;
  *   - `partRole(id)`: `"weak_point"`, `"turret"`, `"armor"`, or null for anything else;
  *   - `nearestShip(x, y)`: `[x, y]` of the nearest player ship that can be hit, or null;
  *   - `fireAt(x, y, targetX, targetY, speed)`: spawns a replicated missile at (x, y) flying towards the target, at a
- *     speed clamped to `MIN_AIMED_SHOT_SPEED`–`MAX_AIMED_SHOT_SPEED`.
+ *     speed clamped to `MIN_AIMED_SHOT_SPEED`–`MAX_AIMED_SHOT_SPEED`;
+ *   - `fireAt(x, y, targetX, targetY, speed, look)`: the same, the missile carrying `look` (clamped to 0–255) as its
+ *     subtype, so that the clients draw it like the shots of that look.
  *
  * A script reads and moves its entity with `Position.new(entity.id)`. Reading a dead entity gives nothing and writing
  * it does nothing, so a script running after its boss died cannot crash the room.

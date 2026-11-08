@@ -136,6 +136,7 @@ var parts = Combat.parts(id)            // ids of the living parts of the boss
 var role = Combat.partRole(parts[0])    // "weak_point", "turret", "armor" or null
 var ship = Combat.nearestShip(x, y)     // [x, y] of the nearest ship that can be hit, null if none
 Combat.fireAt(x, y, ship[0], ship[1], 400)  // replicated missile towards the ship, speed clamped to 50-900 px/s
+Combat.fireAt(x, y, ship[0], ship[1], 400, 1)  // the same with a shot look (its subtype): 1 is red, 2 blue
 ```
 
 A part position is read with `Position.new(partId)`; a turret fires with `Combat.fireAt` from there. Aimed missiles are

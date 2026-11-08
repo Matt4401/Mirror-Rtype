@@ -1,6 +1,7 @@
 #include "gameplay/ScriptBindings.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 
 #include "LogTag.hpp"
@@ -48,6 +49,7 @@ class Combat {
     foreign static partRole(id)
     foreign static nearestShip(x, y)
     foreign static fireAt(x, y, targetX, targetY, speed)
+    foreign static fireAt(x, y, targetX, targetY, speed, look)
 }
 )";
 
@@ -159,15 +161,22 @@ void combatFireAt(scripting::ForeignCall& call) {
     const auto targetX = call.arg<double>(3);
     const auto targetY = call.arg<double>(4);
     const auto speed = call.arg<double>(5);
+    // `fireAt(x, y, targetX, targetY, speed, look)`: the look of the missile, its subtype, within a byte.
+    const std::optional<double> look = call.slotCount() > 6 ? call.arg<double>(6) : std::optional<double>{0.0};
     auto* scripts = call.userData<systems::ScriptSystem>();
-    if (!x || !y || !targetX || !targetY || !speed || scripts == nullptr || scripts->getPrefabManager() == nullptr) {
+    if (!x || !y || !targetX || !targetY || !speed || !look || scripts == nullptr ||
+        scripts->getPrefabManager() == nullptr) {
         return;
     }
     const auto clamped = static_cast<float>(std::clamp(*speed, MIN_AIMED_SHOT_SPEED, MAX_AIMED_SHOT_SPEED));
     const Velocity velocity =
         aimAt(static_cast<float>(*x), static_cast<float>(*y),
               AimPoint{.x = static_cast<float>(*targetX), .y = static_cast<float>(*targetY)}, clamped);
-    const ::prefabs::PrefabParams params{{"x", *x}, {"y", *y}, {"speed", velocity.x}, {"speed_y", velocity.y}};
+    const ::prefabs::PrefabParams params{{"x", *x},
+                                         {"y", *y},
+                                         {"speed", velocity.x},
+                                         {"speed_y", velocity.y},
+                                         {"subtype", static_cast<std::int64_t>(std::clamp(*look, 0.0, 255.0))}};
     const systems::ScriptSystem::SpawnDecorator decorator = scripts->spawnDecorator();
     if (decorator == nullptr) {
         (void)scripts->getPrefabManager()->spawn(::prefabs::MISSILE_PREFAB, scripts->getCommandBuffer(), params);
@@ -190,6 +199,7 @@ bool bindCombat(scripting::WrenVM& vm) {
     vm.registerForeignMethod<&combatPartRole>(COMBAT_MODULE, "Combat", true, "partRole(_)");
     vm.registerForeignMethod<&combatNearestShip>(COMBAT_MODULE, "Combat", true, "nearestShip(_,_)");
     vm.registerForeignMethod<&combatFireAt>(COMBAT_MODULE, "Combat", true, "fireAt(_,_,_,_,_)");
+    vm.registerForeignMethod<&combatFireAt>(COMBAT_MODULE, "Combat", true, "fireAt(_,_,_,_,_,_)");
     const auto result = vm.interpret(COMBAT_MODULE, COMBAT_SOURCE);
     if (!result) {
         log::error(LOG_TAG, "cannot bind ", COMBAT_MODULE, " for the scripts: ", result.error());

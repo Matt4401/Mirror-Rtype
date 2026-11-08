@@ -29,6 +29,8 @@ class Bastion {
     static chargeDistance { 420.0 }
     /** @brief Speed of a charge, in pixels per second. */
     static chargeSpeed { 520.0 }
+    /** @brief Look of its shots: the red of the turret shots (`ALIEN_GUNNER_SHOT_LOOK`). */
+    static shotLook { 1 }
     /** @brief Shots of one turn of the spiral. */
     static spiralShots { 10 }
 
@@ -133,7 +135,7 @@ class Bastion {
         for (turret in Combat.parts(_id)) {
             if (Combat.partRole(turret) == "turret") {
                 var at = Position.new(turret)
-                Combat.fireAt(at.x, at.y, at.x - 100, at.y, 420)
+                Combat.fireAt(at.x, at.y, at.x - 100, at.y, 420, Bastion.shotLook)
             }
         }
         Engine.wait(0.7)
@@ -147,7 +149,7 @@ class Bastion {
         _chargeDirection = 1
         while (_alive && _chargeDirection != 0) {
             // Mines: slow shots drifting to the left behind the boss.
-            Combat.fireAt(_pos.x + 60, _pos.y, _pos.x - 100, _pos.y, 60)
+            Combat.fireAt(_pos.x + 60, _pos.y, _pos.x - 100, _pos.y, 60, Bastion.shotLook)
             Engine.wait(0.25)
         }
         if (!_alive) return
@@ -160,7 +162,7 @@ class Bastion {
         for (i in 0...Bastion.spiralShots) {
             if (!_alive) return
             var angle = _spiralAngle + i * Num.pi * 2 / Bastion.spiralShots
-            Combat.fireAt(_pos.x, _pos.y, _pos.x + angle.cos * 100, _pos.y + angle.sin * 100, 300)
+            Combat.fireAt(_pos.x, _pos.y, _pos.x + angle.cos * 100, _pos.y + angle.sin * 100, 300, Bastion.shotLook)
         }
         _spiralAngle = _spiralAngle + 0.35
         Engine.wait(0.45)
@@ -172,6 +174,6 @@ class Bastion {
      */
     aimFromCore(speed) {
         var ship = Combat.nearestShip(_pos.x, _pos.y)
-        if (ship != null) Combat.fireAt(_pos.x - 60, _pos.y, ship[0], ship[1], speed)
+        if (ship != null) Combat.fireAt(_pos.x - 60, _pos.y, ship[0], ship[1], speed, Bastion.shotLook)
     }
 }

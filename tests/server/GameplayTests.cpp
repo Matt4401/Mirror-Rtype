@@ -1268,6 +1268,8 @@ TEST_F(CombatBindingTest, AimedShotFliesTowardsTheNearestShipAtAClampedSpeed) {
     EXPECT_GT(body.velocityY, 0.0F);
     EXPECT_NEAR(std::hypot(body.velocityX, body.velocityY), rtype::server::gameplay::MAX_AIMED_SHOT_SPEED, 1.0);
     EXPECT_NEAR(body.velocityY / body.velocityX, 240.0 / -600.0, 1e-3);
+    EXPECT_EQ(engine.registry().getComponents<game::EntityNetState>().get(missiles.front()).subtype, 0)
+        << "fireAt without a look: the default one";
 }
 
 TEST_F(CombatBindingTest, NoShipMeansNoAimedShot) {
@@ -1586,6 +1588,11 @@ TEST_F(BastionTest, SiegeFiresStraightLinesFromTheTurrets) {
     run(3.5F);
     EXPECT_GE(missilesFlying(-1, 0), 2U);
     EXPECT_EQ(missilesFlying(1, 0), 0U) << "nothing flies backwards yet";
+    for (const ecs::Entity missile : entitiesOf(game::KIND_MISSILE)) {
+        EXPECT_EQ(engine.registry().getComponents<game::EntityNetState>().get(missile).subtype,
+                  ::prefabs::ALIEN_GUNNER_SHOT_LOOK)
+            << "red shots, like the turrets";
+    }
 }
 
 TEST_F(BastionTest, AssaultChargesTowardsTheShipsAndComesBack) {

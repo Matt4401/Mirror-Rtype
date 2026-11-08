@@ -56,7 +56,7 @@ Destroying the turrets first takes away the aimed bursts but triggers the frenzy
 ## Bastion (`scripts/bosses/Bastion.wren`, variant 2)
 
 An armored fortress whose weak point hides behind two armor plates. It changes tactics as it loses its hit points:
-each phase is checked at the end of a round.
+each phase is checked at the end of a round. All its shots carry the red look of the turret shots (`shotLook`, 1).
 
 | Phase | Hit points left | Behavior |
 |-------|-----------------|----------|
