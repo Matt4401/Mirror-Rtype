@@ -207,6 +207,56 @@ class TerrainTest : public GameplayTest {
     [[nodiscard]] std::vector<ecs::Entity> columns() { return entitiesOf(game::KIND_OBSTACLE); }
 };
 
+/** @brief Bottom terrain at 1 s, then a boss at 2.5 s, while the terrain is on the screen. */
+std::shared_ptr<const level::Level> terrainThenBossLevel() {
+    auto built = std::make_shared<level::Level>();
+    built->scrollSpeed = LEVEL_SPEED;
+    built->timeline.add({.position = 60.0F,
+                         .type = std::string(level::EVENT_TERRAIN),
+                         .params = {{"side", std::string(level::TERRAIN_BOTTOM)},
+                                    {"height", static_cast<double>(TERRAIN_HEIGHT)},
+                                    {"length", static_cast<double>(TERRAIN_LENGTH)}}});
+    built->timeline.add(
+        {.position = 150.0F, .type = std::string(level::EVENT_BOSS), .params = {{"prefab", std::string("boss_core")}}});
+    built->timeline.add({.position = 6000.0F, .type = std::string(level::EVENT_END), .params = {}});
+    return built;
+}
+
+/** @brief Room playing a level with terrain (`terrainLevel()` by default), where ships crash. */
+class RespawnTest : public GameplayTest {
+  protected:
+    explicit RespawnTest(std::shared_ptr<const level::Level> played = terrainLevel())
+        : GameplayTest(std::move(played)) {}
+
+    /** @brief The terrain columns on the screen or entering it. */
+    [[nodiscard]] std::vector<ecs::Entity> columns() { return entitiesOf(game::KIND_OBSTACLE); }
+
+    /** @brief Puts the ship on the first terrain column, then runs until it is destroyed (at most 1 s). */
+    void crash(const ecs::Entity ship) {
+        const auto built = columns();
+        ASSERT_FALSE(built.empty());
+        const ecs::Transform column = registry().getComponents<ecs::Transform>().get(built.front());
+        auto& transform = registry().getComponents<ecs::Transform>().get(ship);
+        transform.x = column.x;
+        transform.y = column.y;
+        for (int step = 0; step < 60 && !invulnerable(ship); ++step) {
+            run(FIXED_DT);
+        }
+        ASSERT_TRUE(invulnerable(ship));
+    }
+
+    /** @brief Whether the ship carries the invulnerable flag. */
+    [[nodiscard]] bool invulnerable(const ecs::Entity ship) {
+        return (registry().getComponents<game::EntityNetState>().get(ship).flags & game::FLAG_INVULNERABLE) != 0;
+    }
+};
+
+/** @brief Room playing `terrainThenBossLevel()`. */
+class RespawnDuringBossTest : public RespawnTest {
+  protected:
+    RespawnDuringBossTest() : RespawnTest(terrainThenBossLevel()) {}
+};
+
 /** @brief Boss event at 1 s, followed in the same step by a `scroll` and an `end`. */
 std::shared_ptr<const level::Level> bossThenEndLevel() {
     auto built = std::make_shared<level::Level>();
@@ -409,6 +459,63 @@ TEST_F(TerrainTest, ShipTouchingTheTerrainRespawnsAtItsStart) {
     EXPECT_NE(registry().getComponents<game::EntityNetState>().get(grounded).flags & game::FLAG_INVULNERABLE, 0);
     EXPECT_FLOAT_EQ(transforms.get(flying).x, 1200.0F);
     EXPECT_EQ(registry().getComponents<game::EntityNetState>().get(flying).flags & game::FLAG_INVULNERABLE, 0);
+}
+
+TEST_F(RespawnTest, RespawnedShipCannotBeDestroyedForItsDuration) {
+    run(1.5F);
+    const ecs::Entity ship = spawnShip(0, 200.0F, LANE_Y);
+    crash(ship);
+    const ShipSpawnPoint spawn = shipSpawnPoint(0);
+    ASSERT_FLOAT_EQ(registry().getComponents<ecs::Transform>().get(ship).x, spawn.x);
+
+    // Back on the terrain while invulnerable: nothing happens.
+    const ecs::Transform column = registry().getComponents<ecs::Transform>().get(columns().front());
+    auto& transform = registry().getComponents<ecs::Transform>().get(ship);
+    transform.x = column.x;
+    transform.y = column.y;
+    run(RESPAWN_DURATION - 0.5F);
+    EXPECT_FLOAT_EQ(transform.x, column.x);
+    EXPECT_TRUE(invulnerable(ship));
+
+    // Once the respawn is over, the ship is vulnerable again.
+    transform.y = LANE_Y;
+    run(1.0F);
+    EXPECT_FALSE(invulnerable(ship));
+}
+
+TEST_F(RespawnTest, ScrollWaitsDuringTheRespawn) {
+    run(1.5F);
+    const ecs::Entity ship = spawnShip(0, 200.0F, LANE_Y);
+    crash(ship);
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F);
+
+    // The columns take the new speed on the next step.
+    run(FIXED_DT);
+    const ecs::Entity column = columns().front();
+    const float before = registry().getComponents<ecs::Transform>().get(column).x;
+    run(RESPAWN_DURATION - 0.5F);
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F);
+    EXPECT_FLOAT_EQ(registry().getComponents<ecs::Transform>().get(column).x, before) << "the terrain waits too";
+
+    run(1.0F);
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
+}
+
+TEST_F(RespawnDuringBossTest, RespawnAndBossFightBothHoldTheScroll) {
+    run(2.6F);
+    const auto bosses = entitiesOf(game::KIND_BOSS_CORE);
+    ASSERT_EQ(bosses.size(), 1U);
+    const ecs::Entity ship = spawnShip(0, 200.0F, LANE_Y);
+    crash(ship);
+
+    // The boss dies first: the respawn still holds the scroll.
+    registry().killEntity(bosses.front());
+    run(1.0F);
+    EXPECT_FLOAT_EQ(player().speed(), 0.0F);
+
+    run(RESPAWN_DURATION);
+    EXPECT_FALSE(invulnerable(ship));
+    EXPECT_FLOAT_EQ(player().speed(), LEVEL_SPEED);
 }
 
 TEST_F(TerrainTest, TerrainLeavingTheScreenIsDestroyed) {
