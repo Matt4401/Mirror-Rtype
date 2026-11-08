@@ -9,6 +9,7 @@
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "game/ReplicationCodec.hpp"
 #include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
@@ -20,7 +21,7 @@ inline constexpr std::string_view POWER_UP_PREFAB = "power_up";
 inline constexpr float DEFAULT_POWER_UP_DRIFT_SPEED = -100.0F;
 
 /** @brief Radius of the power-up pickup area in pixels. */
-inline constexpr float POWER_UP_RADIUS = 12.0F;
+inline constexpr float POWER_UP_RADIUS = rtype::game::POWER_UP_SIZE / 2.0F;
 
 /**
  * @brief Attaches the power-up components (`Transform`, `Renderable`, `RigidBody2D`, `Collider2D`) to an entity.

@@ -23,6 +23,20 @@ inline constexpr protocol::EntityKind KIND_PLAYER_BULLET = protocol::makeEntityK
 inline constexpr protocol::EntityKind KIND_ALIEN_SCOUT = protocol::makeEntityKind("alien_scout");
 /** @brief Kind of the boss ending a level; its `health` is the hit points left. */
 inline constexpr protocol::EntityKind KIND_BOSS_CORE = protocol::makeEntityKind("boss_core");
+/** @brief Kind of an enemy shot, fired by a boss script. */
+inline constexpr protocol::EntityKind KIND_MISSILE = protocol::makeEntityKind("missile");
+/** @brief Kind of a power-up, dropped by a boss script and picked up by touching it. */
+inline constexpr protocol::EntityKind KIND_POWER_UP = protocol::makeEntityKind("power_up");
+/** @brief Width of the boss hitbox, in pixels; the clients draw it at this size. */
+inline constexpr float BOSS_CORE_WIDTH = 128.0F;
+/** @brief Height of the boss hitbox, in pixels. */
+inline constexpr float BOSS_CORE_HEIGHT = 160.0F;
+/** @brief Width of a missile hitbox, in pixels. */
+inline constexpr float MISSILE_WIDTH = 16.0F;
+/** @brief Height of a missile hitbox, in pixels. */
+inline constexpr float MISSILE_HEIGHT = 6.0F;
+/** @brief Diameter of a power-up hitbox, in pixels. */
+inline constexpr float POWER_UP_SIZE = 24.0F;
 /**
  * @brief Kind of a terrain column: a solid block scrolling with the level, `TERRAIN_COLUMN_WIDTH` wide. Its height is
  * `subtype * TERRAIN_HEIGHT_UNIT` pixels, centered on its position.

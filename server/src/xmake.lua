@@ -2,7 +2,7 @@ target("rtype_prefabs")
     set_kind("static")
     add_files("prefabs/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_core", "engine_prefabs", {public = true})
+    add_deps("engine_core", "engine_prefabs", "rtype_game", {public = true})
 
 target("rtype_collision")
     set_kind("static")

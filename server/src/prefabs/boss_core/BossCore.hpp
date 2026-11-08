@@ -13,6 +13,7 @@
 
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "game/ReplicationCodec.hpp"
 #include "prefabs/PrefabParams.hpp"
 
 namespace prefabs {
@@ -29,11 +30,11 @@ inline constexpr float DEFAULT_BOSS_CORE_STOP_X = 1000.0F;
 /** @brief Default hit points of the boss. */
 inline constexpr std::uint8_t DEFAULT_BOSS_CORE_HEALTH = 40;
 
-/** @brief Half-width of the boss hitbox in pixels. */
-inline constexpr float BOSS_CORE_HALF_WIDTH = 64.0F;
+/** @brief Half-width of the boss hitbox in pixels, shared with the clients. */
+inline constexpr float BOSS_CORE_HALF_WIDTH = rtype::game::BOSS_CORE_WIDTH / 2.0F;
 
-/** @brief Half-height of the boss hitbox in pixels. */
-inline constexpr float BOSS_CORE_HALF_HEIGHT = 80.0F;
+/** @brief Half-height of the boss hitbox in pixels, shared with the clients. */
+inline constexpr float BOSS_CORE_HALF_HEIGHT = rtype::game::BOSS_CORE_HEIGHT / 2.0F;
 
 /**
  * @brief Marks a boss and holds where it stops flying in.

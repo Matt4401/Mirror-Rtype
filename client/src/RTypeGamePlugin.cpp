@@ -61,9 +61,6 @@ constexpr float DEFAULT_FRAME_DURATION = 0.12F;
 constexpr ecs::Rgba COLOR_WHITE = {.r = 255, .g = 255, .b = 255, .a = 255};
 /** @brief Side of the square the renderer draws for an untextured `Renderable`, before the `Transform` scale. */
 constexpr float PLACEHOLDER_PIXELS = 32.0F;
-/** @brief Size of the boss on screen: its hitbox on the server (`boss_core`, 128x160 px). */
-constexpr float BOSS_WIDTH = 128.0F;
-constexpr float BOSS_HEIGHT = 160.0F;
 /** @brief Height of an obstacle whose subtype carries none (spawned by a script): the default 64 px block. */
 constexpr float DEFAULT_OBSTACLE_HEIGHT = 64.0F;
 constexpr ecs::Rgba COLOR_BOSS = {.r = 170, .g = 60, .b = 200, .a = 255};
@@ -290,7 +287,7 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
                         .layer = 2,
                     });
     } else if (event.kind == rtype::game::KIND_BOSS_CORE) {
-        applyBox(registry, event.entity, BOSS_WIDTH, BOSS_HEIGHT, COLOR_BOSS, 2);
+        applyBox(registry, event.entity, rtype::game::BOSS_CORE_WIDTH, rtype::game::BOSS_CORE_HEIGHT, COLOR_BOSS, 2);
     } else if (event.kind == rtype::game::KIND_OBSTACLE) {
         // A terrain column carries its height in its subtype; the columns touch, so the terrain looks continuous.
         const std::uint8_t units = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;

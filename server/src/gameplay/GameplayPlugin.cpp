@@ -37,12 +37,9 @@
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
-#include "prefabs/missile/Missile.hpp"
 #include "prefabs/obstacle/Obstacle.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
 #include "prefabs/player_ship/PlayerShip.hpp"
-#include "prefabs/power_up/PowerUp.hpp"
-#include "protocol/Messages.hpp"
 #include "systems/physics/PhysicsPlugin.hpp"
 #include "timeline/TimelineEvent.hpp"
 #include "timeline/TimelineEvents.hpp"
@@ -93,8 +90,7 @@ bool overlaps(const ecs::Transform& a, float aHalfW, float aHalfH, const ecs::Tr
  * @return True for the kinds removed past the left edge.
  */
 bool flowsLeft(const std::uint32_t kind) noexcept {
-    return kind == game::KIND_ALIEN_SCOUT || kind == protocol::makeEntityKind(::prefabs::MISSILE_PREFAB) ||
-           kind == protocol::makeEntityKind(::prefabs::POWER_UP_PREFAB);
+    return kind == game::KIND_ALIEN_SCOUT || kind == game::KIND_MISSILE || kind == game::KIND_POWER_UP;
 }
 
 /** @brief Horizontal offset of a bullet from the center of the ship that fires it. */
