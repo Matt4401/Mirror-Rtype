@@ -39,12 +39,21 @@ using tools::EditAction;
 using tools::InputLine;
 using tools::KeyRepeater;
 
+// Non-ASCII code points, written as numbers: MSVC reads the sources in the local code page, where a literal `E_ACUTE`
+// would be several characters.
+/** @brief U+00E9, e with acute accent (2 bytes in UTF-8). */
+constexpr auto E_ACUTE = static_cast<char32_t>(0x00E9);
+/** @brief U+20AC, euro sign (3 bytes in UTF-8). */
+constexpr auto EURO = static_cast<char32_t>(0x20AC);
+/** @brief U+00B2, superscript two: the character the toggle key types on AZERTY. */
+constexpr auto SUPERSCRIPT_TWO = static_cast<char32_t>(0x00B2);
+
 // --- UTF-8 helpers ----------------------------------------------------------------------------------------------
 
 TEST(TextUtils, EncodesUtf8AndRefusesInvalidCodePoints) {
     EXPECT_EQ(tools::detail::encodeUtf8(U'a'), "a");
-    EXPECT_EQ(tools::detail::encodeUtf8(U'é'), "\xC3\xA9");
-    EXPECT_EQ(tools::detail::encodeUtf8(U'€'), "\xE2\x82\xAC");
+    EXPECT_EQ(tools::detail::encodeUtf8(E_ACUTE), "\xC3\xA9");
+    EXPECT_EQ(tools::detail::encodeUtf8(EURO), "\xE2\x82\xAC");
     EXPECT_EQ(tools::detail::encodeUtf8(U'\U0001F600'), "\xF0\x9F\x98\x80");
     EXPECT_TRUE(tools::detail::encodeUtf8(static_cast<char32_t>(0xD800)).empty());
     EXPECT_TRUE(tools::detail::encodeUtf8(static_cast<char32_t>(0x110000)).empty());
@@ -63,7 +72,7 @@ TEST(TextUtils, StepsOverWholeCodePoints) {
 TEST(InputLine, InsertsAtTheCursorAndMovesOverMultiByteCharacters) {
     InputLine line(64);
     EXPECT_TRUE(line.insert(U'a'));
-    EXPECT_TRUE(line.insert(U'é'));
+    EXPECT_TRUE(line.insert(E_ACUTE));
     EXPECT_TRUE(line.insert(U'z'));
     EXPECT_EQ(line.text(), "a\xC3\xA9z");
 
@@ -92,7 +101,7 @@ TEST(InputLine, RefusesControlCharactersAndOverflow) {
     EXPECT_FALSE(line.insert(U'\x1b'));
     EXPECT_FALSE(line.insert(U'\x7f'));
     EXPECT_TRUE(line.insert(U'a'));
-    EXPECT_TRUE(line.insert(U'é'));
+    EXPECT_TRUE(line.insert(E_ACUTE));
     EXPECT_FALSE(line.insert(U'b'));  // 4 bytes > 3
     EXPECT_EQ(line.text(), "a\xC3\xA9");
 }
@@ -466,7 +475,7 @@ TEST_F(DevConsolePluginTest, TheToggleKeyOpensTheConsoleAndCapturesTheInput) {
     EXPECT_FALSE(dev().isOpen());
     EXPECT_TRUE(screen->texts.empty());
 
-    device->typed.push_back(U'²');  // the character typed by the toggle key itself
+    device->typed.push_back(SUPERSCRIPT_TWO);  // the character typed by the toggle key itself
     frame({Key::Grave});
     EXPECT_TRUE(dev().isOpen());
     EXPECT_TRUE(device->captured);
