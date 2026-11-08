@@ -79,6 +79,8 @@ B-CPP-500_rtype.pdf
 # binary
 /r-type_client
 /r-type_server
+/rlss_client
+/rlss_server
 
 # XMake
 .xmake/
