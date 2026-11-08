@@ -1268,3 +1268,233 @@ TEST(Scripting, SpawnPrefabWithoutManagerQueuesNothing) {
     EXPECT_EQ(callSpawnPrefab(scriptSystem, "probe"), WREN_RESULT_SUCCESS);
     EXPECT_TRUE(scriptSystem.getCommandBuffer().empty());
 }
+
+namespace {
+
+/** @brief Registry and script system ready to run scripts, for the error and script root tests. */
+struct ScriptFixture {
+    ecs::Registry registry;
+    ecs::EventBus bus;
+    systems::ScriptSystem scripts;
+
+    ScriptFixture() {
+        registry.registerComponent<ecs::ScriptComponent>();
+        scripts.init(registry, bus);
+    }
+
+    /** @brief Spawns an entity running `className` of `moduleName`. */
+    ecs::Entity spawnScripted(const std::string& moduleName, const std::string& className, bool hasUpdate) {
+        ecs::Entity const e = registry.spawnEntity();
+        registry.addComponent<ecs::ScriptComponent>(
+            e, ecs::ScriptComponent{
+                   .moduleName = moduleName, .className = className, .hasUpdate = hasUpdate, .initialized = false});
+        return e;
+    }
+
+    /** @brief Reads the number returned by the getter `name` of the script of `e`. */
+    double number(ecs::Entity e, const char* name) {
+        auto handle = scripts.getVm().makeCallHandle(name);
+        EXPECT_EQ(scripts.getVm().call(handle, scripts.getScriptInstance(e)), WREN_RESULT_SUCCESS);
+        return scripts.getVm().getSlot<double>(0);
+    }
+};
+
+/** @brief Script whose `update` counts its calls, then fails on the frames `failWhen` selects. */
+std::string failingUpdateScript(const std::string& className, const std::string& failWhen) {
+    return "class " + className +
+           " {\n"
+           "    construct new(entity) { _ticks = 0 }\n"
+           "    update(dt) {\n"
+           "        _ticks = _ticks + 1\n"
+           "        if (" +
+           failWhen +
+           ") Fiber.abort(\"boom\")\n"
+           "    }\n"
+           "    ticks { _ticks }\n"
+           "}\n";
+}
+
+/** @brief Fresh empty directory under the system temporary directory, removed by the destructor. */
+struct TempDirectory {
+    std::filesystem::path path;
+
+    explicit TempDirectory(const std::string& name) : path(std::filesystem::temp_directory_path() / name) {
+        std::filesystem::remove_all(path);
+        std::filesystem::create_directories(path);
+    }
+    ~TempDirectory() {
+        std::error_code ec;
+        std::filesystem::remove_all(path, ec);
+    }
+    TempDirectory(const TempDirectory&) = delete;
+    TempDirectory& operator=(const TempDirectory&) = delete;
+    TempDirectory(TempDirectory&&) = delete;
+    TempDirectory& operator=(TempDirectory&&) = delete;
+};
+
+/** @brief Writes `source` to `path`, creating its directories. */
+void writeFile(const std::filesystem::path& path, const std::string& source) {
+    if (path.has_parent_path()) {
+        std::filesystem::create_directories(path.parent_path());
+    }
+    std::ofstream out(path);
+    out << source;
+}
+
+}  // namespace
+
+TEST(ScriptErrors, LastErrorStaysBoundedOnRepeatedFailures) {
+    scripting::WrenVM vm;
+    ASSERT_TRUE(vm.interpret("main",
+                             "class Broken {\n"
+                             "    static fail() { Fiber.abort(\"boom\") }\n"
+                             "    static ok() { 1 }\n"
+                             "}\n"));
+    auto fail = vm.makeCallHandle("fail()");
+    auto ok = vm.makeCallHandle("ok()");
+
+    vm.ensureSlots(1);
+    vm.getVariable("main", "Broken", 0);
+    ASSERT_EQ(vm.call(fail), WREN_RESULT_RUNTIME_ERROR);
+    std::size_t const oneError = vm.lastError().size();
+    EXPECT_GT(oneError, 0U);
+    EXPECT_NE(vm.lastError().find("boom"), std::string::npos);
+    EXPECT_NE(vm.lastError().find("main line 2"), std::string::npos);
+
+    for (int i = 0; i < 1000; ++i) {
+        vm.ensureSlots(1);
+        vm.getVariable("main", "Broken", 0);
+        ASSERT_EQ(vm.call(fail), WREN_RESULT_RUNTIME_ERROR);
+    }
+    EXPECT_EQ(vm.lastError().size(), oneError);
+
+    vm.ensureSlots(1);
+    vm.getVariable("main", "Broken", 0);
+    ASSERT_EQ(vm.call(ok), WREN_RESULT_SUCCESS);
+    EXPECT_TRUE(vm.lastError().empty());
+}
+
+TEST(ScriptErrors, LastErrorIsCappedForDeepStackTraces) {
+    scripting::WrenVM vm;
+    ASSERT_TRUE(vm.interpret("main",
+                             "class Deep {\n"
+                             "    static down(n) { n == 0 ? Fiber.abort(\"bottom\") : down(n - 1) }\n"
+                             "}\n"));
+    auto down = vm.makeCallHandle("down(_)");
+    vm.ensureSlots(2);
+    vm.getVariable("main", "Deep", 0);
+    vm.setSlot(1, 2000.0);
+    ASSERT_EQ(vm.call(down), WREN_RESULT_RUNTIME_ERROR);
+    EXPECT_LE(vm.lastError().size(), scripting::WrenVM::MAX_ERROR_LENGTH + 3);
+}
+
+TEST(ScriptErrors, RepeatedUpdateFailuresDisableTheScript) {
+    ScriptFixture fixture;
+    ASSERT_TRUE(fixture.scripts.getVm().interpret("broken", failingUpdateScript("AlwaysFails", "true")));
+    ecs::Entity const e = fixture.spawnScripted("broken", "AlwaysFails", true);
+
+    for (std::uint32_t i = 0; i < systems::MAX_CONSECUTIVE_SCRIPT_FAILURES + 10; ++i) {
+        fixture.scripts.update(0.016F);
+    }
+    EXPECT_TRUE(fixture.scripts.isScriptDisabled(e));
+    EXPECT_EQ(fixture.number(e, "ticks"), static_cast<double>(systems::MAX_CONSECUTIVE_SCRIPT_FAILURES));
+}
+
+TEST(ScriptErrors, IntermittentFailuresKeepTheScriptEnabled) {
+    ScriptFixture fixture;
+    ASSERT_TRUE(fixture.scripts.getVm().interpret("flaky", failingUpdateScript("SometimesFails", "_ticks % 2 == 0")));
+    ecs::Entity const e = fixture.spawnScripted("flaky", "SometimesFails", true);
+
+    std::uint32_t const frames = systems::MAX_CONSECUTIVE_SCRIPT_FAILURES * 4;
+    for (std::uint32_t i = 0; i < frames; ++i) {
+        fixture.scripts.update(0.016F);
+    }
+    EXPECT_FALSE(fixture.scripts.isScriptDisabled(e));
+    EXPECT_EQ(fixture.number(e, "ticks"), static_cast<double>(frames));
+}
+
+TEST(ScriptErrors, DestroyForgetsTheFailures) {
+    ScriptFixture fixture;
+    ASSERT_TRUE(fixture.scripts.getVm().interpret("broken", failingUpdateScript("AlwaysFails", "true")));
+    ecs::Entity const e = fixture.spawnScripted("broken", "AlwaysFails", true);
+    for (std::uint32_t i = 0; i < systems::MAX_CONSECUTIVE_SCRIPT_FAILURES; ++i) {
+        fixture.scripts.update(0.016F);
+    }
+    ASSERT_TRUE(fixture.scripts.isScriptDisabled(e));
+
+    fixture.registry.killEntity(e);
+    EXPECT_FALSE(fixture.scripts.isScriptDisabled(e));
+}
+
+TEST(ScriptErrors, HotReloadEnablesADisabledScriptAgain) {
+    ScriptFixture fixture;
+    fixture.scripts.enableHotReload(true);
+    std::string const path = "TestDisabledReload.wren";
+    writeFile(path, failingUpdateScript("TestDisabledReload", "true"));
+    ecs::Entity const e = fixture.spawnScripted("TestDisabledReload", "TestDisabledReload", true);
+
+    for (std::uint32_t i = 0; i < systems::MAX_CONSECUTIVE_SCRIPT_FAILURES; ++i) {
+        fixture.scripts.update(0.016F);
+    }
+    ASSERT_TRUE(fixture.scripts.isScriptDisabled(e));
+
+    writeFile(path, failingUpdateScript("TestDisabledReload", "false"));
+    std::filesystem::last_write_time(path, std::filesystem::last_write_time(path) + std::chrono::seconds(2));
+    fixture.scripts.update(0.6F);
+
+    EXPECT_FALSE(fixture.scripts.isScriptDisabled(e));
+    double const ticks = fixture.number(e, "ticks");
+    fixture.scripts.update(0.016F);
+    EXPECT_EQ(fixture.number(e, "ticks"), ticks + 1.0);
+    std::filesystem::remove(path);
+}
+
+TEST(ScriptRoot, ImportOutsideTheRootFails) {
+    TempDirectory const root("rtype_script_root_escape");
+    writeFile(root.path.parent_path() / "rtype_outside.wren", "class Outside {}\n");
+    ScriptFixture fixture;
+    fixture.scripts.setScriptRoot(root.path);
+
+    auto const result = fixture.scripts.getVm().interpret("main", "import \"../rtype_outside\" for Outside\n");
+    ASSERT_FALSE(result);
+    EXPECT_NE(result.error().find("rtype_outside"), std::string::npos);
+    std::filesystem::remove(root.path.parent_path() / "rtype_outside.wren");
+}
+
+TEST(ScriptRoot, ComponentModulesOutsideTheRootAreRefused) {
+    TempDirectory const root("rtype_script_root_refused");
+    ScriptFixture fixture;
+    fixture.scripts.setScriptRoot(root.path);
+    std::string const absolute = (root.path / "Abs").generic_string();
+    writeFile(root.path / "Abs.wren", "class Abs {\n    construct new(entity) {}\n}\n");
+
+    ecs::Entity const climbing = fixture.spawnScripted("../Abs", "Abs", false);
+    ecs::Entity const absoluteName = fixture.spawnScripted(absolute, "Abs", false);
+    ecs::Entity const folded = fixture.spawnScripted("sub/../../Abs", "Abs", false);
+    fixture.scripts.update(0.016F);
+
+    EXPECT_FALSE(fixture.registry.getComponents<ecs::ScriptComponent>().get(climbing).initialized);
+    EXPECT_FALSE(fixture.registry.getComponents<ecs::ScriptComponent>().get(absoluteName).initialized);
+    EXPECT_FALSE(fixture.registry.getComponents<ecs::ScriptComponent>().get(folded).initialized);
+    EXPECT_FALSE(fixture.scripts.loadModule(absolute));
+}
+
+TEST(ScriptRoot, ModulesAreReadFromTheRoot) {
+    TempDirectory const root("rtype_script_root_read");
+    writeFile(root.path / "lib" / "Helper.wren", "class Helper {\n    static value { 7 }\n}\n");
+    writeFile(root.path / "game" / "Unit.wren",
+              "import \"lib/Helper\" for Helper\n"
+              "class Unit {\n"
+              "    construct new(entity) { _value = Helper.value }\n"
+              "    value { _value }\n"
+              "}\n");
+    ScriptFixture fixture;
+    fixture.scripts.setScriptRoot(root.path);
+    EXPECT_EQ(fixture.scripts.scriptRoot(), root.path);
+
+    ecs::Entity const e = fixture.spawnScripted("game/Unit", "Unit", false);
+    fixture.scripts.update(0.016F);
+
+    ASSERT_TRUE(fixture.registry.getComponents<ecs::ScriptComponent>().get(e).initialized);
+    EXPECT_EQ(fixture.number(e, "value"), 7.0);
+}

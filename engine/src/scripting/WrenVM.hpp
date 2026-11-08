@@ -191,6 +191,18 @@ class WrenVM {
     WrenInterpretResult call(const detail::UniqueWrenHandle& method);
 
     /**
+     * @brief Gets the error of the last failed `interpret()` or `call()`.
+     *
+     * Cleared at the start of each of them, so it only ever holds one error: the message followed by its stack trace,
+     * one line each, separated by `\n`. At most `MAX_ERROR_LENGTH` bytes.
+     * @return The error text, empty after a success.
+     */
+    [[nodiscard]] const std::string& lastError() const noexcept { return _lastError; }
+
+    /** @brief Longest error text kept by `lastError()`, in bytes: a deep stack trace is cut there. */
+    static constexpr std::size_t MAX_ERROR_LENGTH = 4096;
+
+    /**
      * @brief High-level call API invoking a method on a receiver with variadic arguments.
      *
      * Ensures slots, writes the receiver into slot 0, writes args into slots 1+,
@@ -363,8 +375,10 @@ class WrenVM {
     WriteHandler _writeHandler;
     /** @brief Registered error diagnostic callback. */
     ErrorHandler _errorHandler;
-    /** @brief Diagnostic error message from the last interpretation error. */
+    /** @brief Error of the last failed `interpret()` or `call()`. */
     std::string _lastError;
+    /** @brief Text printed by `System.print` without its newline yet, logged once the line is complete. */
+    std::string _pendingOutput;
 
     /** @brief Cache of loaded module source strings for inspection. */
     std::unordered_map<std::string, std::string> _loadedSources;

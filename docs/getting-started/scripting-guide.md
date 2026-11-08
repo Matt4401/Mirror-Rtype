@@ -31,6 +31,15 @@ registry.addComponent<ScriptComponent>(entity, ScriptComponent{
 
 The engine loads the corresponding `.wren` module and instantiates the class, passing an `Entity` handle to its constructor.
 
+### Script root
+
+Module names (in `ScriptComponent::moduleName` and in `import`) are paths relative to the **script root**, without
+the `.wren` extension: `scripts/Boss` is the file `<root>/scripts/Boss.wren`. The root is the working directory by
+default; a game sets another one with `ScriptSystem::setScriptRoot` (the R-Type server uses its data directory).
+
+Absolute names (`/home/x`, `C:/x`) and names that climb out of the root (`../x`, `a/../../x`) are refused: the
+script does not start, or the `import` fails with "Could not load module", and a warning is logged once.
+
 ---
 
 ## 3. Basic Script Structure
@@ -347,6 +356,22 @@ If a designer accidentally saves a script containing a syntax error or a broken 
 2. If compilation fails, the error is logged to the console with the file name and line number.
 3. The engine **aborts the reload** and keeps running the previous stable version without crashing or interrupting the game session.
 4. Once the designer fixes the typo and saves again, the valid script is reloaded immediately.
+
+### 10.4 Runtime Errors
+
+A runtime error (`Fiber.abort`, a call on `null`, ...) in a hook stops that call only. It is logged through the
+engine logger (`[script]` tag) on one line, with its stack trace:
+
+```text
+WARN  [script] entity 42: update(_) failed: Runtime Error: Null does not implement 'x' | in scripts/Boss line 31 in update(_)
+```
+
+* The same script logs at most **one error per second**; the next message says how many similar errors were hidden.
+* After **30 failures in a row** (`MAX_CONSECUTIVE_SCRIPT_FAILURES`), the script of that entity is **disabled**: no
+  more `update(dt)`, `onCollision(other)` or `Engine.wait` resumes (its `onDestroy()` still runs). This is logged
+  once. A successful call resets the count, so a script failing now and then keeps running.
+* The next hot reload enables every disabled script again. `ScriptSystem::isScriptDisabled(entity)` tells the state.
+* `System.print` goes to the engine logger too, one `info` line per printed line.
 
 ## 11. Scenes from Wren
 

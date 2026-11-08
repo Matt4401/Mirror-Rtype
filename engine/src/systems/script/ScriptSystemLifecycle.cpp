@@ -5,19 +5,58 @@
 
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
+#include "Logger.hpp"
+#include "assets/AssetPath.hpp"
 #include "components/ScriptComponent.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "scripting/WrenVM.hpp"
+#include "scripting/detail/LogTag.hpp"
 #include "systems/script/ScriptSystem.hpp"
+#include "systems/script/detail/ScriptSupport.hpp"
 
 namespace systems {
+
+using scripting::detail::LOG_TAG;
+
+namespace {
+
+/** @brief Extension of the script files. */
+constexpr std::string_view SCRIPT_EXTENSION = ".wren";
+
+}  // namespace
+
+namespace detail {
+
+std::optional<std::filesystem::path> resolveScriptFile(const std::filesystem::path& root, std::string_view moduleName) {
+    std::optional<std::string> normalized = assets::normalizeAssetPath(moduleName);
+    if (!normalized || !assets::isConfinedAssetPath(*normalized)) {
+        return std::nullopt;
+    }
+    if (!normalized->ends_with(SCRIPT_EXTENSION)) {
+        *normalized += SCRIPT_EXTENSION;
+    }
+    std::filesystem::path const file = assets::fromUtf8(*normalized);
+    return root.empty() ? file : root / file;
+}
+
+void logRefusedScriptModule(std::string_view moduleName) {
+    rtype::log::warning(LOG_TAG, "script module ", assets::quoteForLog(moduleName),
+                        " refused: it must be a relative path inside the script root, without '..'");
+}
+
+}  // namespace detail
+
+bool ScriptSystem::reportModuleProblemOnce(std::string key) {
+    return _reportedModuleProblems.insert(std::move(key)).second;
+}
 
 ::WrenHandle* ScriptSystem::getScriptInstance(ecs::Entity e) const noexcept {
     auto it = _instanceHandles.find(e);
@@ -30,10 +69,14 @@ namespace systems {
 bool ScriptSystem::hasScriptInstance(ecs::Entity e) const noexcept { return _instanceHandles.contains(e); }
 
 bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
-    std::string filename = moduleName;
-    if (!filename.ends_with(".wren")) {
-        filename += ".wren";
+    std::optional<std::filesystem::path> const resolved = detail::resolveScriptFile(*_scriptRoot, moduleName);
+    if (!resolved) {
+        if (reportModuleProblemOnce(moduleName)) {
+            detail::logRefusedScriptModule(moduleName);
+        }
+        return false;
     }
+    std::string const filename = assets::toUtf8(*resolved);
 
     std::error_code ec;
     if (std::filesystem::exists(filename, ec)) {
@@ -50,7 +93,11 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
 
     std::ifstream file(filename);
     if (!file.is_open()) {
-        std::cerr << "[ScriptSystem] Module file not found: " << filename << "\n";
+        if (!reportModuleProblemOnce(moduleName)) {
+            return false;
+        }
+        rtype::log::warning(LOG_TAG, "script module ", assets::quoteForLog(moduleName), ": file ",
+                            assets::quoteForLog(filename, assets::MAX_PATH_LENGTH), " not found");
         return false;
     }
     std::stringstream buffer;
@@ -58,7 +105,11 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
     std::string source = buffer.str();
     auto res = _vm.interpret(moduleName, source);
     if (!res) {
-        std::cerr << "[ScriptSystem] Failed to load module " << moduleName << ": " << res.error() << "\n";
+        if (!reportModuleProblemOnce(moduleName)) {
+            return false;
+        }
+        rtype::log::warning(LOG_TAG, "cannot load script module ", assets::quoteForLog(moduleName), ": ",
+                            detail::formatScriptError(res.error()));
         return false;
     }
     if (auto it = _watchedScripts.find(moduleName); it != _watchedScripts.end()) {
@@ -77,7 +128,11 @@ bool ScriptSystem::ensureScriptModuleLoaded(const std::string& moduleName) {
 scripting::detail::UniqueWrenHandle ScriptSystem::createScriptInstance(ecs::Entity e,
                                                                        const ecs::ScriptComponent& script) {
     if (!_vm.hasVariable(script.moduleName, script.className)) {
-        std::cerr << "[ScriptSystem] Class " << script.className << " not found in " << script.moduleName << "\n";
+        if (!reportModuleProblemOnce(script.moduleName + ':' + script.className)) {
+            return {};
+        }
+        rtype::log::warning(LOG_TAG, "class ", assets::quoteForLog(script.className), " not found in script module ",
+                            assets::quoteForLog(script.moduleName));
         return {};
     }
 
@@ -111,10 +166,7 @@ void ScriptSystem::instantiateScript(ecs::Entity e, ecs::ScriptComponent& script
         _vm.ensureSlots(2);
         _vm.getVariable("_internal", "Dispatcher", 0);
         _vm.setSlot(1, _instanceHandles[e].get());
-        auto const res = _vm.call(trySpawnHandle.get());
-        if (res != WREN_RESULT_SUCCESS) {
-            std::cerr << "[ScriptSystem] Warning: tryCallSpawn failed for entity " << e << "\n";
-        }
+        recordScriptResult(e, _vm.call(trySpawnHandle.get()), "onSpawn()");
     }
 
     if (script.hasUpdate) {
@@ -134,13 +186,14 @@ void ScriptSystem::triggerDestroyHook(ecs::Entity e) {
         _vm.ensureSlots(2);
         _vm.getVariable("_internal", "Dispatcher", 0);
         _vm.setSlot(1, it->second.get());
-        auto const res = _vm.call(tryDestroyHandle.get());
-        if (res != WREN_RESULT_SUCCESS) {
-            std::cerr << "[ScriptSystem] Warning: tryCallDestroy failed for entity " << e << "\n";
+        if (_vm.call(tryDestroyHandle.get()) != WREN_RESULT_SUCCESS) {
+            rtype::log::warning(LOG_TAG, "entity ", e,
+                                ": onDestroy() failed: ", detail::formatScriptError(_vm.lastError()));
         }
     }
 
     _instanceHandles.erase(it);
+    _failures.erase(e);
 
     if (_registry != nullptr && _registry->getComponents<ecs::ScriptComponent>().contains(e)) {
         auto& script = _registry->getComponents<ecs::ScriptComponent>().get(e);

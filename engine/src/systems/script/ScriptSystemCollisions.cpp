@@ -40,11 +40,9 @@ void ScriptSystem::invokeEntityMethod(ecs::Entity target, std::string const& sig
         argObj = _vm.newInstanceWithHandle(_newHandle, "core/Entity", "Entity", arg);
     }
 
-    if (argObj) {
-        _vm.call(itMethod->second, itInst->second.get(), argObj.get());
-    } else {
-        _vm.call(itMethod->second, itInst->second.get(), arg);
-    }
+    WrenInterpretResult const res = argObj ? _vm.call(itMethod->second, itInst->second.get(), argObj.get())
+                                           : _vm.call(itMethod->second, itInst->second.get(), arg);
+    recordScriptResult(target, res, signature);
 }
 
 bool ScriptSystem::isPendingDestroy(ecs::Entity e) const noexcept {
@@ -52,7 +50,7 @@ bool ScriptSystem::isPendingDestroy(ecs::Entity e) const noexcept {
 }
 
 void ScriptSystem::forwardCollision(ecs::Entity target, ecs::Entity other) {
-    if (_registry == nullptr || !_registry->hasComponent<ecs::ScriptComponent>(target) ||
+    if (_registry == nullptr || isScriptDisabled(target) || !_registry->hasComponent<ecs::ScriptComponent>(target) ||
         !_registry->getComponents<ecs::ScriptComponent>().get(target).hasCollision) {
         return;
     }
