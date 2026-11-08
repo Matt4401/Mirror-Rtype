@@ -73,9 +73,10 @@ jobs:
         run: xmake test "test_*/*"
 
   # ECS core under AddressSanitizer, UndefinedBehaviorSanitizer and Valgrind, plus a short benchmark run (issue #40).
+  # Only runs on pushes to main (like the mirror push), not on every pull request.
   ecs-memory:
     name: ECS sanitizers, Valgrind and benchmark
-    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' }}
+    if: ${{ github.repository == 'Matt4401/Mirror-Rtype' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-latest
     env:
       ECS_TESTS: test_ecs test_ecs_stress
