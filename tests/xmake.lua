@@ -50,6 +50,21 @@ target("test_spatial_queries")
     add_files("scripting/SpatialQueriesTests.cpp")
     add_tests("test_spatial_queries")
 
+target("test_assets")
+    set_kind("binary")
+    add_deps("engine_core", "engine_assets")
+    add_packages("gtest")
+    add_files("assets/AssetManagerTests.cpp")
+    add_tests("test_assets")
+
+target("test_assets_scripting")
+    set_kind("binary")
+    add_deps("engine_core", "engine_events", "engine_scripting", "engine_input", "engine_prefabs", "engine_assets",
+             "engine_assets_scripting")
+    add_packages("gtest", "wren")
+    add_files("assets/AssetScriptingTests.cpp")
+    add_tests("test_assets_scripting")
+
 target("test_log")
     set_kind("binary")
     add_deps("log")
@@ -256,7 +271,7 @@ target("test_hierarchy")
 
 target("test_client_collisions")
     set_kind("binary")
-    add_deps("engine_core", "engine_events", "engine_physics", "engine_prefabs", "rtype_collision")
+    add_deps("engine_core", "engine_events", "engine_physics", "engine_prefabs", "engine_assets", "rtype_collision")
     add_packages("gtest")
     add_files("client/ShotHitRuleTests.cpp", "../client/src/gameplay/ShotHitRule.cpp",
               "../client/src/prefabs/ClientBullet.cpp", "../client/src/prefabs/ClientEnemy.cpp")
