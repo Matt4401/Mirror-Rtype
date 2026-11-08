@@ -207,15 +207,16 @@ void SceneManager::removeTop(std::exception_ptr& error) {
     const SceneId id = _stack.back();
     Slot& slot = *_slots[id];
     // Destroy listeners may subscribe, add systems or spawn through the exiting scene: release and destroy again
-    // until nothing is left, a bounded number of times.
-    constexpr int MAX_PASSES = 8;
+    // until no member is left. Each pass only finds what the previous one created, so this ends unless a listener
+    // spawns into the exiting scene for every entity it sees go, which is a bug like any endless loop.
     bool destroyed = true;
-    for (int pass = 0; pass < MAX_PASSES && destroyed; ++pass) {
+    while (destroyed) {
         slot.context.release();
         try {
             destroyed = destroyMembers(id);
         } catch (...) {
-            // `killEntities` finishes its batch before rethrowing: go on with the teardown.
+            // `killEntities` finishes its non-empty batch before rethrowing: go on with the teardown.
+            destroyed = true;
             if (!error) {
                 error = std::current_exception();
             }
@@ -226,10 +227,6 @@ void SceneManager::removeTop(std::exception_ptr& error) {
     slot.running = false;
     slot.visible = false;
     _stack.pop_back();
-    if (destroyed && !error) {
-        error = std::make_exception_ptr(
-            std::logic_error("SceneManager: destroy listeners keep spawning into an exiting scene"));
-    }
 }
 
 bool SceneManager::destroyMembers(SceneId id) {
