@@ -2,7 +2,8 @@
 
 #include <cstddef>
 
-#include "audio/types/AudioTypes.hpp"
+#include "audio/types/AudioTypes.hpp"  // IWYU pragma: export
+#include "core/AudioHandles.hpp"       // IWYU pragma: export
 
 namespace audio {
 

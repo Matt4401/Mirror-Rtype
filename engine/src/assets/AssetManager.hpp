@@ -16,6 +16,7 @@
 #include <thread>
 #include <typeindex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "assets/AssetKinds.hpp"
