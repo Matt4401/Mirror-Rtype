@@ -38,12 +38,15 @@ inline constexpr float MISSILE_HEIGHT = 6.0F;
 /** @brief Diameter of a power-up hitbox, in pixels. */
 inline constexpr float POWER_UP_SIZE = 24.0F;
 /**
- * @brief Kind of a terrain column: a solid block scrolling with the level, `TERRAIN_COLUMN_WIDTH` wide. Its height is
+ * @brief Kind of a terrain block: a solid block scrolling with the level, `TERRAIN_BLOCK_WIDTH` wide. Its height is
  * `subtype * TERRAIN_HEIGHT_UNIT` pixels, centered on its position.
  */
 inline constexpr protocol::EntityKind KIND_OBSTACLE = protocol::makeEntityKind("obstacle");
-/** @brief Width of a terrain column, in pixels. */
-inline constexpr float TERRAIN_COLUMN_WIDTH = 64.0F;
+/**
+ * @brief Width of a terrain block, in pixels. Wide blocks keep a section on the screen down to a few replicated
+ * entities; a section is as long as a whole number of blocks.
+ */
+inline constexpr float TERRAIN_BLOCK_WIDTH = 256.0F;
 /** @brief Pixels per unit of a terrain column's `subtype`: up to 510 px fit in the byte. */
 inline constexpr float TERRAIN_HEIGHT_UNIT = 2.0F;
 /** @brief `EntityNetState::flags` bit: the entity is alive. */

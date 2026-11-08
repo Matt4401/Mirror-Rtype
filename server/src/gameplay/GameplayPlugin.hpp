@@ -77,7 +77,7 @@ struct ShipSpawnPoint {
  *   `scripts/Boss` for `scripts/Boss.wren`, class named after the file unless the event sets `class`). The boss flies
  *   in until its `stop_x`; once no boss is left, the scroll resumes at the speed it had before the fight.
  * - A `terrain` event starts a section along the top or bottom edge. It is built column by column
- *   (`game::TERRAIN_COLUMN_WIDTH` wide, `KIND_OBSTACLE`) as it enters the screen, and the columns move left at the
+ *   (`game::TERRAIN_BLOCK_WIDTH` wide, `KIND_OBSTACLE`) as it enters the screen, and the columns move left at the
  *   scroll speed, so they stop during a boss fight. A ship overlapping a column is destroyed; player shots stop on it.
  * - A destroyed ship respawns at its start position (`shipSpawnPoint()`) with `game::FLAG_INVULNERABLE` for
  *   `RESPAWN_DURATION` seconds: it cannot be hit, and the scroll is held like during a boss fight.

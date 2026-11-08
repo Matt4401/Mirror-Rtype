@@ -186,8 +186,8 @@ class BossFightTest : public GameplayTest {
 
 /** @brief Height of the test terrain. */
 constexpr float TERRAIN_HEIGHT = 120.0F;
-/** @brief Length of the test terrain: 4 columns, the last one past the section end. */
-constexpr float TERRAIN_LENGTH = 200.0F;
+/** @brief Length of the test terrain: 3 blocks of 256 px, the last one past the section end. */
+constexpr float TERRAIN_LENGTH = 600.0F;
 
 /** @brief Level with a bottom terrain section at 1 s, then an end far away. */
 std::shared_ptr<const level::Level> terrainLevel() {
@@ -491,7 +491,7 @@ TEST_F(TerrainTest, TerrainEntersFromTheRightColumnByColumn) {
     run(1.1F);
     const auto entering = columns();
     ASSERT_FALSE(entering.empty());
-    EXPECT_LT(entering.size(), 4U) << "columns are built as they enter the screen";
+    EXPECT_LT(entering.size(), 3U) << "blocks are built as they enter the screen";
     for (const ecs::Entity column : entering) {
         const auto& transform = registry().getComponents<ecs::Transform>().get(column);
         EXPECT_GT(transform.x, 1280.0F);
@@ -500,8 +500,9 @@ TEST_F(TerrainTest, TerrainEntersFromTheRightColumnByColumn) {
                   TERRAIN_HEIGHT / game::TERRAIN_HEIGHT_UNIT);
     }
 
-    run(5.0F);
-    EXPECT_EQ(columns().size(), 4U);
+    // A block enters every 256 / 60 = 4.3 s.
+    run(8.0F);
+    EXPECT_EQ(columns().size(), 3U);
 }
 
 TEST_F(TerrainTest, TerrainScrollsAtTheScrollSpeed) {
@@ -589,10 +590,10 @@ TEST_F(RespawnDuringBossTest, RespawnAndBossFightBothHoldTheScroll) {
 }
 
 TEST_F(TerrainTest, TerrainLeavingTheScreenIsDestroyed) {
-    // The last column ends 256 px after the right edge: past the left one after (1280 + 256 + 64) / 60 = 27 s.
+    // The last block is built at about 8.5 s, its right edge at 1600: past the left edge after (1600 + 64) / 60 = 28 s.
     run(10.0F);
-    EXPECT_EQ(columns().size(), 4U);
-    run(20.0F);
+    EXPECT_EQ(columns().size(), 3U);
+    run(30.0F);
     EXPECT_TRUE(columns().empty());
 }
 

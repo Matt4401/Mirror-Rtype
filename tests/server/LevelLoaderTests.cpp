@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "config/ConfigFile.hpp"
+#include "game/ReplicationCodec.hpp"
 #include "level/Level.hpp"
 #include "level/LevelLoader.hpp"
 #include "timeline/TimelineEvent.hpp"
@@ -600,13 +601,14 @@ TEST(LevelLoader, ReadsTerrainSections) {
     EXPECT_EQ(top.type, level::EVENT_TERRAIN);
     EXPECT_EQ(top.params.find<std::string>("side"), level::TERRAIN_TOP);
     EXPECT_DOUBLE_EQ(top.params.find<double>("height").value_or(0.0), level::DEFAULT_TERRAIN_HEIGHT);
-    EXPECT_DOUBLE_EQ(top.params.find<double>("length").value_or(0.0), 400.0);
+    // Rounded up to whole terrain blocks.
+    EXPECT_DOUBLE_EQ(top.params.find<double>("length").value_or(0.0), 2.0 * rtype::game::TERRAIN_BLOCK_WIDTH);
 
     const timeline::TimelineEvent& bottom = eventAt(built, 1);
     EXPECT_FLOAT_EQ(bottom.position, 1800.0F);
     EXPECT_EQ(bottom.params.find<std::string>("side"), level::TERRAIN_BOTTOM);
     EXPECT_DOUBLE_EQ(bottom.params.find<double>("height").value_or(0.0), 120.0);
-    EXPECT_DOUBLE_EQ(bottom.params.find<double>("length").value_or(0.0), 1400.0);
+    EXPECT_DOUBLE_EQ(bottom.params.find<double>("length").value_or(0.0), 6.0 * rtype::game::TERRAIN_BLOCK_WIDTH);
     EXPECT_TRUE(warnings.empty());
 }
 
@@ -667,7 +669,7 @@ TEST(LevelLoader, OverlappingSectionsOnTheSameSideAreSkipped) {
     const level::Level built = build(R"(
         [[terrain]]
         from = 0.0
-        to = 500.0
+        to = 512.0
         side = "bottom"
 
         [[terrain]]
@@ -676,13 +678,33 @@ TEST(LevelLoader, OverlappingSectionsOnTheSameSideAreSkipped) {
         side = "bottom"
 
         [[terrain]]
-        from = 500.0
+        from = 512.0
         to = 900.0
         side = "bottom"
     )",
                                      warnings);
 
     ASSERT_EQ(built.timeline.events().size(), 2U) << "touching sections are fine, overlapping ones are not";
+    EXPECT_TRUE(anyWarningMentions(warnings, "terrain.1: overlaps another section on the same side"));
+}
+
+TEST(LevelLoader, SectionsOverlapUpToTheirLastBlock) {
+    std::vector<std::string> warnings;
+    // The first section ends at 300 in the file, but its second block reaches 512.
+    const level::Level built = build(R"(
+        [[terrain]]
+        from = 0.0
+        to = 300.0
+        side = "bottom"
+
+        [[terrain]]
+        from = 400.0
+        to = 900.0
+        side = "bottom"
+    )",
+                                     warnings);
+
+    EXPECT_EQ(built.timeline.events().size(), 1U);
     EXPECT_TRUE(anyWarningMentions(warnings, "terrain.1: overlaps another section on the same side"));
 }
 
@@ -714,7 +736,7 @@ TEST(LevelLoader, TooManyTerrainSectionsAreTruncated) {
     std::string toml;
     for (std::size_t i = 0; i < level::MAX_TERRAIN_SECTIONS + 10; ++i) {
         // Sections one after the other: overlapping ones would be skipped.
-        toml += std::format("[[terrain]]\nfrom = {}.0\nto = {}.0\nside = \"top\"\n", i * 10, (i * 10) + 10);
+        toml += std::format("[[terrain]]\nfrom = {}.0\nto = {}.0\nside = \"top\"\n", i * 256, (i * 256) + 256);
     }
     std::vector<std::string> warnings;
     const level::Level built = build(toml, warnings);

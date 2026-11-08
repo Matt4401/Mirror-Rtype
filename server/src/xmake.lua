@@ -21,7 +21,7 @@ target("rtype_level")
     set_kind("static")
     add_files("level/**.cpp")
     add_includedirs(".", {public = true})
-    add_deps("engine_config", "engine_timeline", {public = true})
+    add_deps("engine_config", "engine_timeline", "rtype_game", {public = true})
 
 target("r-type_server")
     set_kind("binary")

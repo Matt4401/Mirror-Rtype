@@ -22,6 +22,7 @@
 
 #include "config/ConfigFile.hpp"
 #include "config/ConfigReader.hpp"
+#include "game/ReplicationCodec.hpp"
 #include "level/Level.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "timeline/TimelineEvent.hpp"
@@ -435,9 +436,11 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, st
                                            TERRAIN_TOP, TERRAIN_BOTTOM));
             continue;
         }
+        // Built in whole blocks: the section really ends there, which the overlap checks must see.
+        const float blocks = std::ceil((to - from) / game::TERRAIN_BLOCK_WIDTH);
         TerrainSpan section{
             .from = from,
-            .to = to,
+            .to = std::min(from + (blocks * game::TERRAIN_BLOCK_WIDTH), MAX_LEVEL_DISTANCE),
             .top = side == TERRAIN_TOP,
             .height =
                 reader.number(std::format("terrain.{}.height", i), DEFAULT_TERRAIN_HEIGHT, 1.0F, MAX_TERRAIN_HEIGHT),
@@ -452,7 +455,7 @@ void addTerrain(const config::ConfigFile& file, config::ConfigReader& reader, st
             .type = std::string(EVENT_TERRAIN),
             .params = {{"side", side},
                        {"height", static_cast<double>(section.height)},
-                       {"length", static_cast<double>(to - from)}},
+                       {"length", static_cast<double>(section.to - from)}},
         });
     }
 }

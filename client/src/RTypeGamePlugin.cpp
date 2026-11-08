@@ -295,7 +295,7 @@ void RTypeGamePlugin::onEntitySpawned(engine::Engine& engine, const ecs::net::Re
         const std::uint8_t units = registry.getComponents<rtype::game::EntityNetState>().get(event.entity).subtype;
         const float height =
             units == 0 ? DEFAULT_OBSTACLE_HEIGHT : static_cast<float>(units) * rtype::game::TERRAIN_HEIGHT_UNIT;
-        applyBox(registry, event.entity, rtype::game::TERRAIN_COLUMN_WIDTH, height, COLOR_TERRAIN, 1);
+        applyBox(registry, event.entity, rtype::game::TERRAIN_BLOCK_WIDTH, height, COLOR_TERRAIN, 1);
     } else if (event.kind == rtype::game::KIND_MISSILE) {
         applyBox(registry, event.entity, rtype::game::MISSILE_WIDTH, rtype::game::MISSILE_HEIGHT, COLOR_MISSILE, 2);
     } else if (event.kind == rtype::game::KIND_POWER_UP) {

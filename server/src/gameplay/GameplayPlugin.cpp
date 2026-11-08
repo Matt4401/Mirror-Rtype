@@ -63,7 +63,7 @@ struct Respawning {
 /** @brief Marks a terrain column, built by the gameplay from a level `terrain` event. */
 struct TerrainColumn {
     /** @brief Half-width of the column. */
-    float halfWidth = game::TERRAIN_COLUMN_WIDTH / 2.0F;
+    float halfWidth = game::TERRAIN_BLOCK_WIDTH / 2.0F;
     /** @brief Half-height of the column. */
     float halfHeight = 0.0F;
 };
@@ -188,7 +188,7 @@ void GameplayPlugin::startTerrain(const ::prefabs::PrefabParams& params) {
     _terrain.push_back(TerrainSection{
         .y = top ? height / 2.0F : SCENE_HEIGHT - (height / 2.0F),
         .height = height,
-        .columnsLeft = static_cast<std::size_t>(std::ceil(length / static_cast<double>(game::TERRAIN_COLUMN_WIDTH))),
+        .columnsLeft = static_cast<std::size_t>(std::ceil(length / static_cast<double>(game::TERRAIN_BLOCK_WIDTH))),
         .lastColumn = std::nullopt,
     });
 }
@@ -202,16 +202,16 @@ void GameplayPlugin::updateTerrain() {
             float rightEdge = SCENE_WIDTH;
             if (section.lastColumn && registry.isAlive(*section.lastColumn)) {
                 rightEdge = registry.getComponents<ecs::Transform>().get(*section.lastColumn).x +
-                            (game::TERRAIN_COLUMN_WIDTH / 2.0F);
+                            (game::TERRAIN_BLOCK_WIDTH / 2.0F);
             }
             if (rightEdge > SCENE_WIDTH + OFFSCREEN_MARGIN) {
                 break;
             }
             const ecs::Entity column = registry.spawnEntity();
             ::prefabs::buildObstacle(column, registry,
-                                     {{"x", rightEdge + (game::TERRAIN_COLUMN_WIDTH / 2.0F)},
+                                     {{"x", rightEdge + (game::TERRAIN_BLOCK_WIDTH / 2.0F)},
                                       {"y", section.y},
-                                      {"halfWidth", game::TERRAIN_COLUMN_WIDTH / 2.0F},
+                                      {"halfWidth", game::TERRAIN_BLOCK_WIDTH / 2.0F},
                                       {"halfHeight", section.height / 2.0F}});
             // Moved by the gameplay at the scroll speed: kinematic, unlike a static obstacle.
             registry.getComponents<ecs::RigidBody2D>().get(column).bodyType = ecs::BodyType::Kinematic;
@@ -538,7 +538,7 @@ void GameplayPlugin::killOffscreenEntities() {
                 replicated.kind == game::KIND_PLAYER_BULLET && transform.x > SCENE_WIDTH + OFFSCREEN_MARGIN;
             const bool enemyGone = flowsLeft(replicated.kind) && transform.x < -OFFSCREEN_MARGIN;
             const bool terrainGone = replicated.kind == game::KIND_OBSTACLE &&
-                                     transform.x < -OFFSCREEN_MARGIN - (game::TERRAIN_COLUMN_WIDTH / 2.0F);
+                                     transform.x < -OFFSCREEN_MARGIN - (game::TERRAIN_BLOCK_WIDTH / 2.0F);
             if (bulletGone || enemyGone || terrainGone) {
                 toDestroy.push_back(entity);
             }
