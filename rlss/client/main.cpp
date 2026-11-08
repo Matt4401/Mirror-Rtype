@@ -28,6 +28,8 @@
 #include "ServerLink.hpp"
 #include "SessionPlugin.hpp"
 #include "SoundPlugin.hpp"
+#include "assets/AssetPlugin.hpp"
+#include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
@@ -104,6 +106,8 @@ int main(int ac, char** av) {
             .addPlugin<ecs::net::ClientReplicationPlugin>(std::make_shared<rlss::game::ReplicationCodec>())
             // After the replication: the CarView scripts read the car transforms once interpolated.
             .addPlugin<scripting::ScriptPlugin>()
+            .addPlugin<assets::AssetPlugin>()
+            .addPlugin<assets::AssetScriptingPlugin>(std::string(rlss::client::ASSET_DECLARATIONS))
             .addPlugin<rlss::client::SessionPlugin>(transport)
             .addPlugin<rlss::client::AssetsPlugin>()
             .addPlugin<rlss::client::ArenaViewPlugin>()

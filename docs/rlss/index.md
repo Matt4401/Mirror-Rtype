@@ -94,7 +94,10 @@ flowchart LR
       a `Welcome` with its car and team.
 - **Client** (`rlss/client/main.cpp`): connects first (no window if the server is unreachable), opens UDP, then
   `RenderPlugin`, `InputPlugin`, `NetworkPlugin` fed by `ServerLink`, `ClientReplicationPlugin`, `ScriptPlugin`, and:
-    - `AssetsPlugin` loads the textures and the font once (`GameAssets`, an ECS resource read by the views, see
+    - `AssetPlugin` and `AssetScriptingPlugin` run `rlss/scripts/Assets.wren`, which declares every texture, sound and
+      the font for the engine asset manager (aliases = file names without extension, see
+      [Assets](../architecture/assets.md));
+    - `AssetsPlugin` resolves the textures and the font once (`GameAssets`, an ECS resource read by the views, see
       [Graphics](#graphics));
     - `ArenaViewPlugin` draws the arena picture (in tiles) and the stadium behind it, which moves slower than the
       arena when the camera moves (parallax);
@@ -272,8 +275,8 @@ with neon walls, blue on the left and orange on the right, and a grass pitch alo
   from the top-left and a dark rim) is a separate texture that does not, so the ball keeps looking round.
 - **Text.** The menus, the HUD and the name tags use Russo One (SIL Open Font License, `rlss/assets/fonts/OFL.txt`).
   `UiCanvas` sizes text by the height of its capital letters.
-- **Engine support** (generic, used here): `TextureStore::load(path, TextureFilter::Smooth)` (mipmaps, trilinear,
-  clamped edges, for artwork drawn at any zoom), fonts rasterized at 128 px so that big titles stay sharp, and
+- **Engine support** (generic, used here): the asset manager (`Assets.preloadSmoothTextures`, which loads with
+  `TextureFilter::Smooth`: mipmaps, trilinear, clamped edges, for artwork drawn at any zoom), fonts rasterized at 128 px so that big titles stay sharp, and
   `IScreenDrawService::drawTexture` (textured quads on screen, rotated around their center) for the HUD.
 
 - **Goal explosion** (`GoalEffectPlugin`, on the switch to the goal celebration, at the ball): a fireball in the color
@@ -320,8 +323,8 @@ The client plays every sound from the server's state: it never guesses an event 
   4-bit value each, see [Protocol](#protocol)). The counters only grow: the client plays a sound when one changes,
   so a lost snapshot delays a sound instead of losing it. The scripts start their counters from the component, so a
   hot-reload replays nothing.
-- **`SoundPlugin`** (client) loads the sounds through `engine::IAudioService` and publishes engine `PlaySoundEvent`s,
-  positioned where the car or the ball is: louder and lower-pitched for stronger hits, bounces and impacts; a colored
+- **`SoundPlugin`** (client) takes the sounds from the asset manager (declared by `rlss/scripts/Assets.wren`) and
+  publishes engine `PlaySoundEvent`s, positioned where the car or the ball is: louder and lower-pitched for stronger hits, bounces and impacts; a colored
   shot adds a blast on top of the hit (pitched by its color). A goal plays the explosion (`goal_explosion.wav`,
 synthesized by `rlss/assets/generate_goal_sound.py`) with the horn and the cheering. Each car plays its engine (an `AudioEmitter` on the car,
   pitched and louder with its speed, measured on screen) and, while it boosts, the boost roar (an emitter on its own

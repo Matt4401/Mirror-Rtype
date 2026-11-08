@@ -4,13 +4,15 @@
 #include <cmath>
 #include <cstddef>
 #include <optional>
-#include <string>
 #include <string_view>
 
 #include "CameraPlugin.hpp"
 #include "ClientEvents.hpp"
 #include "HudPlugin.hpp"
 #include "Logger.hpp"
+#include "assets/AssetKinds.hpp"
+#include "assets/AssetManager.hpp"
+#include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "audio/AudioPlugin.hpp"
 #include "audio/spatial/SpatialConfig.hpp"
 #include "audio/types/AudioConstants.hpp"
@@ -20,7 +22,6 @@
 #include "components/CameraComponent.hpp"
 #include "components/Transform.hpp"
 #include "core/Engine.hpp"
-#include "core/Mediator.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/services/IAudioService.hpp"
 #include "ecs/Entity.hpp"
@@ -117,50 +118,51 @@ float shotPitch(const int shot) {
 
 }  // namespace
 
-std::string_view fileName(const Sound sound) noexcept {
+std::string_view soundAlias(const Sound sound) noexcept {
     switch (sound) {
         case Sound::Engine:
-            return "engine_loop.wav";
+            return "engine_loop";
         case Sound::Boost:
-            return "boost_loop.wav";
+            return "boost_loop";
         case Sound::Crowd:
-            return "crowd_loop.wav";
+            return "crowd_loop";
         case Sound::Jump:
-            return "jump.wav";
+            return "jump";
         case Sound::DoubleJump:
-            return "double_jump.wav";
+            return "double_jump";
         case Sound::Dodge:
-            return "dodge.wav";
+            return "dodge";
         case Sound::Impact:
-            return "impact.wav";
+            return "impact";
         case Sound::BallHit:
-            return "ball_hit.wav";
+            return "ball_hit";
         case Sound::PowerShot:
-            return "power_shot.wav";
+            return "power_shot";
         case Sound::Bounce:
-            return "ball_bounce.wav";
+            return "ball_bounce";
         case Sound::Countdown:
-            return "countdown.wav";
+            return "countdown";
         case Sound::Kickoff:
-            return "kickoff.wav";
+            return "kickoff";
         case Sound::GoalHorn:
-            return "goal_horn.wav";
+            return "goal_horn";
         case Sound::Cheer:
-            return "crowd_cheer.wav";
+            return "crowd_cheer";
         case Sound::Overtime:
-            return "overtime.wav";
+            return "overtime";
         case Sound::MatchEnd:
-            return "match_end.wav";
+            return "match_end";
         case Sound::ClockTick:
-            return "clock_tick.wav";
+            return "clock_tick";
         case Sound::GoalExplosion:
-            return "goal_explosion.wav";
+            return "goal_explosion";
     }
     return "";
 }
 
 void SoundPlugin::build(engine::PluginBuilder& builder) {
     builder.require<audio::AudioPlugin>();
+    builder.require<assets::AssetScriptingPlugin>();
     builder.require<ecs::net::ClientReplicationPlugin>();
     builder.require<CameraPlugin>();
     builder.require<HudPlugin>();
@@ -169,11 +171,14 @@ void SoundPlugin::build(engine::PluginBuilder& builder) {
 void SoundPlugin::init(engine::Engine& engine) {
     auto& audioService = engine.service<engine::IAudioService>();
     audioService.setSpatialConfig(SPATIAL);
+    // Loaded by the asset manager from rlss/scripts/Assets.wren, which also releases them at shutdown.
+    auto& manager = engine.registry().getResource<assets::AssetManager>();
+    manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
     for (std::size_t i = 0; i < SOUND_COUNT; ++i) {
-        const std::string path = std::string(SOUND_DIRECTORY) + std::string(fileName(static_cast<Sound>(i)));
-        _sounds.at(i) = audioService.loadSound(path);
+        const std::string_view alias = soundAlias(static_cast<Sound>(i));
+        _sounds.at(i) = manager.get<assets::Sound>(alias);
         if (_sounds.at(i) == audio::NO_SOUND && audioService.isAvailable()) {
-            rtype::log::warning(LOG_TAG, "cannot load ", path, ": this sound stays silent");
+            rtype::log::warning(LOG_TAG, "no sound '", alias, "': this sound stays silent");
         }
     }
 
@@ -413,12 +418,7 @@ void SoundPlugin::shutdown(engine::Engine& engine) {
         events.unsubscribe<MatchLeft>(*_left);
         _left.reset();
     }
-    if (engine.mediator().hasService<engine::IAudioService>()) {
-        auto& audioService = engine.service<engine::IAudioService>();
-        for (const audio::SoundId sound : _sounds) {
-            audioService.unloadSound(sound);
-        }
-    }
+    // The sounds belong to the asset manager, which releases them when the audio plugin stops.
     _sounds.fill(audio::NO_SOUND);
 }
 

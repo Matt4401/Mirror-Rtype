@@ -1,85 +1,86 @@
 #include "AssetsPlugin.hpp"
 
-#include <filesystem>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #include "Logger.hpp"
+#include "assets/AssetKinds.hpp"
+#include "assets/AssetManager.hpp"
+#include "assets/scripting/AssetScriptingPlugin.hpp"
 #include "components/Renderable.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "core/services/IScreenDrawService.hpp"
 #include "ecs/Registry.hpp"
 #include "render/RenderPlugin.hpp"
-#include "render/texture/TextureStore.hpp"
 
 namespace rlss::client {
 
 namespace {
 
 constexpr const char* LOG_TAG = "assets";
-/** @brief More tiles than the arena will ever need: the loading stops at the first missing one. */
+/** @brief More tiles than the arena will ever need: the lookup stops at the first missing one. */
 constexpr int MAX_TILES = 16;
 
-ecs::TextureId load(render::TextureStore& textures, const std::string& file) {
-    const std::string path = std::string(TEXTURE_DIRECTORY) + file;
-    const ecs::TextureId id =
-        std::filesystem::exists(path) ? textures.load(path, render::TextureFilter::Smooth) : ecs::NO_TEXTURE;
-    if (id == ecs::NO_TEXTURE) {
-        rtype::log::warning(LOG_TAG, "cannot load ", path, " (run the client from the repository root)");
-    }
-    return id;
-}
-
-std::string tileName(const int row, const int column) {
-    return "arena_" + std::to_string(row) + "_" + std::to_string(column) + ".png";
+std::string tileAlias(const int row, const int column) {
+    return "arena_" + std::to_string(row) + "_" + std::to_string(column);
 }
 
 }  // namespace
 
-void AssetsPlugin::build(engine::PluginBuilder& builder) { builder.require<render::RenderPlugin>(); }
+void AssetsPlugin::build(engine::PluginBuilder& builder) {
+    builder.require<render::RenderPlugin>();
+    builder.require<assets::AssetScriptingPlugin>();
+}
 
 void AssetsPlugin::init(engine::Engine& engine) {
-    render::TextureStore* textures = engine.getPlugin<render::RenderPlugin>().textures();
-    GameAssets assets;
-    if (textures != nullptr) {
-        render::TextureStore& store = *textures;
-        assets.stadium = load(store, "stadium.png");
-        for (int row = 0; row < MAX_TILES && std::filesystem::exists(std::string(TEXTURE_DIRECTORY) + tileName(row, 0));
-             ++row) {
-            for (int column = 0; column < MAX_TILES; ++column) {
-                if (!std::filesystem::exists(std::string(TEXTURE_DIRECTORY) + tileName(row, column))) {
-                    break;
-                }
-                assets.arena.push_back({.texture = load(store, tileName(row, column)), .row = row, .column = column});
+    auto& manager = engine.registry().getResource<assets::AssetManager>();
+    manager.loadGroup(assets::AssetManager::GLOBAL_GROUP);
+    const auto texture = [&manager](const std::string_view alias) {
+        const ecs::TextureId id = manager.get<assets::Texture>(alias);
+        if (id == ecs::NO_TEXTURE) {
+            rtype::log::warning(LOG_TAG, "no texture '", alias, "' (run the client from the repository root)");
+        }
+        return id;
+    };
+
+    GameAssets loaded;
+    loaded.stadium = texture("stadium");
+    for (int row = 0; row < MAX_TILES && manager.get<assets::Texture>(tileAlias(row, 0)) != ecs::NO_TEXTURE; ++row) {
+        for (int column = 0; column < MAX_TILES; ++column) {
+            const ecs::TextureId tile = manager.get<assets::Texture>(tileAlias(row, column));
+            if (tile == ecs::NO_TEXTURE) {
+                break;
             }
+            loaded.arena.push_back({.texture = tile, .row = row, .column = column});
         }
-        if (assets.arena.empty()) {
-            rtype::log::warning(LOG_TAG, "no arena texture in ", TEXTURE_DIRECTORY);
-        }
-        assets.carBody = load(store, "car_body.png");
-        assets.carDetails = load(store, "car_details.png");
-        assets.wheel = load(store, "wheel.png");
-        assets.flame = load(store, "boost_flame.png");
-        assets.glow = load(store, "glow.png");
-        assets.puff = load(store, "puff.png");
-        assets.ball = load(store, "ball.png");
-        assets.ballShade = load(store, "ball_shade.png");
-        assets.hudDisc = load(store, "hud_disc.png");
-        assets.hudTick = load(store, "hud_tick.png");
-        assets.hudSlantLeft = load(store, "hud_slant_left.png");
-        assets.hudSlantRight = load(store, "hud_slant_right.png");
-        assets.hudBand = load(store, "hud_band.png");
-        assets.explosionBlue = load(store, "goal_explosion_blue.png");
-        assets.explosionOrange = load(store, "goal_explosion_orange.png");
-        assets.shockwave = load(store, "shockwave.png");
-        assets.spark = load(store, "spark.png");
     }
-    assets.font = engine.service<engine::IScreenDrawService>().loadFont(std::string(FONT_PATH));
-    if (assets.font == engine::NO_FONT) {
-        rtype::log::warning(LOG_TAG, "cannot load ", FONT_PATH, ", using the default font");
+    if (loaded.arena.empty()) {
+        rtype::log::warning(LOG_TAG, "no arena texture");
     }
-    engine.registry().addResource(std::move(assets));
+    loaded.carBody = texture("car_body");
+    loaded.carDetails = texture("car_details");
+    loaded.wheel = texture("wheel");
+    loaded.flame = texture("boost_flame");
+    loaded.glow = texture("glow");
+    loaded.puff = texture("puff");
+    loaded.ball = texture("ball");
+    loaded.ballShade = texture("ball_shade");
+    loaded.hudDisc = texture("hud_disc");
+    loaded.hudTick = texture("hud_tick");
+    loaded.hudSlantLeft = texture("hud_slant_left");
+    loaded.hudSlantRight = texture("hud_slant_right");
+    loaded.hudBand = texture("hud_band");
+    loaded.explosionBlue = texture("goal_explosion_blue");
+    loaded.explosionOrange = texture("goal_explosion_orange");
+    loaded.shockwave = texture("shockwave");
+    loaded.spark = texture("spark");
+    loaded.font = manager.get<assets::Font>(FONT_ALIAS);
+    if (loaded.font == engine::NO_FONT) {
+        rtype::log::warning(LOG_TAG, "no font '", FONT_ALIAS, "', using the default font");
+    }
+    engine.registry().addResource(std::move(loaded));
 }
 
 }  // namespace rlss::client
