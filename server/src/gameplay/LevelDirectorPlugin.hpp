@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -16,6 +17,7 @@
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
 #include "ecs/Registry.hpp"
+#include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
 #include "level/Level.hpp"
 #include "prefabs/PrefabParams.hpp"
@@ -24,14 +26,19 @@
 
 namespace rtype::server::gameplay {
 
+/** @brief Seconds between the end of a level of a campaign and the start of the next one. */
+inline constexpr float INTERMISSION_DURATION = 3.0F;
+
 /**
  * @brief Plays the level of a room with `timeline::TimelinePlugin`, the cursor moving at the scroll speed.
  *
  * - Publishes every event it plays as a `LevelEventPlayed`, for the plugins that handle `terrain` and `boss`. It
  *   handles the others: `spawn` creates the enemies, `scroll` changes the speed, and `end` restarts the level
  *   (`LevelStarted`).
- * - Once `startGame()` was called, the level is the whole game: `startGame()` publishes its `protocol::LevelStart`, and
- *   its `end` stops the scroll and publishes `LevelFinished` instead of restarting it. Nothing is played after that.
+ * - Once `startGame()` was called, the levels form a campaign, chained by `level::Level::next`: `startGame()`
+ *   publishes the `protocol::LevelStart` of the first one. Its `end` stops the scroll and publishes `LevelFinished`
+ *   instead of restarting it. After `INTERMISSION_DURATION` seconds, the field is cleared (every replicated entity but
+ *   the ships) and the next level starts with its own `protocol::LevelStart`. Nothing is played after the last one.
  * - Holds the scroll from `BossFightStarted` to `BossFightEnded` and from `ShipRespawnStarted` to `AllRespawnsOver`:
  *   it resumes, at its speed before the hold, once both are over. The events reached while it is held (in the same
  *   step as a boss) wait for it, so a `scroll` does not restart the scroll and an `end` does not restart the level
@@ -61,15 +68,24 @@ class LevelDirectorPlugin final : public engine::IPlugin {
     void init(engine::Engine& engine) override;
 
     /**
+     * @brief Counts the intermission down between two levels of a campaign, then starts the next level.
+     * @param engine Host engine.
+     * @param time Fixed step time.
+     */
+    void fixedUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
+
+    /**
      * @brief Unsubscribes from the bus before the engine tears it down.
      * @param engine Host engine.
      */
     void shutdown(engine::Engine& engine) override;
 
     /**
-     * @brief Starts the game: publishes the `protocol::LevelStart` of the level, which the room sends to its players.
+     * @brief Starts the game: publishes the `protocol::LevelStart` of the first level, which the room sends to its
+     * players.
      *
-     * Called when the room starts, after `GameStart` was sent. From then on, the level `end` finishes the game.
+     * Called when the room starts, after `GameStart` was sent. From then on, a level `end` moves on to the next level,
+     * or finishes the game after the last one.
      */
     void startGame();
 
@@ -77,7 +93,7 @@ class LevelDirectorPlugin final : public engine::IPlugin {
      * @brief Prefabs a level may use, per event type, and the parameters they read: the level catalog given to
      * `level::loadLevel`.
      *
-     * A `spawn` event may name `alien_scout`, a `boss` event `boss_core`.
+     * A `spawn` event may name `alien_scout`, `alien_gunner` or `alien_elite`, a `boss` event `boss_core`.
      *
      * @param type Event type.
      * @param prefab Prefab name.
@@ -96,13 +112,23 @@ class LevelDirectorPlugin final : public engine::IPlugin {
     void spawnEnemy(const prefabs::PrefabParams& params);
     /** @brief Puts the level at its start: events pending again, initial scroll speed. */
     void startLevel();
+    /** @brief Publishes the `protocol::LevelStart` of the current level. */
+    void announceLevel();
+    /** @brief Ends the intermission: clears the field, then starts and announces the next level. */
+    void nextLevel();
     /** @brief Stops the scroll, remembering its speed; does nothing if it is already held. */
     void holdScroll();
     /** @brief Resumes the scroll if nothing holds it any more, then plays the events that waited. */
     void releaseScroll();
 
-    /** @brief Level played by the room, if any. */
+    /** @brief First level played by the room, if any. */
     std::shared_ptr<const level::Level> _level;
+    /** @brief Level being played: `_level`, then the next ones of the campaign. */
+    std::shared_ptr<const level::Level> _current;
+    /** @brief Index of `_current` in the campaign. */
+    std::size_t _levelIndex = 0;
+    /** @brief Seconds left before the next level, while positive. */
+    float _intermission = 0.0F;
     /** @brief Registry of the room, set by `init()`. */
     ecs::Registry* _registry = nullptr;
     /** @brief Event bus of the room, set by `init()`. */
@@ -113,7 +139,7 @@ class LevelDirectorPlugin final : public engine::IPlugin {
     std::vector<std::pair<ecs::EventBus::EventToken, void (*)(ecs::EventBus&, ecs::EventBus::EventToken)>> _tokens;
     /** @brief True once `startGame()` was called. */
     bool _gameStarted = false;
-    /** @brief True once the level reached its `end` during a game: nothing is played any more. */
+    /** @brief True from the `end` of a level during a game until the next level starts: nothing is played. */
     bool _finished = false;
     /** @brief True during a boss fight. */
     bool _bossFight = false;

@@ -5,14 +5,25 @@
 
 #pragma once
 
+#include <cstdint>
+#include <functional>
+#include <map>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
+#include "assets/AssetManager.hpp"
 #include "components/Renderable.hpp"
 #include "core/IPlugin.hpp"
 #include "core/PluginBuilder.hpp"
+#include "ecs/Entity.hpp"
+#include "ecs/Registry.hpp"
 #include "ecs/time/Time.hpp"
 #include "events/EventBus.hpp"
+#include "gameplay/BossEffects.hpp"
+#include "looks/Looks.hpp"
 #include "net/ReplicationEvents.hpp"
 
 namespace client {
@@ -70,6 +81,13 @@ class RTypeGamePlugin final : public engine::IPlugin {
     void update(engine::Engine& engine, const ecs::time::Time& time) override;
 
     /**
+     * @brief Turns the sprites that face their motion, once the interpolation has moved them.
+     * @param engine Reference to host Engine.
+     * @param time Frame time.
+     */
+    void lateUpdate(engine::Engine& engine, const ecs::time::Time& time) override;
+
+    /**
      * @brief Unsubscribes from the replication events.
      * @param engine Reference to host Engine.
      */
@@ -83,10 +101,80 @@ class RTypeGamePlugin final : public engine::IPlugin {
      */
     void onEntitySpawned(engine::Engine& engine, const ecs::net::ReplicatedEntitySpawned& event) const;
 
+    /**
+     * @brief Blows up a boss killed by the players when it leaves the snapshots; a turret gets a single burst.
+     * @param engine Reference to host Engine.
+     * @param event The entity about to be removed.
+     */
+    void onEntityDespawned(engine::Engine& engine, const ecs::net::ReplicatedEntityDespawned& event) const;
+
+    /**
+     * @brief Spawns the bursts of an explosion, client-side only.
+     * @param registry Client registry.
+     * @param bursts Where and when each burst appears.
+     */
+    void spawnExplosion(ecs::Registry& registry, const std::vector<gameplay::BurstSpec>& bursts) const;
+
+    /**
+     * @brief Reads `client/config/looks.toml`, from the content root, and loads the textures it names.
+     *
+     * A missing file keeps every boss a box; a texture that does not load turns its look back into a box. Every problem
+     * is logged, none stops the client.
+     *
+     * @param manager Asset manager, which loads and caches the textures.
+     */
+    void loadLooks(assets::AssetManager& manager);
+
+    /**
+     * @brief Draws a boss or a boss part with its configured look, or as a box without one.
+     * @param registry Client registry.
+     * @param entity Replicated entity.
+     * @param look Configured look, or null.
+     * @param box Size of the box without a configured size, in pixels: width then height.
+     * @param color Color of the box.
+     * @param layer Draw layer.
+     */
+    void applyLook(ecs::Registry& registry, ecs::Entity entity, const looks::Look* look, std::pair<float, float> box,
+                   ecs::Rgba color, int layer) const;
+
+    /** @brief Looks of the boss variants and of the boss parts. */
+    looks::Looks _looks;
+    /**
+     * @brief Gives a new boss or boss part its look from its subtype (the variant of a boss, the look of a part), its
+     * damaged stages if it has some, and its hit flash.
+     * @param registry Client registry.
+     * @param entity The new entity.
+     * @param part True for a boss part, false for a boss.
+     */
+    void applyBossLook(ecs::Registry& registry, ecs::Entity entity, bool part) const;
+
+    /**
+     * @brief Switches the bosses and parts with damaged looks to the one matching their hit points.
+     * @param registry Client registry.
+     */
+    void updateLookStages(ecs::Registry& registry) const;
+
+    /**
+     * @brief Finds the `[[entity]]` look of a kind: the entry for its subtype if any, else the entry for the kind.
+     * @param kind Replicated kind.
+     * @param subtype Replicated subtype.
+     * @return The look, or null if `looks.toml` does not restyle that kind.
+     */
+    [[nodiscard]] const looks::Look* entityLook(std::uint32_t kind, std::uint8_t subtype) const;
+
+    /** @brief `[[entity]]` looks by replicated kind, pointing into `_looks`. */
+    std::map<std::uint32_t, const looks::Look*> _entityLooks;
+    /** @brief `[[entity]]` looks by replicated kind and subtype, pointing into `_looks`. */
+    std::map<std::pair<std::uint32_t, std::uint8_t>, const looks::Look*> _entitySubtypeLooks;
+    /** @brief Textures of the looks, by path. */
+    std::map<std::string, ecs::TextureId, std::less<>> _lookTextures;
+
     /** @brief Seconds since the plugin started, the clock of the blinks. */
     float _elapsed = 0.0F;
     /** @brief Subscription to `ReplicatedEntitySpawned`, while initialized. */
     std::optional<ecs::EventBus::EventToken> _spawned;
+    /** @brief Subscription to `ReplicatedEntityDespawned`, while initialized. */
+    std::optional<ecs::EventBus::EventToken> _despawned;
     /** @brief Texture identifier for the player ship spritesheet. */
     ecs::TextureId _shipTexId = ecs::NO_TEXTURE;
     /** @brief Texture identifier for the Bydos enemy spritesheet. */

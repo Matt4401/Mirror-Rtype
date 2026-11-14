@@ -6,8 +6,17 @@ An R-Type level is a TOML file: enemy waves, scroll speed changes, terrain, a bo
 designers create and tune stages without touching C++ code or recompiling.
 
 Levels are read by the authoritative server only (`server/levels/`). The clients receive what a level spawns through
-replication, like any other entity. The server loads `server/levels/level_01.toml` at start-up, relative to the
-directory it runs from (the project root), and every room plays it.
+replication, like any other entity. At start-up, the server loads every `server/levels/level_*.toml` file, relative to
+the directory of its executable (the project root): sorted by name, they form the campaign every room plays
+(`level_01.toml`, then `level_02.toml`...). `--level <path>` plays one file alone.
+
+The shipped campaign:
+
+| File | Name | Content |
+|------|------|---------|
+| `level_01.toml` | Sector 1 - Outer Patrol | Basic scouts only, in waves of different shapes (files, diagonals, V, walls, fast lanes). No terrain, no boss. |
+| `level_02.toml` | Sector 2 - Gunline | Scouts and gunners, which fire at the ships. |
+| `level_03.toml` | Sector 3 - Bastion | Scouts, gunners and three rare elites, then the [Bastion](bosses.md#bastion-scriptsbossesbastionwren-variant-2). |
 
 The engine only provides generic building blocks, the TOML arrays of `config::ConfigFile` and the
 [Timeline](../architecture/timeline.md). The format below and its loader (`server/src/level/`, target `rtype_level`)
@@ -74,7 +83,7 @@ with the same `at` keep the file order.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `prefab` | string | required | Enemy to spawn. The server knows `alien_scout` and `boss_core`. |
+| `prefab` | string | required | Enemy to spawn: `alien_scout`; `alien_gunner` (fires at the ships; extra keys `fire_interval` and `shot_speed`, see [Alien Gunner](../prefabs/alien-gunner.md)); or `alien_elite` (rare and tough; extra keys `health`, `amplitude`, `frequency`, `fire_interval`, `shot_speed`, see [Alien Elite](../prefabs/alien-elite.md)). |
 | `count` | integer | `1` | Number of enemies, from 1 to 32. |
 | `interval` | number | `0` | Seconds of scrolling between two enemies, from 0 to 10. |
 | `x` | number | `1328` | Spawn abscissa: just past the right edge of the 1280 px screen. |
@@ -105,7 +114,7 @@ it.
 | `script` | string | none | Wren file driving the boss: a relative path ending in `.wren`, with `/` separators and no `..`. |
 | `class` | string | file name | Wren class of the script; `scripts/Boss.wren` uses the class `Boss`. |
 | `x`, `y` | number | `1328`, `360` | Spawn position. |
-| `health`, `stop_x`, `speed` | number | see [Boss Core](../prefabs/boss-core.md) | Passed to the prefab, like any other key. |
+| `health`, `stop_x`, `speed`, `variant`, `width`, `height` | number | see [Boss Core](../prefabs/boss-core.md) | Passed to the prefab, like any other key. `variant` picks the look of the boss on the clients, `width` and `height` its hitbox. |
 
 When the event fires, the scroll stops and the boss flies in from the right until its `stop_x`. Each player shot
 removes one hit point; at 0, the boss is destroyed, the shooter scores, and the scroll resumes at its speed before the
@@ -113,14 +122,67 @@ fight. The script moves the boss and attacks: everything it spawns with `Engine.
 missiles and the boss itself destroy the ships they touch (they respawn), and the power-up it drops gives rapid fire to
 the player who picks it up. See `scripts/Boss.wren`.
 
+#### Boss scripts
+
+A boss script is a Wren class named after its file, with the hooks of the
+[scripting guide](../getting-started/scripting-guide.md). Besides `core/Engine` and `core/Position`, the server gives
+boss scripts the `game/Combat` module:
+
+```wren
+import "game/Combat" for Combat
+
+var health = Combat.health(id)          // [points, max] of the boss or a turret, null for anything else
+var parts = Combat.parts(id)            // ids of the living parts of the boss
+var role = Combat.partRole(parts[0])    // "weak_point", "turret", "armor" or null
+var ship = Combat.nearestShip(x, y)     // [x, y] of the nearest ship that can be hit, null if none
+Combat.fireAt(x, y, ship[0], ship[1], 400)  // replicated missile towards the ship, speed clamped to 50-900 px/s
+Combat.fireAt(x, y, ship[0], ship[1], 400, 1)  // the same with a shot look (its subtype): 1 is red, 2 blue
+```
+
+A part position is read with `Position.new(partId)`; a turret fires with `Combat.fireAt` from there. Aimed missiles are
+destroyed once off the screen by any edge.
+
+#### Boss parts
+
+A boss event may declare up to 16 parts, each in an `[[events.parts]]` table after the event. They are
+[Boss Part](../prefabs/boss-part.md) entities: they move with the boss and are destroyed with it.
+
+```toml
+[[events]]
+at = 5400.0
+type = "boss"
+prefab = "boss_core"
+
+[[events.parts]]
+role = "weak_point"
+x = -50.0
+width = 40.0
+height = 40.0
+
+[[events.parts]]
+role = "turret"
+y = -90.0
+health = 6
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `role` | string | required | `weak_point` (the only place where shots hurt the boss), `turret` (destroyed alone, with its own `health`) or `armor` (stops shots). |
+| `x`, `y` | number | `0` | Offset from the center of the boss, clamped to ±1024 px. |
+| `width`, `height` | number | `48` | Hitbox size. |
+| `health` | number | `8` | Hit points of a turret. |
+| `look` | number | `0` | Look of the part on the clients. |
+
+A part without `role` is skipped with a warning; the server also skips, with a warning, a role it does not know.
+
 Events at the same distance as the boss (or reached in the same server step) wait for the end of the fight, then play
 in order: a `scroll` there does not restart the scroll, and an `end` does not restart the level while the boss is alive.
 Another `boss` at the same distance joins the current fight.
 
 ### `end`: end of the level
 
-No key. For now a game is a single level, so `end` wins the game: the players get `LevelComplete` then
-`GameOver{VICTORY}` (see [Server](../architecture/server.md#game-flow)).
+No key. The players get `LevelComplete`; after 3 s the field is cleared and the next level of the campaign starts.
+The `end` of the last level wins the game: `GameOver{VICTORY}` (see [Server](../architecture/server.md#game-flow)).
 
 ## `[[terrain]]`
 

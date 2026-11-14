@@ -18,9 +18,9 @@ script, it flies in from the right and stops at `stop_x`.
 | `Transform` | built from the spawn parameters (`makeTransform`) |
 | `Renderable` | `layer = 1` |
 | `RigidBody2D` | `Kinematic`, `velocityX = speed` |
-| `Collider2D` | Box, `halfWidth = BOSS_CORE_HALF_WIDTH`, `halfHeight = BOSS_CORE_HALF_HEIGHT`, sensor |
+| `Collider2D` | Box of `width` × `height`, sensor |
 | `prefabs::Health` | `points = max = health` |
-| `prefabs::BossCore` | `stopX = stop_x` |
+| `prefabs::BossCore` | `stopX = stop_x`, `variant = variant` |
 
 ## Collision
 
@@ -40,11 +40,14 @@ Every transform key read by `makeTransform` (`x`, `y`, `z`, `rotation`, `scaleX`
 | `speed` | `float` | `DEFAULT_BOSS_CORE_SPEED` (`-120` px/s) | Horizontal velocity while flying in (negative: to the left). |
 | `stop_x` | `float` | `DEFAULT_BOSS_CORE_STOP_X` (`1000` px) | Abscissa at which the boss stops flying in. |
 | `health` | number | `DEFAULT_BOSS_CORE_HEALTH` (`40`) | Hit points, clamped to 1–255 so that they fit the network `health` field. |
+| `variant` | number | `0` | Which boss it is, clamped to 0–255. Sent as the `subtype`: the clients pick the look of the boss from it. |
+| `width`, `height` | number | `BOSS_CORE_WIDTH` × `BOSS_CORE_HEIGHT` (`128` × `160` px) | Hitbox size, clamped to `MIN_BOSS_CORE_SIZE`–`MAX_BOSS_CORE_SIZE` (16–1024 px). |
 
 | Constant | Value | Description |
 |----------|-------|-------------|
-| `BOSS_CORE_HALF_WIDTH` | `64` px | Half-width of the hitbox: half of `rtype::game::BOSS_CORE_WIDTH`, shared with the clients. |
-| `BOSS_CORE_HALF_HEIGHT` | `80` px | Half-height of the hitbox: half of `rtype::game::BOSS_CORE_HEIGHT`. |
+| `BOSS_CORE_HALF_WIDTH` | `64` px | Half-width of the default hitbox: half of `rtype::game::BOSS_CORE_WIDTH`, shared with the clients. |
+| `BOSS_CORE_HALF_HEIGHT` | `80` px | Half-height of the default hitbox: half of `rtype::game::BOSS_CORE_HEIGHT`. |
+| `MIN_BOSS_CORE_SIZE`, `MAX_BOSS_CORE_SIZE` | `16`, `1024` px | Bounds of `width` and `height`. |
 
 ## API
 

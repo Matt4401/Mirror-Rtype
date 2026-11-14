@@ -1,16 +1,22 @@
 #include "scenes/GameScenes.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
+#include "components/Hidden.hpp"
 #include "components/Renderable.hpp"
 #include "core/Engine.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
+#include "ecs/time/Time.hpp"
+#include "gameplay/BossEffects.hpp"
+#include "gameplay/PlayerLives.hpp"
 #include "net/PlayerControlPlugin.hpp"
 #include "net/RTypeNetworkPlugin.hpp"
 #include "net/SessionEvents.hpp"
@@ -22,6 +28,8 @@
 #include "scenes/MenuKit.hpp"
 #include "scenes/MenuScenes.hpp"
 #include "ui/components/UiAnchor.hpp"
+#include "ui/components/UiImage.hpp"
+#include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
 
@@ -59,6 +67,28 @@ ecs::Entity hudText(scene::SceneContext& context, const ui::UiAnchor& anchor, st
     return entity;
 }
 
+/** @brief Left of the column of life icons, as a fraction of the screen: next to the player label. */
+constexpr float LIVES_X = 0.055F;
+/** @brief Top of the first life icon, as a fraction of the screen. */
+constexpr float LIVES_Y = 0.03F;
+/** @brief Gap between two life icons, as a fraction of the screen height. */
+constexpr float LIVES_SPACING = 0.035F;
+/** @brief Seconds `OUT` shows after the last life before the client closes. */
+constexpr float OUT_CLOSE_DELAY = 2.0F;
+/** @brief Scale of a life icon over its frame in the sheet. */
+constexpr float LIFE_ICON_SCALE = 1.3F;
+
+/** @brief Height of the boss health bar, as a fraction of the screen: below the HUD line. */
+constexpr float BOSS_BAR_Y = 0.11F;
+/** @brief Width of the boss health bar, in pixels. */
+constexpr float BOSS_BAR_WIDTH = 480.0F;
+/** @brief Height of the boss health bar, in pixels. */
+constexpr float BOSS_BAR_HEIGHT = 12.0F;
+/** @brief Colour of the hit points left. */
+constexpr ecs::Rgba BOSS_BAR_COLOR = {.r = 230, .g = 60, .b = 70, .a = 255};
+/** @brief Colour of the hit points lost. */
+constexpr ecs::Rgba BOSS_BAR_BACKGROUND = {.r = 50, .g = 20, .b = 30, .a = 220};
+
 }  // namespace
 
 // --- Game ------------------------------------------------------------------------------------------------------------
@@ -72,6 +102,20 @@ void GameScene::onEnter(scene::SceneContext& context) {
     _level = hudText(context, ui::UiAnchor{.anchorX = 0.5F, .anchorY = 0.03F, .pivotX = 0.5F}, "", 22.0F, menu::TEXT);
     _score = hudText(context, ui::UiAnchor{.anchorX = 0.98F, .anchorY = 0.03F, .pivotX = 1.0F}, "SCORE 0", 24.0F,
                      menu::GOLD);
+    _personal =
+        hudText(context, ui::UiAnchor{.anchorX = 0.98F, .anchorY = 0.075F, .pivotX = 1.0F}, "YOU 0", 18.0F, menu::TEXT);
+    const std::size_t self = session.playerIndex().value_or(0);
+    // The total for the room, and this player's own score from the per-player list.
+    const auto showScores = [this, &context, self](const std::uint32_t total,
+                                                   const std::vector<std::uint32_t>& perPlayer) {
+        menu::setText(context.registry(), _score, "SCORE " + std::to_string(total));
+        const std::uint32_t mine = self < perPlayer.size() ? perPlayer[self] : 0;
+        menu::setText(context.registry(), _personal, "YOU " + std::to_string(mine));
+    };
+    context.subscribe<ScoresUpdated>(
+        [showScores](const ScoresUpdated& event) { showScores(event.scores.score, event.scores.playerScores); });
+    spawnBossBar(context);
+    spawnLives(context, static_cast<std::uint8_t>(self));
 
     const auto onLevel = [this, &context](const protocol::LevelStart& level) {
         menu::setText(context.registry(), _level,
@@ -80,8 +124,8 @@ void GameScene::onEnter(scene::SceneContext& context) {
         showBanner(context, "LEVEL " + std::to_string(level.levelIndex + 1), level.name);
     };
     context.subscribe<LevelStarted>([onLevel](const LevelStarted& event) { onLevel(event.level); });
-    context.subscribe<LevelCompleted>([this, &context](const LevelCompleted& event) {
-        menu::setText(context.registry(), _score, "SCORE " + std::to_string(event.result.score));
+    context.subscribe<LevelCompleted>([&context, showScores](const LevelCompleted& event) {
+        showScores(event.result.score, event.result.playerScores);
         showBanner(context, "LEVEL " + std::to_string(event.result.levelIndex + 1) + " CLEARED",
                    "SCORE " + std::to_string(event.result.score));
     });
@@ -96,6 +140,80 @@ void GameScene::onEnter(scene::SceneContext& context) {
     if (const auto& level = session.level()) {
         onLevel(*level);
     }
+}
+
+void GameScene::spawnLives(scene::SceneContext& context, const std::uint8_t playerIndex) {
+    ecs::Registry& registry = context.registry();
+    const gameplay::ShipIconSheet sheet = registry.hasResource<gameplay::ShipIconSheet>()
+                                              ? registry.getResource<gameplay::ShipIconSheet>()
+                                              : gameplay::ShipIconSheet{};
+    for (std::size_t i = 0; i < _lives.size(); ++i) {
+        // A column of ships at rest, next to the player label.
+        _lives.at(i) = context.spawn();
+        registry.addComponent(_lives.at(i), ui::UiAnchor{.anchorX = LIVES_X,
+                                                         .anchorY = LIVES_Y + (LIVES_SPACING * static_cast<float>(i))});
+        registry.addComponent(_lives.at(i),
+                              ui::UiImage{.texture = sheet.texture,
+                                          .width = static_cast<float>(sheet.frameWidth) * LIFE_ICON_SCALE,
+                                          .height = static_cast<float>(sheet.frameHeight) * LIFE_ICON_SCALE,
+                                          .source = gameplay::idleShipFrame(sheet, playerIndex)});
+    }
+    _out = hudText(context, ui::UiAnchor{.anchorX = LIVES_X, .anchorY = LIVES_Y}, "OUT", 20.0F, menu::ERROR);
+    ecs::hide(registry, _out);
+    context.addSystem(scene::SceneStage::Update,
+                      [this, playerIndex](engine::Engine& engine, const ecs::time::Time& time) {
+                          ecs::Registry& world = engine.registry();
+                          const gameplay::OwnShipStatus status = gameplay::ownShipStatus(world, playerIndex);
+                          // Out of lives: OUT shows for a moment, then the client closes; the game goes on without it.
+                          if (status.eliminated) {
+                              _closeIn = _closeIn.value_or(OUT_CLOSE_DELAY) - time.deltaTime;
+                              if (*_closeIn <= 0.0F) {
+                                  engine.stop();
+                              }
+                          }
+                          for (std::size_t i = 0; i < _lives.size(); ++i) {
+                              if (!status.eliminated && i < status.lives) {
+                                  ecs::show(world, _lives.at(i));
+                              } else {
+                                  ecs::hide(world, _lives.at(i));
+                              }
+                          }
+                          if (status.eliminated) {
+                              ecs::show(world, _out);
+                          } else {
+                              ecs::hide(world, _out);
+                          }
+                      });
+}
+
+void GameScene::spawnBossBar(scene::SceneContext& context) {
+    ecs::Registry& registry = context.registry();
+    _bossCaption = hudText(context, ui::UiAnchor{.anchorX = 0.5F, .anchorY = BOSS_BAR_Y - 0.03F, .pivotX = 0.5F},
+                           "BOSS", 16.0F, menu::ERROR);
+    _bossBar = context.spawn();
+    registry.addComponent(_bossBar, ui::UiAnchor{.anchorX = 0.5F, .anchorY = BOSS_BAR_Y, .pivotX = 0.5F});
+    registry.addComponent(_bossBar, ui::UiProgressBar{.width = BOSS_BAR_WIDTH,
+                                                      .height = BOSS_BAR_HEIGHT,
+                                                      .foreground = BOSS_BAR_COLOR,
+                                                      .background = BOSS_BAR_BACKGROUND});
+    ecs::hide(registry, _bossBar);
+    ecs::hide(registry, _bossCaption);
+    context.addSystem(scene::SceneStage::Update, [this](engine::Engine& engine, const ecs::time::Time& /*time*/) {
+        ecs::Registry& world = engine.registry();
+        const std::optional<gameplay::BossHealth> health = gameplay::bossHealth(world);
+        for (const ecs::Entity element : {_bossBar, _bossCaption}) {
+            if (health) {
+                ecs::show(world, element);
+            } else {
+                ecs::hide(world, element);
+            }
+        }
+        if (health) {
+            auto& bar = world.getComponents<ui::UiProgressBar>().get(_bossBar);
+            bar.value = health->points;
+            bar.max = std::max(health->max, 1.0F);
+        }
+    });
 }
 
 void GameScene::showBanner(scene::SceneContext& context, std::string title, std::string subtitle) {

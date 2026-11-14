@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <string>
 
-#include "Logger.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "core/PluginBuilder.hpp"
 #include "events/EventBus.hpp"
+#include "log/Logger.hpp"
 #include "menu/MenuScenesPlugin.hpp"
 #include "settings/SettingsEvents.hpp"
 #include "settings/SettingsPlugin.hpp"
@@ -58,7 +58,7 @@ void VolumeCVarsPlugin::init(engine::Engine& engine) {
                 }
                 const auto value = static_cast<float>(std::clamp(settings.getNumber(volume.setting), 0.0, 1.0));
                 if (auto synced = volume.ref.set(value); !synced) {
-                    rtype::log::warning(LOG_TAG, synced.error());
+                    engine::log::warning(LOG_TAG, synced.error());
                 }
             }
         });

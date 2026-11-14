@@ -30,11 +30,17 @@ inline constexpr float DEFAULT_BOSS_CORE_STOP_X = 1000.0F;
 /** @brief Default hit points of the boss. */
 inline constexpr std::uint8_t DEFAULT_BOSS_CORE_HEALTH = 40;
 
-/** @brief Half-width of the boss hitbox in pixels, shared with the clients. */
+/** @brief Half-width of the default boss hitbox in pixels, shared with the clients. */
 inline constexpr float BOSS_CORE_HALF_WIDTH = rtype::game::BOSS_CORE_WIDTH / 2.0F;
 
-/** @brief Half-height of the boss hitbox in pixels, shared with the clients. */
+/** @brief Half-height of the default boss hitbox in pixels, shared with the clients. */
 inline constexpr float BOSS_CORE_HALF_HEIGHT = rtype::game::BOSS_CORE_HEIGHT / 2.0F;
+
+/** @brief Smallest boss hitbox side, in pixels: smaller `width` or `height` values are raised to it. */
+inline constexpr float MIN_BOSS_CORE_SIZE = 16.0F;
+
+/** @brief Largest boss hitbox side, in pixels: larger `width` or `height` values are lowered to it. */
+inline constexpr float MAX_BOSS_CORE_SIZE = 1024.0F;
 
 /**
  * @brief Marks a boss and holds where it stops flying in.
@@ -44,6 +50,8 @@ inline constexpr float BOSS_CORE_HALF_HEIGHT = rtype::game::BOSS_CORE_HEIGHT / 2
 struct BossCore {
     /** @brief Abscissa at which the boss stops flying in. */
     float stopX = DEFAULT_BOSS_CORE_STOP_X;
+    /** @brief Which boss it is, sent to the clients as its `subtype`: they pick its look from it. */
+    std::uint8_t variant = 0;
 };
 
 /**
@@ -53,8 +61,10 @@ struct BossCore {
  * The collider belongs to the `ENEMY` category: it hits the player and is hit by player shots.
  *
  * Parameters: the transform keys (see `makeTransform`), `speed` (horizontal velocity while flying in, in pixels per
- * second, `DEFAULT_BOSS_CORE_SPEED` by default), `stop_x` (`DEFAULT_BOSS_CORE_STOP_X` by default) and `health`
- * (hit points, clamped to 1–255, `DEFAULT_BOSS_CORE_HEALTH` by default).
+ * second, `DEFAULT_BOSS_CORE_SPEED` by default), `stop_x` (`DEFAULT_BOSS_CORE_STOP_X` by default), `health`
+ * (hit points, clamped to 1–255, `DEFAULT_BOSS_CORE_HEALTH` by default), `variant` (clamped to 0–255, 0 by default),
+ * and `width` and `height` (hitbox size in pixels, clamped to `MIN_BOSS_CORE_SIZE`–`MAX_BOSS_CORE_SIZE`,
+ * `rtype::game::BOSS_CORE_WIDTH` and `rtype::game::BOSS_CORE_HEIGHT` by default).
  *
  * @param e Freshly spawned entity.
  * @param registry Registry owning the entity.

@@ -1,0 +1,227 @@
+# R-Type — level 2: the gunline.
+# Read by the server only; clients receive the spawned entities through replication.
+# Format: docs/gameplay/levels.md. Every invalid value is corrected or its event skipped, with a warning at start-up.
+#
+# Positions (`at`) are scroll distances in pixels: at 60 px/s, 60 px is one second.
+# Scouts, joined by gunners that fire at the ships. About 100 s.
+
+[level]
+name = "Sector 2 - Gunline"
+scroll_speed = 60.0
+
+# --- Opening: scouts, then the first gunner ---
+
+[[events]]
+at = 120.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 0.8
+y = 360.0
+
+[[events]]
+at = 480.0
+type = "spawn"
+prefab = "alien_gunner"
+y = 360.0
+
+# --- A diagonal, then a gunner pair top and bottom ---
+
+[[events]]
+at = 840.0
+type = "spawn"
+prefab = "alien_scout"
+count = 6
+interval = 0.8
+y = 160.0
+spacing_y = 80.0
+
+[[events]]
+at = 1080.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 2
+interval = 0.0
+y = 160.0
+spacing_y = 400.0
+
+# --- A wall with a gunner behind it ---
+
+[[events]]
+at = 1500.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 0.0
+y = 160.0
+spacing_y = 100.0
+
+[[events]]
+at = 1620.0
+type = "spawn"
+prefab = "alien_gunner"
+y = 360.0
+
+# --- A column of three gunners ---
+
+[[events]]
+at = 1980.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 3
+interval = 0.0
+y = 200.0
+spacing_y = 160.0
+fire_interval = 2.2
+
+# --- A fast V ---
+
+[[events]]
+at = 2400.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 0.4
+y = 160.0
+spacing_y = 40.0
+speed = -240.0
+
+[[events]]
+at = 2400.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 0.4
+y = 560.0
+spacing_y = -40.0
+speed = -240.0
+
+# --- Breather: slow gunners in a line ---
+
+[[events]]
+at = 2820.0
+type = "scroll"
+speed = 45.0
+
+[[events]]
+at = 2880.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 3
+interval = 1.5
+y = 300.0
+spacing_y = 60.0
+
+[[events]]
+at = 3300.0
+type = "scroll"
+speed = 60.0
+
+# --- Crossing scouts covered by gunners on the edges ---
+
+[[events]]
+at = 3600.0
+type = "spawn"
+prefab = "alien_scout"
+count = 6
+interval = 0.8
+y = 140.0
+spacing_y = 80.0
+
+[[events]]
+at = 3636.0
+type = "spawn"
+prefab = "alien_scout"
+count = 6
+interval = 0.8
+y = 580.0
+spacing_y = -80.0
+
+[[events]]
+at = 3720.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 2
+interval = 0.0
+y = 100.0
+spacing_y = 520.0
+
+# --- Gauntlet: gunners along both edges ---
+
+[[events]]
+at = 4200.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 3
+interval = 1.6
+y = 140.0
+
+[[events]]
+at = 4260.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 3
+interval = 1.6
+y = 580.0
+
+[[events]]
+at = 4320.0
+type = "spawn"
+prefab = "alien_scout"
+count = 4
+interval = 0.8
+y = 360.0
+
+# --- A wall, two gunners behind it ---
+
+[[events]]
+at = 4800.0
+type = "spawn"
+prefab = "alien_scout"
+count = 5
+interval = 0.0
+y = 160.0
+spacing_y = 100.0
+
+[[events]]
+at = 4920.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 2
+interval = 0.0
+y = 260.0
+spacing_y = 200.0
+
+# --- Finale: diagonals and faster gunners ---
+
+[[events]]
+at = 5400.0
+type = "spawn"
+prefab = "alien_scout"
+count = 8
+interval = 0.8
+y = 140.0
+spacing_y = 60.0
+
+[[events]]
+at = 5436.0
+type = "spawn"
+prefab = "alien_scout"
+count = 8
+interval = 0.8
+y = 580.0
+spacing_y = -60.0
+
+[[events]]
+at = 5520.0
+type = "spawn"
+prefab = "alien_gunner"
+count = 3
+interval = 0.0
+y = 200.0
+spacing_y = 160.0
+fire_interval = 1.4
+
+[[events]]
+at = 6000.0
+type = "end"

@@ -108,6 +108,12 @@ message LevelComplete {
     repeated uint32 player_scores = 3;  // one per player slot, at most MAX_PLAYERS
 }
 
+// S -> C, reliable. Scores of the room, sent when they change (at most a few times per second).
+message ScoreUpdate {
+    uint32 score = 1;                   // total score of the room
+    repeated uint32 player_scores = 2;  // one per player slot, at most MAX_PLAYERS
+}
+
 message PlayerLeft {
     uint32 client_id = 1;
 }
@@ -187,6 +193,7 @@ message Envelope {
         PlayerLeft player_left = 50;
         LevelStart level_start = 51;
         LevelComplete level_complete = 52;
+        ScoreUpdate score_update = 53;
 
         Leave leave = 64;
         Chat chat = 65;

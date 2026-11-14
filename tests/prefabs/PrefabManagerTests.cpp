@@ -17,13 +17,18 @@
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
 #include "prefabs/CollisionCategories.hpp"
+#include "prefabs/EnemyGun.hpp"
+#include "prefabs/EnemyMotion.hpp"
 #include "prefabs/Health.hpp"
 #include "prefabs/PrefabManager.hpp"
 #include "prefabs/PrefabParams.hpp"
 #include "prefabs/PrefabPlugin.hpp"
 #include "prefabs/PrefabRegistry.hpp"
+#include "prefabs/alien_elite/AlienElite.hpp"
+#include "prefabs/alien_gunner/AlienGunner.hpp"
 #include "prefabs/alien_scout/AlienScout.hpp"
 #include "prefabs/boss_core/BossCore.hpp"
+#include "prefabs/boss_part/BossPart.hpp"
 #include "prefabs/missile/Missile.hpp"
 #include "prefabs/obstacle/Obstacle.hpp"
 #include "prefabs/player_bullet/PlayerBullet.hpp"
@@ -197,6 +202,45 @@ TEST(PrefabManager, AlienScoutHasNoScriptYet) {
     EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
 }
 
+TEST(PrefabManager, AlienGunnerIsAnEnemyWithAGun) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::ALIEN_GUNNER_PREFAB, buffer, {});
+    manager.spawn(prefabs::ALIEN_GUNNER_PREFAB, buffer, {{"fire_interval", 0.01F}, {"shot_speed", 99999.0F}});
+    buffer.flush(registry);
+
+    EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::RigidBody2D>().get(0).velocityX, prefabs::DEFAULT_ALIEN_GUNNER_SPEED);
+    const auto& gun = registry.getComponents<prefabs::EnemyGun>().get(0);
+    EXPECT_FLOAT_EQ(gun.interval, prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL);
+    EXPECT_FLOAT_EQ(gun.cooldown, prefabs::DEFAULT_ALIEN_GUNNER_FIRE_INTERVAL / 2.0F);
+    const auto& clamped = registry.getComponents<prefabs::EnemyGun>().get(1);
+    EXPECT_FLOAT_EQ(clamped.interval, 0.3F);
+    EXPECT_FLOAT_EQ(clamped.shotSpeed, 900.0F);
+}
+
+TEST(PrefabManager, AlienEliteIsAToughWeavingEnemyWithLoot) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::ALIEN_ELITE_PREFAB, buffer, {{"y", 300.0F}});
+    manager.spawn(prefabs::ALIEN_ELITE_PREFAB, buffer, {{"health", 1.0e9}, {"amplitude", -5.0}, {"frequency", 99.0}});
+    buffer.flush(registry);
+
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(0).points, prefabs::DEFAULT_ALIEN_ELITE_HEALTH);
+    EXPECT_FLOAT_EQ(registry.getComponents<prefabs::SineWave>().get(0).baseY, 300.0F);
+    EXPECT_EQ(registry.getComponents<prefabs::EnemyGun>().get(0).pattern, prefabs::GunPattern::Spread);
+    EXPECT_TRUE(registry.hasComponent<prefabs::DropsPowerUp>(0));
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(1).points, 255);
+    EXPECT_FLOAT_EQ(registry.getComponents<prefabs::SineWave>().get(1).amplitude, 0.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<prefabs::SineWave>().get(1).frequency, 4.0F);
+}
+
 TEST(PrefabManager, BossCoreIsAnArmoredEnemy) {
     prefabs::PrefabManager manager;
     prefabs::registerRtypePrefabs(manager);
@@ -231,6 +275,76 @@ TEST(PrefabManager, BossCoreHealthAndStopCanBeSetPerSpawn) {
 
     EXPECT_EQ(registry.getComponents<prefabs::Health>().get(0).points, 60);
     EXPECT_FLOAT_EQ(registry.getComponents<prefabs::BossCore>().get(0).stopX, 900.0F);
+}
+
+TEST(PrefabManager, BossCoreVariantAndHitboxComeFromItsParameters) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer,
+                  {{"variant", std::int64_t{3}}, {"width", 300.0}, {"height", std::int64_t{200}}});
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {});
+    buffer.flush(registry);
+
+    EXPECT_EQ(registry.getComponents<prefabs::BossCore>().get(0).variant, 3);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(0).halfWidth, 150.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(0).halfHeight, 100.0F);
+    EXPECT_EQ(registry.getComponents<prefabs::BossCore>().get(1).variant, 0);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(1).halfWidth, prefabs::BOSS_CORE_HALF_WIDTH);
+}
+
+TEST(PrefabManager, BossCoreVariantAndHitboxAreClamped) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer, {{"variant", 1.0e30}, {"width", 1.0e30}, {"height", -4.0}});
+    manager.spawn(prefabs::BOSS_CORE_PREFAB, buffer,
+                  {{"variant", std::int64_t{-2}}, {"width", std::nan("")}, {"height", std::nan("")}});
+    buffer.flush(registry);
+
+    auto const& cores = registry.getComponents<prefabs::BossCore>();
+    auto const& colliders = registry.getComponents<ecs::Collider2D>();
+    EXPECT_EQ(cores.get(0).variant, std::numeric_limits<std::uint8_t>::max());
+    EXPECT_FLOAT_EQ(colliders.get(0).halfWidth, prefabs::MAX_BOSS_CORE_SIZE / 2.0F);
+    EXPECT_FLOAT_EQ(colliders.get(0).halfHeight, prefabs::MIN_BOSS_CORE_SIZE / 2.0F);
+    EXPECT_EQ(cores.get(1).variant, 0);
+    EXPECT_FLOAT_EQ(colliders.get(1).halfWidth, prefabs::BOSS_CORE_HALF_WIDTH);
+    EXPECT_FLOAT_EQ(colliders.get(1).halfHeight, prefabs::BOSS_CORE_HALF_HEIGHT);
+}
+
+TEST(PrefabManager, BossPartTakesItsRoleAndSize) {
+    prefabs::PrefabManager manager;
+    prefabs::registerRtypePrefabs(manager);
+    ecs::Registry registry;
+    ecs::CommandBuffer buffer;
+
+    manager.spawn(prefabs::BOSS_PART_PREFAB, buffer,
+                  {{"role", std::string("turret")}, {"width", 20.0}, {"health", 3.0}, {"look", 4.0}});
+    manager.spawn(prefabs::BOSS_PART_PREFAB, buffer, {{"role", std::string("weak_point")}});
+    manager.spawn(prefabs::BOSS_PART_PREFAB, buffer, {{"role", std::string("shield")}});
+    buffer.flush(registry);
+
+    auto const& parts = registry.getComponents<prefabs::BossPart>();
+    EXPECT_EQ(parts.get(0).role, prefabs::BossPartRole::Turret);
+    EXPECT_EQ(parts.get(0).look, 4);
+    EXPECT_EQ(registry.getComponents<prefabs::Health>().get(0).points, 3);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(0).halfWidth, 10.0F);
+    EXPECT_FLOAT_EQ(registry.getComponents<ecs::Collider2D>().get(0).halfHeight, prefabs::DEFAULT_BOSS_PART_SIZE / 2);
+    EXPECT_EQ(registry.getComponents<ecs::Collider2D>().get(0).categoryBits, prefabs::collision::ENEMY);
+    EXPECT_EQ(parts.get(1).role, prefabs::BossPartRole::WeakPoint);
+    EXPECT_FALSE(registry.hasComponent<prefabs::Health>(1)) << "only a turret has its own hit points";
+    EXPECT_EQ(parts.get(2).role, prefabs::BossPartRole::Armor) << "an unknown role gives an armor";
+}
+
+TEST(PrefabManager, BossPartRoleNames) {
+    EXPECT_EQ(prefabs::bossPartRole("weak_point"), prefabs::BossPartRole::WeakPoint);
+    EXPECT_EQ(prefabs::bossPartRole("turret"), prefabs::BossPartRole::Turret);
+    EXPECT_EQ(prefabs::bossPartRole("armor"), prefabs::BossPartRole::Armor);
+    EXPECT_FALSE(prefabs::bossPartRole("Armor").has_value());
 }
 
 TEST(PrefabManager, BossCoreHealthIsClampedToTheNetworkRange) {

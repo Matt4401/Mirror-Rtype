@@ -12,7 +12,7 @@
 #include <string_view>
 #include <utility>
 
-#include "Logger.hpp"
+#include "log/Logger.hpp"
 #include "assets/AssetPath.hpp"
 #include "ecs/Entity.hpp"
 #include "ecs/Registry.hpp"
@@ -65,7 +65,7 @@ void engineSpawnPrefab(scripting::ForeignCall& call) {
 
     auto const* manager = scriptSystem->getPrefabManager();
     if (manager == nullptr) {
-        rtype::log::warning(scripting::detail::LOG_TAG, "Engine.spawnPrefab(", assets::quoteForLog(*prefabName),
+        engine::log::warning(scripting::detail::LOG_TAG, "Engine.spawnPrefab(", assets::quoteForLog(*prefabName),
                             "): no PrefabManager set");
         return;
     }
@@ -337,7 +337,7 @@ void ScriptSystem::loadCoreModules() {
 
     auto const res = _vm.interpret("_internal", scripting::INTERNAL_DISPATCHER_SOURCE);
     if (!res) {
-        rtype::log::error(scripting::detail::LOG_TAG,
+        engine::log::error(scripting::detail::LOG_TAG,
                           "cannot run the internal dispatcher: ", detail::formatScriptError(res.error()));
     }
 }

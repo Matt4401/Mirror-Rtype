@@ -12,6 +12,8 @@
 #include <variant>
 #include <vector>
 
+#include "components/Hidden.hpp"
+#include "components/Replicated.hpp"
 #include "config/Settings.hpp"
 #include "core/Engine.hpp"
 #include "core/IPlugin.hpp"
@@ -22,6 +24,7 @@
 #include "ecs/Registry.hpp"
 #include "events/UiEvents.hpp"
 #include "game/ReplicationCodec.hpp"
+#include "gameplay/BossEffects.hpp"
 #include "hierarchy/HierarchyPlugin.hpp"
 #include "input/InputPlugin.hpp"
 #include "input/RTypeBindings.hpp"
@@ -43,6 +46,8 @@
 #include "scripting/ScriptPlugin.hpp"
 #include "settings/SettingsPlugin.hpp"
 #include "ui/UiPlugin.hpp"
+#include "ui/components/UiImage.hpp"
+#include "ui/components/UiProgressBar.hpp"
 #include "ui/components/UiRect.hpp"
 #include "ui/components/UiText.hpp"
 
@@ -364,6 +369,86 @@ TEST_F(ClientScenesTest, PauseIsLocalAndLeavingGoesBackToTheLobby) {
     EXPECT_EQ(top(), "Lobby");
     EXPECT_EQ(transport->sentOf<protocol::Leave>().size(), 1U);
     EXPECT_FALSE(engine.getPlugin<client::PlayerControlPlugin>().paused());
+}
+
+TEST_F(ClientScenesTest, TheBossHealthBarShowsWhileABossIsOnScreen) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    const auto bar = [this]() -> std::optional<std::pair<ecs::Entity, ui::UiProgressBar>> {
+        std::optional<std::pair<ecs::Entity, ui::UiProgressBar>> found;
+        engine.registry().runSystem<ui::UiProgressBar>(
+            [&found](const ecs::Entity entity, const ui::UiProgressBar& progress) { found = {entity, progress}; });
+        return found;
+    };
+    ASSERT_TRUE(bar().has_value());
+    EXPECT_TRUE(ecs::isHidden(engine.registry(), bar()->first)) << "no boss yet";
+
+    // A boss as the replication and RTypeGamePlugin leave it: replicated, with its hit points and its flash.
+    ecs::Registry& registry = engine.registry();
+    const ecs::Entity boss = registry.spawnEntity();
+    registry.emplaceComponent<ecs::Replicated>(boss, rtype::game::KIND_BOSS_CORE);
+    registry.addComponent(boss, rtype::game::EntityNetState{.health = 30});
+    registry.addComponent(boss, client::gameplay::HitFlash{.spawnHealth = 40, .lastHealth = 30});
+    frame();
+    ASSERT_FALSE(ecs::isHidden(registry, bar()->first));
+    EXPECT_FLOAT_EQ(bar()->second.value, 30.0F);
+    EXPECT_FLOAT_EQ(bar()->second.max, 40.0F);
+    EXPECT_TRUE(showsText("BOSS"));
+
+    registry.killEntity(boss);
+    frame();
+    EXPECT_TRUE(ecs::isHidden(registry, bar()->first)) << "the boss is gone";
+}
+
+TEST_F(ClientScenesTest, TheHudShowsTheTotalAndTheOwnScoreLive) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 1, .playerCount = 2});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    EXPECT_TRUE(showsText("SCORE 0"));
+    EXPECT_TRUE(showsText("YOU 0"));
+
+    receive(protocol::ScoreUpdate{.score = 12, .playerScores = {7, 5}});
+    EXPECT_TRUE(showsText("SCORE 12"));
+    EXPECT_TRUE(showsText("YOU 5")) << "player 2 sees their own score";
+}
+
+TEST_F(ClientScenesTest, TheHudShowsOneShipPerLifeThenOut) {
+    reachTheRoom();
+    receive(protocol::GameStart{.roomId = ROOM, .playerIndex = 0, .playerCount = 1});
+    frame();
+    ASSERT_EQ(top(), "Game");
+    const auto visibleLives = [this] {
+        int count = 0;
+        engine.registry().runSystem<ui::UiImage>(
+            [this, &count](const ecs::Entity entity, const ui::UiImage& /*image*/) {
+                count += ecs::isHidden(engine.registry(), entity) ? 0 : 1;
+            });
+        return count;
+    };
+    EXPECT_EQ(visibleLives(), 3) << "three lives at the start";
+
+    // The own ship, as the replication leaves it: its lives are its health.
+    ecs::Registry& registry = engine.registry();
+    const ecs::Entity ship = registry.spawnEntity();
+    registry.emplaceComponent<ecs::Replicated>(ship, rtype::game::KIND_PLAYER_SHIP);
+    registry.addComponent(ship, rtype::game::EntityNetState{.subtype = 0, .health = 2});
+    frame();
+    EXPECT_EQ(visibleLives(), 2);
+
+    auto& state = registry.getComponents<rtype::game::EntityNetState>().get(ship);
+    state.health = 0;
+    state.flags |= rtype::game::FLAG_ELIMINATED;
+    frame();
+    EXPECT_EQ(visibleLives(), 0);
+    bool out = false;
+    registry.runSystem<ui::UiText>([&](const ecs::Entity entity, const ui::UiText& text) {
+        out = out || (text.text == "OUT" && !ecs::isHidden(registry, entity));
+    });
+    EXPECT_TRUE(out) << "OUT shows, then the client closes (Engine::stop, not observable without Engine::run)";
+    frame(2.1);
 }
 
 TEST_F(ClientScenesTest, GameOverShowsTheResult) {
