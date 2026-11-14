@@ -85,6 +85,7 @@ block. R-Type consumes it as a library, and a **second, different sample game** 
   `tests/xmake.lua` with `add_tests`.
 - Commits: Conventional Commits (`feat(ecs): ...`, `fix(network): ...`), see `CONTRIBUTING.md`.
   Work on `feat/<Name>` branches, merge through PRs into `main`.
+- Commits : 
 - All documentation, comments, and commit messages are written in English.
 
 ## Never do
