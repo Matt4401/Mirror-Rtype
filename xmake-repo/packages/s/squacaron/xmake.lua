@@ -16,13 +16,14 @@ package("squacaron")
         end
         package:add("includedirs", "include/squacaron")
         -- Static libraries: a library comes before the ones it depends on.
-        local links = {"engine_scene_scripting", "engine_scene", "engine_metrics_overlay", "engine_network_metrics",
-                       "engine_network_asio", "engine_network", "engine_physics", "engine_scripting",
-                       "engine_prefabs", "engine_input", "engine_settings"}
+        local links = {"engine_assets_scene", "engine_assets_scripting", "engine_scene_scripting", "engine_scene",
+                       "engine_metrics_overlay", "engine_network_metrics", "engine_network_asio", "engine_network",
+                       "engine_physics", "engine_tools_scripting", "engine_devconsole", "engine_tools",
+                       "engine_scripting", "engine_prefabs", "engine_input", "engine_settings"}
         if package:config("graphics") then
-            table.join2(links, {"engine_audio"})
+            table.join2(links, {"engine_assets_audio", "engine_assets_render", "engine_audio"})
         end
-        table.join2(links, {"engine_config", "engine_timeline"})
+        table.join2(links, {"engine_assets", "engine_config", "engine_timeline"})
         if package:config("graphics") then
             table.join2(links, {"engine_render"})
         end
